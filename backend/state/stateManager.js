@@ -84,7 +84,7 @@ function qualityRecord({ mode, provider, reason, inputMode = null }) {
 function buildDataQuality({ newsMode, newsMeta, marketMode, marketMeta }) {
   const inputMode = resolveInputMode(newsMode, marketMode);
   const combinedProvider = `${newsMeta?.provider || "unknown"}+${marketMeta?.provider || "unknown"}`;
-  const mixedReason = inputMode === "mixed" ? "mixed-inputs" : null;
+  const mixedReason = inputMode === "mixed" ? "mixed-live-fallback" : null;
 
   return {
     news: qualityRecord({

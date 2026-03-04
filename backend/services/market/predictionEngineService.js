@@ -134,11 +134,15 @@ function buildTickerPredictions(sectorPredictions = [], marketQuotes = {}) {
     for (const ticker of sectorPrediction.tickers) {
       const changePct = Number(marketQuotes[ticker]?.changePct || 0);
       const confidenceBoost = Math.min(8, Math.round(Math.abs(changePct)));
+      const confidence = Math.min(95, sectorPrediction.confidence + confidenceBoost);
+      const predictionScore = Number((sectorPrediction.score * (confidence / 100)).toFixed(2));
       items.push({
         ticker,
         sector: sectorPrediction.sector,
         direction: sectorPrediction.direction,
-        confidence: Math.min(95, sectorPrediction.confidence + confidenceBoost),
+        confidence,
+        predictedConfidence: confidence,
+        predictionScore,
         horizonHours: sectorPrediction.horizonHours,
         drivers: [...sectorPrediction.drivers].slice(0, 3),
         basedOnArticles: [...sectorPrediction.basedOnArticles].slice(0, 5)
@@ -147,6 +151,10 @@ function buildTickerPredictions(sectorPredictions = [], marketQuotes = {}) {
   }
 
   return items;
+}
+
+function toPredictionScoreByTicker(items = []) {
+  return Object.fromEntries(items.map((item) => [item.ticker, item.predictionScore || 0]));
 }
 
 export function generatePredictions({
@@ -178,11 +186,13 @@ export function generatePredictions({
       inputMode
     })
   );
+  const tickerPredictions = buildTickerPredictions(sectorPredictions, marketQuotes);
 
   return {
     updatedAt: new Date().toISOString(),
     inputMode,
     sectors: sectorPredictions,
-    tickers: buildTickerPredictions(sectorPredictions, marketQuotes)
+    tickers: tickerPredictions,
+    predictionScoreByTicker: toPredictionScoreByTicker(tickerPredictions)
   };
 }

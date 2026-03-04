@@ -82,21 +82,35 @@ function readConfig(overrides = {}) {
       language: process.env.NEWS_LANGUAGE || "en",
       pageSize: toInt(process.env.NEWS_PAGE_SIZE, 50),
       timeoutMs: toInt(process.env.NEWS_TIMEOUT_MS, 9_000),
+      intervalMs: toInt(process.env.NEWS_INTERVAL_MS, toInt(process.env.REFRESH_INTERVAL_MS, 30_000)),
+      backoffMaxMs: toInt(process.env.NEWS_BACKOFF_MAX_MS, 300_000),
       countries: watchlistCountries
     },
     market: {
-      provider: process.env.MARKET_PROVIDER || "alphavantage",
+      provider: process.env.MARKET_PROVIDER || "fmp",
+      fallbackProvider: process.env.MARKET_PROVIDER_FALLBACK || "alphavantage",
       apiKey: process.env.ALPHAVANTAGE_API_KEY || "",
       baseUrl: process.env.ALPHAVANTAGE_BASE_URL || "https://www.alphavantage.co/query",
+      alphaVantageApiKey: process.env.ALPHAVANTAGE_API_KEY || "",
+      alphaVantageBaseUrl: process.env.ALPHAVANTAGE_BASE_URL || "https://www.alphavantage.co/query",
+      fmpApiKey: process.env.FMP_API_KEY || "",
+      fmpBaseUrl: process.env.FMP_BASE_URL || "https://financialmodelingprep.com/api/v3",
       timeoutMs: toInt(process.env.MARKET_TIMEOUT_MS, 10_000),
       tickers: marketTickers,
       refreshIntervalMs: toInt(process.env.MARKET_REFRESH_INTERVAL_MS, 60_000),
+      minTickerTtlMs: toInt(process.env.MARKET_MIN_TICKER_TTL_MS, 45_000),
+      activeIntervalMs: toInt(
+        process.env.MARKET_ACTIVE_INTERVAL_MS,
+        toInt(process.env.MARKET_REFRESH_INTERVAL_MS, 120_000)
+      ),
+      offHoursIntervalMs: toInt(process.env.MARKET_OFFHOURS_INTERVAL_MS, 900_000),
       impactWindowMin: toInt(process.env.IMPACT_WINDOW_MIN, 120)
     },
     apiLimits: {
       newsapiDailyLimit: toInt(process.env.NEWSAPI_DAILY_LIMIT, 500),
       gnewsDailyLimit: toInt(process.env.GNEWS_DAILY_LIMIT, 500),
       mediastackDailyLimit: toInt(process.env.MEDIASTACK_DAILY_LIMIT, 500),
+      fmpDailyLimit: toInt(process.env.FMP_DAILY_LIMIT, 500),
       alphavantageDailyLimit: toInt(process.env.ALPHAVANTAGE_DAILY_LIMIT, 500)
     }
   };
@@ -108,6 +122,11 @@ function readConfig(overrides = {}) {
     news: {
       ...config.news,
       ...(overrides.news || {}),
+      intervalMs:
+        overrides.news?.intervalMs ||
+        overrides.refreshIntervalMs ||
+        overrides.news?.refreshIntervalMs ||
+        config.news.intervalMs,
       countries:
         overrides.news?.countries ||
         overrides.watchlistCountries ||
@@ -115,7 +134,32 @@ function readConfig(overrides = {}) {
     },
     market: {
       ...config.market,
-      ...(overrides.market || {})
+      ...(overrides.market || {}),
+      apiKey:
+        overrides.market?.apiKey ??
+        overrides.market?.alphaVantageApiKey ??
+        config.market.apiKey,
+      alphaVantageApiKey:
+        overrides.market?.alphaVantageApiKey ??
+        overrides.market?.apiKey ??
+        config.market.alphaVantageApiKey,
+      alphaVantageBaseUrl:
+        overrides.market?.alphaVantageBaseUrl ??
+        overrides.market?.baseUrl ??
+        config.market.alphaVantageBaseUrl,
+      fmpApiKey:
+        overrides.market?.fmpApiKey ??
+        config.market.fmpApiKey,
+      activeIntervalMs:
+        overrides.market?.activeIntervalMs ||
+        overrides.market?.refreshIntervalMs ||
+        config.market.activeIntervalMs,
+      offHoursIntervalMs:
+        overrides.market?.offHoursIntervalMs ||
+        Math.max(
+          overrides.market?.refreshIntervalMs || 0,
+          config.market.offHoursIntervalMs
+        )
     },
     apiLimits: {
       ...config.apiLimits,
@@ -153,7 +197,7 @@ export function createAppServer(overrides = {}) {
   app.use(errorHandler);
 
   stateManager.reset({
-    refreshIntervalMs: config.refreshIntervalMs,
+    refreshIntervalMs: config.news.intervalMs,
     watchlistCountries: config.watchlistCountries,
     marketTickers: config.market.tickers,
     impactWindowMin: config.market.impactWindowMin
@@ -190,14 +234,18 @@ export function createAppServer(overrides = {}) {
         newsApiKeyConfigured: isRealKey(config.news.newsApiKey),
         gnewsApiKeyConfigured: isRealKey(config.news.gnewsApiKey),
         mediastackKeyConfigured: isRealKey(config.news.mediastackApiKey),
+        fmpApiKeyConfigured: isRealKey(config.market.fmpApiKey),
         alphaVantageKeyConfigured: isRealKey(config.market.apiKey),
+        marketProvider: config.market.provider,
+        marketFallbackProvider: config.market.fallbackProvider,
         apiLimits: config.apiLimits,
         newsProviders: config.news.providers,
-        refreshIntervalMs: config.refreshIntervalMs,
-        marketRefreshIntervalMs: config.market.refreshIntervalMs
+        newsIntervalMs: config.news.intervalMs,
+        marketActiveIntervalMs: config.market.activeIntervalMs,
+        marketOffHoursIntervalMs: config.market.offHoursIntervalMs
       });
       orchestrator.start();
-      log.info("server_started", { port: server.address().port, refreshIntervalMs: config.refreshIntervalMs });
+      log.info("server_started", { port: server.address().port, refreshIntervalMs: config.news.intervalMs });
     },
     async stop() {
       orchestrator.stop();

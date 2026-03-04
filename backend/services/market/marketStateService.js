@@ -2,7 +2,7 @@ const MAX_MARKET_POINTS = 120;
 
 export function buildInitialMarketState(tickers = []) {
   return {
-    provider: "alphavantage",
+    provider: "market-router",
     sourceMode: "fallback",
     sourceMeta: {
       provider: "seed",

@@ -62,7 +62,9 @@ export function getImpact(req, res) {
     tickers,
     countryFilter: countries,
     windowMin,
-    inputMode: snapshot.meta?.dataQuality?.impact?.inputMode || "live"
+    inputMode: snapshot.meta?.dataQuality?.impact?.inputMode || "live",
+    impactHistory: snapshot.impactHistory || [],
+    predictionScores: snapshot.predictions?.predictionScoreByTicker || {}
   });
 
   res.json(
@@ -93,14 +95,51 @@ function filterPredictions(predictions = { sectors: [], tickers: [] }, tickers =
     return predictions;
   }
   const allowed = new Set(tickers);
+  const tickerItems = (predictions.tickers || []).filter((item) => allowed.has(item.ticker));
   return {
     ...predictions,
-    tickers: (predictions.tickers || []).filter((item) => allowed.has(item.ticker)),
+    tickers: tickerItems,
+    predictionScoreByTicker: Object.fromEntries(
+      tickerItems.map((item) => [item.ticker, Number(item.predictionScore || 0)])
+    ),
     sectors: (predictions.sectors || []).map((sector) => ({
       ...sector,
       tickers: (sector.tickers || []).filter((ticker) => allowed.has(ticker))
     }))
   };
+}
+
+function buildPredictedSectorDirection(predictions = { sectors: [] }) {
+  return (predictions.sectors || []).map((sector) => ({
+    sector: sector.sector,
+    direction: sector.direction,
+    confidence: sector.confidence,
+    score: sector.score,
+    inputMode: sector.inputMode
+  }));
+}
+
+function buildTickerOutlookMatrix({ impactItems = [], predictionTickers = [], marketQuotes = {} }) {
+  const impactByTicker = Object.fromEntries((impactItems || []).map((item) => [item.ticker, item]));
+  return (predictionTickers || []).map((prediction) => {
+    const impact = impactByTicker[prediction.ticker] || {
+      eventScore: 0,
+      impactScore: 0
+    };
+    const quote = marketQuotes[prediction.ticker] || { changePct: 0 };
+
+    return {
+      ticker: prediction.ticker,
+      sector: prediction.sector,
+      direction: prediction.direction,
+      eventScore: Number(impact.eventScore || 0),
+      impactScore: Number(impact.impactScore || 0),
+      predictedConfidence: Number(prediction.predictedConfidence || prediction.confidence || 0),
+      predictionScore: Number(prediction.predictionScore || 0),
+      changePct: Number(quote.changePct || 0),
+      radius: Math.max(3, Math.min(18, Math.abs(Number(quote.changePct || 0)) * 2 + 4))
+    };
+  });
 }
 
 export function getAnalytics(req, res) {
@@ -121,7 +160,16 @@ export function getAnalytics(req, res) {
     tickers,
     countryFilter: countries,
     windowMin,
-    inputMode: snapshot.meta?.dataQuality?.impact?.inputMode || "live"
+    inputMode: snapshot.meta?.dataQuality?.impact?.inputMode || "live",
+    impactHistory: snapshot.impactHistory || [],
+    predictionScores: snapshot.predictions?.predictionScoreByTicker || {}
+  });
+  const predictions = filterPredictions(snapshot.predictions || {}, tickers);
+  const predictedSectorDirection = buildPredictedSectorDirection(predictions);
+  const tickerOutlookMatrix = buildTickerOutlookMatrix({
+    impactItems: impact.items || [],
+    predictionTickers: predictions.tickers || [],
+    marketQuotes: snapshot.market?.quotes || {}
   });
 
   res.json(
@@ -132,7 +180,10 @@ export function getAnalytics(req, res) {
       impactHistory: filterImpactHistory(snapshot.impactHistory || [], tickers),
       sectorBreakdown: impact.sectorBreakdown || [],
       scatterPoints: impact.scatterPoints || [],
-      predictions: filterPredictions(snapshot.predictions || {}, tickers),
+      couplingSeries: impact.couplingSeries || [],
+      predictedSectorDirection,
+      tickerOutlookMatrix,
+      predictions,
       meta: snapshot.meta
     })
   );

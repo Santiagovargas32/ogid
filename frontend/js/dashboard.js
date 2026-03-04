@@ -12,6 +12,13 @@ const LEVEL_RANK = {
 
 const DEFAULT_WATCHLIST = ["US", "IL", "IR"];
 const CHART_COLORS = ["#49d6c5", "#ff8c42", "#f4c542", "#38c172", "#6fb1ff", "#ff4d4f", "#c59aff"];
+const NEWS_PLACEHOLDER_SRC = "/assets/news-placeholder.svg";
+const DIRECTION_COLORS = {
+  Bullish: "#38c172",
+  Bearish: "#ff4d4f",
+  Volatile: "#ff8c42",
+  Sideways: "#6fb1ff"
+};
 
 let hotspotMap;
 let riskChart;
@@ -216,7 +223,8 @@ function setPanelMode(panel, mode) {
 function setQualityBadge(element, label, quality = {}) {
   const mode = quality.mode || "fallback";
   element.className = `badge ${qualityBadgeClass(mode)}`;
-  element.textContent = `${label}: ${mode}${quality.synthetic ? " (SIM)" : ""}`;
+  const suffix = mode === "fallback" && quality.synthetic ? " (SIM)" : "";
+  element.textContent = `${label}: ${mode}${suffix}`;
   element.title = quality.reason || "";
 }
 
@@ -300,17 +308,20 @@ function renderNews(news = [], countries = {}) {
     .map((article) => {
       const level = deriveArticleLevel(article, countries);
       const mentions = article.countryMentions?.length ? article.countryMentions.join(", ") : "Global";
-      const thumbnail = article.imageUrl
-        ? `<img class="news-thumb" src="${escapeHtml(article.imageUrl)}" alt="news image" loading="lazy" />`
-        : '<div class="news-thumb news-thumb-placeholder">No Image</div>';
+      const title = String(article.title || "").trim() || "Untitled headline";
+      const description = String(article.description || "").trim() || "No description provided.";
+      const safeImageUrl = String(article.imageUrl || "").trim();
+      const thumbnail = safeImageUrl
+        ? `<img class="news-thumb" src="${escapeHtml(safeImageUrl)}" alt="news image" loading="lazy" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src='${NEWS_PLACEHOLDER_SRC}';this.classList.add('news-thumb-fallback')" />`
+        : `<img class="news-thumb news-thumb-placeholder news-thumb-fallback" src="${NEWS_PLACEHOLDER_SRC}" alt="No image" loading="lazy" />`;
       const flag = article.synthetic ? '<span class="news-flag">SIMULATED</span>' : "";
 
       return `
       <article class="news-item ${newsLevelClass(level)}">
         ${thumbnail}
-        <div>
-          <h3>${escapeHtml(article.title)}</h3>
-          <p>${escapeHtml(article.description || "No description provided.")}</p>
+        <div class="news-content">
+          <h3>${escapeHtml(title)}</h3>
+          <p>${escapeHtml(description)}</p>
           <div class="news-item-meta">
             <span>${escapeHtml(article.sourceName)}</span>
             <span>${formatDate(article.publishedAt)}</span>
@@ -389,13 +400,33 @@ function initRiskChart() {
 
 function initImpactTimelineChart() {
   impactTimelineChart = new Chart(elements.impactTimelineChart.getContext("2d"), {
-    type: "line",
-    data: { labels: [], datasets: [] },
+    type: "bar",
+    data: {
+      labels: [],
+      datasets: [
+        {
+          label: "Prediction Score",
+          data: [],
+          backgroundColor: []
+        }
+      ]
+    },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       animation: false,
-      plugins: { legend: { labels: { color: "#c7d4e2" } } },
+      indexAxis: "y",
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label(context) {
+              const confidence = context.dataset.confidenceMap?.[context.dataIndex] ?? "--";
+              return `score: ${context.raw} | confidence: ${confidence}%`;
+            }
+          }
+        }
+      },
       scales: chartAxesOptions()
     }
   });
@@ -403,36 +434,56 @@ function initImpactTimelineChart() {
 
 function initSectorBreakdownChart() {
   sectorBreakdownChart = new Chart(elements.sectorBreakdownChart.getContext("2d"), {
-    type: "bar",
+    type: "bubble",
     data: {
-      labels: [],
       datasets: [
-        { label: "Impact Score", data: [], backgroundColor: "#ff8c42" },
-        { label: "Event Score", data: [], backgroundColor: "#49d6c5" }
+        {
+          label: "Ticker Outlook Matrix",
+          data: [],
+          pointRadius(context) {
+            return context.raw?.r || 6;
+          },
+          pointHoverRadius(context) {
+            return (context.raw?.r || 6) + 2;
+          }
+        }
       ]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       animation: false,
-      plugins: { legend: { labels: { color: "#c7d4e2" } } },
-      scales: chartAxesOptions()
+      plugins: {
+        legend: { labels: { color: "#c7d4e2" } },
+        tooltip: {
+          callbacks: {
+            label(context) {
+              const raw = context.raw || {};
+              return `${raw.ticker || "N/A"} | ${raw.direction || "Sideways"} | score: ${raw.predictionScore || 0}`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: { ...chartAxesOptions().x, title: { display: true, text: "Event Score", color: "#c7d4e2" } },
+        y: { ...chartAxesOptions().y, title: { display: true, text: "Predicted Confidence", color: "#c7d4e2" } }
+      }
     }
   });
 }
 
 function initImpactScatterChart() {
   impactScatterChart = new Chart(elements.impactScatterChart.getContext("2d"), {
-    type: "scatter",
-    data: { datasets: [{ label: "Ticker impact", data: [], pointRadius: 6 }] },
+    type: "line",
+    data: { labels: [], datasets: [] },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       animation: false,
       plugins: { legend: { labels: { color: "#c7d4e2" } } },
       scales: {
-        x: { ...chartAxesOptions().x, title: { display: true, text: "Event Score", color: "#c7d4e2" } },
-        y: { ...chartAxesOptions().y, title: { display: true, text: "Price Reaction %", color: "#c7d4e2" } }
+        x: { ...chartAxesOptions().x, title: { display: true, text: "Time", color: "#c7d4e2" } },
+        y: { ...chartAxesOptions().y, title: { display: true, text: "Impact / Price Coupling", color: "#c7d4e2" } }
       }
     }
   });
@@ -579,87 +630,138 @@ function visibleTickersForCharts(state) {
 }
 
 function resolveAnalyticsPayload(rawState) {
-  if (latestAnalytics?.impactHistory || latestAnalytics?.sectorBreakdown || latestAnalytics?.scatterPoints) {
+  if (
+    latestAnalytics?.predictedSectorDirection ||
+    latestAnalytics?.tickerOutlookMatrix ||
+    latestAnalytics?.couplingSeries
+  ) {
     return latestAnalytics;
   }
+
+  const predictedSectorDirection = (rawState.predictions?.sectors || []).map((sector) => ({
+    sector: sector.sector,
+    direction: sector.direction,
+    confidence: sector.confidence,
+    score: sector.score,
+    inputMode: sector.inputMode
+  }));
+
+  const tickerOutlookMatrix = (rawState.predictions?.tickers || []).map((prediction) => {
+    const impact = (rawState.impact?.items || []).find((item) => item.ticker === prediction.ticker) || {};
+    const quote = rawState.market?.quotes?.[prediction.ticker] || {};
+    return {
+      ticker: prediction.ticker,
+      sector: prediction.sector,
+      direction: prediction.direction,
+      eventScore: impact.eventScore || 0,
+      impactScore: impact.impactScore || 0,
+      predictedConfidence: prediction.predictedConfidence || prediction.confidence || 0,
+      predictionScore: prediction.predictionScore || 0,
+      changePct: Number(quote.changePct || 0),
+      radius: Math.max(3, Math.min(18, Math.abs(Number(quote.changePct || 0)) * 2 + 4))
+    };
+  });
+
+  const couplingSeries = (rawState.impact?.couplingSeries || []).slice(0, 3);
+
   return {
-    impactHistory: rawState.impactHistory || [],
-    sectorBreakdown: rawState.impact?.sectorBreakdown || [],
-    scatterPoints: rawState.impact?.scatterPoints || []
+    predictedSectorDirection,
+    tickerOutlookMatrix,
+    couplingSeries
   };
 }
 
-function renderImpactTimeline(impactHistory = [], visibleTickers = new Set()) {
-  const ordered = [...impactHistory].slice(-24);
-  const labels = ordered.map((entry) => formatShortTime(entry.timestamp));
-  const series = {};
-
-  for (const ticker of visibleTickers) {
-    series[ticker] = labels.map(() => null);
-  }
-
-  ordered.forEach((entry, index) => {
-    for (const item of entry.items || []) {
-      if (!(item.ticker in series)) {
-        continue;
-      }
-      series[item.ticker][index] = item.impactScore;
-    }
-  });
-
-  impactTimelineChart.data.labels = labels;
-  impactTimelineChart.data.datasets = Object.entries(series).map(([ticker, points], index) => ({
-    label: ticker,
-    data: points,
-    borderColor: CHART_COLORS[index % CHART_COLORS.length],
-    backgroundColor: CHART_COLORS[index % CHART_COLORS.length],
-    tension: 0.25
-  }));
+function renderPredictedSectorDirection(items = []) {
+  impactTimelineChart.data.labels = items.map(
+    (item) => `${String(item.sector || "unknown").toUpperCase()} (${Number(item.confidence || 0)}%)`
+  );
+  impactTimelineChart.data.datasets[0].data = items.map((item) => Number(item.score || 0));
+  impactTimelineChart.data.datasets[0].backgroundColor = items.map(
+    (item) => DIRECTION_COLORS[item.direction] || "#6fb1ff"
+  );
+  impactTimelineChart.data.datasets[0].confidenceMap = items.map((item) => Number(item.confidence || 0));
   impactTimelineChart.update();
 }
 
-function renderSectorBreakdown(sectorBreakdown = []) {
-  sectorBreakdownChart.data.labels = sectorBreakdown.map((entry) => entry.sector.toUpperCase());
-  sectorBreakdownChart.data.datasets[0].data = sectorBreakdown.map((entry) => entry.impactScore);
-  sectorBreakdownChart.data.datasets[1].data = sectorBreakdown.map((entry) => entry.eventScore);
+function renderTickerOutlookMatrix(items = [], visibleTickers = new Set()) {
+  const points = items
+    .filter((item) => visibleTickers.has(item.ticker))
+    .map((item) => ({
+      x: Number(item.eventScore || 0),
+      y: Number(item.predictedConfidence || 0),
+      r: Number(item.radius || 6),
+      ticker: item.ticker,
+      direction: item.direction,
+      predictionScore: Number(item.predictionScore || 0),
+      changePct: Number(item.changePct || 0)
+    }));
+
+  sectorBreakdownChart.data.datasets[0].data = points;
+  sectorBreakdownChart.data.datasets[0].pointBackgroundColor = points.map(
+    (point) => DIRECTION_COLORS[point.direction] || "#6fb1ff"
+  );
   sectorBreakdownChart.update();
 }
 
-function renderImpactScatter(scatterPoints = [], visibleTickers = new Set()) {
-  const points = scatterPoints
-    .filter((point) => visibleTickers.has(point.ticker))
-    .map((point) => ({
-      x: point.eventScore,
-      y: point.priceReaction,
-      ticker: point.ticker,
-      level: point.level
-    }));
+function renderNewsPriceCoupling(couplingSeries = [], visibleTickers = new Set()) {
+  const selected = couplingSeries.filter((series) => visibleTickers.has(series.ticker)).slice(0, 3);
+  if (!selected.length) {
+    impactScatterChart.data.labels = [];
+    impactScatterChart.data.datasets = [];
+    impactScatterChart.update();
+    return;
+  }
 
-  impactScatterChart.data.datasets[0].data = points;
-  impactScatterChart.data.datasets[0].pointBackgroundColor = points.map((point) => {
-    if (point.level === "High") {
-      return "#ff4d4f";
+  const labels = [...new Set(selected.flatMap((series) => (series.points || []).map((point) => point.timestamp)))]
+    .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
+    .map((timestamp) => formatShortTime(timestamp));
+
+  const datasets = [];
+  selected.forEach((series, index) => {
+    const rawPoints = series.points || [];
+    const map = new Map(rawPoints.map((point) => [formatShortTime(point.timestamp), point]));
+    const color = CHART_COLORS[index % CHART_COLORS.length];
+
+    datasets.push({
+      label: `${series.ticker} impact`,
+      data: labels.map((label) => Number(map.get(label)?.impactScore ?? null)),
+      borderColor: color,
+      backgroundColor: color,
+      tension: 0.25
+    });
+    datasets.push({
+      label: `${series.ticker} priceReaction`,
+      data: labels.map((label) => Number(map.get(label)?.priceReaction ?? null)),
+      borderColor: color,
+      backgroundColor: color,
+      borderDash: [5, 5],
+      tension: 0.25
+    });
+
+    if (Number.isFinite(series.predictionScore) && index === 0) {
+      datasets.push({
+        label: `${series.ticker} predictionScore`,
+        data: labels.map(() => Number(series.predictionScore || 0)),
+        borderColor: "#f4c542",
+        backgroundColor: "#f4c542",
+        borderDash: [2, 3],
+        pointRadius: 0,
+        tension: 0
+      });
     }
-    if (point.level === "Medium") {
-      return "#ff8c42";
-    }
-    return "#49d6c5";
   });
+
+  impactScatterChart.data.labels = labels;
+  impactScatterChart.data.datasets = datasets;
   impactScatterChart.update();
 }
 
 function renderCharts(rawState, filteredState) {
   const analytics = resolveAnalyticsPayload(rawState);
   const visibleTickers = visibleTickersForCharts(filteredState);
-  const history = (analytics.impactHistory || []).map((entry) => ({
-    ...entry,
-    items: (entry.items || []).filter((item) => visibleTickers.has(item.ticker))
-  }));
-  const scatter = (analytics.scatterPoints || []).filter((item) => visibleTickers.has(item.ticker));
-
-  renderImpactTimeline(history, visibleTickers);
-  renderSectorBreakdown(analytics.sectorBreakdown || []);
-  renderImpactScatter(scatter, visibleTickers);
+  renderPredictedSectorDirection(analytics.predictedSectorDirection || []);
+  renderTickerOutlookMatrix(analytics.tickerOutlookMatrix || [], visibleTickers);
+  renderNewsPriceCoupling(analytics.couplingSeries || [], visibleTickers);
 }
 
 function renderDashboard(rawState) {

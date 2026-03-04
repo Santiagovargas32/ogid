@@ -163,6 +163,40 @@ function buildScatterPoints(items = []) {
   }));
 }
 
+function buildCouplingSeries({
+  impactHistory = [],
+  tickers = [],
+  predictionScores = {},
+  topItems = []
+}) {
+  const selectedTickers = tickers.length
+    ? tickers
+    : topItems.slice(0, 4).map((item) => item.ticker);
+
+  if (!selectedTickers.length || !impactHistory.length) {
+    return [];
+  }
+
+  const ordered = [...impactHistory].slice(-24);
+  return selectedTickers.map((ticker) => ({
+    ticker,
+    predictionScore: Number(predictionScores[ticker] || 0),
+    points: ordered
+      .map((entry) => {
+        const item = (entry.items || []).find((candidate) => candidate.ticker === ticker);
+        if (!item) {
+          return null;
+        }
+        return {
+          timestamp: entry.timestamp,
+          impactScore: Number(item.impactScore || 0),
+          priceReaction: Number(item.priceReaction || 0)
+        };
+      })
+      .filter(Boolean)
+  }));
+}
+
 export function computeMarketImpact({
   articles = [],
   countries = {},
@@ -170,7 +204,9 @@ export function computeMarketImpact({
   tickers = [],
   countryFilter = [],
   windowMin = 120,
-  inputMode = "live"
+  inputMode = "live",
+  impactHistory = [],
+  predictionScores = {}
 }) {
   const normalizedTickers = tickers.map((ticker) => String(ticker).toUpperCase());
   const tickerSet = new Set(normalizedTickers);
@@ -256,6 +292,12 @@ export function computeMarketImpact({
     inputMode,
     items: orderedItems,
     sectorBreakdown: buildSectorBreakdown(orderedItems),
-    scatterPoints: buildScatterPoints(orderedItems)
+    scatterPoints: buildScatterPoints(orderedItems),
+    couplingSeries: buildCouplingSeries({
+      impactHistory,
+      tickers: normalizedTickers,
+      predictionScores,
+      topItems: orderedItems
+    })
   };
 }

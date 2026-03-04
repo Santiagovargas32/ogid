@@ -72,6 +72,9 @@ test("REST API exposes health and snapshot payloads", async () => {
     assert.ok(Array.isArray(analyticsPayload.data.impactHistory));
     assert.ok(Array.isArray(analyticsPayload.data.sectorBreakdown));
     assert.ok(Array.isArray(analyticsPayload.data.scatterPoints));
+    assert.ok(Array.isArray(analyticsPayload.data.couplingSeries));
+    assert.ok(Array.isArray(analyticsPayload.data.predictedSectorDirection));
+    assert.ok(Array.isArray(analyticsPayload.data.tickerOutlookMatrix));
     assert.ok(analyticsPayload.data.predictions);
 
     const limitsResponse = await fetch(`${baseUrl}/api/admin/api-limits`);

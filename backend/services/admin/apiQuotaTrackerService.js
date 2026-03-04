@@ -1,5 +1,5 @@
 const WINDOW_MS = 24 * 60 * 60 * 1_000;
-const PROVIDERS = ["newsapi", "gnews", "mediastack", "alphavantage"];
+const PROVIDERS = ["newsapi", "gnews", "mediastack", "fmp", "alphavantage"];
 
 function toPositiveInt(value) {
   const parsed = Number.parseInt(String(value ?? ""), 10);
@@ -103,6 +103,7 @@ class ApiQuotaTrackerService {
       newsapi: toPositiveInt(config.newsapiDailyLimit ?? process.env.NEWSAPI_DAILY_LIMIT),
       gnews: toPositiveInt(config.gnewsDailyLimit ?? process.env.GNEWS_DAILY_LIMIT),
       mediastack: toPositiveInt(config.mediastackDailyLimit ?? process.env.MEDIASTACK_DAILY_LIMIT),
+      fmp: toPositiveInt(config.fmpDailyLimit ?? process.env.FMP_DAILY_LIMIT),
       alphavantage: toPositiveInt(config.alphavantageDailyLimit ?? process.env.ALPHAVANTAGE_DAILY_LIMIT)
     };
 

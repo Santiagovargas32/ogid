@@ -1,12 +1,14 @@
 import { createLogger } from "../utils/logger.js";
+import apiQuotaTracker from "./admin/apiQuotaTrackerService.js";
 import { fetchRawNews } from "./newsService.js";
 import { normalizeArticles } from "./normalizeService.js";
 import { computeCountryRisk } from "./riskEngineService.js";
 import { generateInsights } from "./insightService.js";
-import { fetchAlphaVantageQuotes } from "./market/alphaVantageService.js";
 import { mergeMarketState } from "./market/marketStateService.js";
 import { computeMarketImpact } from "./market/impactEngineService.js";
 import { generatePredictions } from "./market/predictionEngineService.js";
+import { fetchMarketQuotes } from "./market/marketProviderRouter.js";
+import { resolveMarketIntervalMs } from "./market/marketSessionService.js";
 
 const log = createLogger("backend/services/refreshOrchestratorService");
 
@@ -27,8 +29,10 @@ class RefreshOrchestratorService {
     this.config = config;
     this.newsInFlight = false;
     this.marketInFlight = false;
-    this.newsIntervalHandle = null;
-    this.marketIntervalHandle = null;
+    this.newsTimerHandle = null;
+    this.marketTimerHandle = null;
+    this.stopped = true;
+    this.newsBackoffMs = 0;
   }
 
   buildUpdatePayload(snapshot) {
@@ -44,6 +48,65 @@ class RefreshOrchestratorService {
       impact: snapshot.impact,
       impactHistory: snapshot.impactHistory
     };
+  }
+
+  getNewsBaseIntervalMs() {
+    return this.config.news?.intervalMs || this.config.refreshIntervalMs || 30_000;
+  }
+
+  getNewsBackoffMaxMs() {
+    return this.config.news?.backoffMaxMs || 300_000;
+  }
+
+  getMarketRemainingQuota() {
+    const providers = [this.config.market?.provider, this.config.market?.fallbackProvider]
+      .map((provider) => String(provider || "").toLowerCase())
+      .filter(Boolean);
+    const uniqueProviders = [...new Set(providers)];
+    const values = uniqueProviders
+      .map((provider) => apiQuotaTracker.getProviderSnapshot(provider)?.effectiveRemaining)
+      .filter((value) => Number.isFinite(value));
+
+    if (!values.length) {
+      return null;
+    }
+
+    return Math.min(...values);
+  }
+
+  resolveNextMarketDelayMs() {
+    return resolveMarketIntervalMs({
+      activeIntervalMs: this.config.market?.activeIntervalMs || this.config.market?.refreshIntervalMs || 120_000,
+      offHoursIntervalMs: this.config.market?.offHoursIntervalMs || 900_000,
+      quotaRemaining: this.getMarketRemainingQuota()
+    });
+  }
+
+  scheduleNextNewsCycle(trigger = "interval-news") {
+    if (this.stopped) {
+      return;
+    }
+
+    clearTimeout(this.newsTimerHandle);
+    const baseIntervalMs = this.getNewsBaseIntervalMs();
+    const delayMs = Math.min(baseIntervalMs + this.newsBackoffMs, this.getNewsBackoffMaxMs());
+    this.newsTimerHandle = setTimeout(async () => {
+      await this.runNewsCycle(trigger);
+      this.scheduleNextNewsCycle("interval-news");
+    }, delayMs);
+  }
+
+  scheduleNextMarketCycle(trigger = "interval-market") {
+    if (this.stopped) {
+      return;
+    }
+
+    clearTimeout(this.marketTimerHandle);
+    const delayMs = this.resolveNextMarketDelayMs();
+    this.marketTimerHandle = setTimeout(async () => {
+      await this.runMarketCycle(trigger);
+      this.scheduleNextMarketCycle("interval-market");
+    }, delayMs);
   }
 
   async runNewsCycle(trigger = "scheduled-news") {
@@ -72,7 +135,9 @@ class RefreshOrchestratorService {
         tickers: this.config.market.tickers,
         countryFilter: this.config.watchlistCountries,
         windowMin: this.config.market.impactWindowMin,
-        inputMode
+        inputMode,
+        impactHistory: previousSnapshot.impactHistory || [],
+        predictionScores: previousSnapshot.predictions?.predictionScoreByTicker || {}
       });
       const predictions = generatePredictions({
         articles: normalizedNews,
@@ -100,6 +165,7 @@ class RefreshOrchestratorService {
       });
 
       this.socketServer.broadcast("update", this.buildUpdatePayload(snapshot), snapshot.meta);
+      this.newsBackoffMs = 0;
 
       log.info("news_cycle_completed", {
         trigger,
@@ -110,10 +176,15 @@ class RefreshOrchestratorService {
         durationMs: Date.now() - startedAt
       });
     } catch (error) {
+      const baseIntervalMs = this.getNewsBaseIntervalMs();
+      const maxExtraBackoff = Math.max(0, this.getNewsBackoffMaxMs() - baseIntervalMs);
+      this.newsBackoffMs = Math.min(maxExtraBackoff, this.newsBackoffMs ? this.newsBackoffMs * 2 : baseIntervalMs);
+
       log.error("news_cycle_failed", {
         trigger,
         message: error.message,
-        stack: error.stack
+        stack: error.stack,
+        nextBackoffMs: this.newsBackoffMs
       });
       this.socketServer.broadcast(
         "error",
@@ -140,10 +211,30 @@ class RefreshOrchestratorService {
 
     try {
       const previousSnapshot = this.stateManager.getSnapshot();
-      const marketResult = await fetchAlphaVantageQuotes(this.config.market);
+      const minTickerTtlMs = this.config.market?.minTickerTtlMs || 0;
+      const marketUpdatedAtMs = new Date(previousSnapshot.market?.updatedAt || 0).getTime();
+      const ageMs = Number.isFinite(marketUpdatedAtMs) ? Date.now() - marketUpdatedAtMs : Number.MAX_SAFE_INTEGER;
+      if (trigger.startsWith("interval-") && minTickerTtlMs > 0 && ageMs < minTickerTtlMs) {
+        log.info("market_cycle_skipped", {
+          trigger,
+          reason: "min-ticker-ttl",
+          ageMs,
+          minTickerTtlMs
+        });
+        return;
+      }
+
+      const marketResult = await fetchMarketQuotes(this.config.market);
       const marketState = mergeMarketState(previousSnapshot.market, marketResult);
       const inputMode = resolveInputMode(previousSnapshot.meta?.sourceMode, marketState.sourceMode);
 
+      const predictions = generatePredictions({
+        articles: previousSnapshot.news,
+        countries: previousSnapshot.countries,
+        marketQuotes: marketState.quotes,
+        tickers: this.config.market.tickers,
+        inputMode
+      });
       const impact = computeMarketImpact({
         articles: previousSnapshot.news,
         countries: previousSnapshot.countries,
@@ -151,14 +242,9 @@ class RefreshOrchestratorService {
         tickers: this.config.market.tickers,
         countryFilter: this.config.watchlistCountries,
         windowMin: this.config.market.impactWindowMin,
-        inputMode
-      });
-      const predictions = generatePredictions({
-        articles: previousSnapshot.news,
-        countries: previousSnapshot.countries,
-        marketQuotes: marketState.quotes,
-        tickers: this.config.market.tickers,
-        inputMode
+        inputMode,
+        impactHistory: previousSnapshot.impactHistory || [],
+        predictionScores: predictions.predictionScoreByTicker || {}
       });
       const insights = generateInsights({
         countries: previousSnapshot.countries,
@@ -181,8 +267,7 @@ class RefreshOrchestratorService {
         sourceMode: marketState.sourceMode,
         providerUsed: marketResult.sourceMeta?.provider || marketState.provider || "unknown",
         liveCount: marketResult.sourceMeta?.liveCount ?? 0,
-        fallbackCount:
-          (marketResult.sourceMeta?.totalTickers ?? Object.keys(marketState.quotes || {}).length) -
+        fallbackCount: (marketResult.sourceMeta?.totalTickers ?? Object.keys(marketState.quotes || {}).length) -
           (marketResult.sourceMeta?.liveCount ?? 0),
         tickerCount: Object.keys(marketState.quotes || {}).length,
         durationMs: Date.now() - startedAt
@@ -204,40 +289,39 @@ class RefreshOrchestratorService {
   }
 
   start() {
-    if (!this.newsIntervalHandle) {
-      this.runNewsCycle("startup-news").catch((error) => {
-        log.error("news_cycle_startup_failed", { message: error.message });
-      });
+    this.stopped = false;
 
-      this.newsIntervalHandle = setInterval(() => {
-        this.runNewsCycle("interval-news").catch((error) => {
-          log.error("news_cycle_interval_failed", { message: error.message });
+    if (!this.newsTimerHandle) {
+      this.runNewsCycle("startup-news")
+        .catch((error) => {
+          log.error("news_cycle_startup_failed", { message: error.message });
+        })
+        .finally(() => {
+          this.scheduleNextNewsCycle("interval-news");
         });
-      }, this.config.refreshIntervalMs);
     }
 
-    if (!this.marketIntervalHandle) {
-      this.runMarketCycle("startup-market").catch((error) => {
-        log.error("market_cycle_startup_failed", { message: error.message });
-      });
-
-      this.marketIntervalHandle = setInterval(() => {
-        this.runMarketCycle("interval-market").catch((error) => {
-          log.error("market_cycle_interval_failed", { message: error.message });
+    if (!this.marketTimerHandle) {
+      this.runMarketCycle("startup-market")
+        .catch((error) => {
+          log.error("market_cycle_startup_failed", { message: error.message });
+        })
+        .finally(() => {
+          this.scheduleNextMarketCycle("interval-market");
         });
-      }, this.config.market.refreshIntervalMs);
     }
   }
 
   stop() {
-    if (this.newsIntervalHandle) {
-      clearInterval(this.newsIntervalHandle);
-      this.newsIntervalHandle = null;
+    this.stopped = true;
+    if (this.newsTimerHandle) {
+      clearTimeout(this.newsTimerHandle);
+      this.newsTimerHandle = null;
     }
 
-    if (this.marketIntervalHandle) {
-      clearInterval(this.marketIntervalHandle);
-      this.marketIntervalHandle = null;
+    if (this.marketTimerHandle) {
+      clearTimeout(this.marketTimerHandle);
+      this.marketTimerHandle = null;
     }
   }
 }
