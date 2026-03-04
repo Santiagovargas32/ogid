@@ -1,0 +1,22 @@
+{
+  "name": "osint-backend",
+  "version": "1.0.0",
+  "description": "Local OSINT geopolitical intelligence dashboard backend",
+  "private": true,
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "dotenv": "^16.6.1",
+    "express": "^5.1.0",
+    "helmet": "^8.1.0",
+    "ws": "^8.18.3"
+  }
+}

@@ -1,0 +1,425 @@
+@import url("https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
+
+:root {
+  --bg-primary: #0c131c;
+  --bg-secondary: #14212f;
+  --bg-panel: #1a2a3a;
+  --bg-panel-soft: #172535;
+  --text-main: #e7edf5;
+  --text-muted: #97a9be;
+  --border-main: #2e3f54;
+  --critical: #ff4d4f;
+  --elevated: #ff8c42;
+  --monitoring: #f4c542;
+  --stable: #38c172;
+  --accent: #33b5e5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  color: var(--text-main);
+  background:
+    radial-gradient(circle at 15% 20%, rgba(51, 181, 229, 0.16), transparent 42%),
+    radial-gradient(circle at 85% 0%, rgba(255, 77, 79, 0.12), transparent 38%),
+    linear-gradient(160deg, #0a1118 0%, #101a26 60%, #0f1824 100%);
+  min-height: 100vh;
+}
+
+.topbar {
+  background: linear-gradient(90deg, rgba(9, 18, 27, 0.96), rgba(20, 34, 49, 0.92));
+  border-bottom: 1px solid var(--border-main);
+  backdrop-filter: blur(8px);
+}
+
+.navbar-brand {
+  font-family: "Barlow Condensed", sans-serif;
+  letter-spacing: 0.06rem;
+  font-size: 1.25rem;
+}
+
+.status-strip {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.panel {
+  background: linear-gradient(180deg, rgba(26, 42, 58, 0.95), rgba(20, 34, 48, 0.95));
+  border: 1px solid var(--border-main);
+  border-radius: 0.75rem;
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+
+.panel-fallback {
+  border-color: rgba(255, 140, 66, 0.75);
+  box-shadow: 0 0 0 1px rgba(255, 140, 66, 0.35), 0 14px 28px rgba(0, 0, 0, 0.25);
+}
+
+.panel-mixed {
+  border-color: rgba(244, 197, 66, 0.75);
+  box-shadow: 0 0 0 1px rgba(244, 197, 66, 0.3), 0 14px 28px rgba(0, 0, 0, 0.25);
+}
+
+.admin-panel {
+  background: linear-gradient(180deg, rgba(34, 48, 63, 0.96), rgba(26, 38, 51, 0.96));
+}
+
+.panel-header {
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid rgba(62, 83, 105, 0.75);
+  background: rgba(13, 23, 34, 0.55);
+}
+
+.panel-title {
+  font-family: "Barlow Condensed", sans-serif;
+  letter-spacing: 0.04rem;
+  text-transform: uppercase;
+  font-size: 1.05rem;
+}
+
+.map-surface {
+  width: 100%;
+  height: 560px;
+}
+
+.news-feed {
+  max-height: 560px;
+  overflow-y: auto;
+  padding: 0.35rem 0.35rem 0.6rem;
+}
+
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.filter-chip {
+  border: 1px solid rgba(87, 108, 130, 0.7);
+  background: rgba(24, 38, 53, 0.8);
+  color: #d8e6f5;
+  border-radius: 999px;
+  font-size: 0.67rem;
+  letter-spacing: 0.02rem;
+  padding: 0.22rem 0.52rem;
+  cursor: pointer;
+}
+
+.filter-chip.active {
+  background: rgba(51, 181, 229, 0.28);
+  border-color: rgba(51, 181, 229, 0.6);
+}
+
+.news-item {
+  border: 1px solid rgba(78, 98, 120, 0.5);
+  border-left-width: 4px;
+  border-radius: 0.55rem;
+  margin: 0.5rem;
+  padding: 0.65rem 0.7rem;
+  background: var(--bg-panel-soft);
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 0.65rem;
+}
+
+.news-thumb {
+  width: 100%;
+  height: 84px;
+  border-radius: 0.4rem;
+  object-fit: cover;
+  background: linear-gradient(135deg, rgba(62, 84, 107, 0.7), rgba(45, 66, 88, 0.72));
+}
+
+.news-thumb-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.62rem;
+  color: #b8cadc;
+  text-transform: uppercase;
+  letter-spacing: 0.04rem;
+}
+
+.news-item h3 {
+  margin: 0 0 0.35rem;
+  font-size: 0.92rem;
+  line-height: 1.35;
+}
+
+.news-item p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.news-item-meta {
+  margin-top: 0.55rem;
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  font-size: 0.72rem;
+  color: #bfd0e2;
+}
+
+.news-flag {
+  border: 1px solid rgba(255, 140, 66, 0.55);
+  background: rgba(255, 140, 66, 0.18);
+  color: #ffd9bc;
+  border-radius: 999px;
+  padding: 0.1rem 0.44rem;
+  font-size: 0.62rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.news-level-critical {
+  border-left-color: var(--critical);
+}
+
+.news-level-elevated {
+  border-left-color: var(--elevated);
+}
+
+.news-level-monitoring {
+  border-left-color: var(--monitoring);
+}
+
+.news-level-stable {
+  border-left-color: var(--stable);
+}
+
+.chart-wrap {
+  position: relative;
+  height: 300px;
+  padding: 0.5rem 0.75rem 0.75rem;
+}
+
+.insights-list {
+  max-height: 210px;
+  overflow-y: auto;
+  padding: 0.5rem;
+}
+
+.predictions-list {
+  max-height: 150px;
+  overflow-y: auto;
+  padding: 0.5rem;
+}
+
+.prediction-item {
+  border: 1px solid rgba(77, 97, 119, 0.5);
+  border-radius: 0.6rem;
+  background: var(--bg-panel-soft);
+  padding: 0.65rem 0.75rem;
+  margin-bottom: 0.45rem;
+}
+
+.prediction-item .title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.35rem;
+  font-size: 0.82rem;
+}
+
+.prediction-meta {
+  font-size: 0.72rem;
+  color: #b8cadc;
+}
+
+.impact-list {
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 0.5rem;
+}
+
+.impact-item {
+  border: 1px solid rgba(79, 99, 121, 0.5);
+  border-radius: 0.5rem;
+  background: var(--bg-panel-soft);
+  padding: 0.55rem 0.65rem;
+  margin-bottom: 0.45rem;
+}
+
+.impact-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.8rem;
+}
+
+.impact-score {
+  font-weight: 700;
+}
+
+.impact-meta {
+  margin-top: 0.2rem;
+  font-size: 0.7rem;
+  color: #b8cadc;
+}
+
+.market-table th,
+.market-table td {
+  font-size: 0.75rem;
+}
+
+.panel-subheader {
+  border-top: 1px solid rgba(62, 83, 105, 0.75);
+  border-bottom: 1px solid rgba(62, 83, 105, 0.75);
+  background: rgba(13, 23, 34, 0.45);
+}
+
+.panel-subtitle {
+  font-family: "Barlow Condensed", sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.05rem;
+  font-size: 0.92rem;
+}
+
+.text-up {
+  color: #5dd99c;
+}
+
+.text-down {
+  color: #ff7a7d;
+}
+
+.data-mode-cell {
+  font-size: 0.64rem;
+  margin-left: 0.35rem;
+}
+
+.insight-item {
+  border: 1px solid rgba(77, 97, 119, 0.5);
+  border-radius: 0.6rem;
+  background: var(--bg-panel-soft);
+  padding: 0.8rem;
+  margin-bottom: 0.55rem;
+}
+
+.insight-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.45rem;
+}
+
+.insight-title {
+  margin: 0;
+  font-size: 0.96rem;
+}
+
+.insight-summary {
+  margin: 0 0 0.45rem;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.insight-drivers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.driver-pill {
+  background: rgba(40, 66, 90, 0.72);
+  color: #c5d8ea;
+  border: 1px solid rgba(96, 121, 145, 0.45);
+  border-radius: 999px;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.68rem;
+}
+
+.severity-strip {
+  font-size: 0.72rem;
+}
+
+.severity-pill {
+  border-radius: 999px;
+  padding: 0.28rem 0.6rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+
+.severity-critical {
+  background: rgba(255, 77, 79, 0.18);
+  border-color: rgba(255, 77, 79, 0.45);
+}
+
+.severity-elevated {
+  background: rgba(255, 140, 66, 0.18);
+  border-color: rgba(255, 140, 66, 0.45);
+}
+
+.severity-monitoring {
+  background: rgba(244, 197, 66, 0.16);
+  border-color: rgba(244, 197, 66, 0.45);
+}
+
+.severity-stable {
+  background: rgba(56, 193, 114, 0.16);
+  border-color: rgba(56, 193, 114, 0.45);
+}
+
+.badge-level-critical {
+  background-color: var(--critical);
+}
+
+.badge-level-elevated {
+  background-color: var(--elevated);
+}
+
+.badge-level-monitoring {
+  background-color: var(--monitoring);
+  color: #231f14;
+}
+
+.badge-level-stable {
+  background-color: var(--stable);
+}
+
+.badge-data-live {
+  background-color: rgba(56, 193, 114, 0.95);
+}
+
+.badge-data-fallback {
+  background-color: rgba(255, 140, 66, 0.95);
+}
+
+.badge-data-mixed {
+  background-color: rgba(244, 197, 66, 0.95);
+  color: #1e2630;
+}
+
+.leaflet-container {
+  background: #0f1924;
+}
+
+@media (max-width: 992px) {
+  .map-surface {
+    height: 420px;
+  }
+
+  .news-feed {
+    max-height: 380px;
+  }
+
+  .insights-list {
+    max-height: 280px;
+  }
+
+  .news-item {
+    grid-template-columns: 1fr;
+  }
+
+  .news-thumb {
+    height: 140px;
+  }
+}
