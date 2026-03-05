@@ -7,6 +7,7 @@ import helmet from "helmet";
 import routes from "./routes/index.js";
 import stateManager from "./state/stateManager.js";
 import RefreshOrchestratorService from "./services/refreshOrchestratorService.js";
+import ManualRefreshService from "./services/manualRefreshService.js";
 import apiQuotaTracker from "./services/admin/apiQuotaTrackerService.js";
 import { createSocketServer } from "./websocket/socketServer.js";
 import { errorHandler, notFoundHandler } from "./utils/error.js";
@@ -70,6 +71,11 @@ function readConfig(overrides = {}) {
     wsHeartbeatMs: toInt(process.env.WS_HEARTBEAT_MS, 15_000),
     wsPath: "/ws",
     watchlistCountries,
+    manualRefresh: {
+      cooldownMs: toInt(process.env.MANUAL_REFRESH_COOLDOWN_MS, 120_000),
+      perClientWindowMs: toInt(process.env.MANUAL_REFRESH_PER_CLIENT_WINDOW_MS, 900_000),
+      perClientMax: toInt(process.env.MANUAL_REFRESH_PER_CLIENT_MAX, 3)
+    },
     news: {
       providers: newsProviders,
       newsApiKey: process.env.NEWS_API_KEY || "",
@@ -84,6 +90,22 @@ function readConfig(overrides = {}) {
       timeoutMs: toInt(process.env.NEWS_TIMEOUT_MS, 9_000),
       intervalMs: toInt(process.env.NEWS_INTERVAL_MS, toInt(process.env.REFRESH_INTERVAL_MS, 30_000)),
       backoffMaxMs: toInt(process.env.NEWS_BACKOFF_MAX_MS, 300_000),
+      analyzeLimit: toInt(process.env.NEWS_ANALYZE_LIMIT, 80),
+      candidateWindowHours: toInt(process.env.NEWS_CANDIDATE_WINDOW_HOURS, 36),
+      maxPerSource: toInt(process.env.NEWS_MAX_PER_SOURCE, 3),
+      maxSimilarHeadline: toInt(process.env.NEWS_MAX_SIMILAR_HEADLINE, 2),
+      intervalByBandMs: {
+        GREEN: toInt(process.env.NEWS_INTERVAL_GREEN_MS, 600_000),
+        YELLOW: toInt(process.env.NEWS_INTERVAL_YELLOW_MS, 1_200_000),
+        RED: toInt(process.env.NEWS_INTERVAL_RED_MS, 2_700_000),
+        CRITICAL: toInt(process.env.NEWS_INTERVAL_CRITICAL_MS, 7_200_000)
+      },
+      pageSizeByBand: {
+        GREEN: toInt(process.env.NEWS_PAGE_SIZE_GREEN, 100),
+        YELLOW: toInt(process.env.NEWS_PAGE_SIZE_YELLOW, 75),
+        RED: toInt(process.env.NEWS_PAGE_SIZE_RED, 40),
+        CRITICAL: toInt(process.env.NEWS_PAGE_SIZE_CRITICAL, 20)
+      },
       countries: watchlistCountries
     },
     market: {
@@ -104,6 +126,24 @@ function readConfig(overrides = {}) {
         toInt(process.env.MARKET_REFRESH_INTERVAL_MS, 120_000)
       ),
       offHoursIntervalMs: toInt(process.env.MARKET_OFFHOURS_INTERVAL_MS, 900_000),
+      intervalByBandMs: {
+        GREEN: {
+          activeIntervalMs: 60_000,
+          offHoursIntervalMs: 900_000
+        },
+        YELLOW: {
+          activeIntervalMs: 180_000,
+          offHoursIntervalMs: 1_800_000
+        },
+        RED: {
+          activeIntervalMs: 600_000,
+          offHoursIntervalMs: 3_600_000
+        },
+        CRITICAL: {
+          activeIntervalMs: 1_800_000,
+          offHoursIntervalMs: 7_200_000
+        }
+      },
       impactWindowMin: toInt(process.env.IMPACT_WINDOW_MIN, 120)
     },
     apiLimits: {
@@ -119,6 +159,10 @@ function readConfig(overrides = {}) {
     ...config,
     ...overrides,
     watchlistCountries: overrides.watchlistCountries || config.watchlistCountries,
+    manualRefresh: {
+      ...config.manualRefresh,
+      ...(overrides.manualRefresh || {})
+    },
     news: {
       ...config.news,
       ...(overrides.news || {}),
@@ -127,6 +171,14 @@ function readConfig(overrides = {}) {
         overrides.refreshIntervalMs ||
         overrides.news?.refreshIntervalMs ||
         config.news.intervalMs,
+      intervalByBandMs: {
+        ...config.news.intervalByBandMs,
+        ...(overrides.news?.intervalByBandMs || {})
+      },
+      pageSizeByBand: {
+        ...config.news.pageSizeByBand,
+        ...(overrides.news?.pageSizeByBand || {})
+      },
       countries:
         overrides.news?.countries ||
         overrides.watchlistCountries ||
@@ -156,10 +208,11 @@ function readConfig(overrides = {}) {
         config.market.activeIntervalMs,
       offHoursIntervalMs:
         overrides.market?.offHoursIntervalMs ||
-        Math.max(
-          overrides.market?.refreshIntervalMs || 0,
-          config.market.offHoursIntervalMs
-        )
+        Math.max(overrides.market?.refreshIntervalMs || 0, config.market.offHoursIntervalMs),
+      intervalByBandMs: {
+        ...config.market.intervalByBandMs,
+        ...(overrides.market?.intervalByBandMs || {})
+      }
     },
     apiLimits: {
       ...config.apiLimits,
@@ -212,14 +265,23 @@ export function createAppServer(overrides = {}) {
     stateManager
   });
   const orchestrator = new RefreshOrchestratorService({ stateManager, socketServer, config });
+  const manualRefreshService = new ManualRefreshService({
+    orchestrator,
+    cooldownMs: config.manualRefresh.cooldownMs,
+    perClientWindowMs: config.manualRefresh.perClientWindowMs,
+    perClientMax: config.manualRefresh.perClientMax
+  });
 
   app.locals.socketServer = socketServer;
+  app.locals.orchestrator = orchestrator;
+  app.locals.manualRefreshService = manualRefreshService;
   app.locals.config = config;
 
   return {
     app,
     server,
     orchestrator,
+    manualRefreshService,
     socketServer,
     config,
     async start() {
@@ -241,8 +303,10 @@ export function createAppServer(overrides = {}) {
         apiLimits: config.apiLimits,
         newsProviders: config.news.providers,
         newsIntervalMs: config.news.intervalMs,
+        newsIntervalByBandMs: config.news.intervalByBandMs,
         marketActiveIntervalMs: config.market.activeIntervalMs,
-        marketOffHoursIntervalMs: config.market.offHoursIntervalMs
+        marketOffHoursIntervalMs: config.market.offHoursIntervalMs,
+        manualRefresh: config.manualRefresh
       });
       orchestrator.start();
       log.info("server_started", { port: server.address().port, refreshIntervalMs: config.news.intervalMs });
@@ -292,3 +356,4 @@ async function run() {
 if (process.argv[1] === __filename) {
   run();
 }
+

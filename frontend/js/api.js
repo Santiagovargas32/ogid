@@ -15,17 +15,33 @@ function buildPath(path, params = {}) {
   return `${url.pathname}${url.search}`;
 }
 
-async function request(path, params = {}) {
+async function request(path, params = {}, options = {}) {
+  const method = options.method || "GET";
+  const headers = {
+    Accept: "application/json",
+    ...(options.headers || {})
+  };
+
+  if (options.body !== undefined && !("Content-Type" in headers)) {
+    headers["Content-Type"] = "application/json";
+  }
+
   const response = await fetch(buildPath(path, params), {
-    headers: {
-      Accept: "application/json"
-    }
+    method,
+    headers,
+    body: options.body !== undefined ? JSON.stringify(options.body) : undefined
   });
 
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
     const message = payload?.error?.message || `Request failed: ${response.status}`;
-    throw new Error(message);
+    const error = new Error(message);
+    error.status = response.status;
+    error.code = payload?.error?.code || null;
+    error.details = payload?.error?.details || null;
+    const retryAfter = Number.parseInt(response.headers.get("Retry-After") || "", 10);
+    error.retryAfterSec = Number.isFinite(retryAfter) ? retryAfter : null;
+    throw error;
   }
 
   return payload?.data;
@@ -34,6 +50,7 @@ async function request(path, params = {}) {
 export const api = {
   getHealth: () => request("/api/health"),
   getSnapshot: (params = {}) => request("/api/intel/snapshot", params),
+  refreshIntel: (payload = {}) => request("/api/intel/refresh", {}, { method: "POST", body: payload }),
   getHotspots: (params = {}) => request("/api/intel/hotspots", params),
   getRisks: (params = {}) => request("/api/intel/risks", params),
   getNews: (params = {}) => request("/api/intel/news", params),

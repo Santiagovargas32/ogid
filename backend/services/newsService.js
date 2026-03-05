@@ -12,7 +12,8 @@ export async function fetchRawNews({
   language,
   pageSize,
   countries,
-  timeoutMs = 9_000
+  timeoutMs = 9_000,
+  allowExhaustedProviders = true
 }) {
   return fetchAggregatedNews({
     providers,
@@ -26,6 +27,7 @@ export async function fetchRawNews({
     language,
     pageSize,
     countries,
-    timeoutMs
+    timeoutMs,
+    allowExhaustedProviders
   });
 }

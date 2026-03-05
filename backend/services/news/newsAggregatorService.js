@@ -54,10 +54,21 @@ function normalizeProviders(providers = []) {
       .map((provider) => String(provider).toLowerCase())
       .filter((provider) => provider in PROVIDERS);
     if (normalized.length) {
-      return normalized;
+      return [...new Set(normalized)];
     }
   }
   return ["newsapi"];
+}
+
+function filterByQuota(providerOrder = [], allowExhaustedProviders = true) {
+  if (allowExhaustedProviders) {
+    return providerOrder;
+  }
+
+  return providerOrder.filter((provider) => {
+    const snapshot = apiQuotaTracker.getProviderSnapshot(provider);
+    return !snapshot?.exhausted;
+  });
 }
 
 function dedupeArticles(articles = []) {
@@ -116,9 +127,10 @@ export async function fetchAggregatedNews({
   language,
   pageSize,
   countries,
-  timeoutMs
+  timeoutMs,
+  allowExhaustedProviders = true
 }) {
-  const providerOrder = normalizeProviders(providers);
+  const providerOrder = filterByQuota(normalizeProviders(providers), allowExhaustedProviders);
   const attempts = [];
 
   for (const providerName of providerOrder) {

@@ -5,7 +5,15 @@ const appState = {
     refreshIntervalMs: 30_000,
     sourceMode: "initializing",
     sourceMeta: {},
-    dataQuality: {}
+    dataQuality: {},
+    refreshStatus: {
+      inProgress: false,
+      lastTrigger: "initializing",
+      lastRequestedAt: null,
+      lastCompletedAt: null,
+      lastDurationMs: null,
+      lastRefreshId: null
+    }
   },
   news: [],
   countries: {},

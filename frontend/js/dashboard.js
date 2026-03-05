@@ -29,9 +29,13 @@ let socket;
 let selectedCountries = new Set(DEFAULT_WATCHLIST);
 let currentWatchlist = [...DEFAULT_WATCHLIST];
 let apiLimitsPoller = null;
-let analyticsPoller = null;
 let analyticsRefreshTimer = null;
 let latestAnalytics = null;
+let manualRefreshPendingId = null;
+let manualRefreshState = "idle";
+let manualRefreshMessage = "Refresh: idle";
+let manualRefreshCooldownEndsAtMs = 0;
+let manualRefreshCooldownTimer = null;
 
 const elements = {};
 
@@ -74,6 +78,8 @@ function cacheElements() {
   elements.toggleApiLimits = byId("toggle-api-limits");
   elements.apiLimitsBody = byId("api-limits-body");
   elements.apiLimitsUpdated = byId("api-limits-updated");
+  elements.refreshNewsBtn = byId("refresh-news-btn");
+  elements.refreshNewsStatus = byId("refresh-news-status");
 }
 
 function escapeHtml(value = "") {
@@ -97,6 +103,117 @@ function formatShortTime(value) {
     return "--";
   }
   return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatRemainingSeconds(totalSeconds) {
+  const seconds = Math.max(0, Math.ceil(totalSeconds));
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`;
+}
+
+function resolveManualCooldownMs() {
+  return Math.max(0, manualRefreshCooldownEndsAtMs - Date.now());
+}
+
+function renderManualRefreshControls() {
+  if (!elements.refreshNewsBtn || !elements.refreshNewsStatus) {
+    return;
+  }
+
+  const cooldownMs = resolveManualCooldownMs();
+  let statusClass = "small text-light-emphasis";
+  let buttonLabel = "Update";
+  let disabled = false;
+  let statusText = manualRefreshMessage || "Refresh: idle";
+
+  if (manualRefreshState === "loading") {
+    statusClass = "small refresh-status-loading";
+    buttonLabel = "Updating";
+    statusText = "Refresh: in progress...";
+    disabled = true;
+  } else if (cooldownMs > 0) {
+    statusClass = "small refresh-status-cooldown";
+    buttonLabel = "Cooldown";
+    statusText = `Refresh: cooldown ${formatRemainingSeconds(cooldownMs / 1_000)}`;
+    disabled = true;
+  } else if (manualRefreshState === "ok") {
+    statusClass = "small refresh-status-ok";
+  } else if (manualRefreshState === "error") {
+    statusClass = "small refresh-status-error";
+  }
+
+  elements.refreshNewsBtn.textContent = buttonLabel;
+  elements.refreshNewsBtn.disabled = disabled;
+  elements.refreshNewsStatus.className = statusClass;
+  elements.refreshNewsStatus.textContent = statusText;
+}
+
+function setManualRefreshState(state, message) {
+  manualRefreshState = state;
+  manualRefreshMessage = message || manualRefreshMessage;
+  renderManualRefreshControls();
+}
+
+function startManualRefreshCooldown(ms) {
+  const durationMs = Number(ms);
+  if (!Number.isFinite(durationMs) || durationMs <= 0) {
+    return;
+  }
+
+  manualRefreshCooldownEndsAtMs = Date.now() + durationMs;
+  clearInterval(manualRefreshCooldownTimer);
+  manualRefreshCooldownTimer = setInterval(() => {
+    if (resolveManualCooldownMs() <= 0) {
+      clearInterval(manualRefreshCooldownTimer);
+      manualRefreshCooldownTimer = null;
+      if (manualRefreshState === "idle") {
+        setManualRefreshState("idle", "Refresh: idle");
+      } else {
+        renderManualRefreshControls();
+      }
+      return;
+    }
+    renderManualRefreshControls();
+  }, 1_000);
+}
+
+function resolveRetryAfterMs(error) {
+  const fromDetails = Number(error?.details?.retryAfterMs);
+  if (Number.isFinite(fromDetails) && fromDetails > 0) {
+    return fromDetails;
+  }
+
+  const fromHeader = Number(error?.retryAfterSec);
+  if (Number.isFinite(fromHeader) && fromHeader > 0) {
+    return fromHeader * 1_000;
+  }
+
+  return 0;
+}
+
+function syncManualRefreshFromMeta(meta = {}) {
+  const refreshStatus = meta?.refreshStatus || {};
+  const lastRefreshId = refreshStatus.lastRefreshId || null;
+
+  if (manualRefreshPendingId && refreshStatus.inProgress && lastRefreshId === manualRefreshPendingId) {
+    setManualRefreshState("loading", "Refresh: in progress...");
+    return;
+  }
+
+  if (manualRefreshPendingId && !refreshStatus.inProgress && lastRefreshId === manualRefreshPendingId) {
+    manualRefreshPendingId = null;
+    const suffix = refreshStatus.lastCompletedAt ? ` (${formatShortTime(refreshStatus.lastCompletedAt)})` : "";
+    setManualRefreshState("ok", `Refresh: completed${suffix}`);
+    return;
+  }
+
+  if (manualRefreshState === "loading" && !refreshStatus.inProgress && !manualRefreshPendingId) {
+    setManualRefreshState("idle", "Refresh: idle");
+    return;
+  }
+
+  renderManualRefreshControls();
 }
 
 function wsBadgeClass(status) {
@@ -820,6 +937,39 @@ async function requestFilteredSnapshot() {
   }
 }
 
+async function handleManualRefreshClick() {
+  if (manualRefreshState === "loading" || resolveManualCooldownMs() > 0) {
+    return;
+  }
+
+  setManualRefreshState("loading", "Refresh: requesting...");
+
+  try {
+    const data = await api.refreshIntel({
+      countries: selectedCountryQueryValue(),
+      reason: "manual"
+    });
+    manualRefreshPendingId = data.refreshId || null;
+    startManualRefreshCooldown(data.retryAfterMs || 0);
+    setManualRefreshState("loading", "Refresh: in progress...");
+  } catch (error) {
+    const retryAfterMs = resolveRetryAfterMs(error);
+    if (retryAfterMs > 0) {
+      startManualRefreshCooldown(retryAfterMs);
+    }
+
+    if (error.status === 409) {
+      setManualRefreshState("error", "Refresh: already in progress.");
+      return;
+    }
+    if (error.status === 429) {
+      setManualRefreshState("error", "Refresh: cooldown active.");
+      return;
+    }
+    setManualRefreshState("error", "Refresh: request failed.");
+  }
+}
+
 function mountWebSocket() {
   socket = new RealtimeSocket({
     path: "/ws",
@@ -895,15 +1045,12 @@ async function refreshApiLimits() {
 
 function startPolling() {
   clearInterval(apiLimitsPoller);
-  clearInterval(analyticsPoller);
 
   apiLimitsPoller = setInterval(() => {
-    refreshApiLimits();
-  }, 60_000);
-
-  analyticsPoller = setInterval(() => {
-    refreshAnalytics();
-  }, 30_000);
+    if (!elements.apiLimitsPanel.classList.contains("d-none")) {
+      refreshApiLimits();
+    }
+  }, 120_000);
 }
 
 async function bootstrap() {
@@ -920,11 +1067,13 @@ async function bootstrap() {
     toggleApiLimitsPanel();
     refreshApiLimits();
   });
+  elements.refreshNewsBtn.addEventListener("click", handleManualRefreshClick);
 
   subscribe((state) => {
     syncWatchlistFromState(state);
     renderCountryFilters();
     renderDashboard(state);
+    syncManualRefreshFromMeta(state.meta);
   });
 
   setWsStatus("connecting");
@@ -946,8 +1095,8 @@ async function bootstrap() {
   window.addEventListener("beforeunload", () => {
     socket?.close();
     clearInterval(apiLimitsPoller);
-    clearInterval(analyticsPoller);
     clearTimeout(analyticsRefreshTimer);
+    clearInterval(manualRefreshCooldownTimer);
   });
 }
 

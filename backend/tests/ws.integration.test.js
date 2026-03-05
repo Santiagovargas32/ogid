@@ -58,6 +58,7 @@ test("WebSocket emits snapshot and update envelopes", async () => {
     assert.equal(snapshotMessage.type, "snapshot");
     assert.ok(Array.isArray(snapshotMessage.data.hotspots));
     assert.ok(snapshotMessage.data.meta.dataQuality);
+    assert.ok(snapshotMessage.data.meta.refreshStatus);
     assert.ok(snapshotMessage.data.predictions);
 
     const updatePromise = waitForMessage(socket, "update");

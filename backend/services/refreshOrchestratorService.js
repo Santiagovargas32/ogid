@@ -9,6 +9,8 @@ import { computeMarketImpact } from "./market/impactEngineService.js";
 import { generatePredictions } from "./market/predictionEngineService.js";
 import { fetchMarketQuotes } from "./market/marketProviderRouter.js";
 import { resolveMarketIntervalMs } from "./market/marketSessionService.js";
+import { resolveBandByProviderSnapshots, resolveNewsPolicy } from "./refreshPolicyService.js";
+import { selectNewsForIntel } from "./news/newsSelectionService.js";
 
 const log = createLogger("backend/services/refreshOrchestratorService");
 
@@ -29,6 +31,7 @@ class RefreshOrchestratorService {
     this.config = config;
     this.newsInFlight = false;
     this.marketInFlight = false;
+    this.manualRefreshInFlight = false;
     this.newsTimerHandle = null;
     this.marketTimerHandle = null;
     this.stopped = true;
@@ -58,13 +61,42 @@ class RefreshOrchestratorService {
     return this.config.news?.backoffMaxMs || 300_000;
   }
 
-  getMarketRemainingQuota() {
+  getNewsProviderSnapshots() {
+    const providers = this.config.news?.providers || [];
+    const uniqueProviders = [...new Set(providers.map((provider) => String(provider || "").toLowerCase()))];
+    return uniqueProviders
+      .map((provider) => apiQuotaTracker.getProviderSnapshot(provider))
+      .filter(Boolean);
+  }
+
+  resolveCurrentNewsPolicy() {
+    return resolveNewsPolicy({
+      providerSnapshots: this.getNewsProviderSnapshots(),
+      intervalByBandMs: this.config.news?.intervalByBandMs || {},
+      pageSizeByBand: this.config.news?.pageSizeByBand || {},
+      fallbackIntervalMs: this.getNewsBaseIntervalMs(),
+      fallbackPageSize: this.config.news?.pageSize || 50
+    });
+  }
+
+  resolveNextNewsDelayMs() {
+    const policy = this.resolveCurrentNewsPolicy();
+    return policy.intervalMs;
+  }
+
+  getMarketProviderSnapshots() {
     const providers = [this.config.market?.provider, this.config.market?.fallbackProvider]
       .map((provider) => String(provider || "").toLowerCase())
       .filter(Boolean);
     const uniqueProviders = [...new Set(providers)];
-    const values = uniqueProviders
-      .map((provider) => apiQuotaTracker.getProviderSnapshot(provider)?.effectiveRemaining)
+    return uniqueProviders
+      .map((provider) => apiQuotaTracker.getProviderSnapshot(provider))
+      .filter(Boolean);
+  }
+
+  getMarketRemainingQuota() {
+    const values = this.getMarketProviderSnapshots()
+      .map((snapshot) => snapshot?.effectiveRemaining)
       .filter((value) => Number.isFinite(value));
 
     if (!values.length) {
@@ -75,10 +107,13 @@ class RefreshOrchestratorService {
   }
 
   resolveNextMarketDelayMs() {
+    const quotaBand = resolveBandByProviderSnapshots(this.getMarketProviderSnapshots());
     return resolveMarketIntervalMs({
       activeIntervalMs: this.config.market?.activeIntervalMs || this.config.market?.refreshIntervalMs || 120_000,
       offHoursIntervalMs: this.config.market?.offHoursIntervalMs || 900_000,
-      quotaRemaining: this.getMarketRemainingQuota()
+      quotaRemaining: this.getMarketRemainingQuota(),
+      quotaBand,
+      bandIntervals: this.config.market?.intervalByBandMs || {}
     });
   }
 
@@ -88,10 +123,10 @@ class RefreshOrchestratorService {
     }
 
     clearTimeout(this.newsTimerHandle);
-    const baseIntervalMs = this.getNewsBaseIntervalMs();
+    const baseIntervalMs = this.resolveNextNewsDelayMs();
     const delayMs = Math.min(baseIntervalMs + this.newsBackoffMs, this.getNewsBackoffMaxMs());
     this.newsTimerHandle = setTimeout(async () => {
-      await this.runNewsCycle(trigger);
+      await this.runNewsCycle(trigger, { allowExhaustedProviders: false });
       this.scheduleNextNewsCycle("interval-news");
     }, delayMs);
   }
@@ -109,7 +144,7 @@ class RefreshOrchestratorService {
     }, delayMs);
   }
 
-  async runNewsCycle(trigger = "scheduled-news") {
+  async runNewsCycle(trigger = "scheduled-news", options = {}) {
     if (this.newsInFlight) {
       log.warn("news_cycle_skipped", { reason: "in-flight", trigger });
       return;
@@ -120,27 +155,45 @@ class RefreshOrchestratorService {
 
     try {
       const previousSnapshot = this.stateManager.getSnapshot();
-      const newsResult = await fetchRawNews(this.config.news);
+      const countryFilter = options.countries?.length ? options.countries : this.config.watchlistCountries;
+      const policy = this.resolveCurrentNewsPolicy();
+      const pageSize = options.forcePageSize || policy.pageSize;
+      const newsResult = await fetchRawNews({
+        ...this.config.news,
+        pageSize,
+        countries: countryFilter,
+        allowExhaustedProviders: options.allowExhaustedProviders === true
+      });
       const normalizedNews = normalizeArticles(newsResult.articles, "newsapi");
-      const riskResult = computeCountryRisk({
+      const selectedNews = selectNewsForIntel({
         articles: normalizedNews,
+        previousArticles: previousSnapshot.news || [],
+        watchlistCountries: countryFilter,
+        analyzeLimit: this.config.news?.analyzeLimit || 80,
+        candidateWindowHours: this.config.news?.candidateWindowHours || 36,
+        maxPerSource: this.config.news?.maxPerSource || 3,
+        maxSimilarHeadline: this.config.news?.maxSimilarHeadline || 2
+      });
+
+      const riskResult = computeCountryRisk({
+        articles: selectedNews,
         previousCountries: previousSnapshot.countries
       });
 
       const inputMode = resolveInputMode(newsResult.sourceMode, previousSnapshot.market?.sourceMode);
       const impact = computeMarketImpact({
-        articles: normalizedNews,
+        articles: selectedNews,
         countries: riskResult.countries,
         marketQuotes: previousSnapshot.market?.quotes || {},
         tickers: this.config.market.tickers,
-        countryFilter: this.config.watchlistCountries,
+        countryFilter,
         windowMin: this.config.market.impactWindowMin,
         inputMode,
         impactHistory: previousSnapshot.impactHistory || [],
         predictionScores: previousSnapshot.predictions?.predictionScoreByTicker || {}
       });
       const predictions = generatePredictions({
-        articles: normalizedNews,
+        articles: selectedNews,
         countries: riskResult.countries,
         marketQuotes: previousSnapshot.market?.quotes || {},
         tickers: this.config.market.tickers,
@@ -153,7 +206,7 @@ class RefreshOrchestratorService {
       });
 
       const snapshot = this.stateManager.updateIntel({
-        news: normalizedNews,
+        news: selectedNews,
         countries: riskResult.countries,
         hotspots: riskResult.hotspots,
         insights,
@@ -172,11 +225,14 @@ class RefreshOrchestratorService {
         sourceMode: snapshot.meta.sourceMode,
         providerUsed: newsResult.sourceMeta?.provider || "unknown",
         attempts: newsResult.sourceMeta?.attempts || [],
+        quotaBand: policy.band,
+        pageSize,
+        candidateCount: normalizedNews.length,
         articleCount: snapshot.news.length,
         durationMs: Date.now() - startedAt
       });
     } catch (error) {
-      const baseIntervalMs = this.getNewsBaseIntervalMs();
+      const baseIntervalMs = this.resolveNextNewsDelayMs();
       const maxExtraBackoff = Math.max(0, this.getNewsBackoffMaxMs() - baseIntervalMs);
       this.newsBackoffMs = Math.min(maxExtraBackoff, this.newsBackoffMs ? this.newsBackoffMs * 2 : baseIntervalMs);
 
@@ -200,7 +256,7 @@ class RefreshOrchestratorService {
     return this.runNewsCycle(trigger);
   }
 
-  async runMarketCycle(trigger = "scheduled-market") {
+  async runMarketCycle(trigger = "scheduled-market", options = {}) {
     if (this.marketInFlight) {
       log.warn("market_cycle_skipped", { reason: "in-flight", trigger });
       return;
@@ -227,6 +283,7 @@ class RefreshOrchestratorService {
       const marketResult = await fetchMarketQuotes(this.config.market);
       const marketState = mergeMarketState(previousSnapshot.market, marketResult);
       const inputMode = resolveInputMode(previousSnapshot.meta?.sourceMode, marketState.sourceMode);
+      const countryFilter = options.countries?.length ? options.countries : this.config.watchlistCountries;
 
       const predictions = generatePredictions({
         articles: previousSnapshot.news,
@@ -240,7 +297,7 @@ class RefreshOrchestratorService {
         countries: previousSnapshot.countries,
         marketQuotes: marketState.quotes,
         tickers: this.config.market.tickers,
-        countryFilter: this.config.watchlistCountries,
+        countryFilter,
         windowMin: this.config.market.impactWindowMin,
         inputMode,
         impactHistory: previousSnapshot.impactHistory || [],
@@ -267,7 +324,8 @@ class RefreshOrchestratorService {
         sourceMode: marketState.sourceMode,
         providerUsed: marketResult.sourceMeta?.provider || marketState.provider || "unknown",
         liveCount: marketResult.sourceMeta?.liveCount ?? 0,
-        fallbackCount: (marketResult.sourceMeta?.totalTickers ?? Object.keys(marketState.quotes || {}).length) -
+        fallbackCount:
+          (marketResult.sourceMeta?.totalTickers ?? Object.keys(marketState.quotes || {}).length) -
           (marketResult.sourceMeta?.liveCount ?? 0),
         tickerCount: Object.keys(marketState.quotes || {}).length,
         durationMs: Date.now() - startedAt
@@ -288,11 +346,57 @@ class RefreshOrchestratorService {
     }
   }
 
+  async waitForIdle(maxWaitMs = 20_000) {
+    const startedAt = Date.now();
+    while (this.newsInFlight || this.marketInFlight) {
+      if (Date.now() - startedAt >= maxWaitMs) {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 125));
+    }
+  }
+
+  async runManualRefresh({ refreshId = null, trigger = "manual", countries = [] } = {}) {
+    this.manualRefreshInFlight = true;
+    const requestedAt = new Date().toISOString();
+    const startedAt = Date.now();
+    const activeCountries = countries?.length ? countries : this.config.watchlistCountries;
+
+    const inProgressMeta = this.stateManager.setRefreshStatus({
+      inProgress: true,
+      lastTrigger: trigger,
+      lastRequestedAt: requestedAt,
+      lastRefreshId: refreshId
+    });
+    this.socketServer.broadcast("update", { meta: inProgressMeta }, inProgressMeta);
+
+    try {
+      await this.waitForIdle();
+      await this.runNewsCycle(`${trigger}-news`, {
+        allowExhaustedProviders: true,
+        countries: activeCountries
+      });
+      await this.runMarketCycle(`${trigger}-market`, {
+        countries: activeCountries
+      });
+    } finally {
+      const completedMeta = this.stateManager.setRefreshStatus({
+        inProgress: false,
+        lastTrigger: trigger,
+        lastCompletedAt: new Date().toISOString(),
+        lastDurationMs: Date.now() - startedAt,
+        lastRefreshId: refreshId
+      });
+      this.socketServer.broadcast("update", { meta: completedMeta }, completedMeta);
+      this.manualRefreshInFlight = false;
+    }
+  }
+
   start() {
     this.stopped = false;
 
     if (!this.newsTimerHandle) {
-      this.runNewsCycle("startup-news")
+      this.runNewsCycle("startup-news", { allowExhaustedProviders: false })
         .catch((error) => {
           log.error("news_cycle_startup_failed", { message: error.message });
         })
@@ -327,3 +431,4 @@ class RefreshOrchestratorService {
 }
 
 export default RefreshOrchestratorService;
+

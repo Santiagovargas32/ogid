@@ -6,6 +6,7 @@ import {
   parsePositiveInt,
   parseSources
 } from "../utils/filters.js";
+import { AppError } from "../utils/error.js";
 
 function mapResponse(data) {
   return {
@@ -100,6 +101,61 @@ export function getInsights(req, res) {
     mapResponse({
       insights: filtered.insights,
       meta: withActiveFilters(filtered.meta, filters.countries, filters.sources)
+    })
+  );
+}
+
+function mapRefreshError(outcome) {
+  return {
+    ok: false,
+    error: {
+      code: outcome.code || "REFRESH_REJECTED",
+      message: outcome.message || "Manual refresh request rejected.",
+      details: {
+        status: outcome.status || "rejected",
+        retryAfterMs: outcome.retryAfterMs || 0,
+        nextAllowedAt: outcome.nextAllowedAt || null
+      }
+    }
+  };
+}
+
+export function postRefresh(req, res) {
+  const refreshService = res.app.locals.manualRefreshService;
+  if (!refreshService) {
+    throw new AppError("Manual refresh service unavailable", 503, "REFRESH_UNAVAILABLE");
+  }
+
+  const config = res.app.locals.config;
+  const defaultCountries = config.watchlistCountries || [];
+  const countries = parseCountries(req.body?.countries ?? req.query.countries, defaultCountries);
+  const reason = String(req.body?.reason || "manual").trim().toLowerCase() || "manual";
+  const clientId = String(req.ip || req.requestId || "anonymous");
+  const outcome = refreshService.request({
+    clientId,
+    countries,
+    reason
+  });
+
+  const retryAfterMs = Number(outcome.retryAfterMs || 0);
+  if (retryAfterMs > 0) {
+    res.setHeader("Retry-After", String(Math.ceil(retryAfterMs / 1_000)));
+  }
+
+  if (!outcome.accepted) {
+    res.status(outcome.httpStatus || 429).json(mapRefreshError(outcome));
+    return;
+  }
+
+  res.status(202).json(
+    mapResponse({
+      accepted: true,
+      status: outcome.status,
+      refreshId: outcome.refreshId,
+      requestedAt: outcome.requestedAt,
+      retryAfterMs,
+      nextAllowedAt: outcome.nextAllowedAt,
+      countries
     })
   );
 }

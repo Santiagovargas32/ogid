@@ -2,6 +2,12 @@ import { createLogger } from "../../utils/logger.js";
 
 const log = createLogger("backend/services/market/marketSessionService");
 const NY_TZ = "America/New_York";
+const BAND_PRIORITY = {
+  GREEN: 0,
+  YELLOW: 1,
+  RED: 2,
+  CRITICAL: 3
+};
 
 function parseTimeParts(date = new Date(), timeZone = NY_TZ) {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -49,15 +55,26 @@ export function resolveMarketIntervalMs({
   now = new Date(),
   activeIntervalMs = 120_000,
   offHoursIntervalMs = 900_000,
-  quotaRemaining = null
+  quotaRemaining = null,
+  quotaBand = "GREEN",
+  bandIntervals = {}
 } = {}) {
   const open = isMarketOpenEt(now);
   let intervalMs = open ? activeIntervalMs : offHoursIntervalMs;
 
+  const normalizedBand = String(quotaBand || "GREEN").toUpperCase();
+  const fromBand = bandIntervals?.[normalizedBand];
+  if (fromBand) {
+    const mapped = open ? fromBand.activeIntervalMs : fromBand.offHoursIntervalMs;
+    if (Number.isFinite(mapped) && mapped > 0) {
+      intervalMs = mapped;
+    }
+  }
+
   if (Number.isFinite(quotaRemaining)) {
-    if (quotaRemaining <= 25) {
+    if (BAND_PRIORITY[normalizedBand] <= BAND_PRIORITY.GREEN && quotaRemaining <= 25) {
       intervalMs = Math.max(intervalMs, 10 * 60_000);
-    } else if (quotaRemaining <= 75) {
+    } else if (BAND_PRIORITY[normalizedBand] <= BAND_PRIORITY.GREEN && quotaRemaining <= 75) {
       intervalMs = Math.max(intervalMs, 5 * 60_000);
     }
   }

@@ -3,6 +3,14 @@ import { buildInitialMarketState } from "../services/market/marketStateService.j
 
 const MAX_TIMESERIES_POINTS = 30;
 const MAX_IMPACT_HISTORY_POINTS = 120;
+const DEFAULT_REFRESH_STATUS = Object.freeze({
+  inProgress: false,
+  lastTrigger: "initial-state",
+  lastRequestedAt: null,
+  lastCompletedAt: null,
+  lastDurationMs: null,
+  lastRefreshId: null
+});
 
 function calculateDistribution(countries) {
   const values = Object.values(countries);
@@ -159,7 +167,8 @@ class StateManager {
         watchlistCountries,
         sourceMode: "fallback",
         sourceMeta: { provider: "seed", reason: "initial-state" },
-        dataQuality
+        dataQuality,
+        refreshStatus: structuredClone(DEFAULT_REFRESH_STATUS)
       },
       news: [],
       countries,
@@ -206,6 +215,23 @@ class StateManager {
 
   getMeta() {
     return this.state.meta;
+  }
+
+  setRefreshStatus(nextStatus = {}) {
+    const refreshStatus = {
+      ...(this.state.meta.refreshStatus || DEFAULT_REFRESH_STATUS),
+      ...nextStatus
+    };
+
+    this.state = {
+      ...this.state,
+      meta: {
+        ...this.state.meta,
+        refreshStatus
+      }
+    };
+
+    return this.getMeta();
   }
 
   updateIntel({

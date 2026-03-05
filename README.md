@@ -14,6 +14,8 @@ OGID is a local web app for monitoring geopolitical OSINT signals and their pote
   - Primary: NewsAPI
   - Fallback: GNews
   - Final fallback: deterministic local feed
+- Adaptive quota-aware scheduling for news and market refresh intervals.
+- Manual user-triggered refresh (`POST /api/intel/refresh`) with cooldown and per-client limits.
 - Country risk scoring with deterministic engine.
 - Country watchlist default: `US, IL, IR`.
 - WebSocket live updates (`/ws`) for snapshot/update/heartbeat.
@@ -49,10 +51,25 @@ NEWS_PROVIDERS=newsapi,gnews
 NEWS_QUERY=geopolitics OR conflict OR sanctions OR military
 NEWS_LANGUAGE=en
 NEWS_PAGE_SIZE=50
+NEWS_PAGE_SIZE_GREEN=100
+NEWS_PAGE_SIZE_YELLOW=75
+NEWS_PAGE_SIZE_RED=40
+NEWS_PAGE_SIZE_CRITICAL=20
 NEWS_TIMEOUT_MS=9000
+NEWS_INTERVAL_GREEN_MS=600000
+NEWS_INTERVAL_YELLOW_MS=1200000
+NEWS_INTERVAL_RED_MS=2700000
+NEWS_INTERVAL_CRITICAL_MS=7200000
+NEWS_ANALYZE_LIMIT=80
+NEWS_CANDIDATE_WINDOW_HOURS=36
+NEWS_MAX_PER_SOURCE=3
+NEWS_MAX_SIMILAR_HEADLINE=2
 WATCHLIST_COUNTRIES=US,IL,IR
 REFRESH_INTERVAL_MS=30000
 WS_HEARTBEAT_MS=15000
+MANUAL_REFRESH_COOLDOWN_MS=120000
+MANUAL_REFRESH_PER_CLIENT_WINDOW_MS=900000
+MANUAL_REFRESH_PER_CLIENT_MAX=3
 MARKET_PROVIDER=alphavantage
 ALPHAVANTAGE_API_KEY=your_alphavantage_key
 ALPHAVANTAGE_BASE_URL=https://www.alphavantage.co/query
@@ -75,6 +92,7 @@ LOG_LEVEL=info
 
 - `GET /api/health`
 - `GET /api/intel/snapshot?countries=US,IL,IR&limit=50&sources=newsapi,gnews`
+- `POST /api/intel/refresh`
 - `GET /api/intel/hotspots?countries=US,IL,IR`
 - `GET /api/intel/risks?countries=US,IL,IR`
 - `GET /api/intel/news?countries=US,IL,IR&limit=50&sources=newsapi,gnews`

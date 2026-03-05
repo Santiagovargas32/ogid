@@ -115,6 +115,26 @@ body {
   border-color: rgba(51, 181, 229, 0.6);
 }
 
+#refresh-news-btn {
+  min-width: 92px;
+}
+
+.refresh-status-loading {
+  color: var(--monitoring);
+}
+
+.refresh-status-ok {
+  color: #5dd99c;
+}
+
+.refresh-status-error {
+  color: #ff7a7d;
+}
+
+.refresh-status-cooldown {
+  color: var(--elevated);
+}
+
 .news-item {
   border: 1px solid rgba(78, 98, 120, 0.5);
   border-left-width: 4px;

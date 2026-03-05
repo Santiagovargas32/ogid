@@ -31,3 +31,20 @@ test("resolveMarketIntervalMs increases interval when quota is low", () => {
   assert.equal(intervalHighQuota, 120_000);
   assert.ok(intervalLowQuota >= 600_000);
 });
+
+test("resolveMarketIntervalMs honors explicit quota band interval mapping", () => {
+  const interval = resolveMarketIntervalMs({
+    now: new Date("2026-03-02T15:00:00.000Z"),
+    quotaBand: "RED",
+    bandIntervals: {
+      RED: {
+        activeIntervalMs: 600_000,
+        offHoursIntervalMs: 3_600_000
+      }
+    },
+    activeIntervalMs: 120_000,
+    offHoursIntervalMs: 900_000
+  });
+
+  assert.equal(interval, 600_000);
+});

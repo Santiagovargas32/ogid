@@ -37,7 +37,58 @@ test("REST API exposes health and snapshot payloads", async () => {
     assert.ok(snapshotPayload.data.hotspots.length <= 3);
     assert.equal(snapshotPayload.data.meta.sourceMode, "fallback");
     assert.ok(snapshotPayload.data.meta.dataQuality);
+    assert.ok(snapshotPayload.data.meta.refreshStatus);
     assert.ok(snapshotPayload.data.predictions);
+
+    const refreshResponse = await fetch(`${baseUrl}/api/intel/refresh`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        countries: "US,IL,IR",
+        reason: "manual"
+      })
+    });
+    const refreshPayload = await refreshResponse.json();
+    assert.equal(refreshResponse.status, 202);
+    assert.equal(refreshPayload.ok, true);
+    assert.equal(refreshPayload.data.accepted, true);
+    assert.ok(refreshPayload.data.refreshId);
+    assert.ok(refreshPayload.data.nextAllowedAt);
+
+    let manualRefreshCompleted = false;
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const pollResponse = await fetch(`${baseUrl}/api/intel/snapshot?countries=US,IL,IR`);
+      const pollPayload = await pollResponse.json();
+      const status = pollPayload?.data?.meta?.refreshStatus || {};
+      if (
+        status.lastRefreshId === refreshPayload.data.refreshId &&
+        status.inProgress === false &&
+        status.lastCompletedAt
+      ) {
+        manualRefreshCompleted = true;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.equal(manualRefreshCompleted, true);
+
+    const refreshCooldownResponse = await fetch(`${baseUrl}/api/intel/refresh`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        countries: "US,IL,IR",
+        reason: "manual"
+      })
+    });
+    const refreshCooldownPayload = await refreshCooldownResponse.json();
+    assert.equal(refreshCooldownResponse.status, 429);
+    assert.equal(refreshCooldownPayload.ok, false);
+    assert.equal(refreshCooldownPayload.error.code, "REFRESH_COOLDOWN");
+    assert.ok(refreshCooldownResponse.headers.get("retry-after"));
 
     const quotesResponse = await fetch(`${baseUrl}/api/market/quotes?tickers=GD,BA,NOC`);
     const quotesPayload = await quotesResponse.json();
