@@ -23,6 +23,46 @@ function withActiveFilters(meta, countries, sources) {
   };
 }
 
+function hasCountryScores(countriesMap = {}) {
+  return Object.values(countriesMap || {}).some((country) => Number(country?.score || 0) > 0);
+}
+
+function buildInsightsEmptyReason({ filteredInsights = [], sourceSnapshot, countries = [] }) {
+  if (filteredInsights.length) {
+    return null;
+  }
+
+  const fullInsights = sourceSnapshot?.insights || [];
+  if (fullInsights.length && countries.length) {
+    return "Current watchlist filter removed all country insights. Switch to ALL to inspect global signals.";
+  }
+
+  if (!hasCountryScores(sourceSnapshot?.countries || {})) {
+    return "No country-level risk signals available in the current news selection.";
+  }
+
+  return "No country insights available for the current filters.";
+}
+
+function buildImpactEmptyReason({ impact = { items: [] }, filteredNews = [] }) {
+  if ((impact.items || []).length) {
+    return null;
+  }
+
+  if (!filteredNews.length) {
+    return "No intelligence items available for the current filters.";
+  }
+
+  return "No linked news-to-ticker signals in the current event window.";
+}
+
+function withEmptyStates(meta, emptyStates = {}) {
+  return {
+    ...meta,
+    emptyStates
+  };
+}
+
 function buildFilters(req, res) {
   const config = res.app.locals.config;
   const defaultCountries = config.watchlistCountries || [];
@@ -50,7 +90,26 @@ export function getSnapshot(req, res) {
   const snapshot = stateManager.getSnapshot();
   const filtered = applyCountryFilter(snapshot, filters.countries);
   filtered.news = applyNewsFilters(filtered.news, filters);
-  filtered.meta = withActiveFilters(filtered.meta, filters.countries, filters.sources);
+  const insightsEmptyReason = buildInsightsEmptyReason({
+    filteredInsights: filtered.insights,
+    sourceSnapshot: snapshot,
+    countries: filters.countries
+  });
+  const impactEmptyReason = buildImpactEmptyReason({
+    impact: filtered.impact,
+    filteredNews: filtered.news
+  });
+  filtered.impact = {
+    ...(filtered.impact || {}),
+    emptyReason: impactEmptyReason
+  };
+  filtered.meta = withEmptyStates(
+    withActiveFilters(filtered.meta, filters.countries, filters.sources),
+    {
+      insights: insightsEmptyReason,
+      impact: impactEmptyReason
+    }
+  );
 
   res.json(mapResponse(filtered));
 }
@@ -97,10 +156,20 @@ export function getInsights(req, res) {
   const filters = buildFilters(req, res);
   const snapshot = stateManager.getSnapshot();
   const filtered = applyCountryFilter(snapshot, filters.countries);
+  const insightsEmptyReason = buildInsightsEmptyReason({
+    filteredInsights: filtered.insights,
+    sourceSnapshot: snapshot,
+    countries: filters.countries
+  });
   res.json(
     mapResponse({
       insights: filtered.insights,
-      meta: withActiveFilters(filtered.meta, filters.countries, filters.sources)
+      meta: withEmptyStates(
+        withActiveFilters(filtered.meta, filters.countries, filters.sources),
+        {
+          insights: insightsEmptyReason
+        }
+      )
     })
   );
 }

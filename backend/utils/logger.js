@@ -6,6 +6,8 @@ const LEVEL_PRIORITY = {
   info: 2,
   debug: 3
 };
+const RECENT_LOG_LIMIT = 200;
+const recentLogs = [];
 
 const configuredLevel = String(process.env.LOG_LEVEL || "info").toLowerCase();
 const DEFAULT_SCOPE = "app";
@@ -28,6 +30,13 @@ function emit(level, message, context = {}, scope = DEFAULT_SCOPE) {
     message,
     ...context
   };
+
+  if (level === "warn" || level === "error") {
+    recentLogs.push(payload);
+    if (recentLogs.length > RECENT_LOG_LIMIT) {
+      recentLogs.splice(0, recentLogs.length - RECENT_LOG_LIMIT);
+    }
+  }
 
   const line = JSON.stringify(payload);
   if (level === "error") {
@@ -58,6 +67,14 @@ export function createLogger(scope) {
     error: (message, context) => emit("error", message, context, loggerScope),
     debug: (message, context) => emit("debug", message, context, loggerScope)
   };
+}
+
+export function getRecentLogs({ limit = 20, levels = ["warn", "error"] } = {}) {
+  const allowedLevels = new Set((Array.isArray(levels) ? levels : [levels]).map((value) => String(value || "")));
+  return recentLogs
+    .filter((entry) => allowedLevels.has(entry.level))
+    .slice(-Math.max(1, Number.parseInt(String(limit ?? 20), 10) || 20))
+    .map((entry) => ({ ...entry }));
 }
 
 const requestLog = createLogger("backend/utils/logger#request");

@@ -58,5 +58,6 @@ export const api = {
   getMarketQuotes: (params = {}) => request("/api/market/quotes", params),
   getMarketImpact: (params = {}) => request("/api/market/impact", params),
   getMarketAnalytics: (params = {}) => request("/api/market/analytics", params),
-  getApiLimits: () => request("/api/admin/api-limits")
+  getApiLimits: () => request("/api/admin/api-limits"),
+  getPipelineStatus: () => request("/api/admin/pipeline-status")
 };

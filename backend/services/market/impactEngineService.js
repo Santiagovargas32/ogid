@@ -163,15 +163,8 @@ function buildScatterPoints(items = []) {
   }));
 }
 
-function buildCouplingSeries({
-  impactHistory = [],
-  tickers = [],
-  predictionScores = {},
-  topItems = []
-}) {
-  const selectedTickers = tickers.length
-    ? tickers
-    : topItems.slice(0, 4).map((item) => item.ticker);
+function buildCouplingSeries({ impactHistory = [], tickers = [], predictionScores = {}, topItems = [] }) {
+  const selectedTickers = tickers.length ? tickers : topItems.slice(0, 4).map((item) => item.ticker);
 
   if (!selectedTickers.length || !impactHistory.length) {
     return [];
@@ -197,17 +190,7 @@ function buildCouplingSeries({
   }));
 }
 
-export function computeMarketImpact({
-  articles = [],
-  countries = {},
-  marketQuotes = {},
-  tickers = [],
-  countryFilter = [],
-  windowMin = 120,
-  inputMode = "live",
-  impactHistory = [],
-  predictionScores = {}
-}) {
+export function computeMarketImpact({ articles = [], countries = {}, marketQuotes = {}, tickers = [], countryFilter = [], windowMin = 120, inputMode = "live", impactHistory = [], predictionScores = {} }) {
   const normalizedTickers = tickers.map((ticker) => String(ticker).toUpperCase());
   const tickerSet = new Set(normalizedTickers);
   const countryFilterSet = new Set(countryFilter);
@@ -280,7 +263,8 @@ export function computeMarketImpact({
         changePct: quote.changePct,
         asOf: quote.asOf,
         source: quote.source,
-        synthetic: Boolean(quote.synthetic)
+        synthetic: Boolean(quote.synthetic),
+        dataMode: quote.dataMode || (quote.synthetic ? "synthetic-fallback" : "live")
       }
     };
   });

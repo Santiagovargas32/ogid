@@ -10,9 +10,24 @@ import { generatePredictions } from "./market/predictionEngineService.js";
 import { fetchMarketQuotes } from "./market/marketProviderRouter.js";
 import { resolveMarketIntervalMs } from "./market/marketSessionService.js";
 import { resolveBandByProviderSnapshots, resolveNewsPolicy } from "./refreshPolicyService.js";
-import { selectNewsForIntel } from "./news/newsSelectionService.js";
+import { buildIntelNewsSelection } from "./news/newsSelectionService.js";
 
 const log = createLogger("backend/services/refreshOrchestratorService");
+
+function countByProvider(items = [], providerNames = []) {
+  const counts = Object.fromEntries(
+    (Array.isArray(providerNames) ? providerNames : [])
+      .map((provider) => String(provider || "").toLowerCase())
+      .filter(Boolean)
+      .map((provider) => [provider, 0])
+  );
+
+  return items.reduce((accumulator, item) => {
+    const provider = String(item?.provider || "unknown").toLowerCase();
+    accumulator[provider] = (accumulator[provider] || 0) + 1;
+    return accumulator;
+  }, counts);
+}
 
 function resolveInputMode(newsMode = "fallback", marketMode = "fallback") {
   if (newsMode === "live" && marketMode === "live") {
@@ -164,8 +179,8 @@ class RefreshOrchestratorService {
         countries: countryFilter,
         allowExhaustedProviders: options.allowExhaustedProviders === true
       });
-      const normalizedNews = normalizeArticles(newsResult.articles, "newsapi");
-      const selectedNews = selectNewsForIntel({
+      const normalizedNews = normalizeArticles(newsResult.articles, newsResult.sourceMeta?.provider || "aggregated");
+      const selection = buildIntelNewsSelection({
         articles: normalizedNews,
         previousArticles: previousSnapshot.news || [],
         watchlistCountries: countryFilter,
@@ -174,15 +189,25 @@ class RefreshOrchestratorService {
         maxPerSource: this.config.news?.maxPerSource || 3,
         maxSimilarHeadline: this.config.news?.maxSimilarHeadline || 2
       });
+      const signalCorpus = selection.signalCorpus || normalizedNews;
+      const selectedNews = selection.displaySelection || [];
+      const newsSourceMeta = {
+        ...(newsResult.sourceMeta || {}),
+        selectedCountByProvider: countByProvider(selectedNews, this.config.news?.providers || []),
+        signalCountByProvider: countByProvider(signalCorpus, this.config.news?.providers || []),
+        selectionBySourceName: selection.selectionMeta?.selectionBySourceName || [],
+        latestSelectedArticleAgeMin: selection.selectionMeta?.latestSelectedArticleAgeMin ?? null,
+        selectionConfig: selection.selectionMeta?.selectionConfig || null
+      };
 
       const riskResult = computeCountryRisk({
-        articles: selectedNews,
+        articles: signalCorpus,
         previousCountries: previousSnapshot.countries
       });
 
       const inputMode = resolveInputMode(newsResult.sourceMode, previousSnapshot.market?.sourceMode);
       const impact = computeMarketImpact({
-        articles: selectedNews,
+        articles: signalCorpus,
         countries: riskResult.countries,
         marketQuotes: previousSnapshot.market?.quotes || {},
         tickers: this.config.market.tickers,
@@ -193,7 +218,7 @@ class RefreshOrchestratorService {
         predictionScores: previousSnapshot.predictions?.predictionScoreByTicker || {}
       });
       const predictions = generatePredictions({
-        articles: selectedNews,
+        articles: signalCorpus,
         countries: riskResult.countries,
         marketQuotes: previousSnapshot.market?.quotes || {},
         tickers: this.config.market.tickers,
@@ -212,8 +237,9 @@ class RefreshOrchestratorService {
         insights,
         predictions,
         impact,
+        signalCorpus,
         newsSourceMode: newsResult.sourceMode,
-        newsSourceMeta: newsResult.sourceMeta,
+        newsSourceMeta,
         watchlistCountries: this.config.watchlistCountries
       });
 
@@ -227,7 +253,7 @@ class RefreshOrchestratorService {
         attempts: newsResult.sourceMeta?.attempts || [],
         quotaBand: policy.band,
         pageSize,
-        candidateCount: normalizedNews.length,
+        candidateCount: signalCorpus.length,
         articleCount: snapshot.news.length,
         durationMs: Date.now() - startedAt
       });
@@ -280,20 +306,25 @@ class RefreshOrchestratorService {
         return;
       }
 
-      const marketResult = await fetchMarketQuotes(this.config.market);
+      const marketResult = await fetchMarketQuotes({
+        ...this.config.market,
+        previousQuotes: previousSnapshot.market?.quotes || {},
+        previousTimeseries: previousSnapshot.market?.timeseries || {},
+        allowExhaustedProviders: options.allowExhaustedProviders === true
+      });
       const marketState = mergeMarketState(previousSnapshot.market, marketResult);
       const inputMode = resolveInputMode(previousSnapshot.meta?.sourceMode, marketState.sourceMode);
       const countryFilter = options.countries?.length ? options.countries : this.config.watchlistCountries;
 
       const predictions = generatePredictions({
-        articles: previousSnapshot.news,
+        articles: this.stateManager.getSignalCorpus(),
         countries: previousSnapshot.countries,
         marketQuotes: marketState.quotes,
         tickers: this.config.market.tickers,
         inputMode
       });
       const impact = computeMarketImpact({
-        articles: previousSnapshot.news,
+        articles: this.stateManager.getSignalCorpus(),
         countries: previousSnapshot.countries,
         marketQuotes: marketState.quotes,
         tickers: this.config.market.tickers,
@@ -377,7 +408,8 @@ class RefreshOrchestratorService {
         countries: activeCountries
       });
       await this.runMarketCycle(`${trigger}-market`, {
-        countries: activeCountries
+        countries: activeCountries,
+        allowExhaustedProviders: true
       });
     } finally {
       const completedMeta = this.stateManager.setRefreshStatus({
@@ -431,4 +463,3 @@ class RefreshOrchestratorService {
 }
 
 export default RefreshOrchestratorService;
-

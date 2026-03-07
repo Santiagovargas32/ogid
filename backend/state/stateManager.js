@@ -171,6 +171,7 @@ class StateManager {
         refreshStatus: structuredClone(DEFAULT_REFRESH_STATUS)
       },
       news: [],
+      signalCorpus: [],
       countries,
       hotspots: toHotspots(countries),
       insights: [],
@@ -210,11 +211,16 @@ class StateManager {
   }
 
   getSnapshot() {
-    return structuredClone(this.state);
+    const { signalCorpus: _signalCorpus, ...snapshot } = this.state;
+    return structuredClone(snapshot);
   }
 
   getMeta() {
     return this.state.meta;
+  }
+
+  getSignalCorpus() {
+    return structuredClone(this.state.signalCorpus || []);
   }
 
   setRefreshStatus(nextStatus = {}) {
@@ -242,6 +248,7 @@ class StateManager {
     predictions,
     market,
     impact,
+    signalCorpus,
     sourceMode,
     sourceMeta,
     newsSourceMode,
@@ -252,6 +259,7 @@ class StateManager {
     const timestamp = refreshedAt || new Date().toISOString();
     const nextCountries = countries || this.state.countries;
     const nextNews = news ?? this.state.news;
+    const nextSignalCorpus = signalCorpus ?? this.state.signalCorpus ?? nextNews;
     const nextMarket = market ?? this.state.market;
     const nextImpact = impact ?? this.state.impact;
 
@@ -279,6 +287,7 @@ class StateManager {
     this.state = {
       ...this.state,
       news: nextNews,
+      signalCorpus: nextSignalCorpus,
       countries: nextCountries,
       hotspots: hotspots ?? toHotspots(nextCountries),
       insights: insights ?? this.state.insights,

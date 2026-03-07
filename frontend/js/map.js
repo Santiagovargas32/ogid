@@ -6,6 +6,8 @@ const LEVEL_COLORS = {
 };
 
 const EVENT_COLOR = "#49d6c5";
+const WATCHLIST_COLOR = "#6fb1ff";
+const HEAT_ZOOM_THRESHOLD = 3;
 
 function escapeHtml(value = "") {
   return String(value)
@@ -23,6 +25,30 @@ function formatTimestamp(value) {
   return new Date(value).toLocaleString();
 }
 
+function stableHash(value = "") {
+  let hash = 0;
+  const normalized = String(value || "");
+  for (let index = 0; index < normalized.length; index += 1) {
+    hash = (hash << 5) - hash + normalized.charCodeAt(index);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
+function stableOffset(seed, scale = 0.06) {
+  const hash = stableHash(seed);
+  return ((hash % 9) - 4) * scale;
+}
+
+function currentViewContainsBounds(map, bounds) {
+  if (!map || !bounds?.isValid?.()) {
+    return false;
+  }
+
+  const view = map.getBounds();
+  return view.contains(bounds.getNorthEast()) && view.contains(bounds.getSouthWest());
+}
+
 export function getLevelColor(level = "Stable") {
   return LEVEL_COLORS[level] || LEVEL_COLORS.Stable;
 }
@@ -33,7 +59,12 @@ export class HotspotMap {
     this.map = null;
     this.hotspotLayer = null;
     this.eventLayer = null;
+    this.watchlistLayer = null;
     this.countryIndex = new Map();
+    this.eventPoints = [];
+    this.lastFitSignature = null;
+    this.layerControl = null;
+    this.legendControl = null;
   }
 
   init() {
@@ -50,6 +81,40 @@ export class HotspotMap {
 
     this.hotspotLayer = L.layerGroup().addTo(this.map);
     this.eventLayer = L.layerGroup().addTo(this.map);
+    this.watchlistLayer = L.layerGroup().addTo(this.map);
+
+    this.layerControl = L.control.layers(
+      null,
+      {
+        Hotspots: this.hotspotLayer,
+        "Event Signals": this.eventLayer,
+        Watchlist: this.watchlistLayer
+      },
+      { collapsed: false }
+    ).addTo(this.map);
+
+    this.legendControl = L.control({ position: "bottomright" });
+    this.legendControl.onAdd = () => {
+      const element = L.DomUtil.create("div", "map-legend");
+      element.innerHTML = `
+        <h3>Map Layers</h3>
+        <div class="map-legend-row"><span class="map-legend-swatch" style="background:${LEVEL_COLORS.Critical}"></span><span>Critical hotspot</span></div>
+        <div class="map-legend-row"><span class="map-legend-swatch" style="background:${LEVEL_COLORS.Elevated}"></span><span>Elevated hotspot</span></div>
+        <div class="map-legend-row"><span class="map-legend-swatch" style="background:${EVENT_COLOR}"></span><span>Event signal / density</span></div>
+        <div class="map-legend-row"><span class="map-legend-swatch" style="background:${WATCHLIST_COLOR}"></span><span>Watchlist halo</span></div>
+      `;
+      return element;
+    };
+    this.legendControl.addTo(this.map);
+
+    this.map.on("zoomend", () => {
+      this.renderEventLayer();
+    });
+    this.map.on("overlayadd", (event) => {
+      if (event.layer === this.eventLayer) {
+        this.renderEventLayer();
+      }
+    });
   }
 
   buildCountryIndex(hotspots = []) {
@@ -61,28 +126,43 @@ export class HotspotMap {
     );
   }
 
-  renderHotspots(hotspots = []) {
-    if (!this.hotspotLayer) {
+  renderHotspots(hotspots = [], watchlist = []) {
+    if (!this.hotspotLayer || !this.watchlistLayer) {
       return;
     }
 
     this.hotspotLayer.clearLayers();
+    this.watchlistLayer.clearLayers();
+    const watchlistSet = new Set((watchlist || []).map((iso2) => String(iso2 || "").toUpperCase()));
 
     for (const hotspot of hotspots) {
       const color = getLevelColor(hotspot.level);
-      const radius = Math.min(18, Math.max(6, 6 + hotspot.score / 10));
+      const radius = Math.min(20, Math.max(7, 7 + hotspot.score / 12));
+
+      if (watchlistSet.has(String(hotspot.iso2 || "").toUpperCase())) {
+        L.circleMarker([hotspot.lat, hotspot.lng], {
+          radius: radius + 8,
+          color: WATCHLIST_COLOR,
+          fillColor: WATCHLIST_COLOR,
+          fillOpacity: 0.05,
+          opacity: 0.95,
+          weight: 2,
+          className: "map-watchlist-halo"
+        }).addTo(this.watchlistLayer);
+      }
 
       const marker = L.circleMarker([hotspot.lat, hotspot.lng], {
         radius,
         color,
         fillColor: color,
         fillOpacity: 0.75,
-        weight: 1.2
+        weight: 1.4
       });
 
       const tags = hotspot.topTags?.length
         ? hotspot.topTags.map((tag) => `${escapeHtml(tag.tag)} (${tag.count})`).join(", ")
         : "none";
+      const watchlistFlag = watchlistSet.has(String(hotspot.iso2 || "").toUpperCase()) ? "Yes" : "No";
 
       marker.bindPopup(`
         <div class="small">
@@ -92,6 +172,7 @@ export class HotspotMap {
           News volume: ${hotspot.metrics?.newsVolume ?? 0}<br/>
           Negative sentiment: ${hotspot.metrics?.negativeSentiment ?? 0}<br/>
           Conflict weight: ${hotspot.metrics?.conflictTagWeight ?? 0}<br/>
+          Watchlist: ${watchlistFlag}<br/>
           Top tags: ${tags}<br/>
           Updated: ${formatTimestamp(hotspot.updatedAt)}
         </div>
@@ -124,10 +205,12 @@ export class HotspotMap {
           continue;
         }
 
-        const jitter = ((article.id?.charCodeAt(0) || 10) % 7) * 0.08;
+        const seed = `${article.id || article.title || "event"}:${iso2}`;
         eventPoints.push({
-          lat: country.lat + jitter,
-          lng: country.lng - jitter,
+          lat: country.lat + stableOffset(`${seed}:lat`, 0.07),
+          lng: country.lng + stableOffset(`${seed}:lng`, 0.07),
+          baseLat: country.lat,
+          baseLng: country.lng,
           iso2,
           country: country.country,
           title: article.title,
@@ -141,15 +224,69 @@ export class HotspotMap {
     return eventPoints;
   }
 
-  renderEvents(news = []) {
-    if (!this.eventLayer) {
+  buildHeatBuckets() {
+    const buckets = new Map();
+
+    for (const point of this.eventPoints) {
+      const key = point.iso2;
+      const current = buckets.get(key) || {
+        iso2: point.iso2,
+        country: point.country,
+        lat: point.baseLat,
+        lng: point.baseLng,
+        count: 0,
+        intensity: 0,
+        latestPublishedAt: point.publishedAt
+      };
+      current.count += 1;
+      current.intensity += point.intensity;
+      if (new Date(point.publishedAt || 0).getTime() > new Date(current.latestPublishedAt || 0).getTime()) {
+        current.latestPublishedAt = point.publishedAt;
+      }
+      buckets.set(key, current);
+    }
+
+    return [...buckets.values()];
+  }
+
+  renderEventLayer() {
+    if (!this.eventLayer || !this.map) {
       return;
     }
 
     this.eventLayer.clearLayers();
-    const events = this.buildEventPoints(news).slice(0, 150);
+    if (!this.map.hasLayer(this.eventLayer)) {
+      return;
+    }
 
-    for (const event of events) {
+    if ((this.map.getZoom() || 2) <= HEAT_ZOOM_THRESHOLD) {
+      const buckets = this.buildHeatBuckets();
+      for (const bucket of buckets) {
+        const radius = Math.max(8, Math.min(26, 6 + bucket.count * 1.6 + bucket.intensity * 4));
+        const marker = L.circleMarker([bucket.lat, bucket.lng], {
+          radius,
+          color: EVENT_COLOR,
+          fillColor: EVENT_COLOR,
+          fillOpacity: Math.min(0.72, 0.18 + bucket.intensity * 0.18),
+          weight: 1.4
+        });
+
+        marker.bindPopup(`
+          <div class="small">
+            <strong>Event density</strong><br/>
+            Country: <strong>${escapeHtml(bucket.country)}</strong><br/>
+            Signals: ${bucket.count}<br/>
+            Weighted intensity: ${bucket.intensity.toFixed(2)}<br/>
+            Latest: ${formatTimestamp(bucket.latestPublishedAt)}
+          </div>
+        `);
+
+        marker.addTo(this.eventLayer);
+      }
+      return;
+    }
+
+    for (const event of this.eventPoints.slice(0, 180)) {
       const radius = Math.max(4, 4 + event.intensity * 8);
       const marker = L.circleMarker([event.lat, event.lng], {
         radius,
@@ -174,9 +311,42 @@ export class HotspotMap {
     }
   }
 
-  render(hotspots = [], news = []) {
+  fitToVisibleData(hotspots = []) {
+    if (!this.map) {
+      return;
+    }
+
+    const coordinates = [
+      ...hotspots.map((hotspot) => [hotspot.lat, hotspot.lng]),
+      ...this.eventPoints.slice(0, 80).map((event) => [event.baseLat, event.baseLng])
+    ];
+    if (!coordinates.length) {
+      return;
+    }
+
+    const bounds = L.latLngBounds(coordinates);
+    if (!bounds.isValid()) {
+      return;
+    }
+
+    const signature = `${coordinates.length}:${Math.round(bounds.getSouth() * 10)}:${Math.round(bounds.getWest() * 10)}:${Math.round(
+      bounds.getNorth() * 10
+    )}:${Math.round(bounds.getEast() * 10)}`;
+    if (this.lastFitSignature === signature && currentViewContainsBounds(this.map, bounds)) {
+      return;
+    }
+
+    if (!currentViewContainsBounds(this.map, bounds)) {
+      this.map.fitBounds(bounds.pad(0.22), { maxZoom: 5, animate: false });
+    }
+    this.lastFitSignature = signature;
+  }
+
+  render(hotspots = [], news = [], watchlist = []) {
     this.buildCountryIndex(hotspots);
-    this.renderHotspots(hotspots);
-    this.renderEvents(news);
+    this.renderHotspots(hotspots, watchlist);
+    this.eventPoints = this.buildEventPoints(news);
+    this.renderEventLayer();
+    this.fitToVisibleData(hotspots);
   }
 }

@@ -11,20 +11,9 @@ function resolveSourceMode(liveCount, tickerCount) {
   return "mixed";
 }
 
-export async function fetchAlphaVantageQuotes({
-  apiKey,
-  baseUrl,
-  tickers = [],
-  timeoutMs = 9_000
-}) {
+export async function fetchAlphaVantageQuotes({ apiKey, baseUrl, tickers = [], timeoutMs = 9_000 }) {
   const timestamp = new Date().toISOString();
-  const providerResult = await fetchAlphaVantageProviderQuotes({
-    apiKey,
-    baseUrl,
-    tickers,
-    timeoutMs,
-    timestamp
-  });
+  const providerResult = await fetchAlphaVantageProviderQuotes({ apiKey, baseUrl, tickers, timeoutMs, timestamp });
 
   const quotes = { ...(providerResult.quotes || {}) };
   for (const ticker of tickers.map((item) => String(item).toUpperCase())) {

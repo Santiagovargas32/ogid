@@ -33,6 +33,6 @@ export function buildFallbackQuote(ticker, timestamp) {
     asOf: timestamp,
     source: "fallback",
     synthetic: true,
-    dataMode: "fallback"
+    dataMode: "synthetic-fallback"
   };
 }

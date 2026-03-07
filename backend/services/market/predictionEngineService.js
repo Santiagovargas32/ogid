@@ -1,3 +1,5 @@
+import { normalizeQuoteDataMode } from "./quoteMetadata.js";
+
 const DEFENSE_TICKERS = ["GD", "BA", "NOC", "LMT", "RTX", "ITA"];
 const ENERGY_TICKERS = ["XOM", "CVX", "COP", "XLE"];
 const BROAD_TICKERS = ["SPY"];
@@ -20,6 +22,12 @@ const LEVEL_WEIGHT = {
   Monitoring: 2,
   Stable: 1
 };
+const MODE_CONFIDENCE_PENALTY = Object.freeze({
+  live: 0,
+  "historical-eod": 8,
+  "router-stale": 12,
+  "synthetic-fallback": 18
+});
 
 function normalizeText(value = "") {
   return ` ${String(value).toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim()} `;
@@ -102,16 +110,22 @@ function classifyDirection(momentum, pressure) {
   return "Sideways";
 }
 
+function quoteModePenalty(quote = {}) {
+  const normalizedMode = normalizeQuoteDataMode(quote?.dataMode || (quote?.synthetic ? "synthetic-fallback" : "live"));
+  return MODE_CONFIDENCE_PENALTY[normalizedMode] || MODE_CONFIDENCE_PENALTY["synthetic-fallback"];
+}
+
 function buildSectorPrediction({ sector, articles, tickers, countries, marketQuotes, inputMode }) {
   const pressures = articles.map((article) => scoreArticle(article, countries));
   const sectorPressure = Number(average(pressures).toFixed(2));
   const momentum = Number(
     average(tickers.map((ticker) => Number(marketQuotes[ticker]?.changePct || 0))).toFixed(2)
   );
+  const averageMarketPenalty = Math.round(average(tickers.map((ticker) => quoteModePenalty(marketQuotes[ticker]))) * 0.6);
   const direction = classifyDirection(momentum, sectorPressure);
   const confidence = Math.max(
     35,
-    Math.min(95, Math.round(48 + sectorPressure * 6 + Math.min(20, Math.abs(momentum) * 4)))
+    Math.min(95, Math.round(48 + sectorPressure * 6 + Math.min(20, Math.abs(momentum) * 4) - averageMarketPenalty))
   );
 
   return {
@@ -123,7 +137,8 @@ function buildSectorPrediction({ sector, articles, tickers, countries, marketQuo
     drivers: summarizeDrivers(articles, tickers),
     basedOnArticles: articles.map((article) => article.id),
     tickers,
-    inputMode
+    inputMode,
+    marketCoveragePenalty: averageMarketPenalty
   };
 }
 
@@ -132,9 +147,14 @@ function buildTickerPredictions(sectorPredictions = [], marketQuotes = {}) {
 
   for (const sectorPrediction of sectorPredictions) {
     for (const ticker of sectorPrediction.tickers) {
-      const changePct = Number(marketQuotes[ticker]?.changePct || 0);
+      const quote = marketQuotes[ticker] || {};
+      const dataMode = normalizeQuoteDataMode(quote?.dataMode || (quote?.synthetic ? "synthetic-fallback" : "live"));
+      const changePct = Number(quote.changePct || 0);
       const confidenceBoost = Math.min(8, Math.round(Math.abs(changePct)));
-      const confidence = Math.min(95, sectorPrediction.confidence + confidenceBoost);
+      const confidence = Math.max(
+        25,
+        Math.min(95, sectorPrediction.confidence + confidenceBoost - quoteModePenalty(quote))
+      );
       const predictionScore = Number((sectorPrediction.score * (confidence / 100)).toFixed(2));
       items.push({
         ticker,
@@ -145,7 +165,8 @@ function buildTickerPredictions(sectorPredictions = [], marketQuotes = {}) {
         predictionScore,
         horizonHours: sectorPrediction.horizonHours,
         drivers: [...sectorPrediction.drivers].slice(0, 3),
-        basedOnArticles: [...sectorPrediction.basedOnArticles].slice(0, 5)
+        basedOnArticles: [...sectorPrediction.basedOnArticles].slice(0, 5),
+        marketDataMode: dataMode
       });
     }
   }

@@ -4,12 +4,20 @@ function ensureTrailingSlash(baseUrl) {
   return String(baseUrl).endsWith("/") ? String(baseUrl) : `${String(baseUrl)}/`;
 }
 
-function buildNewsApiUrl({ baseUrl, query, language, pageSize }) {
+function buildNewsApiUrl({ baseUrl, query, language, pageSize, domains = [], sources = [] }) {
   const url = new URL("everything", ensureTrailingSlash(baseUrl));
   url.searchParams.set("q", query);
   url.searchParams.set("language", language);
   url.searchParams.set("sortBy", "publishedAt");
   url.searchParams.set("pageSize", String(pageSize));
+
+  if (sources.length) {
+    url.searchParams.set("sources", sources.join(","));
+  }
+
+  if (domains.length) {
+    url.searchParams.set("domains", domains.join(","));
+  }
   return url;
 }
 
@@ -27,7 +35,16 @@ async function fetchWithTimeout(url, options, timeoutMs) {
   }
 }
 
-export async function fetchNewsApi({ apiKey, baseUrl, query, language, pageSize, timeoutMs = 9_000 }) {
+export async function fetchNewsApi({
+  apiKey,
+  baseUrl,
+  query,
+  language,
+  pageSize,
+  domains = [],
+  sources = [],
+  timeoutMs = 9_000
+}) {
   if (!apiKey) {
     throw new Error("newsapi-api-key-missing");
   }
@@ -36,7 +53,9 @@ export async function fetchNewsApi({ apiKey, baseUrl, query, language, pageSize,
     baseUrl: baseUrl || "https://newsapi.org/v2",
     query,
     language,
-    pageSize
+    pageSize,
+    domains,
+    sources
   });
 
   const response = await fetchWithTimeout(

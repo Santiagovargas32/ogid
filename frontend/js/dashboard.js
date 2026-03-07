@@ -1,5 +1,5 @@
 import { api } from "./api.js";
-import { applyUpdate, setSnapshot, subscribe } from "./state.js";
+import { applyUpdate, getState, setSnapshot, subscribe } from "./state.js";
 import { RealtimeSocket } from "./websocket.js";
 import { HotspotMap, getLevelColor } from "./map.js";
 
@@ -11,6 +11,12 @@ const LEVEL_RANK = {
 };
 
 const DEFAULT_WATCHLIST = ["US", "IL", "IR"];
+const ANALYTICS_WINDOW_OPTIONS = [
+  { label: "2h", minutes: 120 },
+  { label: "6h", minutes: 360 },
+  { label: "12h", minutes: 720 },
+  { label: "24h", minutes: 1440 }
+];
 const CHART_COLORS = ["#49d6c5", "#ff8c42", "#f4c542", "#38c172", "#6fb1ff", "#ff4d4f", "#c59aff"];
 const NEWS_PLACEHOLDER_SRC = "/assets/news-placeholder.svg";
 const DIRECTION_COLORS = {
@@ -18,6 +24,22 @@ const DIRECTION_COLORS = {
   Bearish: "#ff4d4f",
   Volatile: "#ff8c42",
   Sideways: "#6fb1ff"
+};
+const MODE_BORDER_COLORS = {
+  live: "#dff5ff",
+  "historical-eod": "#9faebd",
+  "router-stale": "#f4c542",
+  "synthetic-fallback": "#ffb36b",
+  stale: "#f4c542",
+  fallback: "#ffb36b"
+};
+const MODE_POINT_STYLE = {
+  live: "circle",
+  "historical-eod": "rectRot",
+  "router-stale": "rectRounded",
+  "synthetic-fallback": "triangle",
+  stale: "rectRounded",
+  fallback: "triangle"
 };
 
 let hotspotMap;
@@ -31,6 +53,13 @@ let currentWatchlist = [...DEFAULT_WATCHLIST];
 let apiLimitsPoller = null;
 let analyticsRefreshTimer = null;
 let latestAnalytics = null;
+let latestAnalyticsContext = "";
+let latestAnalyticsError = "";
+let latestAnalyticsWindowMin = 120;
+let analyticsRequestToken = 0;
+let selectedCouplingTickers = [];
+let couplingSelectionTouched = false;
+let selectedAnalyticsWindowMin = 120;
 let manualRefreshPendingId = null;
 let manualRefreshState = "idle";
 let manualRefreshMessage = "Refresh: idle";
@@ -49,6 +78,7 @@ function cacheElements() {
   elements.wsStatusBadge = byId("ws-status-badge");
   elements.lastUpdateText = byId("last-update-text");
   elements.marketUpdatedText = byId("market-updated-text");
+  elements.marketCoverageText = byId("market-coverage-text");
   elements.newsCount = byId("news-count");
   elements.newsFeed = byId("news-feed");
   elements.predictionsList = byId("predictions-list");
@@ -76,8 +106,15 @@ function cacheElements() {
   elements.panelInsights = byId("panel-insights");
   elements.apiLimitsPanel = byId("api-limits-panel");
   elements.toggleApiLimits = byId("toggle-api-limits");
+  elements.pipelineStatusBody = byId("pipeline-status-body");
+  elements.pipelineDiagnosticsBody = byId("pipeline-diagnostics-body");
   elements.apiLimitsBody = byId("api-limits-body");
   elements.apiLimitsUpdated = byId("api-limits-updated");
+  elements.rssFeedStatusBody = byId("rss-feed-status-body");
+  elements.analyticsStatus = byId("analytics-status");
+  elements.analyticsWindowSelector = byId("analytics-window-selector");
+  elements.couplingTickerSelector = byId("coupling-ticker-selector");
+  elements.recentCycleErrorsBody = byId("recent-cycle-errors-body");
   elements.refreshNewsBtn = byId("refresh-news-btn");
   elements.refreshNewsStatus = byId("refresh-news-status");
 }
@@ -91,6 +128,110 @@ function escapeHtml(value = "") {
     .replaceAll("'", "&#39;");
 }
 
+function renderEmptyStateCard(message, actionLabel = "") {
+  const button = actionLabel
+    ? `<div class="mt-2"><button class="btn btn-sm btn-outline-info" type="button" data-action="show-all-countries">${escapeHtml(
+        actionLabel
+      )}</button></div>`
+    : "";
+  return `<div class="empty-state-card small text-light-emphasis">${escapeHtml(message)}${button}</div>`;
+}
+
+function ensureChartOverlay(canvas) {
+  if (!canvas?.parentElement) {
+    return null;
+  }
+
+  let overlay = canvas.parentElement.querySelector(".chart-overlay");
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.className = "chart-overlay";
+    canvas.parentElement.appendChild(overlay);
+  }
+
+  return overlay;
+}
+
+function setChartOverlay(canvas, message = "") {
+  const overlay = ensureChartOverlay(canvas);
+  if (!overlay) {
+    return;
+  }
+
+  if (!message) {
+    overlay.classList.remove("visible");
+    overlay.textContent = "";
+    return;
+  }
+
+  overlay.textContent = message;
+  overlay.classList.add("visible");
+}
+
+function renderAnalyticsStatus(message = "") {
+  if (!elements.analyticsStatus) {
+    return;
+  }
+
+  if (!message) {
+    elements.analyticsStatus.classList.add("d-none");
+    elements.analyticsStatus.textContent = "";
+    return;
+  }
+
+  elements.analyticsStatus.textContent = message;
+  elements.analyticsStatus.classList.remove("d-none");
+}
+
+function renderAnalyticsWindowSelector() {
+  if (!elements.analyticsWindowSelector) {
+    return;
+  }
+
+  elements.analyticsWindowSelector.innerHTML = `
+    <div class="chart-selector-help small text-light-emphasis">Analytics window</div>
+    <div class="chart-selector-chips">
+      ${ANALYTICS_WINDOW_OPTIONS.map((option) => {
+        const activeClass = option.minutes === selectedAnalyticsWindowMin ? "active" : "";
+        return `<button class="chart-selector-chip ${activeClass}" type="button" data-action="set-analytics-window" data-window-min="${option.minutes}">${option.label}</button>`;
+      }).join("")}
+    </div>
+  `;
+}
+
+const tickerBubbleLabelPlugin = {
+  id: "tickerBubbleLabelPlugin",
+  afterDatasetsDraw(chart) {
+    if (chart.canvas?.id !== "sector-breakdown-chart") {
+      return;
+    }
+
+    const ctx = chart.ctx;
+    ctx.save();
+    ctx.font = '600 10px "IBM Plex Sans", sans-serif';
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+
+    chart.data.datasets.forEach((dataset, datasetIndex) => {
+      const meta = chart.getDatasetMeta(datasetIndex);
+      meta.data.forEach((element, index) => {
+        const point = dataset.data?.[index];
+        if (!point?.ticker) {
+          return;
+        }
+
+        const shortMode = marketModeShortLabel(point.dataMode);
+        const suffix = shortMode ? ` ${shortMode}` : "";
+        ctx.fillStyle = "#eef6ff";
+        ctx.fillText(`${point.ticker}${suffix}`, element.x, element.y - (point.r || 6) - 6);
+      });
+    });
+    ctx.restore();
+  }
+};
+
+Chart.register(tickerBubbleLabelPlugin);
+
 function formatDate(value) {
   if (!value) {
     return "--";
@@ -103,6 +244,90 @@ function formatShortTime(value) {
     return "--";
   }
   return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatDurationMs(value) {
+  const totalSeconds = Math.max(0, Math.round(Number(value || 0) / 1_000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes <= 0) {
+    return `${seconds}s`;
+  }
+  return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
+}
+
+function formatWindowLabel(minutes) {
+  const normalized = Number(minutes || 0);
+  if (normalized >= 1440) {
+    return "24h";
+  }
+  if (normalized >= 60) {
+    return `${Math.round(normalized / 60)}h`;
+  }
+  return `${normalized}m`;
+}
+
+function normalizeMarketDataMode(mode = "synthetic-fallback") {
+  const normalized = String(mode || "").toLowerCase();
+  if (normalized === "fallback") {
+    return "synthetic-fallback";
+  }
+  if (normalized === "stale") {
+    return "router-stale";
+  }
+  return normalized || "synthetic-fallback";
+}
+
+function marketModeLabel(mode = "synthetic-fallback") {
+  const normalized = normalizeMarketDataMode(mode);
+  if (normalized === "live") {
+    return "LIVE";
+  }
+  if (normalized === "historical-eod") {
+    return "EOD";
+  }
+  if (normalized === "router-stale") {
+    return "STALE CACHE";
+  }
+  return "SIM";
+}
+
+function marketModeShortLabel(mode = "synthetic-fallback") {
+  const normalized = normalizeMarketDataMode(mode);
+  if (normalized === "historical-eod") {
+    return "E";
+  }
+  if (normalized === "router-stale") {
+    return "C";
+  }
+  if (normalized === "synthetic-fallback") {
+    return "S";
+  }
+  return "";
+}
+
+function marketModeClass(mode = "synthetic-fallback") {
+  return `market-mode-${normalizeMarketDataMode(mode)}`;
+}
+
+function deriveQuoteAgeMin(quote = {}) {
+  if (Number.isFinite(quote?.quoteAgeMin)) {
+    return quote.quoteAgeMin;
+  }
+
+  const asOfTime = new Date(quote?.asOf || quote?.staleAt || 0).getTime();
+  if (!Number.isFinite(asOfTime) || asOfTime <= 0) {
+    return null;
+  }
+
+  return Math.max(0, Math.round((Date.now() - asOfTime) / 60_000));
+}
+
+function formatCompactList(values = [], fallback = "--") {
+  if (!Array.isArray(values) || !values.length) {
+    return fallback;
+  }
+  return values.join(", ");
 }
 
 function formatRemainingSeconds(totalSeconds) {
@@ -354,6 +579,10 @@ function renderMeta(meta, market) {
 
   elements.lastUpdateText.textContent = `Last update: ${formatDate(meta.lastRefreshAt)}`;
   elements.marketUpdatedText.textContent = `Quotes: ${formatDate(market.updatedAt)}`;
+  if (elements.marketCoverageText) {
+    const coverage = market.coverageByMode || market.sourceMeta?.coverageByMode || {};
+    elements.marketCoverageText.textContent = `Coverage: ${coverage.live || 0} live / ${coverage.historicalEod || 0} EOD / ${coverage.routerStale || 0} stale cache / ${coverage.syntheticFallback || 0} sim`;
+  }
 
   const dq = meta.dataQuality || {};
   setQualityBadge(elements.qualityHotspotsBadge, "Hotspots", dq.news || {});
@@ -409,6 +638,109 @@ function handleFilterClick(event) {
 
   renderCountryFilters();
   requestFilteredSnapshot();
+}
+
+function showAllCountries() {
+  selectedCountries = new Set(["ALL"]);
+  renderCountryFilters();
+  requestFilteredSnapshot();
+}
+
+function toggleCouplingTicker(ticker) {
+  const normalizedTicker = String(ticker || "").trim().toUpperCase();
+  if (!normalizedTicker) {
+    return;
+  }
+
+  const alreadySelected = selectedCouplingTickers.includes(normalizedTicker);
+  couplingSelectionTouched = true;
+
+  if (alreadySelected) {
+    if (selectedCouplingTickers.length <= 1) {
+      return;
+    }
+    selectedCouplingTickers = selectedCouplingTickers.filter((candidate) => candidate !== normalizedTicker);
+  } else if (selectedCouplingTickers.length >= 4) {
+    selectedCouplingTickers = [...selectedCouplingTickers.slice(1), normalizedTicker];
+  } else {
+    selectedCouplingTickers = [...selectedCouplingTickers, normalizedTicker];
+  }
+
+  renderDashboard(getState());
+}
+
+function handleActionClick(event) {
+  const trigger = event.target.closest("[data-action]");
+  if (!trigger) {
+    return;
+  }
+
+  if (trigger.dataset.action === "show-all-countries") {
+    event.preventDefault();
+    showAllCountries();
+    return;
+  }
+
+  if (trigger.dataset.action === "toggle-coupling-ticker") {
+    event.preventDefault();
+    toggleCouplingTicker(trigger.dataset.ticker);
+    return;
+  }
+
+  if (trigger.dataset.action === "set-analytics-window") {
+    event.preventDefault();
+    const windowMin = Number.parseInt(trigger.dataset.windowMin || "", 10);
+    if (Number.isFinite(windowMin) && windowMin > 0 && windowMin !== selectedAnalyticsWindowMin) {
+      selectedAnalyticsWindowMin = windowMin;
+      renderAnalyticsWindowSelector();
+      refreshAnalytics();
+    }
+  }
+}
+
+function hasPositiveCountryScores(countries = {}) {
+  return Object.values(countries || {}).some((country) => Number(country?.score || 0) > 0);
+}
+
+function resolveInsightsEmptyReason(rawState, filteredState) {
+  if ((filteredState.insights || []).length) {
+    return null;
+  }
+
+  if (!selectedIncludesAll()) {
+    if (!hasPositiveCountryScores(rawState.countries || {})) {
+      return `Watchlist focus is active. No country insights were produced for ${selectedCountryQueryValue()}. Switch to ALL to inspect broader country signals.`;
+    }
+    return `Watchlist focus is active. No country insights matched ${selectedCountryQueryValue()}. Switch to ALL to inspect broader country signals.`;
+  }
+
+  if (!hasPositiveCountryScores(rawState.countries || {})) {
+    return "No country-level risk signals survived the current news selection.";
+  }
+
+  return rawState.meta?.emptyStates?.insights || "No country insights available for the current filters.";
+}
+
+function resolveImpactEmptyReason(rawState, filteredState) {
+  if ((filteredState.impact?.items || []).length) {
+    return null;
+  }
+
+  if (!(filteredState.news || []).length) {
+    return !selectedIncludesAll()
+      ? `Watchlist focus is active. No intelligence items matched ${selectedCountryQueryValue()}. Switch to ALL to inspect broader signals.`
+      : "No intelligence items available for the current filters.";
+  }
+
+  if (!selectedIncludesAll()) {
+    return `Watchlist focus is active. No linked news-to-ticker signals matched ${selectedCountryQueryValue()} in the current event window. Switch to ALL to inspect broader market linkage.`;
+  }
+
+  return (
+    rawState.impact?.emptyReason ||
+    rawState.meta?.emptyStates?.impact ||
+    "No linked news-to-ticker signals were found in the current event window."
+  );
 }
 
 function renderNews(news = [], countries = {}) {
@@ -479,13 +811,15 @@ function renderDistribution(countries) {
 function chartAxesOptions() {
   return {
     x: {
-      ticks: { color: "#c7d4e2" },
-      grid: { color: "rgba(151, 169, 190, 0.12)" }
+      ticks: { color: "#e1eefc", maxTicksLimit: 8 },
+      grid: { color: "rgba(151, 169, 190, 0.2)" },
+      border: { color: "rgba(151, 169, 190, 0.26)" }
     },
     y: {
       beginAtZero: true,
-      ticks: { color: "#c7d4e2" },
-      grid: { color: "rgba(151, 169, 190, 0.16)" }
+      ticks: { color: "#e1eefc" },
+      grid: { color: "rgba(151, 169, 190, 0.22)" },
+      border: { color: "rgba(151, 169, 190, 0.26)" }
     }
   };
 }
@@ -524,7 +858,9 @@ function initImpactTimelineChart() {
         {
           label: "Prediction Score",
           data: [],
-          backgroundColor: []
+          backgroundColor: [],
+          borderRadius: 8,
+          borderSkipped: false
         }
       ]
     },
@@ -571,19 +907,30 @@ function initSectorBreakdownChart() {
       maintainAspectRatio: false,
       animation: false,
       plugins: {
-        legend: { labels: { color: "#c7d4e2" } },
+        legend: { display: false },
         tooltip: {
           callbacks: {
             label(context) {
               const raw = context.raw || {};
-              return `${raw.ticker || "N/A"} | ${raw.direction || "Sideways"} | score: ${raw.predictionScore || 0}`;
+              return `${raw.ticker || "N/A"} | ${raw.direction || "Sideways"} | score: ${raw.predictionScore || 0} | mode: ${marketModeLabel(
+                normalizeMarketDataMode(raw.dataMode || "synthetic-fallback")
+              )}`;
             }
           }
         }
       },
       scales: {
-        x: { ...chartAxesOptions().x, title: { display: true, text: "Event Score", color: "#c7d4e2" } },
-        y: { ...chartAxesOptions().y, title: { display: true, text: "Predicted Confidence", color: "#c7d4e2" } }
+        x: {
+          ...chartAxesOptions().x,
+          min: 0,
+          suggestedMax: 10,
+          title: { display: true, text: "Event Score", color: "#c7d4e2" }
+        },
+        y: {
+          ...chartAxesOptions().y,
+          suggestedMax: 100,
+          title: { display: true, text: "Predicted Confidence", color: "#c7d4e2" }
+        }
       }
     }
   });
@@ -597,10 +944,23 @@ function initImpactScatterChart() {
       responsive: true,
       maintainAspectRatio: false,
       animation: false,
+      interaction: {
+        mode: "index",
+        intersect: false
+      },
       plugins: { legend: { labels: { color: "#c7d4e2" } } },
       scales: {
         x: { ...chartAxesOptions().x, title: { display: true, text: "Time", color: "#c7d4e2" } },
-        y: { ...chartAxesOptions().y, title: { display: true, text: "Impact / Price Coupling", color: "#c7d4e2" } }
+        yImpact: {
+          ...chartAxesOptions().y,
+          title: { display: true, text: "Impact Score", color: "#c7d4e2" }
+        },
+        yPrice: {
+          ...chartAxesOptions().y,
+          position: "right",
+          title: { display: true, text: "Price Reaction %", color: "#c7d4e2" },
+          grid: { drawOnChartArea: false, color: "rgba(151, 169, 190, 0.12)" }
+        }
       }
     }
   });
@@ -650,9 +1010,12 @@ function renderPredictions(predictions = { sectors: [] }) {
     .join("");
 }
 
-function renderInsights(insights = []) {
+function renderInsights(insights = [], emptyReason = "") {
   if (!insights.length) {
-    elements.insightsList.innerHTML = '<div class="p-3 small text-light-emphasis">No insights available.</div>';
+    elements.insightsList.innerHTML = renderEmptyStateCard(
+      emptyReason || "No insights available.",
+      selectedIncludesAll() ? "" : "View ALL countries"
+    );
     return;
   }
 
@@ -662,7 +1025,12 @@ function renderInsights(insights = []) {
     Flat: "-"
   };
 
-  elements.insightsList.innerHTML = insights
+  const filterNotice =
+    !selectedIncludesAll() && insights.length < Math.min(4, currentWatchlist.length)
+      ? `<div class="filter-notice small"><strong>Watchlist filter active.</strong> You are viewing a narrowed country set. <button class="btn btn-sm btn-outline-info mt-2" type="button" data-action="show-all-countries">View ALL</button></div>`
+      : "";
+
+  elements.insightsList.innerHTML = filterNotice + insights
     .map(
       (insight) => `
       <article class="insight-item">
@@ -696,10 +1064,20 @@ function renderMarketQuotes(market = { quotes: {} }) {
       const change = Number(quote.changePct || 0);
       const cls = change >= 0 ? "text-up" : "text-down";
       const sign = change >= 0 ? "+" : "";
-      const modeCell = quote.synthetic ? '<span class="badge text-bg-warning data-mode-cell">SIM</span>' : "";
+      const mode = normalizeMarketDataMode(quote.dataMode || (quote.synthetic ? "synthetic-fallback" : "live"));
+      const modeCell = `<span class="market-mode-pill ${marketModeClass(mode)}">${marketModeLabel(mode)}</span>`;
+      const quoteAgeMin = deriveQuoteAgeMin(quote);
+      const ageLabel = Number.isFinite(quoteAgeMin) ? `${quoteAgeMin}m old` : "age --";
+      const sourceLabel = quote.source || "unknown";
       return `
         <tr>
-          <td>${escapeHtml(ticker)} ${modeCell}</td>
+          <td>
+            <div class="market-quote-head">
+              <strong>${escapeHtml(ticker)}</strong>
+              ${modeCell}
+            </div>
+            <div class="market-quote-meta">${escapeHtml(sourceLabel)} | ${escapeHtml(ageLabel)}</div>
+          </td>
           <td>${Number.isFinite(quote.price) ? quote.price.toFixed(2) : "--"}</td>
           <td class="${cls}">${sign}${change.toFixed(2)}%</td>
         </tr>
@@ -709,17 +1087,24 @@ function renderMarketQuotes(market = { quotes: {} }) {
 }
 
 function renderImpact(impact = { items: [] }) {
-  const items = impact.items || [];
+  const items = (impact.items || []).filter(
+    (item) => Number(item?.eventScore || 0) > 0 || Number(item?.impactScore || 0) > 0
+  );
   if (!items.length) {
-    elements.marketImpactList.innerHTML =
-      '<div class="p-3 small text-light-emphasis">No impact signals available for current filters.</div>';
+    elements.marketImpactList.innerHTML = renderEmptyStateCard(
+      impact.emptyReason || "No impact signals available for current filters.",
+      impact.showAllAction ? "View ALL countries" : ""
+    );
     return;
   }
 
   elements.marketImpactList.innerHTML = items
     .slice(0, 20)
-    .map(
-      (item) => `
+    .map((item) => {
+      const quoteMode = normalizeMarketDataMode(item.quote?.dataMode || (item.quote?.synthetic ? "synthetic-fallback" : "live"));
+      const quoteAgeMin = deriveQuoteAgeMin(item.quote || {});
+      const quoteAgeLabel = Number.isFinite(quoteAgeMin) ? `${quoteAgeMin}m` : "--";
+      return `
       <article class="impact-item">
         <div class="impact-header">
           <span><strong>${escapeHtml(item.ticker)}</strong> <span class="text-light-emphasis">(${escapeHtml(
@@ -732,26 +1117,142 @@ function renderImpact(impact = { items: [] }) {
             2
           )} | priceReaction: ${item.priceReaction.toFixed(2)}% | countries: ${(item.linkedCountries || []).join(", ") || "N/A"}
         </div>
+        <div class="impact-meta">
+          quote: ${escapeHtml(marketModeLabel(quoteMode))} | source: ${escapeHtml(item.quote?.source || "unknown")} | age: ${escapeHtml(quoteAgeLabel)}
+        </div>
       </article>
-    `
-    )
+    `;
+    })
     .join("");
 }
 
-function visibleTickersForCharts(state) {
-  const fromImpact = (state.impact?.items || []).map((item) => item.ticker);
+function visibleTickersForCharts(state, analytics = {}) {
+  const fromImpact = (analytics.impactItems || state.impact?.items || []).map((item) => item.ticker);
   if (fromImpact.length) {
     return new Set(fromImpact);
   }
   return new Set(Object.keys(state.market?.quotes || {}));
 }
 
+function hasActiveImpactSignals(items = []) {
+  return (items || []).some((item) => Number(item?.eventScore || 0) > 0 || Number(item?.impactScore || 0) > 0);
+}
+
+function fallbackDataModesByTicker(market = { quotes: {} }) {
+  return Object.fromEntries(
+    Object.entries(market.quotes || {}).map(([ticker, quote]) => [
+      ticker,
+      {
+        dataMode: normalizeMarketDataMode(quote?.dataMode || (quote?.synthetic ? "synthetic-fallback" : "live")),
+        synthetic: Boolean(quote?.synthetic),
+        source: quote?.source || "unknown",
+        quoteOriginStage: quote?.quoteOriginStage || "unknown",
+        quoteAgeMin: deriveQuoteAgeMin(quote)
+      }
+    ])
+  );
+}
+
+function resolveCouplingSelection(couplingSeries = [], visibleTickers = new Set()) {
+  const availableSeries = (couplingSeries || []).filter((series) => visibleTickers.has(series.ticker));
+  const availableTickers = availableSeries.map((series) => series.ticker);
+  const maxSelection = Math.min(4, availableTickers.length);
+
+  selectedCouplingTickers = selectedCouplingTickers.filter((ticker) => availableTickers.includes(ticker));
+
+  if (!selectedCouplingTickers.length && maxSelection > 0) {
+    selectedCouplingTickers = availableTickers.slice(0, maxSelection);
+    couplingSelectionTouched = false;
+  } else if (!couplingSelectionTouched && selectedCouplingTickers.length < maxSelection) {
+    for (const ticker of availableTickers) {
+      if (selectedCouplingTickers.length >= maxSelection) {
+        break;
+      }
+      if (!selectedCouplingTickers.includes(ticker)) {
+        selectedCouplingTickers.push(ticker);
+      }
+    }
+  } else if (selectedCouplingTickers.length > maxSelection) {
+    selectedCouplingTickers = selectedCouplingTickers.slice(-maxSelection);
+  }
+
+  const selectedTickers = [...selectedCouplingTickers];
+  const selectedSeries = availableSeries
+    .filter((series) => selectedTickers.includes(series.ticker))
+    .sort((left, right) => selectedTickers.indexOf(left.ticker) - selectedTickers.indexOf(right.ticker));
+
+  return {
+    availableSeries,
+    selectedSeries,
+    selectedTickers
+  };
+}
+
+function renderCouplingTickerSelector(availableSeries = [], selectedTickers = []) {
+  if (!elements.couplingTickerSelector) {
+    return;
+  }
+
+  if ((availableSeries || []).length <= 4) {
+    elements.couplingTickerSelector.classList.add("d-none");
+    elements.couplingTickerSelector.innerHTML = "";
+    return;
+  }
+
+  const selectedSet = new Set(selectedTickers);
+  elements.couplingTickerSelector.classList.remove("d-none");
+  elements.couplingTickerSelector.innerHTML = `
+    <div class="chart-selector-help small text-light-emphasis">Showing up to 4 ticker histories at once.</div>
+    <div class="chart-selector-chips">
+      ${(availableSeries || [])
+        .map((series) => {
+          const activeClass = selectedSet.has(series.ticker) ? "active" : "";
+          return `<button class="chart-selector-chip ${activeClass}" type="button" data-action="toggle-coupling-ticker" data-ticker="${escapeHtml(
+            series.ticker
+          )}">${escapeHtml(series.ticker)}</button>`;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function applyDeterministicMatrixJitter(points = []) {
+  const groups = new Map();
+  points.forEach((point) => {
+    const key = `${Number(point.x || 0).toFixed(2)}|${Math.round(Number(point.y || 0))}`;
+    if (!groups.has(key)) {
+      groups.set(key, []);
+    }
+    groups.get(key).push(point);
+  });
+
+  return [...groups.values()].flatMap((group) => {
+    if (group.length === 1) {
+      return group;
+    }
+
+    const ordered = [...group].sort((left, right) => String(left.ticker).localeCompare(String(right.ticker)));
+    return ordered.map((point, index) => {
+      const centeredIndex = index - (ordered.length - 1) / 2;
+      return {
+        ...point,
+        x: Number((point.x + centeredIndex * 0.28).toFixed(2)),
+        y: Number((point.y + centeredIndex * 1.15).toFixed(2))
+      };
+    });
+  });
+}
+
+function analyticsMatchesCurrentContext() {
+  return (
+    latestAnalyticsContext === selectedCountryQueryValue() &&
+    latestAnalyticsWindowMin === selectedAnalyticsWindowMin &&
+    (latestAnalytics?.predictedSectorDirection || latestAnalytics?.tickerOutlookMatrix || latestAnalytics?.couplingSeries)
+  );
+}
+
 function resolveAnalyticsPayload(rawState) {
-  if (
-    latestAnalytics?.predictedSectorDirection ||
-    latestAnalytics?.tickerOutlookMatrix ||
-    latestAnalytics?.couplingSeries
-  ) {
+  if (analyticsMatchesCurrentContext()) {
     return latestAnalytics;
   }
 
@@ -766,29 +1267,90 @@ function resolveAnalyticsPayload(rawState) {
   const tickerOutlookMatrix = (rawState.predictions?.tickers || []).map((prediction) => {
     const impact = (rawState.impact?.items || []).find((item) => item.ticker === prediction.ticker) || {};
     const quote = rawState.market?.quotes?.[prediction.ticker] || {};
+    const impactScore = Number(impact.impactScore || 0);
+    const changePct = Number(quote.changePct || 0);
     return {
       ticker: prediction.ticker,
       sector: prediction.sector,
       direction: prediction.direction,
       eventScore: impact.eventScore || 0,
-      impactScore: impact.impactScore || 0,
+      impactScore,
       predictedConfidence: prediction.predictedConfidence || prediction.confidence || 0,
       predictionScore: prediction.predictionScore || 0,
-      changePct: Number(quote.changePct || 0),
-      radius: Math.max(3, Math.min(18, Math.abs(Number(quote.changePct || 0)) * 2 + 4))
+      changePct,
+      radius: Math.max(4, Math.min(20, 4 + Math.abs(changePct) * 1.5 + Math.min(8, impactScore / 5))),
+      dataMode: normalizeMarketDataMode(quote.dataMode || (quote.synthetic ? "synthetic-fallback" : "live"))
     };
   });
 
-  const couplingSeries = (rawState.impact?.couplingSeries || []).slice(0, 3);
+  const couplingSeries = rawState.impact?.couplingSeries || [];
+  const impactItems = rawState.impact?.items || [];
+  const hasCurrentSignals = hasActiveImpactSignals(rawState.impact?.items || []);
+  const usesHistoricalOnly =
+    !hasCurrentSignals && couplingSeries.some((series) => (series.points || []).length >= 2);
 
   return {
     predictedSectorDirection,
     tickerOutlookMatrix,
-    couplingSeries
+    impactItems,
+    couplingSeries,
+    hasCurrentSignals,
+    usesHistoricalOnly,
+    dataModesByTicker: fallbackDataModesByTicker(rawState.market || { quotes: {} }),
+    signalWindow: {
+      requestedWindowMin: selectedAnalyticsWindowMin,
+      latestSelectedArticleAgeMin: Number.isFinite(rawState.meta?.sourceMeta?.latestSelectedArticleAgeMin)
+        ? rawState.meta.sourceMeta.latestSelectedArticleAgeMin
+        : null,
+      hasCurrentSignals,
+      usesHistoricalOnly
+    },
+    emptyReason: hasCurrentSignals
+      ? null
+      : usesHistoricalOnly
+        ? "Current window has no linked news-to-ticker signals; showing historical coupling only."
+        : "No linked news-to-ticker signals in the current event window."
   };
 }
 
-function renderPredictedSectorDirection(items = []) {
+function buildAnalyticsStatusMessage(analytics = {}) {
+  if (latestAnalyticsError) {
+    return latestAnalyticsError;
+  }
+
+  const signalWindow = analytics.signalWindow || {};
+  if (analytics.hasCurrentSignals) {
+    return "";
+  }
+
+  const latestAge = Number.isFinite(signalWindow.latestSelectedArticleAgeMin)
+    ? `${signalWindow.latestSelectedArticleAgeMin}m`
+    : "--";
+  const windowLabel = formatWindowLabel(signalWindow.requestedWindowMin || selectedAnalyticsWindowMin);
+  return analytics.usesHistoricalOnly
+    ? `Window ${windowLabel} has no linked current signals. Latest selected article age: ${latestAge}. Showing historical coupling only.`
+    : `Window ${windowLabel} has no linked current signals. Latest selected article age: ${latestAge}.`;
+}
+
+function resolveRenderedImpact(rawState, filteredState, analytics = {}) {
+  if (analyticsMatchesCurrentContext() && Array.isArray(analytics.impactItems)) {
+    return {
+      ...(rawState.impact || {}),
+      items: analytics.impactItems,
+      emptyReason: analytics.emptyReason || resolveImpactEmptyReason(rawState, filteredState),
+      signalWindow: analytics.signalWindow,
+      showAllAction: !selectedIncludesAll()
+    };
+  }
+
+  return {
+    ...(filteredState.impact || { items: [] }),
+    emptyReason: resolveImpactEmptyReason(rawState, filteredState),
+    showAllAction: !selectedIncludesAll()
+  };
+}
+
+function renderPredictedSectorDirection(items = [], overlayMessage = "") {
   impactTimelineChart.data.labels = items.map(
     (item) => `${String(item.sector || "unknown").toUpperCase()} (${Number(item.confidence || 0)}%)`
   );
@@ -798,10 +1360,15 @@ function renderPredictedSectorDirection(items = []) {
   );
   impactTimelineChart.data.datasets[0].confidenceMap = items.map((item) => Number(item.confidence || 0));
   impactTimelineChart.update();
+  setChartOverlay(
+    elements.impactTimelineChart,
+    latestAnalyticsError || (!items.length ? overlayMessage || "No prediction bands available." : "")
+  );
 }
 
-function renderTickerOutlookMatrix(items = [], visibleTickers = new Set()) {
-  const points = items
+function renderTickerOutlookMatrix(items = [], visibleTickers = new Set(), analytics = {}) {
+  const points = applyDeterministicMatrixJitter(
+    items
     .filter((item) => visibleTickers.has(item.ticker))
     .map((item) => ({
       x: Number(item.eventScore || 0),
@@ -810,41 +1377,67 @@ function renderTickerOutlookMatrix(items = [], visibleTickers = new Set()) {
       ticker: item.ticker,
       direction: item.direction,
       predictionScore: Number(item.predictionScore || 0),
-      changePct: Number(item.changePct || 0)
-    }));
+      changePct: Number(item.changePct || 0),
+      dataMode: normalizeMarketDataMode(item.dataMode || analytics.dataModesByTicker?.[item.ticker]?.dataMode || "synthetic-fallback")
+    }))
+  );
 
   sectorBreakdownChart.data.datasets[0].data = points;
   sectorBreakdownChart.data.datasets[0].pointBackgroundColor = points.map(
     (point) => DIRECTION_COLORS[point.direction] || "#6fb1ff"
   );
+  sectorBreakdownChart.data.datasets[0].pointBorderColor = points.map(
+    (point) => MODE_BORDER_COLORS[point.dataMode] || MODE_BORDER_COLORS["synthetic-fallback"]
+  );
+  sectorBreakdownChart.data.datasets[0].pointBorderWidth = points.map((point) => (point.dataMode === "live" ? 1.2 : 2.6));
+  sectorBreakdownChart.data.datasets[0].pointStyle = points.map(
+    (point) => MODE_POINT_STYLE[point.dataMode] || MODE_POINT_STYLE["synthetic-fallback"]
+  );
+  sectorBreakdownChart.options.scales.x.suggestedMax = Math.max(
+    2,
+    Math.ceil(Math.max(0, ...points.map((point) => Number(point.x || 0))) + 1)
+  );
   sectorBreakdownChart.update();
+  setChartOverlay(
+    elements.sectorBreakdownChart,
+    latestAnalyticsError || (!points.length ? analytics.emptyReason || "No ticker outlook points available for the current filters." : "")
+  );
 }
 
-function renderNewsPriceCoupling(couplingSeries = [], visibleTickers = new Set()) {
-  const selected = couplingSeries.filter((series) => visibleTickers.has(series.ticker)).slice(0, 3);
-  if (!selected.length) {
+function renderNewsPriceCoupling(selectedSeries = [], analytics = {}) {
+  const selectedWithPoints = (selectedSeries || []).filter((series) => (series.points || []).length >= 2);
+  if (!selectedWithPoints.length) {
     impactScatterChart.data.labels = [];
     impactScatterChart.data.datasets = [];
     impactScatterChart.update();
+    setChartOverlay(
+      elements.impactScatterChart,
+      latestAnalyticsError || analytics.emptyReason || "No coupling history available for the current filters."
+    );
     return;
   }
 
-  const labels = [...new Set(selected.flatMap((series) => (series.points || []).map((point) => point.timestamp)))]
+  const labels = [...new Set(selectedWithPoints.flatMap((series) => (series.points || []).map((point) => point.timestamp)))]
     .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
     .map((timestamp) => formatShortTime(timestamp));
 
   const datasets = [];
-  selected.forEach((series, index) => {
+  selectedWithPoints.forEach((series, index) => {
     const rawPoints = series.points || [];
     const map = new Map(rawPoints.map((point) => [formatShortTime(point.timestamp), point]));
     const color = CHART_COLORS[index % CHART_COLORS.length];
+    const dataMode = normalizeMarketDataMode(analytics.dataModesByTicker?.[series.ticker]?.dataMode || "synthetic-fallback");
+    const borderColor = dataMode === "live" ? color : MODE_BORDER_COLORS[dataMode] || color;
 
     datasets.push({
-      label: `${series.ticker} impact`,
+      label: `${series.ticker} impact [${String(dataMode).toUpperCase()}]`,
       data: labels.map((label) => Number(map.get(label)?.impactScore ?? null)),
-      borderColor: color,
-      backgroundColor: color,
-      tension: 0.25
+      borderColor,
+      backgroundColor: borderColor,
+      borderWidth: 2.4,
+      pointRadius: 2.5,
+      tension: 0.25,
+      yAxisID: "yImpact"
     });
     datasets.push({
       label: `${series.ticker} priceReaction`,
@@ -852,7 +1445,10 @@ function renderNewsPriceCoupling(couplingSeries = [], visibleTickers = new Set()
       borderColor: color,
       backgroundColor: color,
       borderDash: [5, 5],
-      tension: 0.25
+      borderWidth: 1.9,
+      pointRadius: 2,
+      tension: 0.25,
+      yAxisID: "yPrice"
     });
 
     if (Number.isFinite(series.predictionScore) && index === 0) {
@@ -863,7 +1459,8 @@ function renderNewsPriceCoupling(couplingSeries = [], visibleTickers = new Set()
         backgroundColor: "#f4c542",
         borderDash: [2, 3],
         pointRadius: 0,
-        tension: 0
+        tension: 0,
+        yAxisID: "yImpact"
       });
     }
   });
@@ -871,28 +1468,36 @@ function renderNewsPriceCoupling(couplingSeries = [], visibleTickers = new Set()
   impactScatterChart.data.labels = labels;
   impactScatterChart.data.datasets = datasets;
   impactScatterChart.update();
+  setChartOverlay(elements.impactScatterChart, latestAnalyticsError || "");
 }
 
-function renderCharts(rawState, filteredState) {
-  const analytics = resolveAnalyticsPayload(rawState);
-  const visibleTickers = visibleTickersForCharts(filteredState);
-  renderPredictedSectorDirection(analytics.predictedSectorDirection || []);
-  renderTickerOutlookMatrix(analytics.tickerOutlookMatrix || [], visibleTickers);
-  renderNewsPriceCoupling(analytics.couplingSeries || [], visibleTickers);
+function renderCharts(rawState, filteredState, analytics = resolveAnalyticsPayload(rawState)) {
+  const visibleTickers = visibleTickersForCharts(filteredState, analytics);
+  const couplingSelection = resolveCouplingSelection(analytics.couplingSeries || [], visibleTickers);
+  const predictionOverlay =
+    latestAnalyticsError && !(analytics.predictedSectorDirection || []).length
+      ? "Live analytics refresh failed. Showing snapshot-only view."
+      : latestAnalyticsError;
+  renderAnalyticsStatus(buildAnalyticsStatusMessage(analytics));
+  renderCouplingTickerSelector(couplingSelection.availableSeries, couplingSelection.selectedTickers);
+  renderPredictedSectorDirection(analytics.predictedSectorDirection || [], predictionOverlay);
+  renderTickerOutlookMatrix(analytics.tickerOutlookMatrix || [], visibleTickers, analytics);
+  renderNewsPriceCoupling(couplingSelection.selectedSeries, analytics);
 }
 
 function renderDashboard(rawState) {
   const state = filterStateBySelection(rawState);
+  const analytics = resolveAnalyticsPayload(rawState);
   renderMeta(rawState.meta, rawState.market || {});
   renderNews(state.news, state.countries);
   renderDistribution(state.countries);
   renderRiskChart(state.countries);
   renderPredictions(rawState.predictions || {});
-  renderInsights(state.insights);
+  renderInsights(state.insights, resolveInsightsEmptyReason(rawState, state));
   renderMarketQuotes(rawState.market || {});
-  renderImpact(state.impact || { items: [] });
-  renderCharts(rawState, state);
-  hotspotMap.render(state.hotspots, state.news);
+  renderImpact(resolveRenderedImpact(rawState, state, analytics));
+  renderCharts(rawState, state, analytics);
+  hotspotMap.render(state.hotspots, state.news, currentWatchlist);
 }
 
 function setWsStatus(status) {
@@ -908,12 +1513,31 @@ function selectedCountryQueryValue() {
 }
 
 async function refreshAnalytics() {
+  const requestToken = ++analyticsRequestToken;
+  const countryKey = selectedCountryQueryValue();
   try {
-    latestAnalytics = await api.getMarketAnalytics({
-      countries: selectedCountryQueryValue()
+    const payload = await api.getMarketAnalytics({
+      countries: countryKey,
+      windowMin: selectedAnalyticsWindowMin
     });
+    if (requestToken !== analyticsRequestToken) {
+      return;
+    }
+    latestAnalytics = payload;
+    latestAnalyticsContext = countryKey;
+    latestAnalyticsWindowMin = selectedAnalyticsWindowMin;
+    latestAnalyticsError = "";
+    renderDashboard(getState());
   } catch (error) {
+    if (requestToken !== analyticsRequestToken) {
+      return;
+    }
+    latestAnalytics = null;
+    latestAnalyticsContext = "";
+    latestAnalyticsWindowMin = selectedAnalyticsWindowMin;
+    latestAnalyticsError = "Live analytics refresh failed. Displaying snapshot-derived charts.";
     console.error("Failed to refresh analytics:", error);
+    renderDashboard(getState());
   }
 }
 
@@ -926,6 +1550,12 @@ function scheduleAnalyticsRefresh() {
 
 async function requestFilteredSnapshot() {
   try {
+    latestAnalytics = null;
+    latestAnalyticsContext = "";
+    latestAnalyticsWindowMin = selectedAnalyticsWindowMin;
+    latestAnalyticsError = "";
+    selectedCouplingTickers = [];
+    couplingSelectionTouched = false;
     const snapshot = await api.getSnapshot({
       countries: selectedCountryQueryValue(),
       limit: 100
@@ -1005,13 +1635,229 @@ function toggleApiLimitsPanel() {
   elements.apiLimitsPanel.classList.toggle("d-none");
 }
 
+function renderPipelineStatus(payload = {}) {
+  const market = payload.market || {};
+  const news = payload.news || {};
+
+  if (!elements.pipelineStatusBody) {
+    return;
+  }
+
+  const rows = [
+    {
+      pipeline: "market",
+      band: market.quotaBand || "--",
+      nextRun: market.nextRecommendedRunAt ? `${formatShortTime(market.nextRecommendedRunAt)} (${formatDurationMs(market.nextDelayMs)})` : "--",
+      mode: market.requestMode || "--",
+      skipped: (market.providersSkipped || []).map((item) => item.provider).join(", ") || "--",
+      batchOrPage: market.batchSize || "--",
+      lastError:
+        market.lastUpstreamError ||
+        ((market.usedStaleQuotes || []).length ? `stale:${(market.usedStaleQuotes || []).length}` : "--")
+    },
+    {
+      pipeline: "news",
+      band: news.quotaBand || "--",
+      nextRun: news.nextRecommendedRunAt ? `${formatShortTime(news.nextRecommendedRunAt)} (${formatDurationMs(news.nextDelayMs)})` : "--",
+      mode: news.provider || "--",
+      skipped: (news.providersSkipped || []).map((item) => item.provider).join(", ") || "--",
+      batchOrPage: news.pageSize || "--",
+      lastError: (news.attempts || []).filter((item) => item.status === "error").map((item) => item.provider).join(", ") || "--"
+    }
+  ];
+
+  elements.pipelineStatusBody.innerHTML = rows
+    .map(
+      (row) => `
+        <tr>
+          <td>${escapeHtml(row.pipeline)}</td>
+          <td>${escapeHtml(row.band)}</td>
+          <td>${escapeHtml(row.nextRun)}</td>
+          <td>${escapeHtml(String(row.mode))}</td>
+          <td>${escapeHtml(row.skipped)}</td>
+          <td>${escapeHtml(String(row.batchOrPage))}</td>
+          <td>${escapeHtml(row.lastError)}</td>
+        </tr>
+      `
+    )
+    .join("");
+
+  renderPipelineDiagnostics(news);
+  renderRecentCycleErrors(payload.recentCycleErrors || []);
+}
+
+function buildNewsProviderDiagnostics(news = {}) {
+  const attemptByProvider = new Map(
+    (news.attempts || []).map((attempt) => [String(attempt.provider || "").toLowerCase(), attempt])
+  );
+  const rawCounts = news.rawCountByProvider || {};
+  const selectedCounts = news.selectedCountByProvider || {};
+  const queryLengths = news.queryLengthByProvider || {};
+  const providers = new Set([
+    ...Object.keys(rawCounts),
+    ...Object.keys(selectedCounts),
+    ...Object.keys(queryLengths),
+    ...(news.attempts || []).map((attempt) => String(attempt.provider || "").toLowerCase())
+  ]);
+
+  return [...providers]
+    .filter(Boolean)
+    .sort()
+    .map((provider) => {
+      const attempt = attemptByProvider.get(provider) || {};
+      const hasRawCount = Object.prototype.hasOwnProperty.call(rawCounts, provider);
+      const hasSelectedCount = Object.prototype.hasOwnProperty.call(selectedCounts, provider);
+      const hasQueryLength = Object.prototype.hasOwnProperty.call(queryLengths, provider);
+      const status = ["ok", "empty", "error", "skipped"].includes(String(attempt.status || "").toLowerCase())
+        ? String(attempt.status).toLowerCase()
+        : Number(news.selectedCountByProvider?.[provider] || 0) > 0
+          ? "ok"
+          : "empty";
+
+      return {
+        provider,
+        status,
+        rawCount: Number(hasRawCount ? rawCounts[provider] : attempt.rawCount || 0),
+        selectedCount: Number(hasSelectedCount ? selectedCounts[provider] : attempt.count || 0),
+        queryLength: Number(hasQueryLength ? queryLengths[provider] : 0),
+        reason: attempt.reason || "",
+        nextAllowedAt: attempt.nextAllowedAt || ""
+      };
+    });
+}
+
+function buildSourceSelectionDiagnostics(news = {}) {
+  return (news.selectionBySourceName || [])
+    .slice(0, 8)
+    .map((item) => ({
+      provider: item.provider || "unknown",
+      sourceName: item.sourceName || "Unknown Source",
+      raw: Number(item.raw || 0),
+      filtered: Number(item.filtered || 0),
+      selected: Number(item.selected || 0)
+    }));
+}
+
+function renderPipelineDiagnostics(news = {}) {
+  if (elements.pipelineDiagnosticsBody) {
+    const diagnostics = buildNewsProviderDiagnostics(news);
+    const sourceDiagnostics = buildSourceSelectionDiagnostics(news);
+
+    if (!diagnostics.length) {
+      elements.pipelineDiagnosticsBody.innerHTML =
+        '<div class="diagnostic-item diagnostic-item-meta">No provider diagnostics available.</div>';
+    } else {
+      const providerMarkup = diagnostics
+        .map((item) => {
+          const reasonLine = item.reason
+            ? `<div class="diagnostic-item-meta">reason: ${escapeHtml(item.reason)}${
+                item.nextAllowedAt ? ` | next: ${escapeHtml(formatShortTime(item.nextAllowedAt))}` : ""
+              }</div>`
+            : item.nextAllowedAt
+              ? `<div class="diagnostic-item-meta">next: ${escapeHtml(formatShortTime(item.nextAllowedAt))}</div>`
+              : "";
+          return `
+            <article class="diagnostic-item">
+              <div class="diagnostic-item-header">
+                <strong>${escapeHtml(item.provider)}</strong>
+                <span class="diagnostic-pill ${item.status}">${escapeHtml(item.status)}</span>
+              </div>
+              <div class="diagnostic-item-meta">
+                raw: ${item.rawCount} | selected: ${item.selectedCount} | query length: ${item.queryLength}
+              </div>
+              ${reasonLine}
+            </article>
+          `;
+        })
+        .join("");
+      const sourceMarkup = sourceDiagnostics.length
+        ? `
+          <div class="diagnostic-section-label">Selection by source</div>
+          ${sourceDiagnostics
+            .map(
+              (item) => `
+                <article class="diagnostic-item">
+                  <div class="diagnostic-item-header">
+                    <strong>${escapeHtml(item.sourceName)}</strong>
+                    <span class="diagnostic-pill ok">${escapeHtml(item.provider)}</span>
+                  </div>
+                  <div class="diagnostic-item-meta">raw: ${item.raw} | filtered: ${item.filtered} | selected: ${item.selected}</div>
+                </article>
+              `
+            )
+            .join("")}
+        `
+        : "";
+      elements.pipelineDiagnosticsBody.innerHTML = providerMarkup + sourceMarkup;
+    }
+  }
+
+  if (!elements.rssFeedStatusBody) {
+    return;
+  }
+
+  const feedStatus = news.rssFeedStatus || [];
+  if (!feedStatus.length) {
+    elements.rssFeedStatusBody.innerHTML =
+      '<div class="diagnostic-item diagnostic-item-meta">No RSS diagnostics available.</div>';
+    return;
+  }
+
+  elements.rssFeedStatusBody.innerHTML = feedStatus
+    .map((feed) => {
+      const status = String(feed.status || "empty").toLowerCase();
+      const safeStatus = ["ok", "error", "empty", "invalid-feed", "skipped"].includes(status) ? status : "empty";
+      return `
+        <article class="diagnostic-item">
+          <div class="diagnostic-item-header">
+            <strong>${escapeHtml(feed.label || feed.url || "RSS feed")}</strong>
+            <span class="diagnostic-pill ${safeStatus}">${escapeHtml(status)}</span>
+          </div>
+          <div class="diagnostic-item-meta">
+            count: ${Number(feed.count || 0)} | ${escapeHtml(feed.error || feed.url || "--")}
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function renderRecentCycleErrors(items = []) {
+  if (!elements.recentCycleErrorsBody) {
+    return;
+  }
+
+  if (!(items || []).length) {
+    elements.recentCycleErrorsBody.innerHTML =
+      '<div class="diagnostic-item diagnostic-item-meta">No recent cycle errors recorded.</div>';
+    return;
+  }
+
+  elements.recentCycleErrorsBody.innerHTML = (items || [])
+    .slice(-10)
+    .reverse()
+    .map(
+      (item) => `
+        <article class="diagnostic-item">
+          <div class="diagnostic-item-header">
+            <strong>${escapeHtml(item.provider || item.cycle || "system")}</strong>
+            <span class="diagnostic-pill error">${escapeHtml(item.code || "error")}</span>
+          </div>
+          <div class="diagnostic-item-meta">${escapeHtml(item.cycle || "system")} | ${escapeHtml(formatShortTime(item.at))}</div>
+          <div class="diagnostic-item-meta">${escapeHtml(item.message || "unknown-error")}</div>
+        </article>
+      `
+    )
+    .join("");
+}
+
 function renderApiLimits(payload = { providers: [] }) {
   const providers = payload.providers || [];
   elements.apiLimitsUpdated.textContent = `Updated: ${formatDate(payload.generatedAt)}`;
 
   if (!providers.length) {
     elements.apiLimitsBody.innerHTML =
-      '<tr><td colspan="7" class="text-light-emphasis">No API limits data available.</td></tr>';
+      '<tr><td colspan="8" class="text-light-emphasis">No API limits data available.</td></tr>';
     return;
   }
 
@@ -1022,6 +1868,7 @@ function renderApiLimits(payload = { providers: [] }) {
       return `
         <tr>
           <td>${escapeHtml(provider.provider)}</td>
+          <td>${escapeHtml(provider.quotaBand || "--")}</td>
           <td>${provider.calls24h}</td>
           <td>${provider.success24h}</td>
           <td>${provider.errors24h}</td>
@@ -1036,8 +1883,9 @@ function renderApiLimits(payload = { providers: [] }) {
 
 async function refreshApiLimits() {
   try {
-    const data = await api.getApiLimits();
-    renderApiLimits(data);
+    const [limits, pipeline] = await Promise.all([api.getApiLimits(), api.getPipelineStatus()]);
+    renderApiLimits(limits);
+    renderPipelineStatus(pipeline);
   } catch (error) {
     console.error("Failed to load API limits:", error);
   }
@@ -1055,6 +1903,7 @@ function startPolling() {
 
 async function bootstrap() {
   cacheElements();
+  renderAnalyticsWindowSelector();
   hotspotMap = new HotspotMap("hotspot-map");
   hotspotMap.init();
   initRiskChart();
@@ -1063,6 +1912,7 @@ async function bootstrap() {
   initImpactScatterChart();
 
   elements.countryFilterBar.addEventListener("click", handleFilterClick);
+  document.body.addEventListener("click", handleActionClick);
   elements.toggleApiLimits.addEventListener("click", () => {
     toggleApiLimitsPanel();
     refreshApiLimits();

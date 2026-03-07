@@ -18,12 +18,17 @@ test("filterNewsBySources keeps requested providers only", () => {
   const news = [
     { id: "1", provider: "newsapi" },
     { id: "2", provider: "gnews" },
+    { id: "4", provider: "rss" },
     { id: "3", provider: "fallback" }
   ];
 
-  const filtered = filterNewsBySources(news, parseSources("newsapi,gnews"));
-  assert.equal(filtered.length, 2);
-  assert.ok(filtered.every((item) => ["newsapi", "gnews"].includes(item.provider)));
+  const filtered = filterNewsBySources(news, parseSources("newsapi,gnews,rss"));
+  assert.equal(filtered.length, 3);
+  assert.ok(filtered.every((item) => ["newsapi", "gnews", "rss"].includes(item.provider)));
+});
+
+test("parseSources accepts rss and gdelt providers", () => {
+  assert.deepEqual(parseSources("rss,gdelt,fallback"), ["rss", "gdelt", "fallback"]);
 });
 
 test("applyCountryFilter trims snapshot by selected countries", () => {

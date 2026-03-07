@@ -43,6 +43,7 @@ function normalizeArticle(rawArticle, index, provider) {
     countryMentions,
     synthetic: Boolean(rawArticle?.synthetic),
     dataMode: rawArticle?.dataMode || (String(rawArticle?.provider || provider) === "fallback" ? "fallback" : "live"),
+    usagePolicy: rawArticle?.usagePolicy || "standard-link-out",
     sentiment,
     conflict
   };

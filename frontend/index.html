@@ -51,11 +51,28 @@
             <h2 class="panel-title mb-0">API Limits Monitor (24h)</h2>
             <span id="api-limits-updated" class="small text-light-emphasis">--</span>
           </header>
+          <div class="table-responsive px-2 py-2 border-bottom border-secondary-subtle">
+            <table class="table table-sm table-dark align-middle mb-0 market-table">
+              <thead>
+                <tr>
+                  <th>Pipeline</th>
+                  <th>Band</th>
+                  <th>Next Run</th>
+                  <th>Mode</th>
+                  <th>Skipped</th>
+                  <th>Batch/Page</th>
+                  <th>Last Error</th>
+                </tr>
+              </thead>
+              <tbody id="pipeline-status-body"></tbody>
+            </table>
+          </div>
           <div class="table-responsive px-2 py-2">
             <table class="table table-sm table-dark align-middle mb-0 market-table">
               <thead>
                 <tr>
                   <th>Provider</th>
+                  <th>Band</th>
                   <th>Calls 24h</th>
                   <th>Success</th>
                   <th>Errors</th>
@@ -66,6 +83,26 @@
               </thead>
               <tbody id="api-limits-body"></tbody>
             </table>
+          </div>
+          <div class="row g-3 px-2 pb-2">
+            <div class="col-12 col-xl-4">
+              <section class="diagnostic-card h-100">
+                <header class="diagnostic-card-header">Provider Flow</header>
+                <div id="pipeline-diagnostics-body" class="diagnostic-list"></div>
+              </section>
+            </div>
+            <div class="col-12 col-xl-4">
+              <section class="diagnostic-card h-100">
+                <header class="diagnostic-card-header">RSS Feed Status</header>
+                <div id="rss-feed-status-body" class="diagnostic-list"></div>
+              </section>
+            </div>
+            <div class="col-12 col-xl-4">
+              <section class="diagnostic-card h-100">
+                <header class="diagnostic-card-header">Recent Cycle Errors</header>
+                <div id="recent-cycle-errors-body" class="diagnostic-list"></div>
+              </section>
+            </div>
           </div>
         </div>
 
@@ -129,6 +166,7 @@
                   <span id="market-updated-text" class="small text-light-emphasis">--</span>
                 </div>
               </header>
+              <div id="market-coverage-text" class="panel-meta-strip small text-light-emphasis px-3 py-2">Coverage: --</div>
               <div class="table-responsive px-2 py-2">
                 <table class="table table-sm table-dark align-middle mb-0 market-table">
                   <thead>
@@ -173,6 +211,10 @@
         </div>
 
         <div class="row g-3 mt-1">
+          <div class="col-12">
+            <div id="analytics-status" class="analytics-status d-none"></div>
+            <div id="analytics-window-selector" class="chart-selector chart-selector-inline mt-2"></div>
+          </div>
           <div class="col-12 col-xl-4">
             <section class="panel h-100">
               <header class="panel-header">
@@ -198,6 +240,7 @@
               <header class="panel-header">
                 <h2 class="panel-title mb-0">News-to-Price Coupling</h2>
               </header>
+              <div id="coupling-ticker-selector" class="chart-selector d-none"></div>
               <div class="chart-wrap">
                 <canvas id="impact-scatter-chart"></canvas>
               </div>

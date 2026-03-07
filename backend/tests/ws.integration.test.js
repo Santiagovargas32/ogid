@@ -43,7 +43,7 @@ test("WebSocket emits snapshot and update envelopes", async () => {
     port: 0,
     refreshIntervalMs: 300_000,
     wsHeartbeatMs: 60_000,
-    market: { refreshIntervalMs: 300_000, apiKey: "" },
+    market: { refreshIntervalMs: 300_000, apiKey: "", fmpApiKey: "", requestReserve: 0 },
     news: { newsApiKey: "" }
   });
 

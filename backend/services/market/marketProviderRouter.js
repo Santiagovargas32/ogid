@@ -1,8 +1,10 @@
 import apiQuotaTracker from "../admin/apiQuotaTrackerService.js";
+import { resolveBandByProviderSnapshots } from "../refreshPolicyService.js";
 import { createLogger } from "../../utils/logger.js";
 import { fetchAlphaVantageProviderQuotes } from "./providers/alphaVantageProvider.js";
 import { fetchFmpQuotes } from "./providers/fmpProvider.js";
 import { buildFallbackQuote } from "./providers/quoteFallback.js";
+import { buildCoverageByMode } from "./quoteMetadata.js";
 
 const log = createLogger("backend/services/market/marketProviderRouter");
 
@@ -30,14 +32,136 @@ function buildProviderConfig(provider, config) {
   if (provider === "fmp") {
     return {
       apiKey: config.fmpApiKey || "",
-      baseUrl: config.fmpBaseUrl || "https://financialmodelingprep.com/api/v3"
+      baseUrl:
+        config.fmpStableBaseUrl ||
+        config.fmpBaseUrl ||
+        "https://financialmodelingprep.com/stable",
+      batchChunkSize: config.batchChunkSize,
+      enableHistoricalBackfill: config.enableHistoricalBackfill === true,
+      historicalBackfillTickers: config.historicalBackfillTickers || []
     };
   }
 
   return {
     apiKey: config.apiKey || config.alphaVantageApiKey || "",
-    baseUrl: config.baseUrl || config.alphaVantageBaseUrl || "https://www.alphavantage.co/query"
+    baseUrl: config.baseUrl || config.alphaVantageBaseUrl || "https://www.alphavantage.co/query",
+    maxRequestsPerRun: config.alphaVantageMaxRequestsPerRun
   };
+}
+
+function resolveProviderAvailability(provider, { reserve = 0, allowExhaustedProviders = false } = {}) {
+  const snapshot = apiQuotaTracker.getProviderSnapshot(provider);
+  const remaining = snapshot?.effectiveRemaining;
+  const reserveFloor = Math.max(0, Number.parseInt(String(reserve ?? ""), 10) || 0);
+
+  if (allowExhaustedProviders) {
+    return {
+      available: true,
+      snapshot,
+      reason: null
+    };
+  }
+
+  if (snapshot?.exhausted) {
+    return {
+      available: false,
+      snapshot,
+      reason: "exhausted"
+    };
+  }
+
+  if (Number.isFinite(remaining) && remaining <= reserveFloor) {
+    return {
+      available: false,
+      snapshot,
+      reason: "reserve-floor"
+    };
+  }
+
+  return {
+    available: true,
+    snapshot,
+    reason: null
+  };
+}
+
+function buildProviderOrder(primaryProvider, fallbackProvider, options) {
+  const attemptedOrder = [...new Set([primaryProvider, fallbackProvider].filter(Boolean))];
+  const providersAvailable = [];
+  const providersSkipped = [];
+  const providerSnapshots = [];
+
+  for (const provider of attemptedOrder) {
+    const availability = resolveProviderAvailability(provider, options);
+    if (availability.snapshot) {
+      providerSnapshots.push(availability.snapshot);
+    }
+
+    if (availability.available) {
+      providersAvailable.push(provider);
+      continue;
+    }
+
+    providersSkipped.push({
+      provider,
+      reason: availability.reason,
+      remaining: availability.snapshot?.effectiveRemaining ?? null
+    });
+  }
+
+  return {
+    providersAvailable,
+    providersSkipped,
+    providerSnapshots
+  };
+}
+
+function resolveHistoricalBackfillTickers(config = {}, tickers = [], provider, providerSnapshot) {
+  if (provider !== "fmp") {
+    return [];
+  }
+
+  const previousTimeseries = config.previousTimeseries || {};
+  const seedTickers = tickers.filter((ticker) => (previousTimeseries[ticker] || []).length === 0);
+  if (!seedTickers.length) {
+    return [];
+  }
+
+  const reserve = Math.max(0, Number.parseInt(String(config.requestReserve ?? 0), 10) || 0);
+  const remaining = providerSnapshot?.effectiveRemaining;
+  if (Number.isFinite(remaining) && remaining <= reserve + seedTickers.length) {
+    return [];
+  }
+
+  return seedTickers;
+}
+
+function buildStaleQuote(previousQuote, { timestamp, staleTtlMs }) {
+  if (!previousQuote || !Number.isFinite(previousQuote.price)) {
+    return null;
+  }
+
+  const asOfValue = previousQuote.asOf || previousQuote.updatedAt;
+  const asOfTime = new Date(asOfValue || 0).getTime();
+  const ttlMs = Math.max(0, Number.parseInt(String(staleTtlMs ?? 0), 10) || 0);
+  if (!Number.isFinite(asOfTime)) {
+    return null;
+  }
+
+  if (ttlMs > 0 && Date.now() - asOfTime > ttlMs) {
+    return null;
+  }
+
+  return {
+    ...previousQuote,
+    synthetic: false,
+    dataMode: "router-stale",
+    staleAt: timestamp
+  };
+}
+
+function buildFallbackSet(unresolved, timestamp) {
+  return Object.fromEntries(unresolved.map((ticker) => [ticker, buildFallbackQuote(ticker, timestamp)]));
 }
 
 export async function fetchMarketQuotes(config = {}) {
@@ -48,73 +172,140 @@ export async function fetchMarketQuotes(config = {}) {
     config.fallbackProvider || (primaryProvider === "fmp" ? "alphavantage" : "fmp"),
     primaryProvider === "fmp" ? "alphavantage" : "fmp"
   );
+  const requestReserve = Math.max(0, Number.parseInt(String(config.requestReserve ?? 0), 10) || 0);
+  const staleTtlMs = Math.max(0, Number.parseInt(String(config.staleTtlMs ?? 0), 10) || 0);
+  const previousQuotes = config.previousQuotes || {};
 
-  const primaryFetcher = PROVIDER_MAP[primaryProvider];
-  const fallbackFetcher = PROVIDER_MAP[fallbackProvider];
-
-  const primaryResult = await primaryFetcher({
-    ...buildProviderConfig(primaryProvider, config),
-    tickers,
-    timeoutMs: config.timeoutMs,
-    timestamp
+  const providerOrder = buildProviderOrder(primaryProvider, fallbackProvider, {
+    reserve: requestReserve,
+    allowExhaustedProviders: config.allowExhaustedProviders === true
   });
+  const quotaBand = resolveBandByProviderSnapshots(providerOrder.providerSnapshots);
+  const mergedQuotes = {};
+  const providersUsed = [];
+  const errors = [];
+  const historicalSeries = {};
+  let lastUpstreamError = null;
+  const requestModes = [];
+  let unresolved = [...tickers];
 
-  const mergedQuotes = { ...(primaryResult.quotes || {}) };
-  const providersUsed = [primaryProvider];
-  const errors = [...(primaryResult.sourceMeta?.errors || [])];
-  let unresolved = [...(primaryResult.missingTickers || [])];
+  for (const provider of providerOrder.providersAvailable) {
+    if (!unresolved.length) {
+      break;
+    }
 
-  if (fallbackFetcher && fallbackProvider !== primaryProvider && unresolved.length) {
-    const fallbackResult = await fallbackFetcher({
-      ...buildProviderConfig(fallbackProvider, config),
+    const fetcher = PROVIDER_MAP[provider];
+    const providerSnapshot = providerOrder.providerSnapshots.find((snapshot) => snapshot.provider === provider) || null;
+    const historicalBackfillTickers = resolveHistoricalBackfillTickers(config, unresolved, provider, providerSnapshot);
+    const providerConfig = buildProviderConfig(provider, {
+      ...config,
+      enableHistoricalBackfill: historicalBackfillTickers.length > 0,
+      historicalBackfillTickers
+    });
+
+    const providerResult = await fetcher({
+      ...providerConfig,
       tickers: unresolved,
       timeoutMs: config.timeoutMs,
       timestamp
     });
 
-    providersUsed.push(fallbackProvider);
-    Object.assign(mergedQuotes, fallbackResult.quotes || {});
-    errors.push(...(fallbackResult.sourceMeta?.errors || []));
-    unresolved = unresolved.filter((ticker) => !fallbackResult.quotes?.[ticker]);
+    providersUsed.push(provider);
+    Object.assign(mergedQuotes, providerResult.quotes || {});
+    Object.assign(historicalSeries, providerResult.historicalSeries || {});
+    errors.push(
+      ...(providerResult.sourceMeta?.errors || []).map((error) => ({
+        provider,
+        ...error,
+        code: error.code || error.reason || "unknown-error",
+        reason: error.reason || error.code || "unknown-error"
+      }))
+    );
+    if (providerResult.sourceMeta?.requestMode) {
+      requestModes.push(providerResult.sourceMeta.requestMode);
+    }
+
+    const providerError =
+      providerResult.sourceMeta?.errors?.at?.(-1)?.code ||
+      providerResult.sourceMeta?.errors?.at?.(-1)?.reason ||
+      providerResult.sourceMeta?.reason ||
+      null;
+    if (providerError) {
+      lastUpstreamError = providerError;
+    }
+
+    unresolved = unresolved.filter((ticker) => !providerResult.quotes?.[ticker]);
+  }
+
+  const staleQuotes = {};
+  if (unresolved.length && staleTtlMs > 0) {
+    for (const ticker of unresolved) {
+      const staleQuote = buildStaleQuote(previousQuotes[ticker], {
+        timestamp,
+        staleTtlMs
+      });
+      if (!staleQuote) {
+        continue;
+      }
+      staleQuotes[ticker] = staleQuote;
+      mergedQuotes[ticker] = staleQuote;
+    }
+    unresolved = unresolved.filter((ticker) => !staleQuotes[ticker]);
   }
 
   if (unresolved.length) {
-    for (const ticker of unresolved) {
-      mergedQuotes[ticker] = buildFallbackQuote(ticker, timestamp);
-    }
-    apiQuotaTracker.markFallback(primaryProvider);
-    if (fallbackProvider !== primaryProvider) {
-      apiQuotaTracker.markFallback(fallbackProvider);
+    Object.assign(mergedQuotes, buildFallbackSet(unresolved, timestamp));
+    for (const provider of providersUsed) {
+      apiQuotaTracker.markFallback(provider, timestamp);
     }
   }
 
-  const liveCount = Object.values(mergedQuotes).filter((quote) => quote && quote.synthetic === false).length;
+  const liveCount = Object.values(mergedQuotes).filter((quote) => quote?.dataMode === "live").length;
   const totalTickers = tickers.length;
-  const sourceMode = resolveSourceMode(liveCount, totalTickers);
+  const requestMode = [...new Set(requestModes)].join("+") || "unavailable";
+  const usedStaleQuotes = Object.keys(staleQuotes);
+  const coverageByMode = buildCoverageByMode(mergedQuotes);
+  const providerErrors = errors.map((error) => ({
+    ...error,
+    code: error.code || error.reason || "unknown-error",
+    reason: error.reason || error.code || "unknown-error"
+  }));
 
   log.info("market_router_completed", {
     primaryProvider,
     fallbackProvider,
     providersUsed,
+    providersSkipped: providerOrder.providersSkipped,
     liveCount,
-    fallbackCount: totalTickers - liveCount,
+    staleCount: coverageByMode.routerStale,
+    fallbackCount: unresolved.length,
     totalTickers,
-    sourceMode
+    quotaBand,
+    sourceMode: resolveSourceMode(liveCount, totalTickers)
   });
 
   return {
-    provider: providersUsed.join("+"),
-    sourceMode,
+    provider: providersUsed.join("+") || "market-router",
+    sourceMode: resolveSourceMode(liveCount, totalTickers),
     sourceMeta: {
-      provider: providersUsed.join("+"),
+      provider: providersUsed.join("+") || "market-router",
       providersUsed,
+      providersSkipped: providerOrder.providersSkipped,
       liveCount,
       totalTickers,
-      fallbackCount: totalTickers - liveCount,
+      fallbackCount: unresolved.length,
       unresolvedTickers: unresolved,
-      errors
+      usedStaleQuotes,
+      coverageByMode,
+      quotaBand,
+      requestMode,
+      batchSize: Number.parseInt(String(config.batchChunkSize ?? 25), 10) || 25,
+      lastUpstreamError,
+      errors: providerErrors,
+      providerErrors
     },
     quotes: mergedQuotes,
+    historicalSeries,
     updatedAt: timestamp
   };
 }

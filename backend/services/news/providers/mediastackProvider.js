@@ -4,7 +4,7 @@ function ensureTrailingSlash(baseUrl) {
   return String(baseUrl).endsWith("/") ? String(baseUrl) : `${String(baseUrl)}/`;
 }
 
-function buildMediastackUrl({ baseUrl, apiKey, query, language, pageSize, countries = [] }) {
+function buildMediastackUrl({ baseUrl, apiKey, query, language, pageSize, countries = [], sources = [] }) {
   const url = new URL("news", ensureTrailingSlash(baseUrl));
   url.searchParams.set("access_key", apiKey);
   url.searchParams.set("keywords", query);
@@ -20,6 +20,10 @@ function buildMediastackUrl({ baseUrl, apiKey, query, language, pageSize, countr
 
   if (countryList.length) {
     url.searchParams.set("countries", countryList.join(","));
+  }
+
+  if (sources.length) {
+    url.searchParams.set("sources", sources.join(","));
   }
 
   return url;
@@ -61,6 +65,7 @@ export async function fetchMediastack({
   language,
   pageSize,
   countries = [],
+  sources = [],
   timeoutMs = 9_000
 }) {
   if (!apiKey) {
@@ -73,7 +78,8 @@ export async function fetchMediastack({
     query,
     language,
     pageSize,
-    countries
+    countries,
+    sources
   });
 
   const response = await fetchWithTimeout(

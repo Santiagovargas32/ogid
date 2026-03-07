@@ -32,9 +32,9 @@ export function parseCountries(rawValue, defaults = []) {
   return filtered.length ? [...new Set(filtered)] : [...defaults];
 }
 
-export function parseSources(rawValue, defaults = ["newsapi", "gnews", "mediastack", "fallback"]) {
+export function parseSources(rawValue, defaults = ["newsapi", "gnews", "mediastack", "rss", "gdelt", "fallback"]) {
   const normalized = normalizeCsv(rawValue).map((value) => value.toLowerCase());
-  const allowed = new Set(["newsapi", "gnews", "mediastack", "fallback"]);
+  const allowed = new Set(["newsapi", "gnews", "mediastack", "rss", "gdelt", "fallback"]);
   const filtered = normalized.filter((source) => allowed.has(source));
   return filtered.length ? [...new Set(filtered)] : [...defaults];
 }

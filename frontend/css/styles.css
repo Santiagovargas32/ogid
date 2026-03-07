@@ -84,7 +84,7 @@ body {
 
 .map-surface {
   width: 100%;
-  height: 560px;
+  height: 600px;
 }
 
 .news-feed {
@@ -222,8 +222,79 @@ body {
 
 .chart-wrap {
   position: relative;
-  height: 300px;
+  height: 396px;
   padding: 0.5rem 0.75rem 0.75rem;
+}
+
+.analytics-status {
+  border: 1px solid rgba(255, 179, 107, 0.4);
+  border-radius: 0.75rem;
+  background: rgba(54, 35, 18, 0.72);
+  color: #ffe0bf;
+  padding: 0.7rem 0.9rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.chart-selector {
+  border-bottom: 1px solid rgba(62, 83, 105, 0.75);
+  background: rgba(13, 23, 34, 0.35);
+  padding: 0.7rem 0.9rem;
+}
+
+.chart-selector-inline {
+  border: 1px solid rgba(62, 83, 105, 0.52);
+  border-radius: 0.75rem;
+  background: rgba(13, 23, 34, 0.52);
+}
+
+.chart-selector-help {
+  margin-bottom: 0.55rem;
+}
+
+.chart-selector-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.chart-selector-chip {
+  border: 1px solid rgba(87, 108, 130, 0.75);
+  background: rgba(24, 38, 53, 0.84);
+  color: #d8e6f5;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  letter-spacing: 0.02rem;
+  padding: 0.25rem 0.6rem;
+  cursor: pointer;
+}
+
+.chart-selector-chip.active {
+  background: rgba(73, 214, 197, 0.2);
+  border-color: rgba(73, 214, 197, 0.55);
+  color: #dffff9;
+}
+
+.chart-overlay {
+  position: absolute;
+  inset: 0.75rem;
+  border: 1px dashed rgba(117, 137, 160, 0.42);
+  border-radius: 0.8rem;
+  background: rgba(10, 17, 24, 0.76);
+  color: #dbe9f7;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 1rem 1.1rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.chart-overlay.visible {
+  display: flex;
 }
 
 .insights-list {
@@ -265,6 +336,29 @@ body {
   padding: 0.5rem;
 }
 
+.empty-state-card,
+.filter-notice,
+.diagnostic-item {
+  border: 1px solid rgba(92, 113, 137, 0.42);
+  border-radius: 0.65rem;
+  background: rgba(19, 31, 45, 0.82);
+}
+
+.empty-state-card,
+.filter-notice {
+  margin: 0.45rem;
+  padding: 0.8rem 0.9rem;
+}
+
+.filter-notice {
+  margin-bottom: 0.55rem;
+  color: #d5e4f4;
+}
+
+.filter-notice strong {
+  color: #f4c542;
+}
+
 .impact-item {
   border: 1px solid rgba(79, 99, 121, 0.5);
   border-radius: 0.5rem;
@@ -295,6 +389,86 @@ body {
   font-size: 0.75rem;
 }
 
+.diagnostic-card {
+  border: 1px solid rgba(80, 101, 124, 0.45);
+  border-radius: 0.75rem;
+  background: rgba(17, 28, 40, 0.75);
+  overflow: hidden;
+}
+
+.diagnostic-card-header {
+  padding: 0.65rem 0.8rem;
+  border-bottom: 1px solid rgba(80, 101, 124, 0.42);
+  background: rgba(9, 18, 27, 0.55);
+  color: #dce9f7;
+  font-family: "Barlow Condensed", sans-serif;
+  letter-spacing: 0.04rem;
+  text-transform: uppercase;
+}
+
+.diagnostic-list {
+  padding: 0.7rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.diagnostic-item {
+  padding: 0.65rem 0.75rem;
+}
+
+.diagnostic-item-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.2rem;
+  font-size: 0.79rem;
+}
+
+.diagnostic-item-meta {
+  color: #a8bed6;
+  font-size: 0.71rem;
+  line-height: 1.45;
+}
+
+.diagnostic-section-label {
+  color: #f4c542;
+  font-size: 0.69rem;
+  font-weight: 700;
+  letter-spacing: 0.04rem;
+  text-transform: uppercase;
+  margin-bottom: -0.1rem;
+}
+
+.diagnostic-pill {
+  border-radius: 999px;
+  padding: 0.14rem 0.48rem;
+  font-size: 0.63rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  border: 1px solid rgba(110, 129, 151, 0.42);
+}
+
+.diagnostic-pill.ok {
+  background: rgba(56, 193, 114, 0.16);
+  color: #84e0ad;
+}
+
+.diagnostic-pill.error {
+  background: rgba(255, 77, 79, 0.16);
+  color: #ffb9ba;
+}
+
+.diagnostic-pill.empty {
+  background: rgba(244, 197, 66, 0.16);
+  color: #ffdd7d;
+}
+
+.diagnostic-pill.invalid-feed,
+.diagnostic-pill.skipped {
+  background: rgba(255, 140, 66, 0.16);
+  color: #ffd3b1;
+}
+
 .panel-subheader {
   border-top: 1px solid rgba(62, 83, 105, 0.75);
   border-bottom: 1px solid rgba(62, 83, 105, 0.75);
@@ -319,6 +493,58 @@ body {
 .data-mode-cell {
   font-size: 0.64rem;
   margin-left: 0.35rem;
+}
+
+.panel-meta-strip {
+  border-bottom: 1px solid rgba(62, 83, 105, 0.45);
+  background: rgba(12, 20, 29, 0.36);
+}
+
+.market-quote-head {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.market-quote-meta {
+  margin-top: 0.18rem;
+  color: #9fb4cb;
+  font-size: 0.67rem;
+  line-height: 1.35;
+}
+
+.market-mode-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0.12rem 0.44rem;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.04rem;
+  text-transform: uppercase;
+  border: 1px solid rgba(110, 129, 151, 0.42);
+}
+
+.market-mode-live {
+  background: rgba(56, 193, 114, 0.16);
+  color: #84e0ad;
+}
+
+.market-mode-historical-eod {
+  background: rgba(159, 174, 189, 0.16);
+  color: #d5dde5;
+}
+
+.market-mode-router-stale {
+  background: rgba(244, 197, 66, 0.16);
+  color: #ffdf86;
+}
+
+.market-mode-synthetic-fallback {
+  background: rgba(255, 140, 66, 0.16);
+  color: #ffd3b1;
 }
 
 .insight-item {
@@ -428,9 +654,51 @@ body {
   background: #0f1924;
 }
 
+.leaflet-control-layers {
+  border: 1px solid rgba(85, 107, 131, 0.5);
+  background: rgba(12, 20, 30, 0.88);
+  color: #d8e6f5;
+}
+
+.map-legend {
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(85, 107, 131, 0.5);
+  border-radius: 0.7rem;
+  background: rgba(12, 20, 30, 0.88);
+  color: #d8e6f5;
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.24);
+}
+
+.map-legend h3 {
+  margin: 0 0 0.45rem;
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 0.85rem;
+  letter-spacing: 0.04rem;
+  text-transform: uppercase;
+}
+
+.map-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.72rem;
+  margin-bottom: 0.28rem;
+}
+
+.map-legend-swatch {
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.map-watchlist-halo {
+  filter: drop-shadow(0 0 8px rgba(111, 177, 255, 0.5));
+}
+
 @media (max-width: 992px) {
   .map-surface {
-    height: 420px;
+    height: 460px;
   }
 
   .news-feed {
@@ -447,5 +715,9 @@ body {
 
   .news-thumb {
     height: 140px;
+  }
+
+  .chart-wrap {
+    height: 360px;
   }
 }

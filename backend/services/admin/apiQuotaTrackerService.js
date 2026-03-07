@@ -1,5 +1,5 @@
 const WINDOW_MS = 24 * 60 * 60 * 1_000;
-const PROVIDERS = ["newsapi", "gnews", "mediastack", "fmp", "alphavantage"];
+const PROVIDERS = ["newsapi", "gnews", "mediastack", "rss", "gdelt", "fmp", "alphavantage"];
 
 function toPositiveInt(value) {
   const parsed = Number.parseInt(String(value ?? ""), 10);
@@ -63,14 +63,8 @@ function parseRateLimitHeaders(headers = {}) {
     return normalized[String(name).toLowerCase()] ?? null;
   };
 
-  const limit =
-    toPositiveInt(getHeader("x-ratelimit-limit")) ??
-    toPositiveInt(getHeader("ratelimit-limit")) ??
-    toPositiveInt(getHeader("x-rate-limit-limit"));
-  const remaining =
-    toNonNegativeInt(getHeader("x-ratelimit-remaining")) ??
-    toNonNegativeInt(getHeader("ratelimit-remaining")) ??
-    toNonNegativeInt(getHeader("x-rate-limit-remaining"));
+  const limit = toPositiveInt(getHeader("x-ratelimit-limit")) ?? toPositiveInt(getHeader("ratelimit-limit")) ?? toPositiveInt(getHeader("x-rate-limit-limit"));
+  const remaining = toNonNegativeInt(getHeader("x-ratelimit-remaining")) ?? toNonNegativeInt(getHeader("ratelimit-remaining")) ?? toNonNegativeInt(getHeader("x-rate-limit-remaining"));
 
   return {
     headerLimit: limit,
@@ -103,6 +97,8 @@ class ApiQuotaTrackerService {
       newsapi: toPositiveInt(config.newsapiDailyLimit ?? process.env.NEWSAPI_DAILY_LIMIT),
       gnews: toPositiveInt(config.gnewsDailyLimit ?? process.env.GNEWS_DAILY_LIMIT),
       mediastack: toPositiveInt(config.mediastackDailyLimit ?? process.env.MEDIASTACK_DAILY_LIMIT),
+      rss: toPositiveInt(config.rssDailyLimit ?? process.env.RSS_DAILY_LIMIT),
+      gdelt: toPositiveInt(config.gdeltDailyLimit ?? process.env.GDELT_DAILY_LIMIT),
       fmp: toPositiveInt(config.fmpDailyLimit ?? process.env.FMP_DAILY_LIMIT),
       alphavantage: toPositiveInt(config.alphavantageDailyLimit ?? process.env.ALPHAVANTAGE_DAILY_LIMIT)
     };

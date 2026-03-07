@@ -18,7 +18,7 @@ export function buildInitialMarketState(tickers = []) {
           asOf: null,
           source: "seed",
           synthetic: true,
-          dataMode: "fallback"
+          dataMode: "synthetic-fallback"
         }
       ])
     ),
@@ -27,7 +27,32 @@ export function buildInitialMarketState(tickers = []) {
 }
 
 function appendPoint(series = [], point) {
+  const lastPoint = series.at(-1);
+  if (
+    lastPoint &&
+    lastPoint.timestamp === point.timestamp &&
+    Number(lastPoint.price) === Number(point.price) &&
+    Number(lastPoint.changePct) === Number(point.changePct)
+  ) {
+    return series.slice(-MAX_MARKET_POINTS);
+  }
+
   return [...series, point].slice(-MAX_MARKET_POINTS);
+}
+
+function seedHistoricalSeries(existingSeries = [], seededSeries = []) {
+  if (existingSeries.length || !seededSeries.length) {
+    return existingSeries;
+  }
+
+  return seededSeries
+    .filter((point) => Number.isFinite(point?.price) && point?.timestamp)
+    .slice(-MAX_MARKET_POINTS)
+    .map((point) => ({
+      timestamp: point.timestamp,
+      price: point.price,
+      changePct: point.changePct
+    }));
 }
 
 export function mergeMarketState(previousMarketState = {}, marketResult = {}) {
@@ -39,13 +64,17 @@ export function mergeMarketState(previousMarketState = {}, marketResult = {}) {
   const nextTimeseries = { ...(previousMarketState.timeseries || {}) };
   const timestamp = marketResult.updatedAt || new Date().toISOString();
 
+  for (const [ticker, seededSeries] of Object.entries(marketResult.historicalSeries || {})) {
+    nextTimeseries[ticker] = seedHistoricalSeries(nextTimeseries[ticker] || [], seededSeries);
+  }
+
   for (const [ticker, quote] of Object.entries(nextQuotes)) {
     if (!Number.isFinite(quote.price)) {
       continue;
     }
 
     const point = {
-      timestamp,
+      timestamp: quote.asOf || timestamp,
       price: quote.price,
       changePct: quote.changePct
     };

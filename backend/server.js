@@ -17,6 +17,26 @@ const log = createLogger("backend/server");
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const DEFAULT_NEWS_QUERY_PACKS = Object.freeze({
+  defense: "missile OR defense contractor OR arms deal OR air defense",
+  energy: "oil OR gas OR lng OR pipeline OR refinery",
+  sanctions: "sanctions OR export controls OR secondary sanctions",
+  shipping: "shipping lane OR tanker OR strait OR maritime security",
+  macro: "central bank OR inflation OR tariffs OR sovereign risk",
+  semiconductors: "semiconductor OR chip export OR foundry OR fab"
+});
+const DEFAULT_RSS_FEEDS = Object.freeze([
+  { label: "BBC World", url: "https://feeds.bbci.co.uk/news/world/rss.xml" },
+  { label: "ABC International", url: "https://abcnews.go.com/abcnews/internationalheadlines" },
+  { label: "Fox World", url: "https://moxie.foxnews.com/google-publisher/world.xml" }
+]);
+const DEFAULT_RSS_DISABLED_FEEDS = Object.freeze([
+  {
+    label: "ZeroHedge",
+    url: "https://www.zerohedge.com/",
+    reason: "disabled-until-valid-xml-feed"
+  }
+]);
 
 function toInt(value, fallback) {
   const parsed = Number.parseInt(String(value ?? ""), 10);
@@ -32,6 +52,77 @@ function toList(value, fallback = []) {
     .split(",")
     .map((entry) => entry.trim())
     .filter(Boolean);
+}
+
+function toStructuredObject(value, fallback = {}) {
+  if (!value) {
+    return structuredClone(fallback);
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed : structuredClone(fallback);
+  } catch {
+    return structuredClone(fallback);
+  }
+}
+
+function toFeedList(value, fallback = DEFAULT_RSS_FEEDS, options = {}) {
+  const { disabled = false } = options;
+  if (!value) {
+    return structuredClone(fallback).map((entry) => ({
+      ...entry,
+      disabled: Boolean(entry.disabled || disabled),
+      reason: entry.reason || (disabled ? "feed-disabled" : null)
+    }));
+  }
+
+  return String(value)
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const [label, url, reason] = entry.includes("|") ? entry.split("|") : [entry, entry, ""];
+      return {
+        label: String(label || "").trim(),
+        url: String(url || "").trim(),
+        disabled,
+        reason: disabled ? String(reason || "feed-disabled").trim() : null
+      };
+    })
+    .filter((entry) => entry.url);
+}
+
+function mergeFeedLists(activeFeeds = [], disabledFeeds = []) {
+  const merged = new Map();
+
+  for (const feed of Array.isArray(activeFeeds) ? activeFeeds : []) {
+    const key = String(feed?.url || "").trim().toLowerCase();
+    if (!key) {
+      continue;
+    }
+    merged.set(key, {
+      ...feed,
+      disabled: false,
+      reason: null
+    });
+  }
+
+  for (const feed of Array.isArray(disabledFeeds) ? disabledFeeds : []) {
+    const key = String(feed?.url || "").trim().toLowerCase();
+    if (!key) {
+      continue;
+    }
+    const current = merged.get(key) || {};
+    merged.set(key, {
+      ...current,
+      ...feed,
+      disabled: true,
+      reason: feed.reason || current.reason || "feed-disabled"
+    });
+  }
+
+  return [...merged.values()];
 }
 
 function isRealKey(value) {
@@ -55,11 +146,20 @@ function isRealKey(value) {
 }
 
 function readConfig(overrides = {}) {
+  const newsOverrides = overrides.news || {};
   const watchlistCountries = toList(process.env.WATCHLIST_COUNTRIES, ["US", "IL", "IR"]).map((value) =>
     value.toUpperCase()
   );
   const newsProviders = toList(process.env.NEWS_PROVIDERS, ["newsapi"]).map((provider) =>
     provider.toLowerCase()
+  );
+  const newsSourceAllowlist = toList(process.env.NEWS_SOURCE_ALLOWLIST, []).map((source) => source.toLowerCase());
+  const newsDomainAllowlist = toList(process.env.NEWS_DOMAIN_ALLOWLIST, []).map((domain) => domain.toLowerCase());
+  const rssActiveFeeds = toFeedList(process.env.NEWS_RSS_FEEDS, DEFAULT_RSS_FEEDS);
+  const rssDisabledFeeds = toFeedList(
+    process.env.NEWS_RSS_DISABLED_FEEDS,
+    DEFAULT_RSS_DISABLED_FEEDS,
+    { disabled: true }
   );
   const marketTickers = toList(process.env.MARKET_TICKERS, ["GD", "BA", "NOC", "LMT", "RTX", "XOM", "CVX"]).map(
     (ticker) => ticker.toUpperCase()
@@ -84,7 +184,11 @@ function readConfig(overrides = {}) {
       gnewsBaseUrl: process.env.GNEWS_BASE_URL || "https://gnews.io/api/v4",
       mediastackApiKey: process.env.MEDIASTACK_API_KEY || "",
       mediastackBaseUrl: process.env.MEDIASTACK_BASE_URL || "http://api.mediastack.com/v1",
+      gdeltBaseUrl: process.env.GDELT_BASE_URL || "https://api.gdeltproject.org/api/v2/doc/doc",
+      rssFeeds: mergeFeedLists(rssActiveFeeds, rssDisabledFeeds),
+      rssDisabledFeeds,
       query: process.env.NEWS_QUERY || "geopolitics OR conflict OR sanctions OR military",
+      queryPacks: toStructuredObject(process.env.NEWS_QUERY_PACKS, DEFAULT_NEWS_QUERY_PACKS),
       language: process.env.NEWS_LANGUAGE || "en",
       pageSize: toInt(process.env.NEWS_PAGE_SIZE, 50),
       timeoutMs: toInt(process.env.NEWS_TIMEOUT_MS, 9_000),
@@ -94,6 +198,8 @@ function readConfig(overrides = {}) {
       candidateWindowHours: toInt(process.env.NEWS_CANDIDATE_WINDOW_HOURS, 36),
       maxPerSource: toInt(process.env.NEWS_MAX_PER_SOURCE, 3),
       maxSimilarHeadline: toInt(process.env.NEWS_MAX_SIMILAR_HEADLINE, 2),
+      sourceAllowlist: newsSourceAllowlist,
+      domainAllowlist: newsDomainAllowlist,
       intervalByBandMs: {
         GREEN: toInt(process.env.NEWS_INTERVAL_GREEN_MS, 600_000),
         YELLOW: toInt(process.env.NEWS_INTERVAL_YELLOW_MS, 1_200_000),
@@ -115,32 +221,40 @@ function readConfig(overrides = {}) {
       baseUrl: process.env.ALPHAVANTAGE_BASE_URL || "https://www.alphavantage.co/query",
       alphaVantageApiKey: process.env.ALPHAVANTAGE_API_KEY || "",
       alphaVantageBaseUrl: process.env.ALPHAVANTAGE_BASE_URL || "https://www.alphavantage.co/query",
+      alphaVantageMaxRequestsPerRun: toInt(process.env.ALPHAVANTAGE_MAX_REQUESTS_PER_RUN, 5),
       fmpApiKey: process.env.FMP_API_KEY || "",
-      fmpBaseUrl: process.env.FMP_BASE_URL || "https://financialmodelingprep.com/api/v3",
+      fmpBaseUrl: process.env.FMP_BASE_URL || "https://financialmodelingprep.com/stable",
+      fmpStableBaseUrl:
+        process.env.FMP_STABLE_BASE_URL ||
+        process.env.FMP_BASE_URL ||
+        "https://financialmodelingprep.com/stable",
       timeoutMs: toInt(process.env.MARKET_TIMEOUT_MS, 10_000),
       tickers: marketTickers,
       refreshIntervalMs: toInt(process.env.MARKET_REFRESH_INTERVAL_MS, 60_000),
       minTickerTtlMs: toInt(process.env.MARKET_MIN_TICKER_TTL_MS, 45_000),
+      batchChunkSize: toInt(process.env.MARKET_BATCH_CHUNK_SIZE, 25),
+      staleTtlMs: toInt(process.env.MARKET_STALE_TTL_MS, 14_400_000),
+      requestReserve: toInt(process.env.MARKET_REQUEST_RESERVE, 25),
       activeIntervalMs: toInt(
         process.env.MARKET_ACTIVE_INTERVAL_MS,
-        toInt(process.env.MARKET_REFRESH_INTERVAL_MS, 120_000)
+        toInt(process.env.MARKET_REFRESH_INTERVAL_MS, 180_000)
       ),
-      offHoursIntervalMs: toInt(process.env.MARKET_OFFHOURS_INTERVAL_MS, 900_000),
+      offHoursIntervalMs: toInt(process.env.MARKET_OFFHOURS_INTERVAL_MS, 1_800_000),
       intervalByBandMs: {
         GREEN: {
-          activeIntervalMs: 60_000,
-          offHoursIntervalMs: 900_000
-        },
-        YELLOW: {
           activeIntervalMs: 180_000,
           offHoursIntervalMs: 1_800_000
         },
-        RED: {
-          activeIntervalMs: 600_000,
+        YELLOW: {
+          activeIntervalMs: 300_000,
           offHoursIntervalMs: 3_600_000
         },
+        RED: {
+          activeIntervalMs: 900_000,
+          offHoursIntervalMs: 7_200_000
+        },
         CRITICAL: {
-          activeIntervalMs: 1_800_000,
+          activeIntervalMs: 7_200_000,
           offHoursIntervalMs: 7_200_000
         }
       },
@@ -150,7 +264,9 @@ function readConfig(overrides = {}) {
       newsapiDailyLimit: toInt(process.env.NEWSAPI_DAILY_LIMIT, 500),
       gnewsDailyLimit: toInt(process.env.GNEWS_DAILY_LIMIT, 500),
       mediastackDailyLimit: toInt(process.env.MEDIASTACK_DAILY_LIMIT, 500),
-      fmpDailyLimit: toInt(process.env.FMP_DAILY_LIMIT, 500),
+      rssDailyLimit: toInt(process.env.RSS_DAILY_LIMIT, 0),
+      gdeltDailyLimit: toInt(process.env.GDELT_DAILY_LIMIT, 0),
+      fmpDailyLimit: toInt(process.env.FMP_DAILY_LIMIT, 250),
       alphavantageDailyLimit: toInt(process.env.ALPHAVANTAGE_DAILY_LIMIT, 500)
     }
   };
@@ -165,22 +281,33 @@ function readConfig(overrides = {}) {
     },
     news: {
       ...config.news,
-      ...(overrides.news || {}),
+      ...newsOverrides,
+      rssDisabledFeeds: newsOverrides.rssDisabledFeeds || config.news.rssDisabledFeeds,
+      rssFeeds: Array.isArray(newsOverrides.rssFeeds)
+        ? structuredClone(newsOverrides.rssFeeds)
+        : mergeFeedLists(
+            (config.news.rssFeeds || []).filter((feed) => !feed.disabled),
+            newsOverrides.rssDisabledFeeds || config.news.rssDisabledFeeds
+          ),
       intervalMs:
-        overrides.news?.intervalMs ||
+        newsOverrides.intervalMs ||
         overrides.refreshIntervalMs ||
-        overrides.news?.refreshIntervalMs ||
+        newsOverrides.refreshIntervalMs ||
         config.news.intervalMs,
       intervalByBandMs: {
         ...config.news.intervalByBandMs,
-        ...(overrides.news?.intervalByBandMs || {})
+        ...(newsOverrides.intervalByBandMs || {})
       },
       pageSizeByBand: {
         ...config.news.pageSizeByBand,
-        ...(overrides.news?.pageSizeByBand || {})
+        ...(newsOverrides.pageSizeByBand || {})
+      },
+      queryPacks: {
+        ...config.news.queryPacks,
+        ...(newsOverrides.queryPacks || {})
       },
       countries:
-        overrides.news?.countries ||
+        newsOverrides.countries ||
         overrides.watchlistCountries ||
         config.news.countries
     },
@@ -202,6 +329,10 @@ function readConfig(overrides = {}) {
       fmpApiKey:
         overrides.market?.fmpApiKey ??
         config.market.fmpApiKey,
+      fmpStableBaseUrl:
+        overrides.market?.fmpStableBaseUrl ??
+        overrides.market?.fmpBaseUrl ??
+        config.market.fmpStableBaseUrl,
       activeIntervalMs:
         overrides.market?.activeIntervalMs ||
         overrides.market?.refreshIntervalMs ||
@@ -300,8 +431,12 @@ export function createAppServer(overrides = {}) {
         alphaVantageKeyConfigured: isRealKey(config.market.apiKey),
         marketProvider: config.market.provider,
         marketFallbackProvider: config.market.fallbackProvider,
+        marketBatchChunkSize: config.market.batchChunkSize,
+        marketRequestReserve: config.market.requestReserve,
         apiLimits: config.apiLimits,
         newsProviders: config.news.providers,
+        newsSourceAllowlist: config.news.sourceAllowlist,
+        newsDomainAllowlist: config.news.domainAllowlist,
         newsIntervalMs: config.news.intervalMs,
         newsIntervalByBandMs: config.news.intervalByBandMs,
         marketActiveIntervalMs: config.market.activeIntervalMs,
@@ -356,4 +491,3 @@ async function run() {
 if (process.argv[1] === __filename) {
   run();
 }
-

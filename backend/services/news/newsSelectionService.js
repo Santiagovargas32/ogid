@@ -183,7 +183,67 @@ function selectWithDiversity(scored = [], { limit, maxPerSource, maxSimilarHeadl
   return selected;
 }
 
-export function selectNewsForIntel({
+function selectionCap(limit, fallback = Number.MAX_SAFE_INTEGER) {
+  const parsed = Number.parseInt(String(limit ?? ""), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function buildSourceSelectionStats({ rawArticles = [], filteredArticles = [], selectedArticles = [] } = {}) {
+  const stats = new Map();
+
+  const ensure = (article) => {
+    const provider = String(article?.provider || "unknown").toLowerCase();
+    const sourceName = String(article?.sourceName || "Unknown Source").trim() || "Unknown Source";
+    const key = `${provider}|${normalizeText(sourceName) || "unknown"}`;
+    if (!stats.has(key)) {
+      stats.set(key, {
+        provider,
+        sourceName,
+        raw: 0,
+        filtered: 0,
+        selected: 0
+      });
+    }
+    return stats.get(key);
+  };
+
+  rawArticles.forEach((article) => {
+    ensure(article).raw += 1;
+  });
+  filteredArticles.forEach((article) => {
+    ensure(article).filtered += 1;
+  });
+  selectedArticles.forEach((article) => {
+    ensure(article).selected += 1;
+  });
+
+  return [...stats.values()].sort((left, right) => {
+    if (right.selected !== left.selected) {
+      return right.selected - left.selected;
+    }
+    if (right.filtered !== left.filtered) {
+      return right.filtered - left.filtered;
+    }
+    return `${left.provider}|${left.sourceName}`.localeCompare(`${right.provider}|${right.sourceName}`);
+  });
+}
+
+function latestSelectedArticleAgeMin(selectedArticles = [], nowMs = Date.now()) {
+  if (!selectedArticles.length) {
+    return null;
+  }
+
+  const latestPublishedMs = Math.max(
+    ...selectedArticles.map((article) => new Date(article?.publishedAt || 0).getTime()).filter(Number.isFinite)
+  );
+  if (!Number.isFinite(latestPublishedMs)) {
+    return null;
+  }
+
+  return Math.max(0, Math.round((nowMs - latestPublishedMs) / 60_000));
+}
+
+export function buildIntelNewsSelection({
   articles = [],
   previousArticles = [],
   watchlistCountries = [],
@@ -216,10 +276,53 @@ export function selectNewsForIntel({
       return new Date(right.publishedAt).getTime() - new Date(left.publishedAt).getTime();
     });
 
-  return selectWithDiversity(scored, {
-    limit: Math.max(1, analyzeLimit),
+  const signalCorpus = scored.slice(0, selectionCap(analyzeLimit));
+  const displaySelection = selectWithDiversity(signalCorpus, {
+    limit: selectionCap(analyzeLimit),
     maxPerSource: Math.max(1, maxPerSource),
     maxSimilarHeadline: Math.max(1, maxSimilarHeadline)
   });
+
+  return {
+    signalCorpus,
+    displaySelection,
+    selectionMeta: {
+      selectionBySourceName: buildSourceSelectionStats({
+        rawArticles: articles,
+        filteredArticles: signalCorpus,
+        selectedArticles: displaySelection
+      }),
+      latestSelectedArticleAgeMin: latestSelectedArticleAgeMin(displaySelection, nowMs),
+      selectionConfig: {
+        analyzeLimit: selectionCap(analyzeLimit),
+        maxPerSource: Math.max(1, maxPerSource),
+        maxSimilarHeadline: Math.max(1, maxSimilarHeadline),
+        candidateWindowHours: Math.max(1, candidateWindowHours)
+      }
+    }
+  };
 }
 
+export function selectNewsForIntel({
+  articles = [],
+  previousArticles = [],
+  watchlistCountries = [],
+  now = new Date(),
+  analyzeLimit = 80,
+  candidateWindowHours = 36,
+  noveltyWindowHours = 12,
+  maxPerSource = 3,
+  maxSimilarHeadline = 2
+} = {}) {
+  return buildIntelNewsSelection({
+    articles,
+    previousArticles,
+    watchlistCountries,
+    now,
+    analyzeLimit,
+    candidateWindowHours,
+    noveltyWindowHours,
+    maxPerSource,
+    maxSimilarHeadline
+  }).displaySelection;
+}
