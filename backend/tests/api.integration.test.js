@@ -3,11 +3,46 @@ import assert from "node:assert/strict";
 import { createAppServer } from "../server.js";
 
 test("REST API exposes health and snapshot payloads", async () => {
+  const originalFetch = global.fetch;
+  global.fetch = async (url, options) => {
+    const value = String(url);
+    if (value.includes("127.0.0.1") || value.includes("localhost")) {
+      return originalFetch(url, options);
+    }
+
+    return new Response(
+      `<?xml version="1.0" encoding="UTF-8"?>
+      <rss version="2.0">
+        <channel>
+          <title>API Test Feed</title>
+          <item>
+            <title>Sanctions and cyber pressure increase around Israel</title>
+            <description>Regional defenses remain on alert.</description>
+            <link>https://example.com/api-test</link>
+            <pubDate>${new Date().toUTCString()}</pubDate>
+          </item>
+        </channel>
+      </rss>`,
+      {
+        status: 200,
+        headers: { "content-type": "application/xml" }
+      }
+    );
+  };
+
   const runtime = createAppServer({
     port: 0,
+    disableBackgroundRefresh: true,
     refreshIntervalMs: 300_000,
     market: { refreshIntervalMs: 300_000, apiKey: "", fmpApiKey: "", requestReserve: 0 },
-    news: { newsApiKey: "" },
+    news: {
+      providers: ["rss"],
+      rssFeeds: [{ label: "API Test Feed", url: "https://example.com/rss.xml" }],
+      newsApiKey: "",
+      gnewsApiKey: "",
+      mediastackApiKey: "",
+      timeoutMs: 200
+    },
     apiLimits: {
       newsapiDailyLimit: 10,
       gnewsDailyLimit: 10,
@@ -35,7 +70,7 @@ test("REST API exposes health and snapshot payloads", async () => {
     assert.equal(snapshotPayload.ok, true);
     assert.ok(Array.isArray(snapshotPayload.data.hotspots));
     assert.ok(snapshotPayload.data.hotspots.length <= 3);
-    assert.equal(snapshotPayload.data.meta.sourceMode, "fallback");
+    assert.equal(snapshotPayload.data.meta.sourceMode, "live");
     assert.ok(snapshotPayload.data.meta.dataQuality);
     assert.ok(snapshotPayload.data.meta.emptyStates);
     assert.ok(snapshotPayload.data.meta.refreshStatus);
@@ -112,6 +147,18 @@ test("REST API exposes health and snapshot payloads", async () => {
         (article.countryMentions || []).some((iso2) => ["US", "IL", "IR"].includes(iso2))
       )
     );
+    assert.ok(newsPayload.data.news.every((article) => typeof article.excerpt === "string"));
+    assert.ok(newsPayload.data.news.every((article) => typeof article.fullText === "string"));
+    assert.ok(newsPayload.data.news.every((article) => !article.description.includes("<")));
+
+    const aggregateNewsResponse = await fetch(`${baseUrl}/api/news/aggregate?limit=10`);
+    const aggregateNewsPayload = await aggregateNewsResponse.json();
+    assert.equal(aggregateNewsResponse.status, 200);
+    assert.equal(aggregateNewsPayload.ok, true);
+    assert.ok(Array.isArray(aggregateNewsPayload.data.items));
+    assert.ok(aggregateNewsPayload.data.items.every((item) => typeof item.excerpt === "string"));
+    assert.ok(aggregateNewsPayload.data.items.every((item) => typeof item.fullText === "string"));
+    assert.ok(aggregateNewsPayload.data.items.every((item) => !String(item.description || "").includes("<")));
 
     const impactResponse = await fetch(`${baseUrl}/api/market/impact?tickers=GD,BA,NOC&countries=US,IL,IR`);
     const impactPayload = await impactResponse.json();
@@ -163,6 +210,7 @@ test("REST API exposes health and snapshot payloads", async () => {
     assert.ok("latestSelectedArticleAgeMin" in pipelinePayload.data.news);
     assert.ok(Array.isArray(pipelinePayload.data.recentCycleErrors));
   } finally {
+    global.fetch = originalFetch;
     await runtime.stop();
   }
 });
@@ -224,6 +272,7 @@ test("pipeline status exposes provider and rss diagnostics for ok, error and ski
 
   const runtime = createAppServer({
     port: 0,
+    disableBackgroundRefresh: true,
     refreshIntervalMs: 300_000,
     market: { refreshIntervalMs: 300_000, apiKey: "", fmpApiKey: "", requestReserve: 0 },
     news: {

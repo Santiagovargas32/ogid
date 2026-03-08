@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { detectCountryMentions } from "../utils/countryCatalog.js";
 import { analyzeSentiment } from "../utils/sentimentRules.js";
 import { extractConflictSignal } from "../utils/conflictTags.js";
+import { sanitizeArticleContent } from "./news/newsContentSanitizer.js";
 
 function toIsoDate(value, fallback) {
   const date = value ? new Date(value) : new Date(fallback);
@@ -16,11 +17,12 @@ function hashId(value) {
 }
 
 function normalizeArticle(rawArticle, index, provider) {
-  const title = String(rawArticle?.title || "").trim();
-  const description = String(rawArticle?.description || "").trim();
-  const content = String(rawArticle?.content || "").trim();
+  const sanitized = sanitizeArticleContent(rawArticle);
+  const title = sanitized.title;
+  const description = sanitized.description;
+  const content = sanitized.content;
 
-  if (!title && !description) {
+  if (!title && !description && !content) {
     return null;
   }
 
@@ -37,8 +39,11 @@ function normalizeArticle(rawArticle, index, provider) {
     title,
     description,
     content,
+    excerpt: sanitized.excerpt,
+    fullText: sanitized.fullText,
     url: rawArticle?.url || `https://local.osint/article/${index}`,
-    imageUrl: rawArticle?.urlToImage || null,
+    imageUrl: sanitized.leadImageUrl,
+    leadImageUrl: sanitized.leadImageUrl,
     publishedAt,
     countryMentions,
     synthetic: Boolean(rawArticle?.synthetic),

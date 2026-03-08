@@ -68,3 +68,52 @@ test("rss provider surfaces disabled feeds as skipped without fetching them", as
     resetRssFeedValidationCacheForTests();
   }
 });
+
+test("rss provider sanitizes html content and extracts an embedded image when feed media is a document", async () => {
+  resetRssFeedValidationCacheForTests();
+
+  const originalFetch = global.fetch;
+  global.fetch = async () =>
+    new Response(
+      `<?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+          <channel>
+            <title>Relief Feed</title>
+            <item>
+              <title>Lebanon flash update</title>
+              <description><![CDATA[
+                <div class="tag country">Country: Lebanon</div>
+                <div class="tag source">Source: OCHA</div>
+                <p><img src="https://example.com/preview.png" alt=""></p>
+                <p>Please refer to the attached file.</p>
+                <p><strong>Hostilities have continued</strong> across multiple governorates.</p>
+              ]]></description>
+              <enclosure url="https://example.com/report.pdf" type="application/pdf" />
+              <link>https://example.com/report</link>
+              <pubDate>${new Date().toUTCString()}</pubDate>
+            </item>
+          </channel>
+        </rss>`,
+      {
+        status: 200,
+        headers: { "content-type": "application/xml" }
+      }
+    );
+
+  try {
+    const result = await fetchRss({
+      feeds: [{ label: "Relief Feed", url: "https://example.com/feed.xml" }],
+      timeoutMs: 1000
+    });
+
+    assert.equal(result.articles.length, 1);
+    assert.equal(result.articles[0].description.includes("<"), false);
+    assert.equal(result.articles[0].content.includes("<"), false);
+    assert.match(result.articles[0].excerpt, /Hostilities have continued/i);
+    assert.equal(result.articles[0].leadImageUrl, "https://example.com/preview.png");
+    assert.equal(result.articles[0].urlToImage, "https://example.com/preview.png");
+  } finally {
+    global.fetch = originalFetch;
+    resetRssFeedValidationCacheForTests();
+  }
+});

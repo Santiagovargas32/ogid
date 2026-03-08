@@ -9,6 +9,9 @@ import stateManager from "./state/stateManager.js";
 import RefreshOrchestratorService from "./services/refreshOrchestratorService.js";
 import ManualRefreshService from "./services/manualRefreshService.js";
 import apiQuotaTracker from "./services/admin/apiQuotaTrackerService.js";
+import { RssAggregatorService } from "./services/news/rssAggregator.js";
+import { SignalCorrelatorService } from "./services/intel/signalCorrelator.js";
+import { MapLayerService } from "./services/map/mapLayerService.js";
 import { createSocketServer } from "./websocket/socketServer.js";
 import { errorHandler, notFoundHandler } from "./utils/error.js";
 import { createLogger, requestLogger } from "./utils/logger.js";
@@ -65,6 +68,21 @@ function toStructuredObject(value, fallback = {}) {
   } catch {
     return structuredClone(fallback);
   }
+}
+
+function toBool(value, fallback = false) {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+  return fallback;
 }
 
 function toFeedList(value, fallback = DEFAULT_RSS_FEEDS, options = {}) {
@@ -198,6 +216,9 @@ function readConfig(overrides = {}) {
       candidateWindowHours: toInt(process.env.NEWS_CANDIDATE_WINDOW_HOURS, 36),
       maxPerSource: toInt(process.env.NEWS_MAX_PER_SOURCE, 3),
       maxSimilarHeadline: toInt(process.env.NEWS_MAX_SIMILAR_HEADLINE, 2),
+      rssAggregateIntervalMs: toInt(process.env.NEWS_RSS_AGGREGATE_INTERVAL_MS, 900_000),
+      rssAggregateFeedsPerRun: toInt(process.env.NEWS_RSS_AGGREGATE_FEEDS_PER_RUN, 18),
+      rssAggregateMaxItems: toInt(process.env.NEWS_RSS_AGGREGATE_MAX_ITEMS, 900),
       sourceAllowlist: newsSourceAllowlist,
       domainAllowlist: newsDomainAllowlist,
       intervalByBandMs: {
@@ -348,6 +369,12 @@ function readConfig(overrides = {}) {
     apiLimits: {
       ...config.apiLimits,
       ...(overrides.apiLimits || {})
+    },
+    runtime: {
+      disableBackgroundRefresh:
+        overrides.runtime?.disableBackgroundRefresh ??
+        overrides.disableBackgroundRefresh ??
+        toBool(process.env.DISABLE_BACKGROUND_REFRESH, false)
     }
   };
 }
@@ -387,6 +414,19 @@ export function createAppServer(overrides = {}) {
     impactWindowMin: config.market.impactWindowMin
   });
   apiQuotaTracker.reset(config.apiLimits);
+  const rssAggregator = new RssAggregatorService({
+    news: config.news,
+    rssFeeds: config.news.rssFeeds,
+    refreshIntervalMs: config.news.rssAggregateIntervalMs,
+    maxFeedsPerRun: config.news.rssAggregateFeedsPerRun,
+    maxCorpusItems: config.news.rssAggregateMaxItems,
+    timeoutMs: config.news.timeoutMs
+  });
+  const signalCorrelator = new SignalCorrelatorService();
+  const mapLayerService = new MapLayerService({
+    stateManager,
+    rssAggregator
+  });
 
   const server = http.createServer(app);
   const socketServer = createSocketServer({
@@ -395,7 +435,13 @@ export function createAppServer(overrides = {}) {
     heartbeatMs: config.wsHeartbeatMs,
     stateManager
   });
-  const orchestrator = new RefreshOrchestratorService({ stateManager, socketServer, config });
+  const orchestrator = new RefreshOrchestratorService({
+    stateManager,
+    socketServer,
+    config,
+    rssAggregator,
+    signalCorrelator
+  });
   const manualRefreshService = new ManualRefreshService({
     orchestrator,
     cooldownMs: config.manualRefresh.cooldownMs,
@@ -407,6 +453,9 @@ export function createAppServer(overrides = {}) {
   app.locals.orchestrator = orchestrator;
   app.locals.manualRefreshService = manualRefreshService;
   app.locals.config = config;
+  app.locals.rssAggregator = rssAggregator;
+  app.locals.signalCorrelator = signalCorrelator;
+  app.locals.mapLayerService = mapLayerService;
 
   return {
     app,
@@ -443,7 +492,9 @@ export function createAppServer(overrides = {}) {
         marketOffHoursIntervalMs: config.market.offHoursIntervalMs,
         manualRefresh: config.manualRefresh
       });
-      orchestrator.start();
+      if (!config.runtime.disableBackgroundRefresh) {
+        orchestrator.start();
+      }
       log.info("server_started", { port: server.address().port, refreshIntervalMs: config.news.intervalMs });
     },
     async stop() {

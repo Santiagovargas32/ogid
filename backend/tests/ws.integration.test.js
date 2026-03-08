@@ -39,12 +39,47 @@ function closeSocket(socket) {
 }
 
 test("WebSocket emits snapshot and update envelopes", async () => {
+  const originalFetch = global.fetch;
+  global.fetch = async (url, options) => {
+    const value = String(url);
+    if (value.includes("127.0.0.1") || value.includes("localhost")) {
+      return originalFetch(url, options);
+    }
+
+    return new Response(
+      `<?xml version="1.0" encoding="UTF-8"?>
+      <rss version="2.0">
+        <channel>
+          <title>WS Test Feed</title>
+          <item>
+            <title>Conflict alert in Jerusalem</title>
+            <description>Missile defenses remain active.</description>
+            <link>https://example.com/ws-test</link>
+            <pubDate>${new Date().toUTCString()}</pubDate>
+          </item>
+        </channel>
+      </rss>`,
+      {
+        status: 200,
+        headers: { "content-type": "application/xml" }
+      }
+    );
+  };
+
   const runtime = createAppServer({
     port: 0,
+    disableBackgroundRefresh: true,
     refreshIntervalMs: 300_000,
     wsHeartbeatMs: 60_000,
     market: { refreshIntervalMs: 300_000, apiKey: "", fmpApiKey: "", requestReserve: 0 },
-    news: { newsApiKey: "" }
+    news: {
+      providers: ["rss"],
+      rssFeeds: [{ label: "WS Test Feed", url: "https://example.com/rss.xml" }],
+      newsApiKey: "",
+      gnewsApiKey: "",
+      mediastackApiKey: "",
+      timeoutMs: 200
+    }
   });
 
   await runtime.start();
@@ -72,6 +107,7 @@ test("WebSocket emits snapshot and update envelopes", async () => {
     assert.ok(updateMessage.data.predictions);
     assert.ok(Array.isArray(updateMessage.data.impactHistory));
   } finally {
+    global.fetch = originalFetch;
     await closeSocket(socket);
     await runtime.stop();
   }

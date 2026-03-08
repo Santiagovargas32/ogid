@@ -2,6 +2,14 @@ import { api } from "./api.js";
 import { applyUpdate, getState, setSnapshot, subscribe } from "./state.js";
 import { RealtimeSocket } from "./websocket.js";
 import { HotspotMap, getLevelColor } from "./map.js";
+import { mountVideoStreams } from "./media/videoStreams.js";
+import { mountWebcamStreams } from "./media/webcamStreams.js";
+import { startWorldBrief } from "./intelligence/worldBrief.js";
+import { startThreatClassifier } from "./intelligence/threatClassifier.js";
+import { startRiskEngine } from "./intelligence/riskEngine.js";
+import { startTrendDetector } from "./intelligence/trendDetector.js";
+import { startEscalationHotspots } from "./intelligence/escalationHotspots.js";
+import { startSignalAnomalies } from "./intelligence/signalAnomalies.js";
 
 const LEVEL_RANK = {
   Stable: 1,
@@ -65,6 +73,9 @@ let manualRefreshState = "idle";
 let manualRefreshMessage = "Refresh: idle";
 let manualRefreshCooldownEndsAtMs = 0;
 let manualRefreshCooldownTimer = null;
+let newsDrawerInstance = null;
+let currentNewsById = new Map();
+const teardownHandlers = [];
 
 const elements = {};
 
@@ -104,6 +115,9 @@ function cacheElements() {
   elements.panelRisk = byId("panel-risk");
   elements.panelMarket = byId("panel-market");
   elements.panelInsights = byId("panel-insights");
+  elements.panelAdvancedIntel = byId("panel-advanced-intel");
+  elements.panelSituational = byId("panel-situational");
+  elements.panelWebcams = byId("panel-webcams");
   elements.apiLimitsPanel = byId("api-limits-panel");
   elements.toggleApiLimits = byId("toggle-api-limits");
   elements.pipelineStatusBody = byId("pipeline-status-body");
@@ -117,6 +131,12 @@ function cacheElements() {
   elements.recentCycleErrorsBody = byId("recent-cycle-errors-body");
   elements.refreshNewsBtn = byId("refresh-news-btn");
   elements.refreshNewsStatus = byId("refresh-news-status");
+  elements.newsDrawer = byId("news-detail-drawer");
+  elements.newsDrawerTitle = byId("news-detail-title");
+  elements.newsDrawerMeta = byId("news-drawer-meta");
+  elements.newsDrawerImage = byId("news-drawer-image");
+  elements.newsDrawerBody = byId("news-drawer-body");
+  elements.newsDrawerLink = byId("news-drawer-link");
 }
 
 function escapeHtml(value = "") {
@@ -135,6 +155,72 @@ function renderEmptyStateCard(message, actionLabel = "") {
       )}</button></div>`
     : "";
   return `<div class="empty-state-card small text-light-emphasis">${escapeHtml(message)}${button}</div>`;
+}
+
+function initNewsDrawer() {
+  if (!elements.newsDrawer || !window.bootstrap?.Offcanvas) {
+    return;
+  }
+
+  newsDrawerInstance = window.bootstrap.Offcanvas.getOrCreateInstance(elements.newsDrawer);
+}
+
+function resolveNewsText(article = {}) {
+  return String(article.fullText || article.content || article.excerpt || article.description || "").trim();
+}
+
+function resolveNewsExcerpt(article = {}) {
+  const value = String(article.excerpt || article.description || article.fullText || article.content || "").trim();
+  return value || "No summary available.";
+}
+
+function buildNewsParagraphs(article = {}) {
+  const fullText = resolveNewsText(article);
+  const paragraphs = fullText
+    .split(/\n{2,}|\r\n\r\n/)
+    .map((paragraph) => String(paragraph || "").trim())
+    .filter(Boolean);
+
+  if (paragraphs.length) {
+    return paragraphs.slice(0, 10);
+  }
+
+  const excerpt = resolveNewsExcerpt(article);
+  return excerpt ? [excerpt] : [];
+}
+
+function openNewsDrawer(articleId = "") {
+  const article = currentNewsById.get(articleId);
+  if (!article || !elements.newsDrawerTitle || !elements.newsDrawerMeta || !elements.newsDrawerBody || !elements.newsDrawerLink) {
+    return;
+  }
+
+  const level = deriveArticleLevel(article, getState().countries || {});
+  const mentions = article.countryMentions?.length ? article.countryMentions.join(", ") : "Global";
+  const metaItems = [article.sourceName || "Unknown Source", formatDate(article.publishedAt), level, mentions, String(article.provider || "").toUpperCase()].filter(Boolean);
+  const leadImageUrl = String(article.leadImageUrl || article.imageUrl || "").trim();
+
+  elements.newsDrawerTitle.textContent = String(article.title || "Headline").trim() || "Headline";
+  elements.newsDrawerMeta.innerHTML = metaItems
+    .map((item) => `<span class="news-meta-pill">${escapeHtml(item)}</span>`)
+    .join("");
+  elements.newsDrawerBody.innerHTML = buildNewsParagraphs(article)
+    .map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`)
+    .join("");
+
+  if (leadImageUrl) {
+    elements.newsDrawerImage.classList.remove("d-none");
+    elements.newsDrawerImage.innerHTML = `<img src="${escapeHtml(leadImageUrl)}" alt="news lead" loading="lazy" referrerpolicy="no-referrer" />`;
+  } else {
+    elements.newsDrawerImage.classList.add("d-none");
+    elements.newsDrawerImage.innerHTML = "";
+  }
+
+  elements.newsDrawerLink.href = String(article.url || "#");
+  elements.newsDrawerLink.classList.toggle("disabled", !article.url);
+  elements.newsDrawerLink.setAttribute("aria-disabled", article.url ? "false" : "true");
+
+  newsDrawerInstance?.show();
 }
 
 function ensureChartOverlay(canvas) {
@@ -553,6 +639,9 @@ function deriveArticleLevel(article, countries) {
 }
 
 function setPanelMode(panel, mode) {
+  if (!panel) {
+    return;
+  }
   panel.classList.remove("panel-fallback", "panel-mixed");
   if (mode === "fallback") {
     panel.classList.add("panel-fallback");
@@ -563,6 +652,9 @@ function setPanelMode(panel, mode) {
 }
 
 function setQualityBadge(element, label, quality = {}) {
+  if (!element) {
+    return;
+  }
   const mode = quality.mode || "fallback";
   element.className = `badge ${qualityBadgeClass(mode)}`;
   const suffix = mode === "fallback" && quality.synthetic ? " (SIM)" : "";
@@ -596,6 +688,9 @@ function renderMeta(meta, market) {
   setPanelMode(elements.panelRisk, dq.news?.mode || "fallback");
   setPanelMode(elements.panelMarket, dq.market?.mode || "fallback");
   setPanelMode(elements.panelInsights, dq.insights?.mode || "fallback");
+  setPanelMode(elements.panelAdvancedIntel, dq.insights?.mode || "fallback");
+  setPanelMode(elements.panelSituational, dq.news?.mode || "fallback");
+  setPanelMode(elements.panelWebcams, dq.news?.mode || "fallback");
 }
 
 function renderCountryFilters() {
@@ -687,6 +782,12 @@ function handleActionClick(event) {
     return;
   }
 
+  if (trigger.dataset.action === "open-news") {
+    event.preventDefault();
+    openNewsDrawer(trigger.dataset.newsId);
+    return;
+  }
+
   if (trigger.dataset.action === "set-analytics-window") {
     event.preventDefault();
     const windowMin = Number.parseInt(trigger.dataset.windowMin || "", 10);
@@ -746,6 +847,7 @@ function resolveImpactEmptyReason(rawState, filteredState) {
 function renderNews(news = [], countries = {}) {
   const ordered = [...news].sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
   elements.newsCount.textContent = `${ordered.length} items`;
+  currentNewsById = new Map(ordered.map((article) => [String(article.id), article]));
 
   if (!ordered.length) {
     elements.newsFeed.innerHTML = '<div class="p-3 small text-light-emphasis">No intelligence items available.</div>';
@@ -758,26 +860,35 @@ function renderNews(news = [], countries = {}) {
       const level = deriveArticleLevel(article, countries);
       const mentions = article.countryMentions?.length ? article.countryMentions.join(", ") : "Global";
       const title = String(article.title || "").trim() || "Untitled headline";
-      const description = String(article.description || "").trim() || "No description provided.";
-      const safeImageUrl = String(article.imageUrl || "").trim();
+      const description = resolveNewsExcerpt(article);
+      const safeImageUrl = String(article.leadImageUrl || article.imageUrl || "").trim();
       const thumbnail = safeImageUrl
         ? `<img class="news-thumb" src="${escapeHtml(safeImageUrl)}" alt="news image" loading="lazy" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src='${NEWS_PLACEHOLDER_SRC}';this.classList.add('news-thumb-fallback')" />`
         : `<img class="news-thumb news-thumb-placeholder news-thumb-fallback" src="${NEWS_PLACEHOLDER_SRC}" alt="No image" loading="lazy" />`;
       const flag = article.synthetic ? '<span class="news-flag">SIMULATED</span>' : "";
+      const provider = String(article.provider || "").toUpperCase() || "RSS";
 
       return `
       <article class="news-item ${newsLevelClass(level)}">
         ${thumbnail}
         <div class="news-content">
           <h3>${escapeHtml(title)}</h3>
-          <p>${escapeHtml(description)}</p>
-          <div class="news-item-meta">
-            <span>${escapeHtml(article.sourceName)}</span>
-            <span>${formatDate(article.publishedAt)}</span>
-            <span>${escapeHtml(level)}</span>
-            <span>${escapeHtml(mentions)}</span>
-            <span>${escapeHtml((article.provider || "").toUpperCase())}</span>
-            ${flag}
+          <p class="news-item-excerpt">${escapeHtml(description)}</p>
+          <div class="news-item-footer">
+            <div class="news-item-meta">
+              <span class="news-meta-pill">${escapeHtml(article.sourceName)}</span>
+              <span class="news-meta-pill">${formatDate(article.publishedAt)}</span>
+              <span class="news-meta-pill">${escapeHtml(level)}</span>
+              <span class="news-meta-pill">${escapeHtml(mentions)}</span>
+              <span class="news-meta-pill">${escapeHtml(provider)}</span>
+              ${flag}
+            </div>
+            <div class="news-card-actions">
+              <button class="btn btn-sm btn-outline-info news-card-cta" type="button" data-action="open-news" data-news-id="${escapeHtml(
+                article.id
+              )}">Open brief</button>
+              <a class="btn btn-sm btn-outline-light" href="${escapeHtml(article.url || "#")}" target="_blank" rel="noopener noreferrer">Source</a>
+            </div>
           </div>
         </div>
       </article>
@@ -1903,9 +2014,18 @@ function startPolling() {
 
 async function bootstrap() {
   cacheElements();
+  initNewsDrawer();
   renderAnalyticsWindowSelector();
   hotspotMap = new HotspotMap("hotspot-map");
   hotspotMap.init();
+  teardownHandlers.push(mountVideoStreams());
+  teardownHandlers.push(mountWebcamStreams());
+  teardownHandlers.push(startWorldBrief({ api }));
+  teardownHandlers.push(startThreatClassifier({ api }));
+  teardownHandlers.push(startRiskEngine({ api }));
+  teardownHandlers.push(startTrendDetector({ api }));
+  teardownHandlers.push(startEscalationHotspots({ api }));
+  teardownHandlers.push(startSignalAnomalies({ api }));
   initRiskChart();
   initImpactTimelineChart();
   initSectorBreakdownChart();
@@ -1947,6 +2067,7 @@ async function bootstrap() {
     clearInterval(apiLimitsPoller);
     clearTimeout(analyticsRefreshTimer);
     clearInterval(manualRefreshCooldownTimer);
+    teardownHandlers.forEach((teardown) => teardown?.());
   });
 }
 

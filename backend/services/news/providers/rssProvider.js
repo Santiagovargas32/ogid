@@ -1,4 +1,5 @@
 import { parseRateLimitHeaders } from "../../admin/apiQuotaTrackerService.js";
+import { sanitizeArticleContent } from "../newsContentSanitizer.js";
 
 const INVALID_FEED_CACHE_MS = 6 * 60 * 60 * 1_000;
 const invalidFeedCache = new Map();
@@ -48,6 +49,13 @@ function parseFeedArticles(xml = "", feedLabel = "RSS Feed") {
       extractTag(item, "summary") ||
       extractTag(item, "content:encoded");
     const content = extractTag(item, "content:encoded") || description;
+    const imageUrl = extractImage(item);
+    const sanitized = sanitizeArticleContent({
+      title,
+      description,
+      content,
+      urlToImage: imageUrl
+    });
     const link = extractTag(item, "link") || extractAtomLink(item);
     const publishedAt =
       extractTag(item, "pubDate") ||
@@ -60,11 +68,14 @@ function parseFeedArticles(xml = "", feedLabel = "RSS Feed") {
       source: {
         name: sourceName
       },
-      title,
-      description,
-      content,
+      title: sanitized.title,
+      description: sanitized.description,
+      content: sanitized.content,
+      excerpt: sanitized.excerpt,
+      fullText: sanitized.fullText,
       url: link,
-      urlToImage: extractImage(item),
+      urlToImage: sanitized.leadImageUrl,
+      leadImageUrl: sanitized.leadImageUrl,
       publishedAt,
       usagePolicy: "headline-only-link-out"
     };

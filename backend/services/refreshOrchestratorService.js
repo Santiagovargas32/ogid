@@ -40,10 +40,12 @@ function resolveInputMode(newsMode = "fallback", marketMode = "fallback") {
 }
 
 class RefreshOrchestratorService {
-  constructor({ stateManager, socketServer, config }) {
+  constructor({ stateManager, socketServer, config, rssAggregator = null, signalCorrelator = null }) {
     this.stateManager = stateManager;
     this.socketServer = socketServer;
     this.config = config;
+    this.rssAggregator = rssAggregator;
+    this.signalCorrelator = signalCorrelator;
     this.newsInFlight = false;
     this.marketInFlight = false;
     this.manualRefreshInFlight = false;
@@ -51,6 +53,28 @@ class RefreshOrchestratorService {
     this.marketTimerHandle = null;
     this.stopped = true;
     this.newsBackoffMs = 0;
+  }
+
+  async refreshSecondaryIntel(snapshot) {
+    let aggregateNews = { items: [] };
+
+    if (this.rssAggregator) {
+      try {
+        aggregateNews = await this.rssAggregator.getSnapshot({ force: false, limit: 200 });
+      } catch (error) {
+        log.warn("rss_aggregate_refresh_skipped", {
+          message: error.message
+        });
+      }
+    }
+
+    try {
+      this.signalCorrelator?.recordSnapshot(snapshot, aggregateNews);
+    } catch (error) {
+      log.warn("signal_correlator_record_failed", {
+        message: error.message
+      });
+    }
   }
 
   buildUpdatePayload(snapshot) {
@@ -243,6 +267,7 @@ class RefreshOrchestratorService {
         watchlistCountries: this.config.watchlistCountries
       });
 
+      await this.refreshSecondaryIntel(snapshot);
       this.socketServer.broadcast("update", this.buildUpdatePayload(snapshot), snapshot.meta);
       this.newsBackoffMs = 0;
 
@@ -348,6 +373,7 @@ class RefreshOrchestratorService {
         watchlistCountries: this.config.watchlistCountries
       });
 
+      await this.refreshSecondaryIntel(snapshot);
       this.socketServer.broadcast("update", this.buildUpdatePayload(snapshot), snapshot.meta);
 
       log.info("market_cycle_completed", {
