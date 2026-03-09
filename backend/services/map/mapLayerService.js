@@ -212,12 +212,169 @@ const ARTICLE_KEYWORDS = Object.freeze({
   conflicts: ["conflict", "missile", "drone", "airstrike", "shelling"]
 });
 
+const DASHBOARD_STATIC_LAYER_RULES = Object.freeze({
+  military_bases: Object.freeze({
+    label: "Military Bases",
+    styleKey: "military_bases",
+    keywords: ["military base", "air base", "garrison", "deployment", "airfield"],
+    topicTags: ["conflict"]
+  }),
+  datacenters: Object.freeze({
+    label: "Datacenters",
+    styleKey: "datacenters",
+    keywords: ["data center", "datacenter", "cloud", "server farm", "exchange"],
+    topicTags: ["cyber", "economics"]
+  }),
+  strategic_ports: Object.freeze({
+    label: "Strategic Ports",
+    styleKey: "strategic_ports",
+    keywords: ["port", "harbor", "shipping", "maritime", "container terminal"],
+    topicTags: ["shipping", "economics"]
+  }),
+  airports: Object.freeze({
+    label: "Airports",
+    styleKey: "airports",
+    keywords: ["airport", "airfield", "aviation", "flight", "runway"],
+    topicTags: ["conflict", "economics"]
+  }),
+  refineries: Object.freeze({
+    label: "Refineries",
+    styleKey: "refineries",
+    keywords: ["refinery", "crude", "fuel terminal", "oil processing"],
+    topicTags: ["energy"]
+  }),
+  power_plants: Object.freeze({
+    label: "Power Plants",
+    styleKey: "power_plants",
+    keywords: ["power plant", "nuclear plant", "reactor", "grid outage", "energy facility"],
+    topicTags: ["energy"]
+  }),
+  substations: Object.freeze({
+    label: "Substations",
+    styleKey: "substations",
+    keywords: ["substation", "grid node", "transmission", "power grid"],
+    topicTags: ["energy", "cyber"]
+  }),
+  critical_minerals: Object.freeze({
+    label: "Critical Minerals",
+    styleKey: "critical_minerals",
+    keywords: ["lithium", "rare earth", "copper belt", "mine", "critical minerals"],
+    topicTags: ["economics"]
+  }),
+  shipping_chokepoints: Object.freeze({
+    label: "Shipping Chokepoints",
+    styleKey: "shipping_chokepoints",
+    keywords: ["strait", "canal", "maritime chokepoint", "shipping lane", "tanker"],
+    topicTags: ["shipping", "conflict"]
+  }),
+  air_defense: Object.freeze({
+    label: "Air Defense",
+    styleKey: "air_defense",
+    keywords: ["air defense", "sam", "missile defense", "interceptor"],
+    topicTags: ["conflict"]
+  }),
+  strategic_chokepoints: Object.freeze({
+    label: "Strategic Chokepoints",
+    styleKey: "strategic_chokepoints",
+    keywords: ["canal", "strait", "bottleneck", "corridor", "chokepoint"],
+    topicTags: ["shipping", "conflict"]
+  }),
+  ports_congestion: Object.freeze({
+    label: "Ports Congestion",
+    styleKey: "ports_congestion",
+    keywords: ["port congestion", "vessel queue", "queue", "anchorage", "berth delay"],
+    topicTags: ["shipping", "economics"]
+  }),
+  space_assets: Object.freeze({
+    label: "Launch Sites",
+    styleKey: "space_launch_sites",
+    keywords: ["launch site", "rocket launch", "spaceport", "launch complex", "orbital launch"],
+    topicTags: ["space"]
+  })
+});
+
+const DASHBOARD_MOVING_LAYER_RULES = Object.freeze({
+  naval_vessels: Object.freeze({
+    label: "Naval Vessels",
+    styleKey: "naval_vessels",
+    keywords: ["naval", "warship", "carrier", "destroyer", "frigate", "task group", "patrol"],
+    topicTags: ["conflict", "shipping"],
+    maxDriftKm: 1_100,
+    syntheticLatScale: 0.45,
+    syntheticLngScale: 0.75
+  }),
+  aircraft_adsb: Object.freeze({
+    label: "Aircraft ADS-B",
+    styleKey: "aircraft_adsb",
+    keywords: ["aircraft", "flight", "bomber", "sortie", "reconnaissance", "isr", "patrol aircraft"],
+    topicTags: ["conflict"],
+    maxDriftKm: 850,
+    syntheticLatScale: 0.45,
+    syntheticLngScale: 0.75
+  }),
+  space_assets: Object.freeze({
+    label: "Orbital Passes",
+    styleKey: "space_orbital_passes",
+    keywords: ["satellite", "orbit", "orbital", "leo", "spacecraft", "space asset", "pass"],
+    topicTags: ["space"],
+    maxDriftKm: 1_600,
+    syntheticLatScale: 0.8,
+    syntheticLngScale: 1.25
+  })
+});
+
+const DASHBOARD_ASSET_STATUS = Object.freeze(["confirmed", "country-inferred", "seeded"]);
+const DASHBOARD_ALIAS_STOPWORDS = new Set([
+  "air",
+  "base",
+  "belt",
+  "camp",
+  "canal",
+  "cluster",
+  "complex",
+  "corridor",
+  "group",
+  "grid",
+  "hub",
+  "intl",
+  "international",
+  "launch",
+  "node",
+  "of",
+  "pass",
+  "patrol",
+  "plant",
+  "port",
+  "queue",
+  "ring",
+  "site",
+  "station",
+  "strait",
+  "task",
+  "the",
+  "track"
+]);
+const EARTH_RADIUS_KM = 6_371;
+
 function normalizeText(value = "") {
   return ` ${String(value).toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim()} `;
 }
 
+function normalizePhrase(value = "") {
+  return String(value).toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+}
+
 function hashValue(value = "") {
   return createHash("sha1").update(String(value || "")).digest("hex").slice(0, 12);
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function roundTo(value, digits = 2) {
+  const factor = 10 ** digits;
+  return Math.round(Number(value || 0) * factor) / factor;
 }
 
 function toTimestamp(value) {
@@ -229,6 +386,503 @@ function jitter(seed, scale = 0.24) {
   const digest = hashValue(seed);
   const numeric = Number.parseInt(digest.slice(0, 8), 16);
   return ((numeric % 2000) / 1000 - 1) * scale;
+}
+
+function numericOrNull(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function listToUpper(items = []) {
+  return [...new Set((items || []).map((item) => String(item || "").trim().toUpperCase()).filter(Boolean))];
+}
+
+function sameCoordinates(left, right, epsilon = 0.06) {
+  if (!left || !right) {
+    return false;
+  }
+
+  return Math.abs(Number(left.lat) - Number(right.lat)) <= epsilon && Math.abs(Number(left.lng) - Number(right.lng)) <= epsilon;
+}
+
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const startLat = (lat1 * Math.PI) / 180;
+  const endLat = (lat2 * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(startLat) * Math.cos(endLat) * Math.sin(dLng / 2) ** 2;
+  return 2 * EARTH_RADIUS_KM * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function interpolateCoordinate(start, end, weight = 0.5) {
+  const factor = clamp(weight, 0, 1);
+  return start + (end - start) * factor;
+}
+
+function interpolatePoint(start, end, weight = 0.5) {
+  return {
+    lat: interpolateCoordinate(Number(start.lat), Number(end.lat), weight),
+    lng: interpolateCoordinate(Number(start.lng), Number(end.lng), weight)
+  };
+}
+
+function clampToRadius(base, target, maxDistanceKm = 800) {
+  const distanceKm = haversineKm(base.lat, base.lng, target.lat, target.lng);
+  if (!Number.isFinite(distanceKm) || distanceKm <= maxDistanceKm) {
+    return {
+      lat: Number(target.lat),
+      lng: Number(target.lng),
+      distanceKm: Number.isFinite(distanceKm) ? distanceKm : 0
+    };
+  }
+
+  const factor = clamp(maxDistanceKm / Math.max(distanceKm, 1), 0, 1);
+  return {
+    lat: interpolateCoordinate(base.lat, target.lat, factor),
+    lng: interpolateCoordinate(base.lng, target.lng, factor),
+    distanceKm: maxDistanceKm
+  };
+}
+
+function bearingDegrees(start, end) {
+  const lat1 = (Number(start.lat) * Math.PI) / 180;
+  const lat2 = (Number(end.lat) * Math.PI) / 180;
+  const lngDelta = ((Number(end.lng) - Number(start.lng)) * Math.PI) / 180;
+  const y = Math.sin(lngDelta) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(lngDelta);
+
+  if (!Number.isFinite(x) || !Number.isFinite(y) || (Math.abs(x) < 1e-9 && Math.abs(y) < 1e-9)) {
+    return null;
+  }
+
+  return (((Math.atan2(y, x) * 180) / Math.PI) + 360) % 360;
+}
+
+function syntheticHeading(seed, phase) {
+  const numeric = Number.parseInt(hashValue(`${seed}:${phase}:heading`).slice(0, 8), 16);
+  return numeric % 360;
+}
+
+function uniqueEvidence(items = []) {
+  const seen = new Set();
+  const unique = [];
+  for (const item of items || []) {
+    const key = `${item.id}:${item.publishedAt}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    unique.push(item);
+  }
+  return unique;
+}
+
+function pushIndexed(map, key, value) {
+  if (!key) {
+    return;
+  }
+
+  const existing = map.get(key) || [];
+  existing.push(value);
+  map.set(key, existing);
+}
+
+function buildSeedAliases(name = "", aliases = []) {
+  const normalizedName = normalizePhrase(name);
+  const values = new Set();
+  if (normalizedName) {
+    values.add(normalizedName);
+  }
+
+  for (const alias of aliases || []) {
+    const normalizedAlias = normalizePhrase(alias);
+    if (normalizedAlias) {
+      values.add(normalizedAlias);
+    }
+  }
+
+  for (const token of normalizedName.split(" ")) {
+    if (!token || token.length < 4 || DASHBOARD_ALIAS_STOPWORDS.has(token)) {
+      continue;
+    }
+    values.add(token);
+  }
+
+  return [...values];
+}
+
+function includesPhrase(haystack = "", phrase = "") {
+  const normalizedPhraseValue = normalizeText(phrase);
+  return Boolean(normalizedPhraseValue.trim()) && haystack.includes(normalizedPhraseValue);
+}
+
+function resolveActivityScore(evidence = []) {
+  if (!evidence.length) {
+    return 0;
+  }
+  const weighted = evidence.reduce((sum, item) => sum + item.score, 0) * 10.5 + evidence.length * 4;
+  return Math.round(clamp(weighted, 0, 100));
+}
+
+function resolveEvidenceConfidence(evidence = [], fallback = 0.34) {
+  if (!evidence.length) {
+    return roundTo(fallback, 2);
+  }
+
+  const topConfidence = Math.max(...evidence.map((item) => Number(item.confidence || 0)));
+  return roundTo(clamp(topConfidence, 0.2, 0.99), 2);
+}
+
+function buildDashboardCorpus(snapshot = {}, signalCorpus = [], rssSnapshot = {}) {
+  const articles = uniqueEvidence([
+    ...(signalCorpus || []),
+    ...(snapshot.news || []),
+    ...(rssSnapshot.items || [])
+  ]);
+  const items = [];
+  const byCountry = new Map();
+  const byTopic = new Map();
+  const bySource = new Map();
+
+  for (const article of articles) {
+    const countries = listToUpper([
+      ...(article.countryMentions || []),
+      ...(article.countries || []),
+      article.country || null
+    ]);
+    const lat = numericOrNull(article.lat);
+    const lng = numericOrNull(article.lng);
+    const primaryCountry = countries.length ? resolveCountryCoordinates(countries[0]) : null;
+    const directGeo = lat !== null && lng !== null && !sameCoordinates({ lat, lng }, primaryCountry);
+    const topicTags = [...new Set((article.topicTags || []).map((item) => normalizePhrase(item)).filter(Boolean))];
+    const sourceName = article.sourceName || article.provider || "unknown";
+    const item = {
+      id: article.id || hashValue(`${article.url || article.title || "article"}:${article.publishedAt || article.timestamp || ""}`),
+      title: article.title || sourceName,
+      text: normalizeText(
+        `${article.title || ""} ${article.summary || ""} ${article.description || ""} ${article.content || ""} ${(article.topicTags || []).join(" ")}`
+      ),
+      countries,
+      lat,
+      lng,
+      directGeo,
+      topicTags,
+      sourceName,
+      provider: article.provider || sourceName,
+      credibility: clamp(Number(article.credibilityScore || 0.62), 0.15, 0.99),
+      publishedAt: toTimestamp(article.publishedAt || article.timestamp || Date.now())
+    };
+
+    items.push(item);
+    countries.forEach((iso2) => pushIndexed(byCountry, iso2, item));
+    topicTags.forEach((tag) => pushIndexed(byTopic, tag, item));
+    pushIndexed(bySource, normalizePhrase(sourceName), item);
+  }
+
+  return {
+    items,
+    byCountry,
+    byTopic,
+    bySource
+  };
+}
+
+function candidatePoolForAsset(assetCountries = [], rule = {}, corpus = {}) {
+  const pool = new Map();
+  assetCountries.forEach((iso2) => {
+    (corpus.byCountry?.get(iso2) || []).forEach((item) => {
+      pool.set(item.id, item);
+    });
+  });
+  (rule.topicTags || []).forEach((tag) => {
+    (corpus.byTopic?.get(normalizePhrase(tag)) || []).forEach((item) => {
+      pool.set(item.id, item);
+    });
+  });
+  return pool.size ? [...pool.values()] : corpus.items || [];
+}
+
+function evaluateSeedEvidence(candidate, { countries = [], aliases = [], rule = {}, nowMs = Date.now() } = {}) {
+  const aliasMatches = aliases.filter((alias) => includesPhrase(candidate.text, alias));
+  const keywordMatches = (rule.keywords || []).filter((keyword) => includesPhrase(candidate.text, keyword));
+  const topicMatches = (rule.topicTags || []).filter((tag) => (candidate.topicTags || []).includes(normalizePhrase(tag)));
+  const countryMatch = countries.some((iso2) => candidate.countries.includes(iso2));
+
+  if (!aliasMatches.length && !keywordMatches.length && !topicMatches.length) {
+    return null;
+  }
+
+  if (!countryMatch && !aliasMatches.length) {
+    return null;
+  }
+
+  const ageMs = nowMs - new Date(candidate.publishedAt || 0).getTime();
+  const ageHours = Number.isFinite(ageMs) && ageMs > 0 ? ageMs / 3_600_000 : 24;
+  const recencyBoost = ageHours <= 6 ? 0.9 : ageHours <= 24 ? 0.55 : ageHours <= 72 ? 0.25 : 0;
+  const score =
+    (countryMatch ? 1.35 : 0) +
+    aliasMatches.length * 2.45 +
+    keywordMatches.length * 0.85 +
+    topicMatches.length * 0.7 +
+    (candidate.directGeo ? 1.7 : 0) +
+    candidate.credibility * 1.15 +
+    recencyBoost;
+
+  if (score < 2.15) {
+    return null;
+  }
+
+  return {
+    id: candidate.id,
+    title: candidate.title,
+    publishedAt: candidate.publishedAt,
+    sourceName: candidate.sourceName,
+    countries: candidate.countries,
+    lat: candidate.lat,
+    lng: candidate.lng,
+    directGeo: candidate.directGeo,
+    score: roundTo(score, 3),
+    confidence: clamp(
+      candidate.credibility +
+        (aliasMatches.length ? 0.12 : 0) +
+        (candidate.directGeo ? 0.14 : 0) +
+        (countryMatch ? 0.08 : 0),
+      0.2,
+      0.99
+    ),
+    status: candidate.directGeo && aliasMatches.length ? "confirmed" : countryMatch ? "country-inferred" : "seeded"
+  };
+}
+
+function summarizeEvidence(evidence = []) {
+  const recent = evidence
+    .slice(0, 2)
+    .map((item) => item.title)
+    .filter(Boolean);
+  return recent.length ? recent : [];
+}
+
+function weightedAverageCoordinates(evidence = []) {
+  if (!evidence.length) {
+    return null;
+  }
+
+  const weighted = evidence.reduce(
+    (accumulator, item) => {
+      const weight = Number(item.score || 0);
+      accumulator.lat += Number(item.lat) * weight;
+      accumulator.lng += Number(item.lng) * weight;
+      accumulator.total += weight;
+      return accumulator;
+    },
+    { lat: 0, lng: 0, total: 0 }
+  );
+
+  if (weighted.total <= 0) {
+    return null;
+  }
+
+  return {
+    lat: weighted.lat / weighted.total,
+    lng: weighted.lng / weighted.total
+  };
+}
+
+function weightedCountryCoordinates(evidence = [], fallbackCountry = "") {
+  const weighted = evidence.reduce(
+    (accumulator, item) => {
+      const country = (item.countries || []).find(Boolean) || fallbackCountry;
+      const coordinates = resolveCountryCoordinates(country);
+      if (!coordinates) {
+        return accumulator;
+      }
+
+      const weight = Number(item.score || 0);
+      accumulator.lat += Number(coordinates.lat) * weight;
+      accumulator.lng += Number(coordinates.lng) * weight;
+      accumulator.total += weight;
+      return accumulator;
+    },
+    { lat: 0, lng: 0, total: 0 }
+  );
+
+  if (weighted.total <= 0) {
+    return fallbackCountry ? resolveCountryCoordinates(fallbackCountry) : null;
+  }
+
+  return {
+    lat: weighted.lat / weighted.total,
+    lng: weighted.lng / weighted.total
+  };
+}
+
+function buildDashboardStaticPointAssets(snapshot = {}, signalCorpus = [], rssSnapshot = {}, now = new Date().toISOString()) {
+  const corpus = buildDashboardCorpus(snapshot, signalCorpus, rssSnapshot);
+  const nowMs = new Date(now).getTime();
+
+  return Object.entries(STATIC_POINTS).flatMap(([layerId, items]) => {
+    const rule = DASHBOARD_STATIC_LAYER_RULES[layerId] || {
+      label: layerId.replaceAll("_", " "),
+      styleKey: layerId,
+      keywords: [],
+      topicTags: []
+    };
+
+    return items.map((item) => {
+      const aliases = buildSeedAliases(item.name, item.aliases || []);
+      const evidence = candidatePoolForAsset([item.country], rule, corpus)
+        .map((candidate) =>
+          evaluateSeedEvidence(candidate, {
+            countries: [item.country],
+            aliases,
+            rule,
+            nowMs
+          })
+        )
+        .filter(Boolean)
+        .sort((left, right) => right.score - left.score)
+        .slice(0, 5);
+      const topEvidence = evidence[0] || null;
+
+      return {
+        id: `static:${layerId}:${item.id}`,
+        assetType: "static",
+        layerId,
+        layerLabel: rule.label,
+        styleKey: rule.styleKey,
+        title: item.name,
+        country: item.country,
+        countries: [item.country],
+        lat: Number(item.lat),
+        lng: Number(item.lng),
+        baseLat: Number(item.lat),
+        baseLng: Number(item.lng),
+        status: topEvidence?.status || "seeded",
+        confidence: resolveEvidenceConfidence(evidence, 0.34),
+        activityScore: resolveActivityScore(evidence),
+        linkedArticleCount: evidence.length,
+        lastEvidenceAt: topEvidence?.publishedAt || null,
+        lastEvidenceSource: topEvidence?.sourceName || null,
+        headline: topEvidence?.title || null,
+        evidenceSummary: summarizeEvidence(evidence),
+        syntheticMotion: false,
+        heading: null
+      };
+    });
+  });
+}
+
+function buildDashboardMovingSeedAssets(snapshot = {}, signalCorpus = [], rssSnapshot = {}, now = new Date().toISOString()) {
+  const corpus = buildDashboardCorpus(snapshot, signalCorpus, rssSnapshot);
+  const phase = Math.floor(new Date(now).getTime() / 60_000);
+  const nowMs = new Date(now).getTime();
+
+  return Object.entries(MOVING_SEEDS).flatMap(([layerId, items]) => {
+    const rule = DASHBOARD_MOVING_LAYER_RULES[layerId] || {
+      label: layerId.replaceAll("_", " "),
+      styleKey: layerId,
+      keywords: [],
+      topicTags: [],
+      maxDriftKm: 850,
+      syntheticLatScale: 0.45,
+      syntheticLngScale: 0.75
+    };
+
+    return items.map((item) => {
+      const aliases = buildSeedAliases(item.name, item.aliases || []);
+      const evidence = candidatePoolForAsset([item.country], rule, corpus)
+        .map((candidate) =>
+          evaluateSeedEvidence(candidate, {
+            countries: [item.country],
+            aliases,
+            rule,
+            nowMs
+          })
+        )
+        .filter(Boolean)
+        .sort((left, right) => right.score - left.score)
+        .slice(0, 5);
+      const syntheticPoint = {
+        lat: item.lat + jitter(`${item.id}:${phase}:lat`, rule.syntheticLatScale),
+        lng: item.lng + jitter(`${item.id}:${phase}:lng`, rule.syntheticLngScale)
+      };
+      const geoEvidence = evidence.filter((entry) => entry.directGeo && Number.isFinite(entry.lat) && Number.isFinite(entry.lng));
+      const geoTarget = weightedAverageCoordinates(geoEvidence.slice(0, 3));
+      const countryTarget = weightedCountryCoordinates(evidence, item.country);
+      const blendedTarget = geoTarget
+        ? interpolatePoint(syntheticPoint, geoTarget, 0.72)
+        : countryTarget
+          ? interpolatePoint(syntheticPoint, countryTarget, 0.3)
+          : syntheticPoint;
+      const clampedPoint = clampToRadius(
+        { lat: Number(item.lat), lng: Number(item.lng) },
+        blendedTarget,
+        rule.maxDriftKm
+      );
+      const topEvidence = evidence[0] || null;
+      const finalPoint = topEvidence ? clampedPoint : syntheticPoint;
+      const heading =
+        bearingDegrees({ lat: Number(item.lat), lng: Number(item.lng) }, finalPoint) ?? syntheticHeading(item.id, phase);
+
+      return {
+        id: `moving:${layerId}:${item.id}`,
+        assetType: "moving",
+        layerId,
+        layerLabel: rule.label,
+        styleKey: rule.styleKey,
+        title: item.name,
+        country: item.country,
+        countries: [item.country],
+        lat: roundTo(finalPoint.lat, 5),
+        lng: roundTo(finalPoint.lng, 5),
+        baseLat: Number(item.lat),
+        baseLng: Number(item.lng),
+        status: topEvidence?.status || "seeded",
+        confidence: resolveEvidenceConfidence(evidence, 0.42),
+        activityScore: resolveActivityScore(evidence),
+        linkedArticleCount: evidence.length,
+        lastEvidenceAt: topEvidence?.publishedAt || null,
+        lastEvidenceSource: topEvidence?.sourceName || null,
+        headline: topEvidence?.title || null,
+        evidenceSummary: summarizeEvidence(evidence),
+        syntheticMotion: !topEvidence,
+        heading: roundTo(heading, 1),
+        trackPhase: phase,
+        positionMode: geoEvidence.length ? "triangulated" : topEvidence ? "country-inferred" : "synthetic"
+      };
+    });
+  });
+}
+
+function buildDashboardMapAssets(snapshot = {}, signalCorpus = [], rssSnapshot = {}, now = new Date().toISOString()) {
+  const staticPoints = buildDashboardStaticPointAssets(snapshot, signalCorpus, rssSnapshot, now);
+  const movingSeeds = buildDashboardMovingSeedAssets(snapshot, signalCorpus, rssSnapshot, now);
+  const statusCounts = DASHBOARD_ASSET_STATUS.reduce(
+    (accumulator, status) => ({
+      ...accumulator,
+      [status]: 0
+    }),
+    {}
+  );
+
+  [...staticPoints, ...movingSeeds].forEach((asset) => {
+    statusCounts[asset.status] = (statusCounts[asset.status] || 0) + 1;
+  });
+
+  return {
+    generatedAt: now,
+    staticPoints,
+    movingSeeds,
+    meta: {
+      generatedAt: now,
+      rssGeneratedAt: rssSnapshot?.generatedAt || null,
+      corpusSize: (signalCorpus || []).length + (snapshot.news || []).length + ((rssSnapshot.items || []).length),
+      matchedAssets: [...staticPoints, ...movingSeeds].filter((asset) => asset.linkedArticleCount > 0).length,
+      statusCounts
+    }
+  };
 }
 
 function pointFeature(layerId, id, title, lat, lng, properties = {}, timestamp = new Date().toISOString()) {
@@ -599,6 +1253,17 @@ export class MapLayerService {
       log.warn("map_layer_rss_snapshot_failed", { message: error.message });
       return { items: [], meta: { source: "error", reason: error.message } };
     }
+  }
+
+  async getDashboardMapAssets({ snapshot = null, signalCorpus = null, rssSnapshot = null } = {}) {
+    const baseSnapshot = snapshot || this.stateManager.getSnapshot();
+    const corpus =
+      signalCorpus ||
+      this.stateManager.getSignalCorpus?.() ||
+      baseSnapshot.signalCorpus ||
+      [];
+    const resolvedRssSnapshot = rssSnapshot || await this.resolveRssSnapshot();
+    return buildDashboardMapAssets(baseSnapshot, corpus, resolvedRssSnapshot, new Date().toISOString());
   }
 
   async getRawLayer(layer, { snapshot, rssSnapshot, force = false } = {}) {

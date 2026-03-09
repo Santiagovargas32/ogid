@@ -183,6 +183,22 @@ class StateManager {
       },
       timeseries: [],
       market,
+      mapAssets: {
+        generatedAt: null,
+        staticPoints: [],
+        movingSeeds: [],
+        meta: {
+          generatedAt: null,
+          rssGeneratedAt: null,
+          corpusSize: 0,
+          matchedAssets: 0,
+          statusCounts: {
+            confirmed: 0,
+            "country-inferred": 0,
+            seeded: 0
+          }
+        }
+      },
       impact: {
         updatedAt: null,
         windowMin: impactWindowMin,
@@ -296,6 +312,7 @@ class StateManager {
       market: nextMarket,
       impact: nextImpact,
       impactHistory,
+      mapAssets: this.state.mapAssets,
       meta: {
         ...this.state.meta,
         lastRefreshAt: timestamp,
@@ -309,6 +326,19 @@ class StateManager {
           marketMeta: resolvedMarketMeta
         })
       }
+    };
+
+    return this.getSnapshot();
+  }
+
+  setMapAssets(mapAssets = null) {
+    if (!mapAssets || typeof mapAssets !== "object") {
+      return this.getSnapshot();
+    }
+
+    this.state = {
+      ...this.state,
+      mapAssets
     };
 
     return this.getSnapshot();

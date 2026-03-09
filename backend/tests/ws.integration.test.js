@@ -92,6 +92,8 @@ test("WebSocket emits snapshot and update envelopes", async () => {
     const snapshotMessage = await waitForMessage(socket, "snapshot");
     assert.equal(snapshotMessage.type, "snapshot");
     assert.ok(Array.isArray(snapshotMessage.data.hotspots));
+    assert.ok(snapshotMessage.data.mapAssets);
+    assert.ok(Array.isArray(snapshotMessage.data.mapAssets.staticPoints));
     assert.ok(snapshotMessage.data.meta.dataQuality);
     assert.ok(snapshotMessage.data.meta.refreshStatus);
     assert.ok(snapshotMessage.data.predictions);
@@ -102,6 +104,8 @@ test("WebSocket emits snapshot and update envelopes", async () => {
 
     assert.equal(updateMessage.type, "update");
     assert.ok(Array.isArray(updateMessage.data.news));
+    assert.ok(updateMessage.data.mapAssets);
+    assert.ok(Array.isArray(updateMessage.data.mapAssets.movingSeeds));
     assert.ok(updateMessage.data.market);
     assert.ok(updateMessage.data.impact);
     assert.ok(updateMessage.data.predictions);

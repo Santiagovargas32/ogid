@@ -440,7 +440,8 @@ export function createAppServer(overrides = {}) {
     socketServer,
     config,
     rssAggregator,
-    signalCorrelator
+    signalCorrelator,
+    mapLayerService
   });
   const manualRefreshService = new ManualRefreshService({
     orchestrator,

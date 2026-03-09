@@ -70,6 +70,8 @@ test("REST API exposes health and snapshot payloads", async () => {
     assert.equal(snapshotPayload.ok, true);
     assert.ok(Array.isArray(snapshotPayload.data.hotspots));
     assert.ok(snapshotPayload.data.hotspots.length <= 3);
+    assert.ok(snapshotPayload.data.mapAssets);
+    assert.ok(Array.isArray(snapshotPayload.data.mapAssets.staticPoints));
     assert.equal(snapshotPayload.data.meta.sourceMode, "live");
     assert.ok(snapshotPayload.data.meta.dataQuality);
     assert.ok(snapshotPayload.data.meta.emptyStates);

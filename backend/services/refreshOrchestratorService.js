@@ -40,12 +40,13 @@ function resolveInputMode(newsMode = "fallback", marketMode = "fallback") {
 }
 
 class RefreshOrchestratorService {
-  constructor({ stateManager, socketServer, config, rssAggregator = null, signalCorrelator = null }) {
+  constructor({ stateManager, socketServer, config, rssAggregator = null, signalCorrelator = null, mapLayerService = null }) {
     this.stateManager = stateManager;
     this.socketServer = socketServer;
     this.config = config;
     this.rssAggregator = rssAggregator;
     this.signalCorrelator = signalCorrelator;
+    this.mapLayerService = mapLayerService;
     this.newsInFlight = false;
     this.marketInFlight = false;
     this.manualRefreshInFlight = false;
@@ -55,25 +56,54 @@ class RefreshOrchestratorService {
     this.newsBackoffMs = 0;
   }
 
-  async refreshSecondaryIntel(snapshot) {
-    let aggregateNews = { items: [] };
-
-    if (this.rssAggregator) {
-      try {
-        aggregateNews = await this.rssAggregator.getSnapshot({ force: false, limit: 200 });
-      } catch (error) {
-        log.warn("rss_aggregate_refresh_skipped", {
-          message: error.message
-        });
-      }
+  async resolveAggregateNewsSnapshot() {
+    if (!this.rssAggregator) {
+      return { items: [] };
     }
 
     try {
-      this.signalCorrelator?.recordSnapshot(snapshot, aggregateNews);
+      return await this.rssAggregator.getSnapshot({ force: false, limit: 200 });
+    } catch (error) {
+      log.warn("rss_aggregate_refresh_skipped", {
+        message: error.message
+      });
+      return { items: [] };
+    }
+  }
+
+  async refreshSecondaryIntel(snapshot, aggregateNews = { items: [] }) {
+    const resolvedAggregateNews = aggregateNews || { items: [] };
+    const correlatorSnapshot = {
+      ...snapshot,
+      signalCorpus: this.stateManager.getSignalCorpus()
+    };
+
+    try {
+      this.signalCorrelator?.recordSnapshot(correlatorSnapshot, resolvedAggregateNews);
     } catch (error) {
       log.warn("signal_correlator_record_failed", {
         message: error.message
       });
+    }
+  }
+
+  async enrichSnapshotWithMapAssets(snapshot, aggregateNews = { items: [] }) {
+    if (!this.mapLayerService) {
+      return snapshot;
+    }
+
+    try {
+      const mapAssets = await this.mapLayerService.getDashboardMapAssets({
+        snapshot,
+        signalCorpus: this.stateManager.getSignalCorpus(),
+        rssSnapshot: aggregateNews
+      });
+      return this.stateManager.setMapAssets(mapAssets);
+    } catch (error) {
+      log.warn("dashboard_map_assets_refresh_failed", {
+        message: error.message
+      });
+      return snapshot;
     }
   }
 
@@ -83,6 +113,7 @@ class RefreshOrchestratorService {
       news: snapshot.news,
       hotspots: snapshot.hotspots,
       countries: snapshot.countries,
+      mapAssets: snapshot.mapAssets,
       insights: snapshot.insights,
       predictions: snapshot.predictions,
       timeseries: snapshot.timeseries,
@@ -254,7 +285,7 @@ class RefreshOrchestratorService {
         inputMode
       });
 
-      const snapshot = this.stateManager.updateIntel({
+      let snapshot = this.stateManager.updateIntel({
         news: selectedNews,
         countries: riskResult.countries,
         hotspots: riskResult.hotspots,
@@ -267,7 +298,9 @@ class RefreshOrchestratorService {
         watchlistCountries: this.config.watchlistCountries
       });
 
-      await this.refreshSecondaryIntel(snapshot);
+      const aggregateNews = await this.resolveAggregateNewsSnapshot();
+      snapshot = await this.enrichSnapshotWithMapAssets(snapshot, aggregateNews);
+      await this.refreshSecondaryIntel(snapshot, aggregateNews);
       this.socketServer.broadcast("update", this.buildUpdatePayload(snapshot), snapshot.meta);
       this.newsBackoffMs = 0;
 
@@ -365,7 +398,7 @@ class RefreshOrchestratorService {
         inputMode
       });
 
-      const snapshot = this.stateManager.updateIntel({
+      let snapshot = this.stateManager.updateIntel({
         insights,
         predictions,
         market: marketState,
@@ -373,7 +406,9 @@ class RefreshOrchestratorService {
         watchlistCountries: this.config.watchlistCountries
       });
 
-      await this.refreshSecondaryIntel(snapshot);
+      const aggregateNews = await this.resolveAggregateNewsSnapshot();
+      snapshot = await this.enrichSnapshotWithMapAssets(snapshot, aggregateNews);
+      await this.refreshSecondaryIntel(snapshot, aggregateNews);
       this.socketServer.broadcast("update", this.buildUpdatePayload(snapshot), snapshot.meta);
 
       log.info("market_cycle_completed", {

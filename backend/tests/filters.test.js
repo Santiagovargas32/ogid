@@ -36,6 +36,10 @@ test("applyCountryFilter trims snapshot by selected countries", () => {
     news: [{ id: "a", countryMentions: ["US"] }, { id: "b", countryMentions: ["IR"] }],
     hotspots: [{ iso2: "US" }, { iso2: "IR" }],
     countries: { US: { iso2: "US" }, IR: { iso2: "IR" } },
+    mapAssets: {
+      staticPoints: [{ id: "sp-1", countries: ["US"] }, { id: "sp-2", countries: ["IR"] }],
+      movingSeeds: [{ id: "mv-1", countries: ["US"] }, { id: "mv-2", countries: ["IR"] }]
+    },
     insights: [{ iso2: "US" }, { iso2: "IR" }],
     impact: { items: [{ linkedCountries: ["US"] }, { linkedCountries: ["IR"] }] }
   };
@@ -44,6 +48,8 @@ test("applyCountryFilter trims snapshot by selected countries", () => {
   assert.equal(filtered.news.length, 1);
   assert.equal(filtered.hotspots.length, 1);
   assert.equal(Object.keys(filtered.countries).length, 1);
+  assert.equal(filtered.mapAssets.staticPoints.length, 1);
+  assert.equal(filtered.mapAssets.movingSeeds.length, 1);
   assert.equal(filtered.insights.length, 1);
   assert.equal(filtered.impact.items.length, 1);
 });

@@ -151,8 +151,8 @@ function escapeHtml(value = "") {
 function renderEmptyStateCard(message, actionLabel = "") {
   const button = actionLabel
     ? `<div class="mt-2"><button class="btn btn-sm btn-outline-info" type="button" data-action="show-all-countries">${escapeHtml(
-        actionLabel
-      )}</button></div>`
+      actionLabel
+    )}</button></div>`
     : "";
   return `<div class="empty-state-card small text-light-emphasis">${escapeHtml(message)}${button}</div>`;
 }
@@ -278,9 +278,9 @@ function renderAnalyticsWindowSelector() {
     <div class="chart-selector-help small text-light-emphasis">Analytics window</div>
     <div class="chart-selector-chips">
       ${ANALYTICS_WINDOW_OPTIONS.map((option) => {
-        const activeClass = option.minutes === selectedAnalyticsWindowMin ? "active" : "";
-        return `<button class="chart-selector-chip ${activeClass}" type="button" data-action="set-analytics-window" data-window-min="${option.minutes}">${option.label}</button>`;
-      }).join("")}
+    const activeClass = option.minutes === selectedAnalyticsWindowMin ? "active" : "";
+    return `<button class="chart-selector-chip ${activeClass}" type="button" data-action="set-analytics-window" data-window-min="${option.minutes}">${option.label}</button>`;
+  }).join("")}
     </div>
   `;
 }
@@ -598,6 +598,21 @@ function intersectsCountries(mentions = [], countriesSet) {
   return mentions.some((iso2) => countriesSet.has(iso2));
 }
 
+function filterMapAssetsBySelection(mapAssets = {}, countriesSet) {
+  if (!countriesSet?.size) {
+    return mapAssets;
+  }
+
+  const filterItems = (items = []) =>
+    items.filter((item) => intersectsCountries(item.countries || (item.country ? [item.country] : []), countriesSet));
+
+  return {
+    ...mapAssets,
+    staticPoints: filterItems(mapAssets.staticPoints || []),
+    movingSeeds: filterItems(mapAssets.movingSeeds || [])
+  };
+}
+
 function filterStateBySelection(state) {
   if (selectedIncludesAll()) {
     return state;
@@ -613,6 +628,7 @@ function filterStateBySelection(state) {
   const filteredImpactItems = (state.impact?.items || []).filter((item) =>
     intersectsCountries(item.linkedCountries || [], countriesSet)
   );
+  const filteredMapAssets = filterMapAssetsBySelection(state.mapAssets || { staticPoints: [], movingSeeds: [] }, countriesSet);
 
   return {
     ...state,
@@ -620,6 +636,7 @@ function filterStateBySelection(state) {
     hotspots: filteredHotspots,
     countries: filteredCountries,
     insights: filteredInsights,
+    mapAssets: filteredMapAssets,
     impact: {
       ...(state.impact || {}),
       items: filteredImpactItems
@@ -885,8 +902,8 @@ function renderNews(news = [], countries = {}) {
             </div>
             <div class="news-card-actions">
               <button class="btn btn-sm btn-outline-info news-card-cta" type="button" data-action="open-news" data-news-id="${escapeHtml(
-                article.id
-              )}">Open brief</button>
+        article.id
+      )}">Open brief</button>
               <a class="btn btn-sm btn-outline-light" href="${escapeHtml(article.url || "#")}" target="_blank" rel="noopener noreferrer">Source</a>
             </div>
           </div>
@@ -1102,18 +1119,17 @@ function renderPredictions(predictions = { sectors: [] }) {
         <div class="title-row">
           <strong>${escapeHtml(prediction.sector.toUpperCase())}</strong>
           <span class="badge ${qualityBadgeClass(prediction.inputMode || "fallback")}">${escapeHtml(
-            prediction.direction
-          )}</span>
+        prediction.direction
+      )}</span>
         </div>
         <div class="prediction-meta">
-          Confidence: ${prediction.confidence}% | Horizon: ${prediction.horizonHours}h | Tickers: ${
-            prediction.tickers?.join(", ") || "N/A"
-          }
+          Confidence: ${prediction.confidence}% | Horizon: ${prediction.horizonHours}h | Tickers: ${prediction.tickers?.join(", ") || "N/A"
+        }
         </div>
         <div class="insight-drivers mt-1">
           ${(prediction.drivers || [])
-            .map((driver) => `<span class="driver-pill">${escapeHtml(driver)}</span>`)
-            .join("")}
+          .map((driver) => `<span class="driver-pill">${escapeHtml(driver)}</span>`)
+          .join("")}
         </div>
       </article>
     `
@@ -1136,10 +1152,7 @@ function renderInsights(insights = [], emptyReason = "") {
     Flat: "-"
   };
 
-  const filterNotice =
-    !selectedIncludesAll() && insights.length < Math.min(4, currentWatchlist.length)
-      ? `<div class="filter-notice small"><strong>Watchlist filter active.</strong> You are viewing a narrowed country set. <button class="btn btn-sm btn-outline-info mt-2" type="button" data-action="show-all-countries">View ALL</button></div>`
-      : "";
+  const filterNotice = !selectedIncludesAll() && insights.length < Math.min(4, currentWatchlist.length) ? `<div class="filter-notice small"><strong>Watchlist filter active.</strong> You are viewing a narrowed country set. <button class="btn btn-sm btn-outline-info mt-2" type="button" data-action="show-all-countries">View ALL</button></div>` : "";
 
   elements.insightsList.innerHTML = filterNotice + insights
     .map(
@@ -1165,8 +1178,7 @@ function renderInsights(insights = [], emptyReason = "") {
 function renderMarketQuotes(market = { quotes: {} }) {
   const quotes = Object.entries(market.quotes || {});
   if (!quotes.length) {
-    elements.marketQuotesBody.innerHTML =
-      '<tr><td colspan="3" class="text-light-emphasis">No market quotes available.</td></tr>';
+    elements.marketQuotesBody.innerHTML = '<tr><td colspan="3" class="text-light-emphasis">No market quotes available.</td></tr>';
     return;
   }
 
@@ -1219,14 +1231,14 @@ function renderImpact(impact = { items: [] }) {
       <article class="impact-item">
         <div class="impact-header">
           <span><strong>${escapeHtml(item.ticker)}</strong> <span class="text-light-emphasis">(${escapeHtml(
-            item.level
-          )})</span></span>
+        item.level
+      )})</span></span>
           <span class="impact-score">${item.impactScore.toFixed(2)}</span>
         </div>
         <div class="impact-meta">
           mode: ${escapeHtml(item.inputMode || "live")} | eventScore: ${item.eventScore.toFixed(
-            2
-          )} | priceReaction: ${item.priceReaction.toFixed(2)}% | countries: ${(item.linkedCountries || []).join(", ") || "N/A"}
+        2
+      )} | priceReaction: ${item.priceReaction.toFixed(2)}% | countries: ${(item.linkedCountries || []).join(", ") || "N/A"}
         </div>
         <div class="impact-meta">
           quote: ${escapeHtml(marketModeLabel(quoteMode))} | source: ${escapeHtml(item.quote?.source || "unknown")} | age: ${escapeHtml(quoteAgeLabel)}
@@ -1316,13 +1328,13 @@ function renderCouplingTickerSelector(availableSeries = [], selectedTickers = []
     <div class="chart-selector-help small text-light-emphasis">Showing up to 4 ticker histories at once.</div>
     <div class="chart-selector-chips">
       ${(availableSeries || [])
-        .map((series) => {
-          const activeClass = selectedSet.has(series.ticker) ? "active" : "";
-          return `<button class="chart-selector-chip ${activeClass}" type="button" data-action="toggle-coupling-ticker" data-ticker="${escapeHtml(
-            series.ticker
-          )}">${escapeHtml(series.ticker)}</button>`;
-        })
-        .join("")}
+      .map((series) => {
+        const activeClass = selectedSet.has(series.ticker) ? "active" : "";
+        return `<button class="chart-selector-chip ${activeClass}" type="button" data-action="toggle-coupling-ticker" data-ticker="${escapeHtml(
+          series.ticker
+        )}">${escapeHtml(series.ticker)}</button>`;
+      })
+      .join("")}
     </div>
   `;
 }
@@ -1480,17 +1492,17 @@ function renderPredictedSectorDirection(items = [], overlayMessage = "") {
 function renderTickerOutlookMatrix(items = [], visibleTickers = new Set(), analytics = {}) {
   const points = applyDeterministicMatrixJitter(
     items
-    .filter((item) => visibleTickers.has(item.ticker))
-    .map((item) => ({
-      x: Number(item.eventScore || 0),
-      y: Number(item.predictedConfidence || 0),
-      r: Number(item.radius || 6),
-      ticker: item.ticker,
-      direction: item.direction,
-      predictionScore: Number(item.predictionScore || 0),
-      changePct: Number(item.changePct || 0),
-      dataMode: normalizeMarketDataMode(item.dataMode || analytics.dataModesByTicker?.[item.ticker]?.dataMode || "synthetic-fallback")
-    }))
+      .filter((item) => visibleTickers.has(item.ticker))
+      .map((item) => ({
+        x: Number(item.eventScore || 0),
+        y: Number(item.predictedConfidence || 0),
+        r: Number(item.radius || 6),
+        ticker: item.ticker,
+        direction: item.direction,
+        predictionScore: Number(item.predictionScore || 0),
+        changePct: Number(item.changePct || 0),
+        dataMode: normalizeMarketDataMode(item.dataMode || analytics.dataModesByTicker?.[item.ticker]?.dataMode || "synthetic-fallback")
+      }))
   );
 
   sectorBreakdownChart.data.datasets[0].data = points;
@@ -1608,7 +1620,7 @@ function renderDashboard(rawState) {
   renderMarketQuotes(rawState.market || {});
   renderImpact(resolveRenderedImpact(rawState, state, analytics));
   renderCharts(rawState, state, analytics);
-  hotspotMap.render(state.hotspots, state.news, currentWatchlist);
+  hotspotMap.render(state.hotspots, state.news, currentWatchlist, state.mapAssets || { staticPoints: [], movingSeeds: [] });
 }
 
 function setWsStatus(status) {
@@ -1861,9 +1873,8 @@ function renderPipelineDiagnostics(news = {}) {
       const providerMarkup = diagnostics
         .map((item) => {
           const reasonLine = item.reason
-            ? `<div class="diagnostic-item-meta">reason: ${escapeHtml(item.reason)}${
-                item.nextAllowedAt ? ` | next: ${escapeHtml(formatShortTime(item.nextAllowedAt))}` : ""
-              }</div>`
+            ? `<div class="diagnostic-item-meta">reason: ${escapeHtml(item.reason)}${item.nextAllowedAt ? ` | next: ${escapeHtml(formatShortTime(item.nextAllowedAt))}` : ""
+            }</div>`
             : item.nextAllowedAt
               ? `<div class="diagnostic-item-meta">next: ${escapeHtml(formatShortTime(item.nextAllowedAt))}</div>`
               : "";
@@ -1885,8 +1896,8 @@ function renderPipelineDiagnostics(news = {}) {
         ? `
           <div class="diagnostic-section-label">Selection by source</div>
           ${sourceDiagnostics
-            .map(
-              (item) => `
+          .map(
+            (item) => `
                 <article class="diagnostic-item">
                   <div class="diagnostic-item-header">
                     <strong>${escapeHtml(item.sourceName)}</strong>
@@ -1895,8 +1906,8 @@ function renderPipelineDiagnostics(news = {}) {
                   <div class="diagnostic-item-meta">raw: ${item.raw} | filtered: ${item.filtered} | selected: ${item.selected}</div>
                 </article>
               `
-            )
-            .join("")}
+          )
+          .join("")}
         `
         : "";
       elements.pipelineDiagnosticsBody.innerHTML = providerMarkup + sourceMarkup;

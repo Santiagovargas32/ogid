@@ -117,6 +117,25 @@ export function filterImpactByCountries(impact = { items: [] }, countries = []) 
   };
 }
 
+export function filterMapAssetsByCountries(mapAssets = { staticPoints: [], movingSeeds: [] }, countries = []) {
+  if (!countries.length) {
+    return mapAssets;
+  }
+
+  const set = new Set(countries);
+  const filterAssets = (items = []) =>
+    items.filter((item) => {
+      const linkedCountries = item?.countries?.length ? item.countries : item?.country ? [item.country] : [];
+      return linkedCountries.some((iso2) => set.has(String(iso2 || "").toUpperCase()));
+    });
+
+  return {
+    ...mapAssets,
+    staticPoints: filterAssets(mapAssets.staticPoints || []),
+    movingSeeds: filterAssets(mapAssets.movingSeeds || [])
+  };
+}
+
 export function filterNewsBySources(news = [], sources = []) {
   if (!sources.length) {
     return news;
@@ -132,6 +151,7 @@ export function applyCountryFilter(snapshot, countries = []) {
   const filteredCountries = filterCountriesMap(snapshot.countries, countries);
   const filteredInsights = filterInsightsByCountries(snapshot.insights, countries);
   const filteredImpact = filterImpactByCountries(snapshot.impact || { items: [] }, countries);
+  const filteredMapAssets = filterMapAssetsByCountries(snapshot.mapAssets || { staticPoints: [], movingSeeds: [] }, countries);
 
   return {
     ...snapshot,
@@ -139,6 +159,7 @@ export function applyCountryFilter(snapshot, countries = []) {
     hotspots: filteredHotspots,
     countries: filteredCountries,
     insights: filteredInsights,
-    impact: filteredImpact
+    impact: filteredImpact,
+    mapAssets: filteredMapAssets
   };
 }

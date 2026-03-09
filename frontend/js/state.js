@@ -18,6 +18,22 @@ const appState = {
   news: [],
   countries: {},
   hotspots: [],
+  mapAssets: {
+    generatedAt: null,
+    staticPoints: [],
+    movingSeeds: [],
+    meta: {
+      generatedAt: null,
+      rssGeneratedAt: null,
+      corpusSize: 0,
+      matchedAssets: 0,
+      statusCounts: {
+        confirmed: 0,
+        "country-inferred": 0,
+        seeded: 0
+      }
+    }
+  },
   insights: [],
   predictions: {
     updatedAt: null,
@@ -63,6 +79,9 @@ function applyPayload(payload = {}) {
   }
   if (Array.isArray(payload.hotspots)) {
     appState.hotspots = payload.hotspots;
+  }
+  if (payload.mapAssets && typeof payload.mapAssets === "object") {
+    appState.mapAssets = payload.mapAssets;
   }
   if (Array.isArray(payload.insights)) {
     appState.insights = payload.insights;

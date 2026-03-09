@@ -904,6 +904,142 @@ body {
   filter: drop-shadow(0 0 8px rgba(74, 180, 255, 0.42));
 }
 
+.map-overlay-controls {
+  position: absolute;
+  top: 0.85rem;
+  left: 0.85rem;
+  z-index: 430;
+  max-width: min(28rem, calc(100% - 1.7rem));
+  border: 1px solid rgba(70, 82, 74, 0.56);
+  border-radius: 0.52rem;
+  background: rgba(5, 8, 10, 0.88);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.32);
+  padding: 0.48rem 0.56rem;
+  pointer-events: auto;
+}
+
+.map-overlay-heading {
+  margin: 0 0 0.32rem;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.56rem;
+  letter-spacing: 0.08rem;
+  text-transform: uppercase;
+  color: #9aa99a;
+}
+
+.map-overlay-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.36rem;
+}
+
+.map-overlay-chip {
+  border: 1px solid rgba(81, 97, 90, 0.72);
+  border-radius: 999px;
+  background: rgba(14, 18, 22, 0.92);
+  color: #dfe8df;
+  font-size: 0.63rem;
+  line-height: 1;
+  padding: 0.34rem 0.58rem;
+  transition: border-color 140ms ease, background-color 140ms ease, opacity 140ms ease;
+}
+
+.map-overlay-chip.active {
+  background: rgba(74, 214, 197, 0.12);
+  border-color: rgba(74, 214, 197, 0.46);
+}
+
+.map-overlay-chip.muted {
+  opacity: 0.62;
+}
+
+.map-overlay-chip.always-on {
+  background: rgba(111, 177, 255, 0.1);
+  border-color: rgba(111, 177, 255, 0.34);
+  color: #d9ecff;
+}
+
+.seed-marker {
+  background: transparent;
+  border: 0;
+}
+
+.seed-marker-shell {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  filter: drop-shadow(0 0 8px var(--seed-glow));
+}
+
+.seed-marker-shell::before {
+  content: "";
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(255, 255, 255, calc(var(--seed-confidence) * 0.18)) 0%, transparent 72%);
+  transform: scale(1);
+  opacity: 0.8;
+}
+
+.seed-marker-shell-moving::before {
+  animation: seed-pulse 2.7s ease-in-out infinite;
+}
+
+.seed-marker-svg {
+  position: relative;
+  z-index: 1;
+  width: 30px;
+  height: 30px;
+  overflow: visible;
+}
+
+.seed-marker-svg-rotating {
+  transform: rotate(var(--seed-rotation));
+  transform-origin: 50% 50%;
+}
+
+.seed-status-confirmed {
+  filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.22));
+}
+
+.seed-status-country-inferred {
+  opacity: 0.95;
+}
+
+.seed-status-seeded {
+  opacity: 0.84;
+}
+
+@keyframes seed-pulse {
+  0%,
+  100% {
+    transform: scale(0.92);
+    opacity: 0.55;
+  }
+
+  50% {
+    transform: scale(1.1);
+    opacity: 0.92;
+  }
+}
+
+@media (max-width: 768px) {
+  .map-overlay-controls {
+    top: 0.65rem;
+    left: 0.65rem;
+    right: 0.65rem;
+    max-width: none;
+  }
+
+  .map-overlay-chip {
+    font-size: 0.58rem;
+    padding: 0.3rem 0.5rem;
+  }
+}
+
 .map-toolbar-shell {
   margin-top: 0.18rem;
   overflow-x: auto;
