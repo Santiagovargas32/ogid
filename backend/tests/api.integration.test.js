@@ -10,6 +10,23 @@ test("REST API exposes health and snapshot payloads", async () => {
       return originalFetch(url, options);
     }
 
+    if (value.includes("youtube.com")) {
+      return new Response(
+        `<!doctype html>
+        <html>
+          <body>
+            <script>
+              var ytInitialData = {"contents":{"twoColumnBrowseResultsRenderer":{"tabs":[{"tabRenderer":{"content":{"sectionListRenderer":{"contents":[{"itemSectionRenderer":{"contents":[{"gridRenderer":{"items":[{"gridVideoRenderer":{"videoId":"EcOPAnQb1w0","thumbnailOverlays":[{"thumbnailOverlayTimeStatusRenderer":{"style":"LIVE","text":{"runs":[{"text":"LIVE"}]}}}]}}]}}]}}]}}}}]}};
+            </script>
+          </body>
+        </html>`,
+        {
+          status: 200,
+          headers: { "content-type": "text/html" }
+        }
+      );
+    }
+
     return new Response(
       `<?xml version="1.0" encoding="UTF-8"?>
       <rss version="2.0">
@@ -206,11 +223,29 @@ test("REST API exposes health and snapshot payloads", async () => {
     assert.ok(pipelinePayload.data.market);
     assert.ok(pipelinePayload.data.news);
     assert.ok("nextRecommendedRunAt" in pipelinePayload.data.market);
+    assert.ok("lastDurationMs" in pipelinePayload.data.market);
+    assert.ok("lastStartedAt" in pipelinePayload.data.market);
+    assert.ok("lastCompletedAt" in pipelinePayload.data.market);
+    assert.ok("lastStatus" in pipelinePayload.data.market);
     assert.ok(pipelinePayload.data.market.coverageByMode);
     assert.ok(Array.isArray(pipelinePayload.data.market.providerErrors));
     assert.ok(Array.isArray(pipelinePayload.data.news.selectionBySourceName));
     assert.ok("latestSelectedArticleAgeMin" in pipelinePayload.data.news);
+    assert.ok("lastDurationMs" in pipelinePayload.data.news);
+    assert.ok("lastStartedAt" in pipelinePayload.data.news);
+    assert.ok("lastCompletedAt" in pipelinePayload.data.news);
+    assert.ok("lastStatus" in pipelinePayload.data.news);
     assert.ok(Array.isArray(pipelinePayload.data.recentCycleErrors));
+
+    const mediaStreamsResponse = await fetch(`${baseUrl}/api/media/streams`);
+    const mediaStreamsPayload = await mediaStreamsResponse.json();
+    assert.equal(mediaStreamsResponse.status, 200);
+    assert.equal(mediaStreamsPayload.ok, true);
+    assert.ok(mediaStreamsPayload.data.generatedAt);
+    assert.ok(mediaStreamsPayload.data.summary);
+    assert.ok(Array.isArray(mediaStreamsPayload.data.sections.situational));
+    assert.ok(Array.isArray(mediaStreamsPayload.data.sections.webcams));
+    assert.ok(mediaStreamsPayload.data.sections.situational.some((item) => item.id === "bbc-news"));
   } finally {
     global.fetch = originalFetch;
     await runtime.stop();
@@ -219,6 +254,7 @@ test("REST API exposes health and snapshot payloads", async () => {
 
 test("pipeline status exposes provider and rss diagnostics for ok, error and skipped states", async () => {
   const originalFetch = global.fetch;
+  let rssFetchCount = 0;
   global.fetch = async (url, options) => {
     const value = String(url);
 
@@ -249,6 +285,7 @@ test("pipeline status exposes provider and rss diagnostics for ok, error and ski
     }
 
     if (value.includes("feeds.bbci.co.uk")) {
+      rssFetchCount += 1;
       return new Response(
         `<?xml version="1.0" encoding="UTF-8"?>
           <rss version="2.0">
@@ -322,6 +359,12 @@ test("pipeline status exposes provider and rss diagnostics for ok, error and ski
     assert.equal(pipelinePayload.ok, true);
 
     const news = pipelinePayload.data.news;
+    const market = pipelinePayload.data.market;
+    assert.equal(market.enabled, false);
+    assert.equal(market.sourceMode, "disabled");
+    assert.equal(market.requestMode, "disabled");
+    assert.equal(market.disabledReason, "market-provider-empty");
+    assert.deepEqual(market.providerErrors, []);
     assert.equal(news.rawCountByProvider.newsapi, 1);
     assert.equal(news.rawCountByProvider.gnews, 0);
     assert.equal(news.rawCountByProvider.mediastack, 0);
@@ -365,8 +408,141 @@ test("pipeline status exposes provider and rss diagnostics for ok, error and ski
     assert.ok(Array.isArray(pipelinePayload.data.recentCycleErrors));
     assert.ok(pipelinePayload.data.market.coverageByMode);
     assert.ok(Array.isArray(pipelinePayload.data.market.providerErrors));
+    assert.ok("lastDurationMs" in pipelinePayload.data.market);
+    assert.ok("lastStatus" in pipelinePayload.data.market);
     assert.ok(Array.isArray(news.selectionBySourceName));
     assert.ok("latestSelectedArticleAgeMin" in news);
+    assert.ok("lastDurationMs" in news);
+    assert.ok("lastStatus" in news);
+
+    const intelRawResponse = await fetch(`${baseUrl}/api/admin/news-raw?dataset=intel&page=1&pageSize=100`);
+    const intelRawPayload = await intelRawResponse.json();
+    assert.equal(intelRawResponse.status, 200);
+    assert.equal(intelRawPayload.ok, true);
+    assert.equal(intelRawPayload.data.summary.rawTotal, 2);
+    assert.equal(
+      intelRawPayload.data.summary.selectedTotal,
+      Object.values(news.selectedCountByProvider).reduce((total, value) => total + Number(value || 0), 0)
+    );
+    assert.equal(
+      intelRawPayload.data.summary.queryLengthTotal,
+      Object.values(news.queryLengthByProvider).reduce((total, value) => total + Number(value || 0), 0)
+    );
+    assert.equal(intelRawPayload.data.pagination.page, 1);
+    assert.equal(intelRawPayload.data.pagination.pageSize, 100);
+    assert.equal(intelRawPayload.data.pagination.totalItems, 2);
+    assert.equal(intelRawPayload.data.items.length, 2);
+
+    const rssFetchCountBeforeRawEndpoint = rssFetchCount;
+    const aggregateRawResponse = await fetch(`${baseUrl}/api/admin/news-raw?dataset=rss-aggregate&page=1&pageSize=100`);
+    const aggregateRawPayload = await aggregateRawResponse.json();
+    assert.equal(aggregateRawResponse.status, 200);
+    assert.equal(aggregateRawPayload.ok, true);
+    assert.ok(aggregateRawPayload.data.summary.rawTotal >= 1);
+    assert.equal(aggregateRawPayload.data.pagination.page, 1);
+    assert.equal(rssFetchCount, rssFetchCountBeforeRawEndpoint);
+  } finally {
+    global.fetch = originalFetch;
+    await runtime.stop();
+  }
+});
+
+test("market disabled skips startup and manual refresh upstream market calls", async () => {
+  const originalFetch = global.fetch;
+  let fmpCalls = 0;
+  let alphaVantageCalls = 0;
+
+  global.fetch = async (url, options) => {
+    const value = String(url);
+
+    if (value.includes("127.0.0.1") || value.includes("localhost")) {
+      return originalFetch(url, options);
+    }
+
+    if (value.includes("financialmodelingprep.com")) {
+      fmpCalls += 1;
+      return new Response("{}", {
+        status: 500,
+        headers: { "content-type": "application/json" }
+      });
+    }
+
+    if (value.includes("alphavantage.co")) {
+      alphaVantageCalls += 1;
+      return new Response("{}", {
+        status: 500,
+        headers: { "content-type": "application/json" }
+      });
+    }
+
+    if (value.includes("youtube.com")) {
+      return new Response("<html><body>offline</body></html>", {
+        status: 200,
+        headers: { "content-type": "text/html" }
+      });
+    }
+
+    return new Response(
+      `<?xml version="1.0" encoding="UTF-8"?>
+      <rss version="2.0">
+        <channel>
+          <title>Disabled Market Feed</title>
+          <item>
+            <title>Market provider remains disabled while RSS keeps flowing</title>
+            <description>Manual refresh should not hit market APIs.</description>
+            <link>https://example.com/disabled-market</link>
+            <pubDate>${new Date().toUTCString()}</pubDate>
+          </item>
+        </channel>
+      </rss>`,
+      {
+        status: 200,
+        headers: { "content-type": "application/xml" }
+      }
+    );
+  };
+
+  const runtime = createAppServer({
+    port: 0,
+    disableBackgroundRefresh: false,
+    news: {
+      providers: ["rss"],
+      rssFeeds: [{ label: "Disabled Market Feed", url: "https://example.com/rss.xml" }],
+      newsApiKey: "",
+      gnewsApiKey: "",
+      mediastackApiKey: "",
+      timeoutMs: 200
+    },
+    market: {
+      provider: "",
+      fallbackProvider: "",
+      refreshIntervalMs: 300_000,
+      apiKey: "",
+      fmpApiKey: "",
+      requestReserve: 0
+    },
+    apiLimits: {
+      newsapiDailyLimit: 10,
+      gnewsDailyLimit: 10,
+      mediastackDailyLimit: 10,
+      alphavantageDailyLimit: 10
+    }
+  });
+
+  await runtime.start();
+
+  try {
+    await runtime.orchestrator.waitForIdle();
+    assert.equal(fmpCalls, 0);
+    assert.equal(alphaVantageCalls, 0);
+
+    await runtime.orchestrator.runManualRefresh({
+      trigger: "disabled-market-test",
+      countries: ["US", "IL", "IR"]
+    });
+
+    assert.equal(fmpCalls, 0);
+    assert.equal(alphaVantageCalls, 0);
   } finally {
     global.fetch = originalFetch;
     await runtime.stop();

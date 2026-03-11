@@ -69,6 +69,23 @@ function createCountryState(timestamp) {
   );
 }
 
+function buildInitialAdminState() {
+  return {
+    intelRawNews: {
+      generatedAt: null,
+      items: [],
+      summary: {
+        rawTotal: 0,
+        selectedTotal: 0,
+        queryLengthTotal: 0,
+        rawCountByProvider: {},
+        selectedCountByProvider: {},
+        queryLengthByProvider: {}
+      }
+    }
+  };
+}
+
 function resolveInputMode(newsMode, marketMode) {
   if (newsMode === "live" && marketMode === "live") {
     return "live";
@@ -144,19 +161,31 @@ class StateManager {
       refreshIntervalMs: 30_000,
       watchlistCountries: ["US", "IL", "IR"],
       marketTickers: ["GD", "BA", "NOC"],
-      impactWindowMin: 120
+      impactWindowMin: 120,
+      marketEnabled: true,
+      marketDisabledReason: null
     });
   }
 
-  createInitialState({ refreshIntervalMs, watchlistCountries, marketTickers, impactWindowMin }) {
+  createInitialState({
+    refreshIntervalMs,
+    watchlistCountries,
+    marketTickers,
+    impactWindowMin,
+    marketEnabled = true,
+    marketDisabledReason = null
+  }) {
     const now = new Date().toISOString();
     const countries = createCountryState(now);
-    const market = buildInitialMarketState(marketTickers);
+    const market = buildInitialMarketState(marketTickers, {
+      enabled: marketEnabled,
+      disabledReason: marketDisabledReason
+    });
     const dataQuality = buildDataQuality({
       newsMode: "fallback",
       newsMeta: { provider: "seed", reason: "initial-state" },
-      marketMode: "fallback",
-      marketMeta: { provider: "seed", reason: "initial-state" }
+      marketMode: market.sourceMode || "fallback",
+      marketMeta: market.sourceMeta || { provider: "seed", reason: "initial-state" }
     });
 
     return {
@@ -207,7 +236,8 @@ class StateManager {
         sectorBreakdown: [],
         scatterPoints: []
       },
-      impactHistory: []
+      impactHistory: [],
+      admin: buildInitialAdminState()
     };
   }
 
@@ -215,19 +245,23 @@ class StateManager {
     refreshIntervalMs = 30_000,
     watchlistCountries = ["US", "IL", "IR"],
     marketTickers = ["GD", "BA", "NOC"],
-    impactWindowMin = 120
+    impactWindowMin = 120,
+    marketEnabled = true,
+    marketDisabledReason = null
   } = {}) {
     this.state = this.createInitialState({
       refreshIntervalMs,
       watchlistCountries,
       marketTickers,
-      impactWindowMin
+      impactWindowMin,
+      marketEnabled,
+      marketDisabledReason
     });
     return this.getSnapshot();
   }
 
   getSnapshot() {
-    const { signalCorpus: _signalCorpus, ...snapshot } = this.state;
+    const { signalCorpus: _signalCorpus, admin: _admin, ...snapshot } = this.state;
     return structuredClone(snapshot);
   }
 
@@ -237,6 +271,10 @@ class StateManager {
 
   getSignalCorpus() {
     return structuredClone(this.state.signalCorpus || []);
+  }
+
+  getAdminIntelRawNews() {
+    return structuredClone(this.state.admin?.intelRawNews || buildInitialAdminState().intelRawNews);
   }
 
   setRefreshStatus(nextStatus = {}) {
@@ -254,6 +292,25 @@ class StateManager {
     };
 
     return this.getMeta();
+  }
+
+  setAdminIntelRawNews(nextValue = {}) {
+    this.state = {
+      ...this.state,
+      admin: {
+        ...(this.state.admin || buildInitialAdminState()),
+        intelRawNews: {
+          generatedAt: nextValue.generatedAt || null,
+          items: Array.isArray(nextValue.items) ? nextValue.items : [],
+          summary: {
+            ...buildInitialAdminState().intelRawNews.summary,
+            ...(nextValue.summary || {})
+          }
+        }
+      }
+    };
+
+    return this.getAdminIntelRawNews();
   }
 
   updateIntel({

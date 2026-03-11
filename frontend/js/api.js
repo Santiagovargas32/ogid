@@ -60,6 +60,7 @@ export const api = {
   getRisks: (params = {}) => request("/api/intel/risks", params),
   getNews: (params = {}) => request("/api/intel/news", params),
   getAggregateNews: (params = {}) => request("/api/news/aggregate", params),
+  getMediaStreams: (params = {}) => request("/api/media/streams", params),
   getInsights: (params = {}) => request("/api/intel/insights", params),
   getCountryInstability: (params = {}) => request("/api/country-instability", params),
   getIntelAnomalies: (params = {}) => request("/api/intel/anomalies", params),
@@ -67,5 +68,6 @@ export const api = {
   getMarketImpact: (params = {}) => request("/api/market/impact", params),
   getMarketAnalytics: (params = {}) => request("/api/market/analytics", params),
   getApiLimits: () => request("/api/admin/api-limits"),
-  getPipelineStatus: () => request("/api/admin/pipeline-status")
+  getPipelineStatus: () => request("/api/admin/pipeline-status"),
+  getAdminNewsRaw: (params = {}) => request("/api/admin/news-raw", params)
 };

@@ -12,6 +12,7 @@ import apiQuotaTracker from "./services/admin/apiQuotaTrackerService.js";
 import { RssAggregatorService } from "./services/news/rssAggregator.js";
 import { SignalCorrelatorService } from "./services/intel/signalCorrelator.js";
 import { MapLayerService } from "./services/map/mapLayerService.js";
+import MediaStreamService from "./services/media/mediaStreamService.js";
 import { createSocketServer } from "./websocket/socketServer.js";
 import { errorHandler, notFoundHandler } from "./utils/error.js";
 import { createLogger, requestLogger } from "./utils/logger.js";
@@ -83,6 +84,10 @@ function toBool(value, fallback = false) {
     return false;
   }
   return fallback;
+}
+
+function toTrimmedString(value) {
+  return String(value ?? "").trim();
 }
 
 function toFeedList(value, fallback = DEFAULT_RSS_FEEDS, options = {}) {
@@ -179,6 +184,8 @@ function readConfig(overrides = {}) {
     DEFAULT_RSS_DISABLED_FEEDS,
     { disabled: true }
   );
+  const envMarketProvider = toTrimmedString(process.env.MARKET_PROVIDER);
+  const envMarketFallbackProvider = toTrimmedString(process.env.MARKET_PROVIDER_FALLBACK);
   const marketTickers = toList(process.env.MARKET_TICKERS, ["GD", "BA", "NOC", "LMT", "RTX", "XOM", "CVX"]).map(
     (ticker) => ticker.toUpperCase()
   );
@@ -236,8 +243,10 @@ function readConfig(overrides = {}) {
       countries: watchlistCountries
     },
     market: {
-      provider: process.env.MARKET_PROVIDER || "fmp",
-      fallbackProvider: process.env.MARKET_PROVIDER_FALLBACK || "alphavantage",
+      enabled: Boolean(envMarketProvider),
+      provider: envMarketProvider,
+      fallbackProvider: envMarketProvider ? envMarketFallbackProvider : "",
+      disabledReason: envMarketProvider ? null : "market-provider-empty",
       apiKey: process.env.ALPHAVANTAGE_API_KEY || "",
       baseUrl: process.env.ALPHAVANTAGE_BASE_URL || "https://www.alphavantage.co/query",
       alphaVantageApiKey: process.env.ALPHAVANTAGE_API_KEY || "",
@@ -289,10 +298,14 @@ function readConfig(overrides = {}) {
       gdeltDailyLimit: toInt(process.env.GDELT_DAILY_LIMIT, 0),
       fmpDailyLimit: toInt(process.env.FMP_DAILY_LIMIT, 250),
       alphavantageDailyLimit: toInt(process.env.ALPHAVANTAGE_DAILY_LIMIT, 500)
+    },
+    media: {
+      refreshIntervalMs: toInt(process.env.MEDIA_STREAM_REFRESH_INTERVAL_MS, 300_000),
+      timeoutMs: toInt(process.env.MEDIA_STREAM_TIMEOUT_MS, 8_000)
     }
   };
 
-  return {
+  const mergedConfig = {
     ...config,
     ...overrides,
     watchlistCountries: overrides.watchlistCountries || config.watchlistCountries,
@@ -370,6 +383,10 @@ function readConfig(overrides = {}) {
       ...config.apiLimits,
       ...(overrides.apiLimits || {})
     },
+    media: {
+      ...config.media,
+      ...(overrides.media || {})
+    },
     runtime: {
       disableBackgroundRefresh:
         overrides.runtime?.disableBackgroundRefresh ??
@@ -377,6 +394,23 @@ function readConfig(overrides = {}) {
         toBool(process.env.DISABLE_BACKGROUND_REFRESH, false)
     }
   };
+
+  const resolvedMarketProvider = toTrimmedString(mergedConfig.market?.provider);
+  const resolvedMarketFallbackProvider = toTrimmedString(mergedConfig.market?.fallbackProvider);
+  const marketEnabledOverride = Object.prototype.hasOwnProperty.call(overrides.market || {}, "enabled")
+    ? overrides.market.enabled
+    : undefined;
+  const marketEnabled = marketEnabledOverride !== undefined ? marketEnabledOverride !== false : Boolean(resolvedMarketProvider);
+
+  mergedConfig.market = {
+    ...mergedConfig.market,
+    enabled: marketEnabled,
+    provider: marketEnabled ? resolvedMarketProvider || "fmp" : "",
+    fallbackProvider: marketEnabled ? resolvedMarketFallbackProvider : "",
+    disabledReason: marketEnabled ? null : "market-provider-empty"
+  };
+
+  return mergedConfig;
 }
 
 export function createAppServer(overrides = {}) {
@@ -395,6 +429,9 @@ export function createAppServer(overrides = {}) {
 
   app.use(express.static(frontendPath, { index: "index.html" }));
   app.use("/api", routes);
+  app.get(["/admin", "/admin/"], (_req, res) => {
+    res.sendFile(path.join(frontendPath, "admin.html"));
+  });
 
   app.use((req, res, next) => {
     if (req.method !== "GET" || req.path.startsWith("/api")) {
@@ -411,7 +448,9 @@ export function createAppServer(overrides = {}) {
     refreshIntervalMs: config.news.intervalMs,
     watchlistCountries: config.watchlistCountries,
     marketTickers: config.market.tickers,
-    impactWindowMin: config.market.impactWindowMin
+    impactWindowMin: config.market.impactWindowMin,
+    marketEnabled: config.market.enabled,
+    marketDisabledReason: config.market.disabledReason
   });
   apiQuotaTracker.reset(config.apiLimits);
   const rssAggregator = new RssAggregatorService({
@@ -426,6 +465,10 @@ export function createAppServer(overrides = {}) {
   const mapLayerService = new MapLayerService({
     stateManager,
     rssAggregator
+  });
+  const mediaStreamService = new MediaStreamService({
+    refreshIntervalMs: config.media?.refreshIntervalMs,
+    timeoutMs: config.media?.timeoutMs
   });
 
   const server = http.createServer(app);
@@ -457,6 +500,7 @@ export function createAppServer(overrides = {}) {
   app.locals.rssAggregator = rssAggregator;
   app.locals.signalCorrelator = signalCorrelator;
   app.locals.mapLayerService = mapLayerService;
+  app.locals.mediaStreamService = mediaStreamService;
 
   return {
     app,
@@ -464,6 +508,7 @@ export function createAppServer(overrides = {}) {
     orchestrator,
     manualRefreshService,
     socketServer,
+    mediaStreamService,
     config,
     async start() {
       await new Promise((resolve, reject) => {
@@ -479,8 +524,10 @@ export function createAppServer(overrides = {}) {
         mediastackKeyConfigured: isRealKey(config.news.mediastackApiKey),
         fmpApiKeyConfigured: isRealKey(config.market.fmpApiKey),
         alphaVantageKeyConfigured: isRealKey(config.market.apiKey),
+        marketEnabled: config.market.enabled,
         marketProvider: config.market.provider,
         marketFallbackProvider: config.market.fallbackProvider,
+        marketDisabledReason: config.market.disabledReason,
         marketBatchChunkSize: config.market.batchChunkSize,
         marketRequestReserve: config.market.requestReserve,
         apiLimits: config.apiLimits,
@@ -491,15 +538,19 @@ export function createAppServer(overrides = {}) {
         newsIntervalByBandMs: config.news.intervalByBandMs,
         marketActiveIntervalMs: config.market.activeIntervalMs,
         marketOffHoursIntervalMs: config.market.offHoursIntervalMs,
-        manualRefresh: config.manualRefresh
+        manualRefresh: config.manualRefresh,
+        mediaRefreshIntervalMs: config.media?.refreshIntervalMs,
+        mediaTimeoutMs: config.media?.timeoutMs
       });
       if (!config.runtime.disableBackgroundRefresh) {
         orchestrator.start();
+        mediaStreamService.start();
       }
       log.info("server_started", { port: server.address().port, refreshIntervalMs: config.news.intervalMs });
     },
     async stop() {
       orchestrator.stop();
+      mediaStreamService.stop();
       socketServer.close();
       await new Promise((resolve, reject) => {
         server.close((error) => {

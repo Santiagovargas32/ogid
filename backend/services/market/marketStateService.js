@@ -1,28 +1,51 @@
 const MAX_MARKET_POINTS = 120;
 
-export function buildInitialMarketState(tickers = []) {
+function buildDisabledCoverageByMode() {
   return {
-    provider: "market-router",
-    sourceMode: "fallback",
-    sourceMeta: {
-      provider: "seed",
-      reason: "initial-state"
-    },
+    live: 0,
+    historicalEod: 0,
+    routerStale: 0,
+    syntheticFallback: 0
+  };
+}
+
+export function buildInitialMarketState(tickers = [], { enabled = true, disabledReason = null } = {}) {
+  const normalizedTickers = Array.isArray(tickers) ? tickers : [];
+  const marketDisabled = enabled === false;
+
+  return {
+    provider: marketDisabled ? "disabled" : "market-router",
+    sourceMode: marketDisabled ? "disabled" : "fallback",
+    sourceMeta: marketDisabled
+      ? {
+          provider: "disabled",
+          reason: disabledReason || "market-provider-empty",
+          enabled: false,
+          requestMode: "disabled",
+          disabledReason: disabledReason || "market-provider-empty",
+          coverageByMode: buildDisabledCoverageByMode(),
+          providerErrors: []
+        }
+      : {
+          provider: "seed",
+          reason: "initial-state",
+          enabled: true
+        },
     updatedAt: null,
     quotes: Object.fromEntries(
-      tickers.map((ticker) => [
+      normalizedTickers.map((ticker) => [
         ticker,
         {
           price: null,
           changePct: 0,
           asOf: null,
-          source: "seed",
+          source: marketDisabled ? "disabled" : "seed",
           synthetic: true,
           dataMode: "synthetic-fallback"
         }
       ])
     ),
-    timeseries: Object.fromEntries(tickers.map((ticker) => [ticker, []]))
+    timeseries: Object.fromEntries(normalizedTickers.map((ticker) => [ticker, []]))
   };
 }
 

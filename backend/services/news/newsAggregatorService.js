@@ -317,6 +317,7 @@ export async function fetchAggregatedNews({
       resolveProviderQuery(providerName, { baseQuery, composedQuery })
     ])
   );
+  const upstreamRawArticles = [];
   const rawCountByProvider = Object.fromEntries(normalizedProviders.map((providerName) => [providerName, 0]));
   const queryLengthByProvider = Object.fromEntries(
     normalizedProviders.map((providerName) => [providerName, providerRequests[providerName]?.query?.length || 0])
@@ -399,8 +400,13 @@ export async function fetchAggregatedNews({
       });
 
       const rateLimit = resolveRateLimit(providerResult.sourceMeta);
-      const rawCount = Array.isArray(providerResult.articles) ? providerResult.articles.length : 0;
-      const filteredArticles = applyEditorialFilters(providerResult.articles || [], {
+      const providerRawArticles = (providerResult.articles || []).map((article) => ({
+        ...article,
+        provider: article?.provider || providerName
+      }));
+      const rawCount = providerRawArticles.length;
+      upstreamRawArticles.push(...providerRawArticles);
+      const filteredArticles = applyEditorialFilters(providerRawArticles, {
         sourceAllowlist,
         domainAllowlist,
         keywordTokens
@@ -485,6 +491,7 @@ export async function fetchAggregatedNews({
 
     return {
       articles: dedupedArticles,
+      rawArticles: upstreamRawArticles,
       sourceMode: "live",
       sourceMeta: {
         provider: providersUsed.join("+") || "aggregated",
@@ -518,6 +525,7 @@ export async function fetchAggregatedNews({
 
   return {
     articles: fallbackArticles,
+    rawArticles: upstreamRawArticles,
     sourceMode: "fallback",
     sourceMeta: {
       provider: "fallback",

@@ -19,92 +19,35 @@
     <link rel="stylesheet" href="/css/styles.css" />
   </head>
   <body>
-    <div class="app-shell">
-      <nav class="navbar navbar-expand-lg navbar-dark topbar px-3">
-        <div class="container-fluid g-0">
+    <nav class="navbar navbar-expand-lg navbar-dark topbar px-3">
+      <div class="container-fluid g-0 topbar-shell">
+        <div class="topbar-title-group">
+          <div class="dropdown">
+            <button
+              class="btn btn-sm btn-outline-light topbar-view-toggle dropdown-toggle"
+              type="button"
+              data-bs-toggle="dropdown"
+              aria-expanded="false"
+            >
+              Views
+            </button>
+            <ul class="dropdown-menu dropdown-menu-dark topbar-dropdown-menu">
+              <li><a class="dropdown-item active" href="/" aria-current="page">Dashboard</a></li>
+              <li><a class="dropdown-item" href="/admin">Admin</a></li>
+            </ul>
+          </div>
           <span class="navbar-brand text-uppercase fw-bold mb-0">OGID - Geopolitical Intel & Market Impact</span>
-          <div class="status-strip d-flex align-items-center gap-2">
-            <span id="source-mode-badge" class="badge text-bg-secondary">Source: initializing</span>
-            <span id="market-mode-badge" class="badge text-bg-secondary">Market: initializing</span>
-            <span id="ws-status-badge" class="badge text-bg-warning">WS: connecting</span>
-            <span id="last-update-text" class="small text-light-emphasis">Last update: --</span>
-            <div class="dropdown">
-              <button
-                class="btn btn-sm btn-outline-light dropdown-toggle"
-                type="button"
-                data-bs-toggle="dropdown"
-                aria-expanded="false"
-              >
-                Admin
-              </button>
-              <ul class="dropdown-menu dropdown-menu-end">
-                <li><button id="toggle-api-limits" class="dropdown-item" type="button">API Limits</button></li>
-              </ul>
-            </div>
-          </div>
         </div>
-      </nav>
+        <div class="status-strip d-flex align-items-center gap-2">
+          <span id="source-mode-badge" class="badge text-bg-secondary">Source: initializing</span>
+          <span id="market-mode-badge" class="badge text-bg-secondary">Market: initializing</span>
+          <span id="ws-status-badge" class="badge text-bg-warning">WS: connecting</span>
+          <span id="last-update-text" class="small text-light-emphasis">Last update: --</span>
+        </div>
+      </div>
+    </nav>
 
-      <main class="container-fluid py-3">
-        <div id="api-limits-panel" class="panel admin-panel mb-3 d-none">
-          <header class="panel-header d-flex justify-content-between align-items-center">
-            <h2 class="panel-title mb-0">API Limits Monitor (24h)</h2>
-            <span id="api-limits-updated" class="small text-light-emphasis">--</span>
-          </header>
-          <div class="table-responsive px-2 py-2 border-bottom border-secondary-subtle">
-            <table class="table table-sm table-dark align-middle mb-0 market-table">
-              <thead>
-                <tr>
-                  <th>Pipeline</th>
-                  <th>Band</th>
-                  <th>Next Run</th>
-                  <th>Mode</th>
-                  <th>Skipped</th>
-                  <th>Batch/Page</th>
-                  <th>Last Error</th>
-                </tr>
-              </thead>
-              <tbody id="pipeline-status-body"></tbody>
-            </table>
-          </div>
-          <div class="table-responsive px-2 py-2">
-            <table class="table table-sm table-dark align-middle mb-0 market-table">
-              <thead>
-                <tr>
-                  <th>Provider</th>
-                  <th>Band</th>
-                  <th>Calls 24h</th>
-                  <th>Success</th>
-                  <th>Errors</th>
-                  <th>Fallbacks</th>
-                  <th>Remaining</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody id="api-limits-body"></tbody>
-            </table>
-          </div>
-          <div class="row g-3 px-2 pb-2">
-            <div class="col-12 col-xl-4">
-              <section class="diagnostic-card h-100">
-                <header class="diagnostic-card-header">Provider Flow</header>
-                <div id="pipeline-diagnostics-body" class="diagnostic-list"></div>
-              </section>
-            </div>
-            <div class="col-12 col-xl-4">
-              <section class="diagnostic-card h-100">
-                <header class="diagnostic-card-header">RSS Feed Status</header>
-                <div id="rss-feed-status-body" class="diagnostic-list"></div>
-              </section>
-            </div>
-            <div class="col-12 col-xl-4">
-              <section class="diagnostic-card h-100">
-                <header class="diagnostic-card-header">Recent Cycle Errors</header>
-                <div id="recent-cycle-errors-body" class="diagnostic-list"></div>
-              </section>
-            </div>
-          </div>
-        </div>
+    <main class="container-fluid py-3">
 
         <div class="row g-3 dashboard-row dashboard-primary-row">
           <div class="col-12 col-xl-8">
@@ -175,22 +118,11 @@
           </div>
           <div class="col-12 col-xl-3">
             <section id="panel-situational" class="panel panel-vertical h-100">
-              <header class="panel-header">
+              <header class="panel-header d-flex justify-content-between align-items-center gap-2">
                 <h2 class="panel-title mb-0">Live Situational Awareness</h2>
+                <div id="situational-view-toggle-shell"></div>
               </header>
-              <div id="video-streams-panel" class="situational-panel-body"></div>
-            </section>
-          </div>
-        </div>
-
-        <div class="row g-3 mt-1 dashboard-row dashboard-webcam-row">
-          <div class="col-12">
-            <section id="panel-webcams" class="panel panel-vertical h-100">
-              <header class="panel-header d-flex justify-content-between align-items-center">
-                <h2 class="panel-title mb-0">Hotspot Webcams</h2>
-                <span class="small text-light-emphasis">Embedded when supported, external fallback otherwise</span>
-              </header>
-              <div id="webcam-streams-panel" class="webcam-dashboard-body"></div>
+              <div id="situational-workspace-panel" class="situational-panel-body"></div>
             </section>
           </div>
         </div>
@@ -303,8 +235,7 @@
             </section>
           </div>
         </div>
-      </main>
-    </div>
+    </main>
 
     <div class="offcanvas offcanvas-end news-drawer" tabindex="-1" id="news-detail-drawer" aria-labelledby="news-detail-title">
       <div class="offcanvas-header">

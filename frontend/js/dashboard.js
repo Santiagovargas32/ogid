@@ -2,8 +2,7 @@ import { api } from "./api.js";
 import { applyUpdate, getState, setSnapshot, subscribe } from "./state.js";
 import { RealtimeSocket } from "./websocket.js";
 import { HotspotMap, getLevelColor } from "./map.js";
-import { mountVideoStreams } from "./media/videoStreams.js";
-import { mountWebcamStreams } from "./media/webcamStreams.js";
+import { mountSituationalWorkspace } from "./media/situationalWorkspace.js";
 import { startWorldBrief } from "./intelligence/worldBrief.js";
 import { startThreatClassifier } from "./intelligence/threatClassifier.js";
 import { startRiskEngine } from "./intelligence/riskEngine.js";
@@ -541,10 +540,16 @@ function wsBadgeClass(status) {
 }
 
 function sourceBadgeClass(mode) {
+  if (mode === "disabled") {
+    return "text-bg-secondary";
+  }
   return mode === "live" ? "text-bg-success" : "text-bg-warning";
 }
 
 function qualityBadgeClass(mode) {
+  if (mode === "disabled") {
+    return "badge-data-disabled";
+  }
   if (mode === "live") {
     return "badge-data-live";
   }
@@ -687,10 +692,14 @@ function renderMeta(meta, market) {
   elements.marketModeBadge.textContent = `Market: ${market.sourceMode || "fallback"}`;
 
   elements.lastUpdateText.textContent = `Last update: ${formatDate(meta.lastRefreshAt)}`;
-  elements.marketUpdatedText.textContent = `Quotes: ${formatDate(market.updatedAt)}`;
+  elements.marketUpdatedText.textContent =
+    market.sourceMode === "disabled" ? "Quotes: market disabled" : `Quotes: ${formatDate(market.updatedAt)}`;
   if (elements.marketCoverageText) {
     const coverage = market.coverageByMode || market.sourceMeta?.coverageByMode || {};
-    elements.marketCoverageText.textContent = `Coverage: ${coverage.live || 0} live / ${coverage.historicalEod || 0} EOD / ${coverage.routerStale || 0} stale cache / ${coverage.syntheticFallback || 0} sim`;
+    elements.marketCoverageText.textContent =
+      market.sourceMode === "disabled"
+        ? "Coverage: market disabled"
+        : `Coverage: ${coverage.live || 0} live / ${coverage.historicalEod || 0} EOD / ${coverage.routerStale || 0} stale cache / ${coverage.syntheticFallback || 0} sim`;
   }
 
   const dq = meta.dataQuality || {};
@@ -2029,8 +2038,7 @@ async function bootstrap() {
   renderAnalyticsWindowSelector();
   hotspotMap = new HotspotMap("hotspot-map");
   hotspotMap.init();
-  teardownHandlers.push(mountVideoStreams());
-  teardownHandlers.push(mountWebcamStreams());
+  teardownHandlers.push(mountSituationalWorkspace({ api }));
   teardownHandlers.push(startWorldBrief({ api }));
   teardownHandlers.push(startThreatClassifier({ api }));
   teardownHandlers.push(startRiskEngine({ api }));
@@ -2044,10 +2052,6 @@ async function bootstrap() {
 
   elements.countryFilterBar.addEventListener("click", handleFilterClick);
   document.body.addEventListener("click", handleActionClick);
-  elements.toggleApiLimits.addEventListener("click", () => {
-    toggleApiLimitsPanel();
-    refreshApiLimits();
-  });
   elements.refreshNewsBtn.addEventListener("click", handleManualRefreshClick);
 
   subscribe((state) => {
@@ -2063,7 +2067,6 @@ async function bootstrap() {
     const snapshot = await api.getSnapshot({ countries: selectedCountryQueryValue(), limit: 100 });
     setSnapshot(snapshot);
     await refreshAnalytics();
-    await refreshApiLimits();
   } catch (error) {
     console.error("Failed to fetch initial snapshot:", error);
     elements.newsFeed.innerHTML =
@@ -2071,7 +2074,6 @@ async function bootstrap() {
   }
 
   mountWebSocket();
-  startPolling();
 
   window.addEventListener("beforeunload", () => {
     socket?.close();

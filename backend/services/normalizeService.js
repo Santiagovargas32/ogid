@@ -54,9 +54,35 @@ function normalizeArticle(rawArticle, index, provider) {
   };
 }
 
+function normalizeAdminArticle(rawArticle, index, provider) {
+  const sanitized = sanitizeArticleContent(rawArticle);
+  const title =
+    sanitized.title ||
+    sanitized.excerpt ||
+    sanitized.description ||
+    rawArticle?.title ||
+    rawArticle?.description ||
+    "Untitled";
+
+  return {
+    id: hashId(`${rawArticle?.url || title}-${index}`),
+    provider: rawArticle?.provider || provider,
+    sourceName: rawArticle?.source?.name || rawArticle?.sourceName || "Unknown Source",
+    title: String(title).trim() || "Untitled",
+    url: rawArticle?.url || `https://local.osint/admin-raw/${index}`,
+    publishedAt: toIsoDate(rawArticle?.publishedAt, Date.now() - index * 60_000)
+  };
+}
+
 export function normalizeArticles(rawArticles = [], provider = "newsapi") {
   return rawArticles
     .map((article, index) => normalizeArticle(article, index, provider))
     .filter(Boolean)
+    .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+}
+
+export function normalizeAdminArticles(rawArticles = [], provider = "newsapi") {
+  return rawArticles
+    .map((article, index) => normalizeAdminArticle(article, index, provider))
     .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
 }

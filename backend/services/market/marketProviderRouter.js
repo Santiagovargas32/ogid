@@ -13,6 +13,15 @@ const PROVIDER_MAP = {
   alphavantage: fetchAlphaVantageProviderQuotes
 };
 
+function buildDisabledCoverageByMode() {
+  return {
+    live: 0,
+    historicalEod: 0,
+    routerStale: 0,
+    syntheticFallback: 0
+  };
+}
+
 function normalizeProvider(value, fallback) {
   const normalized = String(value || "").toLowerCase();
   return normalized in PROVIDER_MAP ? normalized : fallback;
@@ -164,7 +173,55 @@ function buildFallbackSet(unresolved, timestamp) {
   return Object.fromEntries(unresolved.map((ticker) => [ticker, buildFallbackQuote(ticker, timestamp)]));
 }
 
+function buildDisabledMarketResult(config = {}, timestamp = new Date().toISOString()) {
+  const tickers = (config.tickers || []).map((ticker) => String(ticker).toUpperCase());
+  const batchSize = Number.parseInt(String(config.batchChunkSize ?? 25), 10) || 25;
+
+  return {
+    provider: "disabled",
+    sourceMode: "disabled",
+    sourceMeta: {
+      enabled: false,
+      provider: "disabled",
+      providersUsed: [],
+      providersSkipped: [],
+      liveCount: 0,
+      totalTickers: tickers.length,
+      fallbackCount: 0,
+      unresolvedTickers: tickers,
+      usedStaleQuotes: [],
+      coverageByMode: buildDisabledCoverageByMode(),
+      quotaBand: null,
+      requestMode: "disabled",
+      batchSize,
+      lastUpstreamError: null,
+      errors: [],
+      providerErrors: [],
+      disabledReason: config.disabledReason || "market-provider-empty"
+    },
+    quotes: Object.fromEntries(
+      tickers.map((ticker) => [
+        ticker,
+        {
+          price: null,
+          changePct: 0,
+          asOf: null,
+          source: "disabled",
+          synthetic: true,
+          dataMode: "synthetic-fallback"
+        }
+      ])
+    ),
+    historicalSeries: {},
+    updatedAt: timestamp
+  };
+}
+
 export async function fetchMarketQuotes(config = {}) {
+  if (config.enabled === false) {
+    return buildDisabledMarketResult(config);
+  }
+
   const tickers = (config.tickers || []).map((ticker) => String(ticker).toUpperCase());
   const timestamp = new Date().toISOString();
   const primaryProvider = normalizeProvider(config.provider || "fmp", "fmp");

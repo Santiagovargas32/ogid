@@ -1,7 +1,7 @@
 import { createLogger } from "../utils/logger.js";
 import apiQuotaTracker from "./admin/apiQuotaTrackerService.js";
 import { fetchRawNews } from "./newsService.js";
-import { normalizeArticles } from "./normalizeService.js";
+import { normalizeAdminArticles, normalizeArticles } from "./normalizeService.js";
 import { computeCountryRisk } from "./riskEngineService.js";
 import { generateInsights } from "./insightService.js";
 import { mergeMarketState } from "./market/marketStateService.js";
@@ -39,6 +39,21 @@ function resolveInputMode(newsMode = "fallback", marketMode = "fallback") {
   return "mixed";
 }
 
+function createCycleTelemetry() {
+  return {
+    lastStartedAt: null,
+    lastCompletedAt: null,
+    lastDurationMs: null,
+    lastStatus: "idle",
+    lastTrigger: null,
+    lastError: null
+  };
+}
+
+function sumCountRecord(record = {}) {
+  return Object.values(record || {}).reduce((total, value) => total + (Number(value) || 0), 0);
+}
+
 class RefreshOrchestratorService {
   constructor({ stateManager, socketServer, config, rssAggregator = null, signalCorrelator = null, mapLayerService = null }) {
     this.stateManager = stateManager;
@@ -54,6 +69,23 @@ class RefreshOrchestratorService {
     this.marketTimerHandle = null;
     this.stopped = true;
     this.newsBackoffMs = 0;
+    this.newsCycleTelemetry = createCycleTelemetry();
+    this.marketCycleTelemetry = createCycleTelemetry();
+    if (!this.isMarketEnabled()) {
+      this.markMarketTelemetryDisabled();
+    }
+  }
+
+  isMarketEnabled() {
+    return this.config.market?.enabled !== false;
+  }
+
+  markMarketTelemetryDisabled() {
+    this.marketCycleTelemetry = {
+      ...this.marketCycleTelemetry,
+      lastStatus: "disabled",
+      lastError: this.config.market?.disabledReason || "market-provider-empty"
+    };
   }
 
   async resolveAggregateNewsSnapshot() {
@@ -155,6 +187,10 @@ class RefreshOrchestratorService {
   }
 
   getMarketProviderSnapshots() {
+    if (!this.isMarketEnabled()) {
+      return [];
+    }
+
     const providers = [this.config.market?.provider, this.config.market?.fallbackProvider]
       .map((provider) => String(provider || "").toLowerCase())
       .filter(Boolean);
@@ -177,6 +213,10 @@ class RefreshOrchestratorService {
   }
 
   resolveNextMarketDelayMs() {
+    if (!this.isMarketEnabled()) {
+      return null;
+    }
+
     const quotaBand = resolveBandByProviderSnapshots(this.getMarketProviderSnapshots());
     return resolveMarketIntervalMs({
       activeIntervalMs: this.config.market?.activeIntervalMs || this.config.market?.refreshIntervalMs || 120_000,
@@ -185,6 +225,14 @@ class RefreshOrchestratorService {
       quotaBand,
       bandIntervals: this.config.market?.intervalByBandMs || {}
     });
+  }
+
+  getNewsCycleTelemetry() {
+    return structuredClone(this.newsCycleTelemetry);
+  }
+
+  getMarketCycleTelemetry() {
+    return structuredClone(this.marketCycleTelemetry);
   }
 
   scheduleNextNewsCycle(trigger = "interval-news") {
@@ -202,7 +250,7 @@ class RefreshOrchestratorService {
   }
 
   scheduleNextMarketCycle(trigger = "interval-market") {
-    if (this.stopped) {
+    if (this.stopped || !this.isMarketEnabled()) {
       return;
     }
 
@@ -222,6 +270,13 @@ class RefreshOrchestratorService {
 
     this.newsInFlight = true;
     const startedAt = Date.now();
+    this.newsCycleTelemetry = {
+      ...this.newsCycleTelemetry,
+      lastStartedAt: new Date(startedAt).toISOString(),
+      lastStatus: "running",
+      lastTrigger: trigger,
+      lastError: null
+    };
 
     try {
       const previousSnapshot = this.stateManager.getSnapshot();
@@ -235,6 +290,7 @@ class RefreshOrchestratorService {
         allowExhaustedProviders: options.allowExhaustedProviders === true
       });
       const normalizedNews = normalizeArticles(newsResult.articles, newsResult.sourceMeta?.provider || "aggregated");
+      const rawIntelNews = normalizeAdminArticles(newsResult.rawArticles || [], newsResult.sourceMeta?.provider || "aggregated");
       const selection = buildIntelNewsSelection({
         articles: normalizedNews,
         previousArticles: previousSnapshot.news || [],
@@ -254,6 +310,18 @@ class RefreshOrchestratorService {
         latestSelectedArticleAgeMin: selection.selectionMeta?.latestSelectedArticleAgeMin ?? null,
         selectionConfig: selection.selectionMeta?.selectionConfig || null
       };
+      this.stateManager.setAdminIntelRawNews({
+        generatedAt: new Date().toISOString(),
+        items: rawIntelNews,
+        summary: {
+          rawTotal: sumCountRecord(newsSourceMeta.rawCountByProvider),
+          selectedTotal: selectedNews.length,
+          queryLengthTotal: sumCountRecord(newsSourceMeta.queryLengthByProvider),
+          rawCountByProvider: newsSourceMeta.rawCountByProvider || {},
+          selectedCountByProvider: newsSourceMeta.selectedCountByProvider || {},
+          queryLengthByProvider: newsSourceMeta.queryLengthByProvider || {}
+        }
+      });
 
       const riskResult = computeCountryRisk({
         articles: signalCorpus,
@@ -315,6 +383,13 @@ class RefreshOrchestratorService {
         articleCount: snapshot.news.length,
         durationMs: Date.now() - startedAt
       });
+      this.newsCycleTelemetry = {
+        ...this.newsCycleTelemetry,
+        lastCompletedAt: new Date().toISOString(),
+        lastDurationMs: Date.now() - startedAt,
+        lastStatus: "ok",
+        lastError: null
+      };
     } catch (error) {
       const baseIntervalMs = this.resolveNextNewsDelayMs();
       const maxExtraBackoff = Math.max(0, this.getNewsBackoffMaxMs() - baseIntervalMs);
@@ -331,6 +406,13 @@ class RefreshOrchestratorService {
         { message: "Refresh cycle failed", details: error.message },
         this.stateManager.getMeta()
       );
+      this.newsCycleTelemetry = {
+        ...this.newsCycleTelemetry,
+        lastCompletedAt: new Date().toISOString(),
+        lastDurationMs: Date.now() - startedAt,
+        lastStatus: "error",
+        lastError: error.message
+      };
     } finally {
       this.newsInFlight = false;
     }
@@ -341,6 +423,15 @@ class RefreshOrchestratorService {
   }
 
   async runMarketCycle(trigger = "scheduled-market", options = {}) {
+    if (!this.isMarketEnabled()) {
+      log.info("market_cycle_skipped", {
+        trigger,
+        reason: this.config.market?.disabledReason || "market-provider-empty"
+      });
+      this.markMarketTelemetryDisabled();
+      return;
+    }
+
     if (this.marketInFlight) {
       log.warn("market_cycle_skipped", { reason: "in-flight", trigger });
       return;
@@ -348,6 +439,13 @@ class RefreshOrchestratorService {
 
     this.marketInFlight = true;
     const startedAt = Date.now();
+    this.marketCycleTelemetry = {
+      ...this.marketCycleTelemetry,
+      lastStartedAt: new Date(startedAt).toISOString(),
+      lastStatus: "running",
+      lastTrigger: trigger,
+      lastError: null
+    };
 
     try {
       const previousSnapshot = this.stateManager.getSnapshot();
@@ -361,6 +459,13 @@ class RefreshOrchestratorService {
           ageMs,
           minTickerTtlMs
         });
+        this.marketCycleTelemetry = {
+          ...this.marketCycleTelemetry,
+          lastCompletedAt: new Date().toISOString(),
+          lastDurationMs: Date.now() - startedAt,
+          lastStatus: "skipped",
+          lastError: "min-ticker-ttl"
+        };
         return;
       }
 
@@ -422,6 +527,13 @@ class RefreshOrchestratorService {
         tickerCount: Object.keys(marketState.quotes || {}).length,
         durationMs: Date.now() - startedAt
       });
+      this.marketCycleTelemetry = {
+        ...this.marketCycleTelemetry,
+        lastCompletedAt: new Date().toISOString(),
+        lastDurationMs: Date.now() - startedAt,
+        lastStatus: "ok",
+        lastError: null
+      };
     } catch (error) {
       log.error("market_cycle_failed", {
         trigger,
@@ -433,6 +545,13 @@ class RefreshOrchestratorService {
         { message: "Market cycle failed", details: error.message },
         this.stateManager.getMeta()
       );
+      this.marketCycleTelemetry = {
+        ...this.marketCycleTelemetry,
+        lastCompletedAt: new Date().toISOString(),
+        lastDurationMs: Date.now() - startedAt,
+        lastStatus: "error",
+        lastError: error.message
+      };
     } finally {
       this.marketInFlight = false;
     }
@@ -468,10 +587,12 @@ class RefreshOrchestratorService {
         allowExhaustedProviders: true,
         countries: activeCountries
       });
-      await this.runMarketCycle(`${trigger}-market`, {
-        countries: activeCountries,
-        allowExhaustedProviders: true
-      });
+      if (this.isMarketEnabled()) {
+        await this.runMarketCycle(`${trigger}-market`, {
+          countries: activeCountries,
+          allowExhaustedProviders: true
+        });
+      }
     } finally {
       const completedMeta = this.stateManager.setRefreshStatus({
         inProgress: false,
@@ -498,7 +619,7 @@ class RefreshOrchestratorService {
         });
     }
 
-    if (!this.marketTimerHandle) {
+    if (!this.marketTimerHandle && this.isMarketEnabled()) {
       this.runMarketCycle("startup-market")
         .catch((error) => {
           log.error("market_cycle_startup_failed", { message: error.message });
@@ -506,6 +627,8 @@ class RefreshOrchestratorService {
         .finally(() => {
           this.scheduleNextMarketCycle("interval-market");
         });
+    } else if (!this.isMarketEnabled()) {
+      this.markMarketTelemetryDisabled();
     }
   }
 
