@@ -7,7 +7,7 @@ test("api quota tracker computes effective remaining using env + headers", () =>
     newsapiDailyLimit: 5,
     gnewsDailyLimit: 5,
     mediastackDailyLimit: 5,
-    alphavantageDailyLimit: 5
+    fmpDailyLimit: 5
   });
 
   apiQuotaTracker.recordCall("newsapi", {
@@ -28,24 +28,24 @@ test("api quota tracker computes effective remaining using env + headers", () =>
   assert.equal(snapshot.exhausted, false);
 });
 
-test("api quota tracker marks fallback and errors", () => {
+test("api quota tracker marks fallback and errors for market providers", () => {
   apiQuotaTracker.reset({
-    newsapiDailyLimit: 2,
-    gnewsDailyLimit: 2,
-    mediastackDailyLimit: 2,
-    alphavantageDailyLimit: 2
+    webDailyLimit: 2,
+    fmpDailyLimit: 2
   });
 
-  apiQuotaTracker.recordCall("alphavantage", { status: "error", fallback: true });
-  apiQuotaTracker.recordCall("alphavantage", { status: "success" });
+  apiQuotaTracker.recordCall("web", { status: "error", fallback: true });
+  apiQuotaTracker.recordCall("fmp", { status: "success" });
 
-  const snapshot = apiQuotaTracker.getProviderSnapshot("alphavantage");
-  assert.equal(snapshot.calls24h, 2);
-  assert.equal(snapshot.errors24h, 1);
-  assert.equal(snapshot.success24h, 1);
-  assert.equal(snapshot.fallback24h, 1);
-  assert.equal(snapshot.effectiveRemaining, 0);
-  assert.equal(snapshot.exhausted, true);
+  const webSnapshot = apiQuotaTracker.getProviderSnapshot("web");
+  const fmpSnapshot = apiQuotaTracker.getProviderSnapshot("fmp");
+  assert.equal(webSnapshot.calls24h, 1);
+  assert.equal(webSnapshot.errors24h, 1);
+  assert.equal(webSnapshot.fallback24h, 1);
+  assert.equal(webSnapshot.effectiveRemaining, 1);
+  assert.equal(fmpSnapshot.calls24h, 1);
+  assert.equal(fmpSnapshot.success24h, 1);
+  assert.equal(fmpSnapshot.effectiveRemaining, 1);
 });
 
 test("api quota tracker purges events older than 24h", () => {
@@ -53,7 +53,7 @@ test("api quota tracker purges events older than 24h", () => {
     newsapiDailyLimit: 100,
     gnewsDailyLimit: 100,
     mediastackDailyLimit: 100,
-    alphavantageDailyLimit: 100
+    fmpDailyLimit: 100
   });
 
   const oldTimestamp = Date.now() - 25 * 60 * 60 * 1_000;

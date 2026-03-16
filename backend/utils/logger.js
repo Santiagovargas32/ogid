@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { resolveClientIp } from "./clientIp.js";
 
 const LEVEL_PRIORITY = {
   error: 0,
@@ -82,8 +83,10 @@ const requestLog = createLogger("backend/utils/logger#request");
 export function requestLogger(req, res, next) {
   const requestId = req.headers["x-request-id"] || randomUUID();
   const started = process.hrtime.bigint();
+  const clientIpInfo = resolveClientIp(req);
 
   req.requestId = requestId;
+  req.clientIpInfo = clientIpInfo;
   res.setHeader("x-request-id", requestId);
 
   res.on("finish", () => {
@@ -95,7 +98,10 @@ export function requestLogger(req, res, next) {
       path: req.originalUrl,
       statusCode: res.statusCode,
       durationMs: Number(durationMs.toFixed(2)),
-      ip: req.ip
+      ip: clientIpInfo.clientIp || req.ip || null,
+      clientIp: clientIpInfo.clientIp,
+      forwardedFor: clientIpInfo.forwardedFor,
+      remoteAddress: clientIpInfo.remoteAddress
     });
   });
 

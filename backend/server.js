@@ -4,15 +4,19 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
 import helmet from "helmet";
+import { createAdminAccessMiddleware } from "./middleware/adminAccessMiddleware.js";
 import routes from "./routes/index.js";
 import stateManager from "./state/stateManager.js";
 import RefreshOrchestratorService from "./services/refreshOrchestratorService.js";
 import ManualRefreshService from "./services/manualRefreshService.js";
 import apiQuotaTracker from "./services/admin/apiQuotaTrackerService.js";
+import { normalizeNewsQueryPacks } from "./services/news/newsQueryPackService.js";
 import { RssAggregatorService } from "./services/news/rssAggregator.js";
 import { SignalCorrelatorService } from "./services/intel/signalCorrelator.js";
 import { MapLayerService } from "./services/map/mapLayerService.js";
+import { MarketHistoryStore } from "./services/market/marketHistoryStore.js";
 import MediaStreamService from "./services/media/mediaStreamService.js";
+import { compileIpAllowlist, parseTrustProxySetting } from "./utils/clientIp.js";
 import { createSocketServer } from "./websocket/socketServer.js";
 import { errorHandler, notFoundHandler } from "./utils/error.js";
 import { createLogger, requestLogger } from "./utils/logger.js";
@@ -69,6 +73,25 @@ function toStructuredObject(value, fallback = {}) {
   } catch {
     return structuredClone(fallback);
   }
+}
+
+function mergeNewsQueryPackGroups(baseGroups = {}, overrides = {}, marketTickers = []) {
+  const overrideSource = overrides.queryPackGroups || overrides.queryPacks || {};
+  const normalizedOverrides = normalizeNewsQueryPacks(overrideSource, {
+    marketTickers,
+    defaultEditorialPacks: {}
+  });
+
+  return {
+    editorial: {
+      ...(baseGroups.editorial || {}),
+      ...(normalizedOverrides.editorial || {})
+    },
+    marketSignals: {
+      ...(baseGroups.marketSignals || {}),
+      ...(normalizedOverrides.marketSignals || {})
+    }
+  };
 }
 
 function toBool(value, fallback = false) {
@@ -189,6 +212,15 @@ function readConfig(overrides = {}) {
   const marketTickers = toList(process.env.MARKET_TICKERS, ["GD", "BA", "NOC", "LMT", "RTX", "XOM", "CVX"]).map(
     (ticker) => ticker.toUpperCase()
   );
+  const normalizedNewsQueryPacks = normalizeNewsQueryPacks(
+    toStructuredObject(process.env.NEWS_QUERY_PACKS, DEFAULT_NEWS_QUERY_PACKS),
+    {
+      marketTickers,
+      defaultEditorialPacks: DEFAULT_NEWS_QUERY_PACKS
+    }
+  );
+  const trustProxy = parseTrustProxySetting(process.env.TRUST_PROXY, false);
+  const adminIpAllowlist = toList(process.env.ADMIN_IP_ALLOWLIST, []);
 
   const config = {
     port: toInt(process.env.PORT, 8080),
@@ -213,7 +245,8 @@ function readConfig(overrides = {}) {
       rssFeeds: mergeFeedLists(rssActiveFeeds, rssDisabledFeeds),
       rssDisabledFeeds,
       query: process.env.NEWS_QUERY || "geopolitics OR conflict OR sanctions OR military",
-      queryPacks: toStructuredObject(process.env.NEWS_QUERY_PACKS, DEFAULT_NEWS_QUERY_PACKS),
+      queryPacks: normalizedNewsQueryPacks.flattened,
+      queryPackGroups: normalizedNewsQueryPacks,
       language: process.env.NEWS_LANGUAGE || "en",
       pageSize: toInt(process.env.NEWS_PAGE_SIZE, 50),
       timeoutMs: toInt(process.env.NEWS_TIMEOUT_MS, 9_000),
@@ -240,24 +273,24 @@ function readConfig(overrides = {}) {
         RED: toInt(process.env.NEWS_PAGE_SIZE_RED, 40),
         CRITICAL: toInt(process.env.NEWS_PAGE_SIZE_CRITICAL, 20)
       },
-      countries: watchlistCountries
+      countries: watchlistCountries,
+      marketTickers
     },
     market: {
       enabled: Boolean(envMarketProvider),
       provider: envMarketProvider,
       fallbackProvider: envMarketProvider ? envMarketFallbackProvider : "",
       disabledReason: envMarketProvider ? null : "market-provider-empty",
-      apiKey: process.env.ALPHAVANTAGE_API_KEY || "",
-      baseUrl: process.env.ALPHAVANTAGE_BASE_URL || "https://www.alphavantage.co/query",
-      alphaVantageApiKey: process.env.ALPHAVANTAGE_API_KEY || "",
-      alphaVantageBaseUrl: process.env.ALPHAVANTAGE_BASE_URL || "https://www.alphavantage.co/query",
-      alphaVantageMaxRequestsPerRun: toInt(process.env.ALPHAVANTAGE_MAX_REQUESTS_PER_RUN, 5),
       fmpApiKey: process.env.FMP_API_KEY || "",
       fmpBaseUrl: process.env.FMP_BASE_URL || "https://financialmodelingprep.com/stable",
       fmpStableBaseUrl:
         process.env.FMP_STABLE_BASE_URL ||
         process.env.FMP_BASE_URL ||
         "https://financialmodelingprep.com/stable",
+      webSource: process.env.MARKET_WEB_SOURCE || "stooq",
+      webBaseUrl: process.env.MARKET_WEB_BASE_URL || "https://stooq.com",
+      webTimeoutMs: toInt(process.env.MARKET_WEB_TIMEOUT_MS, toInt(process.env.MARKET_TIMEOUT_MS, 10_000)),
+      webUserAgent: process.env.MARKET_WEB_USER_AGENT || "ogid/1.0",
       timeoutMs: toInt(process.env.MARKET_TIMEOUT_MS, 10_000),
       tickers: marketTickers,
       refreshIntervalMs: toInt(process.env.MARKET_REFRESH_INTERVAL_MS, 60_000),
@@ -265,6 +298,9 @@ function readConfig(overrides = {}) {
       batchChunkSize: toInt(process.env.MARKET_BATCH_CHUNK_SIZE, 25),
       staleTtlMs: toInt(process.env.MARKET_STALE_TTL_MS, 14_400_000),
       requestReserve: toInt(process.env.MARKET_REQUEST_RESERVE, 25),
+      historyPersist: toBool(process.env.MARKET_HISTORY_PERSIST, true),
+      historyDir: process.env.MARKET_HISTORY_DIR || path.resolve(__dirname, "./data/market"),
+      snapshotFile: process.env.MARKET_SNAPSHOT_FILE || "snapshot.json",
       activeIntervalMs: toInt(
         process.env.MARKET_ACTIVE_INTERVAL_MS,
         toInt(process.env.MARKET_REFRESH_INTERVAL_MS, 180_000)
@@ -297,11 +333,17 @@ function readConfig(overrides = {}) {
       rssDailyLimit: toInt(process.env.RSS_DAILY_LIMIT, 0),
       gdeltDailyLimit: toInt(process.env.GDELT_DAILY_LIMIT, 0),
       fmpDailyLimit: toInt(process.env.FMP_DAILY_LIMIT, 250),
-      alphavantageDailyLimit: toInt(process.env.ALPHAVANTAGE_DAILY_LIMIT, 500)
+      webDailyLimit: toInt(process.env.MARKET_WEB_DAILY_LIMIT, 0)
     },
     media: {
       refreshIntervalMs: toInt(process.env.MEDIA_STREAM_REFRESH_INTERVAL_MS, 300_000),
       timeoutMs: toInt(process.env.MEDIA_STREAM_TIMEOUT_MS, 8_000)
+    },
+    security: {
+      trustProxy,
+      adminIpAllowlist,
+      adminIpAllowlistMatcher: compileIpAllowlist(adminIpAllowlist),
+      adminMenuVisible: toBool(process.env.ADMIN_MENU_VISIBLE, false)
     }
   };
 
@@ -336,30 +378,15 @@ function readConfig(overrides = {}) {
         ...config.news.pageSizeByBand,
         ...(newsOverrides.pageSizeByBand || {})
       },
-      queryPacks: {
-        ...config.news.queryPacks,
-        ...(newsOverrides.queryPacks || {})
-      },
       countries:
         newsOverrides.countries ||
         overrides.watchlistCountries ||
-        config.news.countries
+        config.news.countries,
+      marketTickers: newsOverrides.marketTickers || config.news.marketTickers
     },
     market: {
       ...config.market,
       ...(overrides.market || {}),
-      apiKey:
-        overrides.market?.apiKey ??
-        overrides.market?.alphaVantageApiKey ??
-        config.market.apiKey,
-      alphaVantageApiKey:
-        overrides.market?.alphaVantageApiKey ??
-        overrides.market?.apiKey ??
-        config.market.alphaVantageApiKey,
-      alphaVantageBaseUrl:
-        overrides.market?.alphaVantageBaseUrl ??
-        overrides.market?.baseUrl ??
-        config.market.alphaVantageBaseUrl,
       fmpApiKey:
         overrides.market?.fmpApiKey ??
         config.market.fmpApiKey,
@@ -387,12 +414,43 @@ function readConfig(overrides = {}) {
       ...config.media,
       ...(overrides.media || {})
     },
+    security: {
+      ...config.security,
+      ...(overrides.security || {}),
+      trustProxy: parseTrustProxySetting(overrides.security?.trustProxy ?? config.security.trustProxy, false),
+      adminIpAllowlist:
+        overrides.security?.adminIpAllowlist !== undefined
+          ? toList(overrides.security.adminIpAllowlist, [])
+          : config.security.adminIpAllowlist,
+      adminMenuVisible:
+        overrides.security?.adminMenuVisible ??
+        config.security.adminMenuVisible
+    },
     runtime: {
       disableBackgroundRefresh:
         overrides.runtime?.disableBackgroundRefresh ??
         overrides.disableBackgroundRefresh ??
         toBool(process.env.DISABLE_BACKGROUND_REFRESH, false)
     }
+  };
+
+  const resolvedMarketTickers = overrides.market?.tickers || config.market.tickers;
+  const mergedQueryPackGroups = mergeNewsQueryPackGroups(
+    config.news.queryPackGroups,
+    newsOverrides,
+    resolvedMarketTickers
+  );
+  mergedConfig.news = {
+    ...mergedConfig.news,
+    queryPackGroups: mergedQueryPackGroups,
+    queryPacks: {
+      ...mergedQueryPackGroups.editorial,
+      ...mergedQueryPackGroups.marketSignals
+    }
+  };
+  mergedConfig.security = {
+    ...mergedConfig.security,
+    adminIpAllowlistMatcher: compileIpAllowlist(mergedConfig.security.adminIpAllowlist || [])
   };
 
   const resolvedMarketProvider = toTrimmedString(mergedConfig.market?.provider);
@@ -405,8 +463,11 @@ function readConfig(overrides = {}) {
   mergedConfig.market = {
     ...mergedConfig.market,
     enabled: marketEnabled,
-    provider: marketEnabled ? resolvedMarketProvider || "fmp" : "",
-    fallbackProvider: marketEnabled ? resolvedMarketFallbackProvider : "",
+    provider: marketEnabled ? resolvedMarketProvider || "web" : "",
+    fallbackProvider:
+      marketEnabled
+        ? resolvedMarketFallbackProvider || (resolvedMarketProvider === "web" || !resolvedMarketProvider ? "fmp" : "")
+        : "",
     disabledReason: marketEnabled ? null : "market-provider-empty"
   };
 
@@ -417,8 +478,10 @@ export function createAppServer(overrides = {}) {
   const config = readConfig(overrides);
   const frontendPath = path.resolve(__dirname, "../frontend");
   const app = express();
+  const adminAccessMiddleware = createAdminAccessMiddleware();
 
   app.disable("x-powered-by");
+  app.set("trust proxy", config.security?.trustProxy ?? false);
   app.use(
     helmet({
       contentSecurityPolicy: false
@@ -428,8 +491,9 @@ export function createAppServer(overrides = {}) {
   app.use(requestLogger);
 
   app.use(express.static(frontendPath, { index: "index.html" }));
+  app.use("/api/admin", adminAccessMiddleware);
   app.use("/api", routes);
-  app.get(["/admin", "/admin/"], (_req, res) => {
+  app.get(["/admin", "/admin/"], adminAccessMiddleware, (_req, res) => {
     res.sendFile(path.join(frontendPath, "admin.html"));
   });
 
@@ -466,6 +530,12 @@ export function createAppServer(overrides = {}) {
     stateManager,
     rssAggregator
   });
+  const marketHistoryStore = new MarketHistoryStore({
+    enabled: config.market?.historyPersist !== false,
+    rootDir: config.market?.historyDir,
+    snapshotFile: config.market?.snapshotFile,
+    tickers: config.market?.tickers || []
+  });
   const mediaStreamService = new MediaStreamService({
     refreshIntervalMs: config.media?.refreshIntervalMs,
     timeoutMs: config.media?.timeoutMs
@@ -484,7 +554,8 @@ export function createAppServer(overrides = {}) {
     config,
     rssAggregator,
     signalCorrelator,
-    mapLayerService
+    mapLayerService,
+    marketHistoryStore
   });
   const manualRefreshService = new ManualRefreshService({
     orchestrator,
@@ -501,6 +572,7 @@ export function createAppServer(overrides = {}) {
   app.locals.signalCorrelator = signalCorrelator;
   app.locals.mapLayerService = mapLayerService;
   app.locals.mediaStreamService = mediaStreamService;
+  app.locals.marketHistoryStore = marketHistoryStore;
 
   return {
     app,
@@ -523,13 +595,18 @@ export function createAppServer(overrides = {}) {
         gnewsApiKeyConfigured: isRealKey(config.news.gnewsApiKey),
         mediastackKeyConfigured: isRealKey(config.news.mediastackApiKey),
         fmpApiKeyConfigured: isRealKey(config.market.fmpApiKey),
-        alphaVantageKeyConfigured: isRealKey(config.market.apiKey),
+        trustProxy: config.security?.trustProxy ?? false,
+        adminIpAllowlistEnabled: Boolean(config.security?.adminIpAllowlistMatcher?.enabled),
+        adminIpAllowlistInvalidEntries: config.security?.adminIpAllowlistMatcher?.invalidEntries || [],
+        adminMenuVisible: config.security?.adminMenuVisible === true,
         marketEnabled: config.market.enabled,
         marketProvider: config.market.provider,
         marketFallbackProvider: config.market.fallbackProvider,
         marketDisabledReason: config.market.disabledReason,
         marketBatchChunkSize: config.market.batchChunkSize,
         marketRequestReserve: config.market.requestReserve,
+        marketHistoryPersist: config.market.historyPersist !== false,
+        marketHistoryDir: config.market.historyDir,
         apiLimits: config.apiLimits,
         newsProviders: config.news.providers,
         newsSourceAllowlist: config.news.sourceAllowlist,
@@ -542,6 +619,7 @@ export function createAppServer(overrides = {}) {
         mediaRefreshIntervalMs: config.media?.refreshIntervalMs,
         mediaTimeoutMs: config.media?.timeoutMs
       });
+      await marketHistoryStore.hydrateState(stateManager);
       if (!config.runtime.disableBackgroundRefresh) {
         orchestrator.start();
         mediaStreamService.start();

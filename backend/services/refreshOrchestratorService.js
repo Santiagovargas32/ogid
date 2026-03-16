@@ -55,13 +55,22 @@ function sumCountRecord(record = {}) {
 }
 
 class RefreshOrchestratorService {
-  constructor({ stateManager, socketServer, config, rssAggregator = null, signalCorrelator = null, mapLayerService = null }) {
+  constructor({
+    stateManager,
+    socketServer,
+    config,
+    rssAggregator = null,
+    signalCorrelator = null,
+    mapLayerService = null,
+    marketHistoryStore = null
+  }) {
     this.stateManager = stateManager;
     this.socketServer = socketServer;
     this.config = config;
     this.rssAggregator = rssAggregator;
     this.signalCorrelator = signalCorrelator;
     this.mapLayerService = mapLayerService;
+    this.marketHistoryStore = marketHistoryStore;
     this.newsInFlight = false;
     this.marketInFlight = false;
     this.manualRefreshInFlight = false;
@@ -233,6 +242,15 @@ class RefreshOrchestratorService {
 
   getMarketCycleTelemetry() {
     return structuredClone(this.marketCycleTelemetry);
+  }
+
+  getMarketHistoryStatus() {
+    return this.marketHistoryStore?.getStatus?.() || {
+      enabled: false,
+      lastLoadedAt: null,
+      lastSavedAt: null,
+      snapshotPath: null
+    };
   }
 
   scheduleNextNewsCycle(trigger = "interval-news") {
@@ -514,16 +532,24 @@ class RefreshOrchestratorService {
       const aggregateNews = await this.resolveAggregateNewsSnapshot();
       snapshot = await this.enrichSnapshotWithMapAssets(snapshot, aggregateNews);
       await this.refreshSecondaryIntel(snapshot, aggregateNews);
+      try {
+        await this.marketHistoryStore?.persistMarketState?.(previousSnapshot.market || {}, marketState);
+      } catch (error) {
+        log.warn("market_history_persist_failed", {
+          message: error.message
+        });
+      }
       this.socketServer.broadcast("update", this.buildUpdatePayload(snapshot), snapshot.meta);
+      const coverage = marketState.sourceMeta?.coverageByMode || {};
+      const fallbackCount = Number(coverage.routerStale || 0) + Number(coverage.syntheticFallback || 0);
 
       log.info("market_cycle_completed", {
         trigger,
         sourceMode: marketState.sourceMode,
-        providerUsed: marketResult.sourceMeta?.provider || marketState.provider || "unknown",
+        providerUsed: marketResult.sourceMeta?.effectiveProvider || marketResult.sourceMeta?.provider || marketState.provider || "unknown",
         liveCount: marketResult.sourceMeta?.liveCount ?? 0,
-        fallbackCount:
-          (marketResult.sourceMeta?.totalTickers ?? Object.keys(marketState.quotes || {}).length) -
-          (marketResult.sourceMeta?.liveCount ?? 0),
+        webDelayedCount: Number(coverage.webDelayed || 0),
+        fallbackCount,
         tickerCount: Object.keys(marketState.quotes || {}).length,
         durationMs: Date.now() - startedAt
       });

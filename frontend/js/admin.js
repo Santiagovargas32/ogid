@@ -23,6 +23,9 @@ function cacheElements() {
   elements.pipelineGeneratedAt = byId("pipeline-generated-at");
   elements.pipelineStatusBody = byId("pipeline-status-body");
   elements.pipelineDiagnosticsBody = byId("pipeline-diagnostics-body");
+  elements.marketWebDiagnosticsBody = byId("market-web-diagnostics-body");
+  elements.marketApiDiagnosticsBody = byId("market-api-diagnostics-body");
+  elements.marketRouterDiagnosticsBody = byId("market-router-diagnostics-body");
   elements.rssFeedStatusBody = byId("rss-feed-status-body");
   elements.recentCycleErrorsBody = byId("recent-cycle-errors-body");
   elements.apiLimitsUpdated = byId("api-limits-updated");
@@ -82,6 +85,46 @@ function formatDurationMs(value) {
   return `${minutes}m ${String(remainder).padStart(2, "0")}s`;
 }
 
+function formatPrice(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return "--";
+  }
+  return number.toLocaleString([], {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+}
+
+function formatInlineList(items = [], emptyValue = "--") {
+  const values = (Array.isArray(items) ? items : [])
+    .map((item) => {
+      if (typeof item === "string") {
+        return item;
+      }
+      if (item && typeof item === "object") {
+        return item.provider ? `${item.provider}:${item.reason || item.code || "info"}` : JSON.stringify(item);
+      }
+      return "";
+    })
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+
+  return values.length ? values.join(", ") : emptyValue;
+}
+
+function formatRequestUrls(items = [], emptyValue = "--") {
+  const values = (Array.isArray(items) ? items : []).map((value) => String(value || "").trim()).filter(Boolean);
+  return values.length ? values.join(" | ") : emptyValue;
+}
+
+function normalizeDiagnosticStatus(value = "idle") {
+  const normalized = String(value || "idle").toLowerCase();
+  return ["ok", "partial", "error", "idle", "disabled", "empty", "skipped"].includes(normalized)
+    ? normalized
+    : "idle";
+}
+
 function renderEmptyRow(colspan, message) {
   return `<tr><td colspan="${colspan}" class="text-light-emphasis">${escapeHtml(message)}</td></tr>`;
 }
@@ -105,6 +148,7 @@ function renderSummaryCard(items = []) {
 function renderServerSummary(health = {}, pipeline = {}) {
   const market = pipeline?.market || {};
   const news = pipeline?.news || {};
+  const healthMarket = health?.market || {};
   elements.serverSummaryBody.innerHTML = renderSummaryCard([
     {
       label: "Health",
@@ -123,8 +167,11 @@ function renderServerSummary(health = {}, pipeline = {}) {
     },
     {
       label: "Market provider",
-      value: String(market.provider || "--"),
-      meta: market.enabled === false ? "Market disabled" : `Next market run ${formatShortTime(market.nextRecommendedRunAt)}`
+      value: String(market.effectiveProvider || market.provider || "--"),
+      meta:
+        market.enabled === false
+          ? "Market disabled"
+          : `Configured ${String(healthMarket.configuredProvider || market.configuredProvider || "--")} -> ${String(healthMarket.configuredFallbackProvider || market.configuredFallbackProvider || "--")}`
     },
     {
       label: "News cycle latency",
@@ -135,6 +182,11 @@ function renderServerSummary(health = {}, pipeline = {}) {
       label: "Market cycle latency",
       value: formatDurationMs(market.lastDurationMs),
       meta: `Status ${String(market.lastStatus || "idle")}`
+    },
+    {
+      label: "Market persistence",
+      value: market.historicalPersistence?.enabled ? "enabled" : "disabled",
+      meta: `Last save ${formatDate(market.historicalPersistence?.lastSavedAt)}`
     }
   ]);
   elements.serverSummaryUpdated.textContent = `Updated: ${formatDate(new Date().toISOString())}`;
@@ -215,7 +267,7 @@ function renderPipelineStatus(payload = {}) {
     )
     .join("");
 
-  renderPipelineDiagnostics(news);
+  renderPipelineDiagnostics(news, market);
   renderRecentCycleErrors(payload.recentCycleErrors || []);
 }
 
@@ -255,7 +307,149 @@ function buildNewsProviderDiagnostics(news = {}) {
     });
 }
 
-function renderPipelineDiagnostics(news = {}) {
+function renderMarketProviderDiagnostics(target, market = {}, diagnostics = {}, fallbackLabel = "provider") {
+  if (!target) {
+    return;
+  }
+
+  const status = normalizeDiagnosticStatus(diagnostics.status || (market.enabled === false ? "disabled" : "idle"));
+  const coverage = diagnostics.coverageByMode || market.coverageByMode || {};
+  const sampleQuotes = Array.isArray(diagnostics.sampleQuotes) ? diagnostics.sampleQuotes : [];
+  const errors = Array.isArray(diagnostics.errors) ? diagnostics.errors.slice(0, 3) : [];
+
+  const cards = [
+    `
+      <article class="diagnostic-item">
+        <div class="diagnostic-item-header">
+          <strong>${escapeHtml(diagnostics.configuredSource || fallbackLabel)}</strong>
+          <span class="diagnostic-pill ${status}">${escapeHtml(status)}</span>
+        </div>
+        <div class="diagnostic-item-meta">configured: ${escapeHtml(diagnostics.configuredProvider || "--")} | effective: ${escapeHtml(diagnostics.effectiveProvider || "--")}</div>
+        <div class="diagnostic-item-meta">mode: ${escapeHtml(diagnostics.requestMode || "--")} | returned: ${Number(diagnostics.returnedCount || 0)}</div>
+        <div class="diagnostic-item-meta">returned tickers: ${escapeHtml(formatInlineList(diagnostics.returnedTickers || []))}</div>
+      </article>
+    `,
+    `
+      <article class="diagnostic-item">
+        <div class="diagnostic-item-header">
+          <strong>Coverage</strong>
+          <span class="diagnostic-item-meta">batch ${Number(market.batchSize || 0) || "--"}</span>
+        </div>
+        <div class="diagnostic-item-meta">web delayed: ${Number(coverage.webDelayed || 0)} | live: ${Number(coverage.live || 0)}</div>
+        <div class="diagnostic-item-meta">stale: ${Number(coverage.routerStale || 0)} | synthetic: ${Number(coverage.syntheticFallback || 0)} | eod: ${Number(coverage.historicalEod || 0)}</div>
+      </article>
+    `,
+    `
+      <article class="diagnostic-item">
+        <div class="diagnostic-item-header">
+          <strong>Request</strong>
+          <span class="diagnostic-item-meta">${escapeHtml(formatDurationMs(diagnostics.durationMs))}</span>
+        </div>
+        <div class="diagnostic-item-meta">last attempt: ${escapeHtml(formatDate(diagnostics.lastAttemptAt))}</div>
+        <div class="diagnostic-item-meta">last success: ${escapeHtml(formatDate(diagnostics.lastSuccessAt))}</div>
+        <div class="diagnostic-item-meta">http: ${escapeHtml(String(diagnostics.httpStatus ?? "--"))} | disabled: ${escapeHtml(diagnostics.providerDisabledReason || "--")}</div>
+        <div class="diagnostic-item-meta">urls: ${escapeHtml(formatRequestUrls(diagnostics.requestUrls || (diagnostics.requestUrl ? [diagnostics.requestUrl] : [])))}</div>
+      </article>
+    `
+  ];
+
+  if (errors.length) {
+    cards.push(
+      ...errors.map(
+        (error) => `
+          <article class="diagnostic-item">
+            <div class="diagnostic-item-header">
+              <strong>${escapeHtml(error.provider || "market-router")}</strong>
+              <span class="diagnostic-pill error">${escapeHtml(error.code || error.reason || "error")}</span>
+            </div>
+            <div class="diagnostic-item-meta">${escapeHtml(error.reason || error.code || "unknown-error")}</div>
+          </article>
+        `
+      )
+    );
+  } else {
+    cards.push('<article class="diagnostic-item"><div class="diagnostic-item-meta">No recent market provider errors.</div></article>');
+  }
+
+  cards.push(
+    `
+      <article class="diagnostic-item">
+        <div class="diagnostic-item-header">
+          <strong>Response</strong>
+          <span class="diagnostic-item-meta">${escapeHtml(diagnostics.errorCode || "--")}</span>
+        </div>
+        <div class="diagnostic-item-meta">${escapeHtml(diagnostics.errorMessage || diagnostics.responsePreview || "No response preview available.")}</div>
+      </article>
+    `
+  );
+
+  if (sampleQuotes.length) {
+    cards.push(
+      ...sampleQuotes.map(
+        (quote) => `
+          <article class="diagnostic-item">
+            <div class="diagnostic-item-header">
+              <strong>${escapeHtml(quote.ticker || "--")}</strong>
+              <span class="diagnostic-pill ${quote.dataMode === "web-delayed" ? "ok" : "partial"}">${escapeHtml(quote.dataMode || "--")}</span>
+            </div>
+            <div class="diagnostic-item-meta">price: ${escapeHtml(formatPrice(quote.price))} | source: ${escapeHtml(quote.source || "--")}</div>
+            <div class="diagnostic-item-meta">as of: ${escapeHtml(formatShortTime(quote.asOf))}</div>
+          </article>
+        `
+      )
+    );
+  } else {
+    cards.push('<article class="diagnostic-item"><div class="diagnostic-item-meta">No market quotes available for preview.</div></article>');
+  }
+
+  target.innerHTML = cards.join("");
+}
+
+function renderMarketRouterDiagnostics(market = {}) {
+  if (!elements.marketRouterDiagnosticsBody) {
+    return;
+  }
+
+  const router = market.routerDecision || {};
+  const persistence = market.historicalPersistence || {};
+  elements.marketRouterDiagnosticsBody.innerHTML = [
+    `
+      <article class="diagnostic-item">
+        <div class="diagnostic-item-header">
+          <strong>Decision</strong>
+          <span class="diagnostic-item-meta">${escapeHtml(market.effectiveProvider || "--")}</span>
+        </div>
+        <div class="diagnostic-item-meta">configured: ${escapeHtml(market.configuredProvider || "--")} -> ${escapeHtml(market.configuredFallbackProvider || "--")}</div>
+        <div class="diagnostic-item-meta">attempted: ${escapeHtml(formatInlineList(router.attemptedOrder || []))}</div>
+        <div class="diagnostic-item-meta">reason: ${escapeHtml(router.fallbackReason || "--")}</div>
+      </article>
+    `,
+    `
+      <article class="diagnostic-item">
+        <div class="diagnostic-item-header">
+          <strong>Fallbacks</strong>
+          <span class="diagnostic-item-meta">${escapeHtml(market.sourceMode || "--")}</span>
+        </div>
+        <div class="diagnostic-item-meta">stale: ${escapeHtml(formatInlineList(router.usedStaleQuotes || []))}</div>
+        <div class="diagnostic-item-meta">synthetic: ${escapeHtml(formatInlineList(router.syntheticFallbackTickers || []))}</div>
+        <div class="diagnostic-item-meta">skipped: ${escapeHtml(formatInlineList(router.providersSkipped || []))}</div>
+      </article>
+    `,
+    `
+      <article class="diagnostic-item">
+        <div class="diagnostic-item-header">
+          <strong>Persistence</strong>
+          <span class="diagnostic-item-meta">${persistence.enabled ? "enabled" : "disabled"}</span>
+        </div>
+        <div class="diagnostic-item-meta">last load: ${escapeHtml(formatDate(persistence.lastLoadedAt))}</div>
+        <div class="diagnostic-item-meta">last save: ${escapeHtml(formatDate(persistence.lastSavedAt))}</div>
+        <div class="diagnostic-item-meta">${escapeHtml(persistence.snapshotPath || "--")}</div>
+      </article>
+    `
+  ].join("");
+}
+
+function renderPipelineDiagnostics(news = {}, market = {}) {
   const diagnostics = buildNewsProviderDiagnostics(news);
   if (!diagnostics.length) {
     elements.pipelineDiagnosticsBody.innerHTML =
@@ -286,6 +480,9 @@ function renderPipelineDiagnostics(news = {}) {
   if (!feedStatus.length) {
     elements.rssFeedStatusBody.innerHTML =
       '<div class="diagnostic-item diagnostic-item-meta">No RSS diagnostics available.</div>';
+    renderMarketProviderDiagnostics(elements.marketWebDiagnosticsBody, market, market.providerDiagnostics?.web || market.webDiagnostics || {}, "stooq");
+    renderMarketProviderDiagnostics(elements.marketApiDiagnosticsBody, market, market.providerDiagnostics?.fmp || {}, "fmp");
+    renderMarketRouterDiagnostics(market);
     return;
   }
   elements.rssFeedStatusBody.innerHTML = feedStatus
@@ -303,6 +500,10 @@ function renderPipelineDiagnostics(news = {}) {
       `;
     })
     .join("");
+
+  renderMarketProviderDiagnostics(elements.marketWebDiagnosticsBody, market, market.providerDiagnostics?.web || market.webDiagnostics || {}, "stooq");
+  renderMarketProviderDiagnostics(elements.marketApiDiagnosticsBody, market, market.providerDiagnostics?.fmp || {}, "fmp");
+  renderMarketRouterDiagnostics(market);
 }
 
 function renderRecentCycleErrors(items = []) {

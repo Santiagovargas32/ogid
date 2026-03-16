@@ -200,3 +200,63 @@ test("news aggregator skips gnews when NEWS_QUERY base is missing", async () => 
     global.fetch = originalFetch;
   }
 });
+
+test("news aggregator normalizes nested query packs and injects market signal terms for newsapi-style providers", async () => {
+  apiQuotaTracker.reset({
+    newsapiDailyLimit: 10
+  });
+
+  const originalFetch = global.fetch;
+  let capturedQuery = "";
+  global.fetch = async (url) => {
+    const requestUrl = new URL(String(url));
+    capturedQuery = requestUrl.searchParams.get("q") || "";
+
+    return new Response(
+      JSON.stringify({
+        totalResults: 1,
+        articles: [
+          {
+            source: { name: "Reuters" },
+            title: "Defense shares rise after analyst upgrade",
+            description: "Premarket tone improves across aerospace names.",
+            content: "Markets are reacting to guidance changes.",
+            url: "https://example.com/market-signals",
+            publishedAt: new Date().toISOString()
+          }
+        ]
+      }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      }
+    );
+  };
+
+  try {
+    const result = await fetchAggregatedNews({
+      providers: ["newsapi"],
+      newsApiKey: "test-key",
+      query: "geopolitics",
+      queryPacks: {
+        editorial: {
+          defense: "defense contractor"
+        },
+        marketSignals: {
+          priceAction: "upgrade OR downgrade"
+        }
+      },
+      marketTickers: ["GD", "BA"],
+      language: "en",
+      pageSize: 10,
+      timeoutMs: 1000
+    });
+
+    assert.equal(result.sourceMode, "live");
+    assert.equal(capturedQuery.includes("defense contractor"), true);
+    assert.equal(capturedQuery.includes("upgrade OR downgrade"), true);
+    assert.equal(capturedQuery.includes("GD OR BA"), true);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});

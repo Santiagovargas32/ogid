@@ -1,9 +1,14 @@
 import apiQuotaTracker, { parseRateLimitHeaders } from "../../admin/apiQuotaTrackerService.js";
 import { createLogger } from "../../../utils/logger.js";
+import { buildProviderDiagnosticRecord } from "../providerDiagnostics.js";
 
 const log = createLogger("backend/services/market/providers/fmpProvider");
 const DEFAULT_FMP_STABLE_BASE_URL = "https://financialmodelingprep.com/stable";
 const ENTITLEMENT_STATUS_CODES = new Set([402]);
+const DEFAULT_USER_AGENT = "ogid/1.0";
+
+let entitlementDisabledAt = null;
+let entitlementDisabledReason = null;
 
 function ensureTrailingSlash(baseUrl) {
   return String(baseUrl).endsWith("/") ? String(baseUrl) : `${String(baseUrl)}/`;
@@ -76,6 +81,25 @@ async function fetchWithTimeout(url, options, timeoutMs) {
     });
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+async function readResponseBody(response) {
+  const text = await response.text();
+  if (!text) {
+    return { text: "", payload: null };
+  }
+
+  try {
+    return {
+      text,
+      payload: JSON.parse(text)
+    };
+  } catch {
+    return {
+      text,
+      payload: text
+    };
   }
 }
 
@@ -177,36 +201,17 @@ function buildHistoricalSeries(payload) {
   return series;
 }
 
-function buildMissingApiKeyResult(tickers, timestamp) {
-  return {
-    provider: "fmp",
-    quotes: {},
-    missingTickers: tickers,
-    historicalSeries: {},
-    sourceMode: "fallback",
-    sourceMeta: {
-      provider: "fmp",
-      reason: "api-key-missing",
-      requestMode: "unavailable",
-      liveCount: 0,
-      totalTickers: tickers.length,
-      batchRequests: 0,
-      historicalRequests: 0,
-      historicalDerivedQuotes: 0,
-      errors: tickers.map((ticker) => ({
-        provider: "fmp",
-        scope: "provider",
-        ticker,
-        code: "api-key-missing",
-        reason: "api-key-missing",
-        message: "FMP API key is missing."
-      }))
-    },
-    updatedAt: timestamp
-  };
-}
-
-function buildProviderError({ scope, code, message, tickers = [], ticker = null, status = null, rateLimit = null }) {
+function buildProviderError({
+  scope,
+  code,
+  message,
+  tickers = [],
+  ticker = null,
+  status = null,
+  rateLimit = null,
+  requestUrl = null,
+  responsePreview = null
+}) {
   return {
     provider: "fmp",
     scope,
@@ -216,7 +221,9 @@ function buildProviderError({ scope, code, message, tickers = [], ticker = null,
     code,
     reason: code,
     message,
-    rateLimit
+    rateLimit,
+    requestUrl,
+    responsePreview
   };
 }
 
@@ -250,12 +257,129 @@ function classifyUpstreamError(status, scope, context = {}) {
   });
 }
 
+function buildMissingApiKeyResult(tickers, timestamp, options = {}) {
+  const error = buildProviderError({
+    scope: "provider",
+    code: "api-key-missing",
+    message: "FMP API key is missing.",
+    tickers
+  });
+  return {
+    provider: "fmp",
+    quotes: {},
+    missingTickers: tickers,
+    historicalSeries: {},
+    sourceMode: "fallback",
+    sourceMeta: {
+      provider: "fmp",
+      reason: "api-key-missing",
+      requestMode: "unavailable",
+      liveCount: 0,
+      totalTickers: tickers.length,
+      batchRequests: 0,
+      historicalRequests: 0,
+      historicalDerivedQuotes: 0,
+      providerDisabledReason: null,
+      errors: tickers.length ? tickers.map((ticker) => ({ ...error, ticker })) : [error],
+      providerDiagnostics: {
+        fmp: buildProviderDiagnosticRecord({
+          provider: "fmp",
+          configuredProvider: options.configuredProvider || "fmp",
+          configuredFallbackProvider: options.configuredFallbackProvider || null,
+          effectiveProvider: null,
+          configuredSource: toStableFmpBaseUrl(options.baseUrl),
+          requestMode: "unavailable",
+          lastAttemptAt: timestamp,
+          requestedTickers: tickers,
+          returnedTickers: [],
+          missingTickers: tickers,
+          errorCode: "api-key-missing",
+          errorMessage: "FMP API key is missing."
+        })
+      }
+    },
+    updatedAt: timestamp
+  };
+}
+
+function buildEntitlementLockedResult(tickers = [], timestamp = new Date().toISOString(), options = {}) {
+  const reason = entitlementDisabledReason || "provider-not-entitled";
+  const error = buildProviderError({
+    scope: "provider",
+    code: reason,
+    message: "FMP provider is disabled for this process after an entitlement failure.",
+    tickers
+  });
+
+  return {
+    provider: "fmp",
+    quotes: {},
+    missingTickers: tickers,
+    historicalSeries: {},
+    sourceMode: "fallback",
+    sourceMeta: {
+      provider: "fmp",
+      reason,
+      requestMode: "disabled-by-entitlement",
+      liveCount: 0,
+      totalTickers: tickers.length,
+      batchRequests: 0,
+      historicalRequests: 0,
+      historicalDerivedQuotes: 0,
+      providerDisabledReason: reason,
+      errors: [error],
+      providerDiagnostics: {
+        fmp: buildProviderDiagnosticRecord({
+          provider: "fmp",
+          configuredProvider: options.configuredProvider || "fmp",
+          configuredFallbackProvider: options.configuredFallbackProvider || null,
+          effectiveProvider: null,
+          configuredSource: toStableFmpBaseUrl(options.baseUrl),
+          requestMode: "disabled-by-entitlement",
+          lastAttemptAt: timestamp,
+          requestedTickers: tickers,
+          returnedTickers: [],
+          missingTickers: tickers,
+          errorCode: reason,
+          errorMessage: "FMP provider is disabled for this process after an entitlement failure.",
+          providerDisabledReason: reason,
+          extras: {
+            disabledAt: entitlementDisabledAt
+          }
+        })
+      }
+    },
+    updatedAt: timestamp
+  };
+}
+
+function createAttemptTelemetry() {
+  return {
+    requestUrls: [],
+    httpStatuses: [],
+    lastAttemptAt: null,
+    lastSuccessAt: null,
+    responsePreview: null
+  };
+}
+
+function appendAttemptTelemetry(telemetry, { url, status, attemptedAt, successAt = null, responsePreview = null }) {
+  telemetry.requestUrls.push(String(url || ""));
+  if (Number.isFinite(Number(status))) {
+    telemetry.httpStatuses.push(Number(status));
+  }
+  telemetry.lastAttemptAt = attemptedAt || telemetry.lastAttemptAt;
+  telemetry.lastSuccessAt = successAt || telemetry.lastSuccessAt;
+  telemetry.responsePreview = responsePreview || telemetry.responsePreview;
+}
+
 async function fetchBatchQuotes({ baseUrl, apiKey, tickers, timeoutMs, batchChunkSize }) {
   const quotes = {};
   const errors = [];
   let lastRateLimit = null;
   let requests = 0;
   let terminalError = null;
+  const telemetry = createAttemptTelemetry();
 
   for (const chunk of chunkTickers(tickers, batchChunkSize)) {
     if (!chunk.length) {
@@ -267,17 +391,32 @@ async function fetchBatchQuotes({ baseUrl, apiKey, tickers, timeoutMs, batchChun
       tickers: chunk,
       apiKey
     });
+    const attemptedAt = new Date().toISOString();
 
     try {
-      const response = await fetchWithTimeout(url, { headers: { "User-Agent": "ogid/1.0" } }, timeoutMs);
+      const response = await fetchWithTimeout(
+        url,
+        { headers: { "User-Agent": DEFAULT_USER_AGENT } },
+        timeoutMs
+      );
       const rateLimit = parseRateLimitHeaders(response.headers);
       lastRateLimit = rateLimit || lastRateLimit;
       requests += 1;
+      const { text, payload } = await readResponseBody(response);
+      appendAttemptTelemetry(telemetry, {
+        url,
+        status: response.status,
+        attemptedAt,
+        successAt: response.ok ? new Date().toISOString() : null,
+        responsePreview: text
+      });
 
       if (!response.ok) {
         const providerError = classifyUpstreamError(response.status, "batch", {
           tickers: chunk,
-          rateLimit
+          rateLimit,
+          requestUrl: url.toString(),
+          responsePreview: text
         });
         const error = new Error(providerError.message);
         error.rateLimit = rateLimit;
@@ -285,7 +424,6 @@ async function fetchBatchQuotes({ baseUrl, apiKey, tickers, timeoutMs, batchChun
         throw error;
       }
 
-      const payload = await response.json();
       const items = normalizePayload(payload);
       const chunkQuotes = {};
 
@@ -316,14 +454,20 @@ async function fetchBatchQuotes({ baseUrl, apiKey, tickers, timeoutMs, batchChun
         error.providerError ||
         buildProviderError({
           scope: "batch",
-          code: error.message || "request-failed",
-          message: error.message || "FMP batch request failed.",
+          code: error?.name === "AbortError" ? "request-timeout" : error.message || "request-failed",
+          message:
+            error?.name === "AbortError"
+              ? "FMP batch request timed out."
+              : error.message || "FMP batch request failed.",
           tickers: chunk,
-          rateLimit: error.rateLimit
+          rateLimit: error.rateLimit,
+          requestUrl: url.toString()
         });
       errors.push(providerError);
       if (providerError.code === "provider-not-entitled") {
         terminalError = providerError;
+        entitlementDisabledAt = new Date().toISOString();
+        entitlementDisabledReason = providerError.code;
         break;
       }
     }
@@ -334,7 +478,8 @@ async function fetchBatchQuotes({ baseUrl, apiKey, tickers, timeoutMs, batchChun
     errors,
     lastRateLimit,
     requests,
-    terminalError
+    terminalError,
+    telemetry
   };
 }
 
@@ -351,6 +496,7 @@ async function fetchHistoricalSeries({
   let lastRateLimit = null;
   let requests = 0;
   let terminalError = null;
+  const telemetry = createAttemptTelemetry();
 
   for (const ticker of tickers) {
     const url = buildFmpHistoricalEodUrl({
@@ -358,17 +504,32 @@ async function fetchHistoricalSeries({
       ticker,
       apiKey
     });
+    const attemptedAt = new Date().toISOString();
 
     try {
-      const response = await fetchWithTimeout(url, { headers: { "User-Agent": "ogid/1.0" } }, timeoutMs);
+      const response = await fetchWithTimeout(
+        url,
+        { headers: { "User-Agent": DEFAULT_USER_AGENT } },
+        timeoutMs
+      );
       const rateLimit = parseRateLimitHeaders(response.headers);
       lastRateLimit = rateLimit || lastRateLimit;
       requests += 1;
+      const { text, payload } = await readResponseBody(response);
+      appendAttemptTelemetry(telemetry, {
+        url,
+        status: response.status,
+        attemptedAt,
+        successAt: response.ok ? new Date().toISOString() : null,
+        responsePreview: text
+      });
 
       if (!response.ok) {
         const providerError = classifyUpstreamError(response.status, "historical", {
           ticker,
-          rateLimit
+          rateLimit,
+          requestUrl: url.toString(),
+          responsePreview: text
         });
         const error = new Error(providerError.message);
         error.rateLimit = rateLimit;
@@ -376,7 +537,6 @@ async function fetchHistoricalSeries({
         throw error;
       }
 
-      const payload = await response.json();
       const series = buildHistoricalSeries(payload);
       apiQuotaTracker.recordCall("fmp", {
         status: series.length > 0 ? "success" : "empty",
@@ -403,14 +563,20 @@ async function fetchHistoricalSeries({
         error.providerError ||
         buildProviderError({
           scope: "historical",
-          code: error.message || "request-failed",
-          message: error.message || "FMP historical request failed.",
+          code: error?.name === "AbortError" ? "request-timeout" : error.message || "request-failed",
+          message:
+            error?.name === "AbortError"
+              ? "FMP historical request timed out."
+              : error.message || "FMP historical request failed.",
           ticker,
-          rateLimit: error.rateLimit
+          rateLimit: error.rateLimit,
+          requestUrl: url.toString()
         });
       errors.push(providerError);
       if (providerError.code === "provider-not-entitled") {
         terminalError = providerError;
+        entitlementDisabledAt = new Date().toISOString();
+        entitlementDisabledReason = providerError.code;
         break;
       }
     }
@@ -422,7 +588,8 @@ async function fetchHistoricalSeries({
     errors,
     lastRateLimit,
     requests,
-    terminalError
+    terminalError,
+    telemetry
   };
 }
 
@@ -434,11 +601,25 @@ export async function fetchFmpQuotes({
   timestamp = new Date().toISOString(),
   batchChunkSize = 25,
   historicalBackfillTickers = [],
-  enableHistoricalBackfill = false
+  enableHistoricalBackfill = false,
+  configuredProvider = "fmp",
+  configuredFallbackProvider = null
 }) {
   const normalizedTickers = tickers.map((ticker) => String(ticker).toUpperCase());
   if (!apiKey) {
-    return buildMissingApiKeyResult(normalizedTickers, timestamp);
+    return buildMissingApiKeyResult(normalizedTickers, timestamp, {
+      configuredProvider,
+      configuredFallbackProvider,
+      baseUrl
+    });
+  }
+
+  if (entitlementDisabledReason) {
+    return buildEntitlementLockedResult(normalizedTickers, timestamp, {
+      configuredProvider,
+      configuredFallbackProvider,
+      baseUrl
+    });
   }
 
   const startedAt = Date.now();
@@ -467,7 +648,8 @@ export async function fetchFmpQuotes({
     errors: [],
     lastRateLimit: null,
     requests: 0,
-    terminalError: null
+    terminalError: null,
+    telemetry: createAttemptTelemetry()
   };
 
   if (enableHistoricalBackfill && normalizedHistoricalTickers.length && !batchResult.terminalError) {
@@ -502,7 +684,23 @@ export async function fetchFmpQuotes({
   const historicalDerivedQuotes = Object.keys(historicalResult.historicalQuotes).filter(
     (ticker) => quotes[ticker]?.dataMode === "historical-eod"
   ).length;
-  const providerDisabledReason = batchResult.terminalError?.code || historicalResult.terminalError?.code || null;
+  const providerDisabledReason = batchResult.terminalError?.code || historicalResult.terminalError?.code || entitlementDisabledReason || null;
+  const durationMs = Date.now() - startedAt;
+  const effectiveProvider = Object.keys(quotes).length ? "fmp" : null;
+  const requestUrls = [
+    ...(batchResult.telemetry?.requestUrls || []),
+    ...(historicalResult.telemetry?.requestUrls || [])
+  ];
+  const httpStatuses = [
+    ...(batchResult.telemetry?.httpStatuses || []),
+    ...(historicalResult.telemetry?.httpStatuses || [])
+  ];
+  const responsePreview =
+    historicalResult.telemetry?.responsePreview ||
+    batchResult.telemetry?.responsePreview ||
+    errors.at(-1)?.responsePreview ||
+    null;
+  const requestMode = requestModeParts.join("+") || "unavailable";
 
   log.info("market_provider_summary", {
     provider: "fmp",
@@ -510,7 +708,8 @@ export async function fetchFmpQuotes({
     fallbackCount: missingTickers.length,
     historicalSeedCount: Object.keys(historicalResult.historicalSeries).length,
     totalTickers: normalizedTickers.length,
-    durationMs: Date.now() - startedAt
+    durationMs,
+    providerDisabledReason
   });
 
   return {
@@ -521,7 +720,7 @@ export async function fetchFmpQuotes({
     sourceMode: liveCount <= 0 ? "fallback" : liveCount >= normalizedTickers.length ? "live" : "mixed",
     sourceMeta: {
       provider: "fmp",
-      requestMode: requestModeParts.join("+") || "unavailable",
+      requestMode,
       liveCount,
       totalTickers: normalizedTickers.length,
       batchRequests: batchResult.requests,
@@ -529,8 +728,43 @@ export async function fetchFmpQuotes({
       historicalDerivedQuotes,
       providerDisabledReason,
       errors,
-      rateLimit
+      rateLimit,
+      providerDiagnostics: {
+        fmp: buildProviderDiagnosticRecord({
+          provider: "fmp",
+          configuredProvider,
+          configuredFallbackProvider,
+          effectiveProvider,
+          configuredSource: toStableFmpBaseUrl(baseUrl),
+          requestMode,
+          lastAttemptAt: historicalResult.telemetry?.lastAttemptAt || batchResult.telemetry?.lastAttemptAt || timestamp,
+          lastSuccessAt: historicalResult.telemetry?.lastSuccessAt || batchResult.telemetry?.lastSuccessAt || null,
+          durationMs,
+          requestUrl: requestUrls[0] || null,
+          requestUrls,
+          requestedTickers: normalizedTickers,
+          returnedTickers: Object.keys(quotes),
+          missingTickers,
+          httpStatus: httpStatuses.at(-1) ?? null,
+          responsePreview,
+          errorCode: errors.at(-1)?.code || providerDisabledReason || null,
+          errorMessage: errors.at(-1)?.message || null,
+          providerDisabledReason,
+          rateLimit,
+          extras: {
+            batchRequests: batchResult.requests,
+            historicalRequests: historicalResult.requests,
+            historicalDerivedQuotes,
+            disabledAt: entitlementDisabledAt
+          }
+        })
+      }
     },
     updatedAt: timestamp
   };
+}
+
+export function resetFmpProviderStateForTests() {
+  entitlementDisabledAt = null;
+  entitlementDisabledReason = null;
 }

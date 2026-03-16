@@ -1,5 +1,6 @@
 import apiQuotaTracker from "../admin/apiQuotaTrackerService.js";
 import { createLogger } from "../../utils/logger.js";
+import { normalizeNewsQueryPacks } from "./newsQueryPackService.js";
 import { fetchGdelt } from "./providers/gdeltProvider.js";
 import { fetchGnews } from "./providers/gnewsProvider.js";
 import { fetchMediastack } from "./providers/mediastackProvider.js";
@@ -242,6 +243,13 @@ function composeNewsQuery({ query, queryPacks = {} }) {
   return parts.join(" OR ");
 }
 
+function resolveNormalizedQueryPacks(queryPacks = {}, marketTickers = []) {
+  return normalizeNewsQueryPacks(queryPacks, {
+    marketTickers,
+    defaultEditorialPacks: {}
+  }).flattened;
+}
+
 function trimQueryToLimit(query = "", maxLength = GNEWS_MAX_QUERY_LENGTH) {
   const normalized = String(query || "").trim();
   if (!normalized || normalized.length <= maxLength) {
@@ -295,6 +303,7 @@ export async function fetchAggregatedNews({
   rssFeeds = [],
   query,
   queryPacks = {},
+  marketTickers = [],
   language,
   pageSize,
   countries,
@@ -304,12 +313,13 @@ export async function fetchAggregatedNews({
   allowExhaustedProviders = true
 }) {
   const normalizedProviders = normalizeProviders(providers);
+  const normalizedQueryPacks = resolveNormalizedQueryPacks(queryPacks, marketTickers);
   const providerResolution = resolveProviderOrder(normalizedProviders, allowExhaustedProviders);
   const attempts = [];
   const aggregatedArticles = [];
-  const keywordTokens = buildKeywordTokens(query, queryPacks);
+  const keywordTokens = buildKeywordTokens(query, normalizedQueryPacks);
   const baseQuery = String(query || "").trim();
-  const composedQuery = composeNewsQuery({ query, queryPacks }) || baseQuery;
+  const composedQuery = composeNewsQuery({ query, queryPacks: normalizedQueryPacks }) || baseQuery;
   const rateLimitsByProvider = {};
   const providerRequests = Object.fromEntries(
     normalizedProviders.map((providerName) => [

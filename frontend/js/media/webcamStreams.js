@@ -1,3 +1,5 @@
+import { buildCollectionPlaybackSignature, buildStreamPlaybackSignature } from "./mediaPlaybackPolicy.js";
+
 const WEBCAM_STREAMS = [
   {
     id: "strait-hormuz",
@@ -167,34 +169,91 @@ export function mountWebcamStreams(rootIdOrOptions = "webcam-streams-panel", may
   const { rootId, streams } = resolveArgs(rootIdOrOptions, maybeOptions);
   const root = document.getElementById(rootId);
   if (!root) {
-    return () => {};
+    return {
+      destroy() {},
+      update() {},
+      getPlaybackSignature() {
+        return "";
+      }
+    };
   }
 
-  const sourceStreams = normalizeWebcamStreams(streams);
-
   root.innerHTML = `
-    <div class="webcam-grid">
-      ${sourceStreams
-        .map(
-          (item) => `
-          <article class="webcam-card">
-            ${renderFrame(item)}
-            <div class="webcam-card-header">
-              <strong>${escapeHtml(item.name)}</strong>
-              <span>${escapeHtml(item.category)}</span>
-            </div>
-            <div class="small text-light-emphasis">Rapid drill-down camera catalog for chokepoints, ports and frontline cities.</div>
-            <div class="small text-light-emphasis text-uppercase">Status: ${escapeHtml(item.availability)}</div>
-            <a class="btn btn-sm btn-outline-info" href="${escapeHtml(item.fallbackUrl)}" target="_blank" rel="noopener noreferrer">Open webcam source</a>
-          </article>
-        `
-        )
-        .join("")}
-    </div>
+    <div class="webcam-grid" data-webcam-grid></div>
   `;
+  const grid = root.querySelector("[data-webcam-grid]");
+  const cards = new Map();
+  let sourceStreams = normalizeWebcamStreams(streams);
+  let collectionSignature = "";
 
-  return () => {
-    root.innerHTML = "";
+  function renderMeta(item) {
+    return `
+      <div class="webcam-card-header">
+        <strong>${escapeHtml(item.name)}</strong>
+        <span>${escapeHtml(item.category)}</span>
+      </div>
+      <div class="small text-light-emphasis">Rapid drill-down camera catalog for chokepoints, ports and frontline cities.</div>
+      <div class="small text-light-emphasis text-uppercase">Status: ${escapeHtml(item.availability)}</div>
+      <a class="btn btn-sm btn-outline-info" href="${escapeHtml(item.fallbackUrl)}" target="_blank" rel="noopener noreferrer">Open webcam source</a>
+    `;
+  }
+
+  function ensureCard(item) {
+    let record = cards.get(item.id);
+    if (!record) {
+      const element = document.createElement("article");
+      element.className = "webcam-card";
+      const frameShell = document.createElement("div");
+      const metaShell = document.createElement("div");
+      element.append(frameShell, metaShell);
+      record = {
+        element,
+        frameShell,
+        metaShell,
+        playbackSignature: ""
+      };
+      cards.set(item.id, record);
+    }
+
+    const nextPlaybackSignature = buildStreamPlaybackSignature(item);
+    if (nextPlaybackSignature !== record.playbackSignature) {
+      record.frameShell.innerHTML = renderFrame(item);
+      record.playbackSignature = nextPlaybackSignature;
+    }
+    record.metaShell.innerHTML = renderMeta(item);
+    return record.element;
+  }
+
+  function rerender() {
+    collectionSignature = buildCollectionPlaybackSignature(sourceStreams);
+    const activeIds = new Set(sourceStreams.map((item) => item.id));
+
+    cards.forEach((record, id) => {
+      if (!activeIds.has(id)) {
+        record.element.remove();
+        cards.delete(id);
+      }
+    });
+
+    sourceStreams.forEach((item) => {
+      const element = ensureCard(item);
+      grid.appendChild(element);
+    });
+  }
+
+  rerender();
+
+  return {
+    update(nextStreams = []) {
+      sourceStreams = normalizeWebcamStreams(nextStreams);
+      rerender();
+    },
+    destroy() {
+      root.innerHTML = "";
+    },
+    getPlaybackSignature() {
+      return collectionSignature;
+    }
   };
 }
 

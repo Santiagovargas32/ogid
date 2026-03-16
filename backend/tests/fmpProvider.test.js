@@ -4,6 +4,7 @@ import {
   buildFmpBatchQuoteUrl,
   buildFmpHistoricalEodUrl,
   fetchFmpQuotes,
+  resetFmpProviderStateForTests,
   toStableFmpBaseUrl
 } from "../services/market/providers/fmpProvider.js";
 
@@ -35,6 +36,7 @@ test("fmp provider builds stable batch and historical urls", () => {
 });
 
 test("fmp provider classifies 402 entitlement failures and skips historical fallback in the same cycle", async () => {
+  resetFmpProviderStateForTests();
   const originalFetch = global.fetch;
   let fetchCalls = 0;
   global.fetch = async () => {
@@ -69,7 +71,22 @@ test("fmp provider classifies 402 entitlement failures and skips historical fall
     assert.equal(result.sourceMeta.errors.length > 0, true);
     assert.equal(result.sourceMeta.errors[0].code, "provider-not-entitled");
     assert.equal(result.sourceMeta.errors[0].scope, "batch");
+
+    const lockedResult = await fetchFmpQuotes({
+      apiKey: "demo",
+      baseUrl: "https://financialmodelingprep.com/api/v3",
+      tickers: ["LMT", "RTX"],
+      timeoutMs: 1000,
+      enableHistoricalBackfill: true,
+      historicalBackfillTickers: ["LMT", "RTX"]
+    });
+
+    assert.equal(fetchCalls, 1);
+    assert.equal(lockedResult.sourceMeta.requestMode, "disabled-by-entitlement");
+    assert.equal(lockedResult.sourceMeta.providerDisabledReason, "provider-not-entitled");
+    assert.equal(lockedResult.sourceMeta.providerDiagnostics.fmp.providerDisabledReason, "provider-not-entitled");
   } finally {
     global.fetch = originalFetch;
+    resetFmpProviderStateForTests();
   }
 });

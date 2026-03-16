@@ -1,5 +1,6 @@
 const DATA_MODE_STAGE = Object.freeze({
   live: "provider-live",
+  "web-delayed": "provider-web-delayed",
   "historical-eod": "provider-historical-eod",
   "router-stale": "router-stale-cache",
   "synthetic-fallback": "router-deterministic-fallback",
@@ -50,6 +51,7 @@ export function decorateQuote(quote = {}, referenceNow = Date.now()) {
 export function buildCoverageByMode(quotes = {}) {
   const coverage = {
     live: 0,
+    webDelayed: 0,
     historicalEod: 0,
     routerStale: 0,
     syntheticFallback: 0
@@ -59,6 +61,10 @@ export function buildCoverageByMode(quotes = {}) {
     const mode = normalizeQuoteDataMode(quote?.dataMode || (quote?.synthetic ? "synthetic-fallback" : "live"));
     if (mode === "live") {
       coverage.live += 1;
+      continue;
+    }
+    if (mode === "web-delayed") {
+      coverage.webDelayed += 1;
       continue;
     }
     if (mode === "historical-eod") {

@@ -1,5 +1,5 @@
 const WINDOW_MS = 24 * 60 * 60 * 1_000;
-const PROVIDERS = ["newsapi", "gnews", "mediastack", "rss", "gdelt", "fmp", "alphavantage"];
+const PROVIDERS = ["newsapi", "gnews", "mediastack", "rss", "gdelt", "web", "fmp"];
 
 function toPositiveInt(value) {
   const parsed = Number.parseInt(String(value ?? ""), 10);
@@ -99,8 +99,8 @@ class ApiQuotaTrackerService {
       mediastack: toPositiveInt(config.mediastackDailyLimit ?? process.env.MEDIASTACK_DAILY_LIMIT),
       rss: toPositiveInt(config.rssDailyLimit ?? process.env.RSS_DAILY_LIMIT),
       gdelt: toPositiveInt(config.gdeltDailyLimit ?? process.env.GDELT_DAILY_LIMIT),
-      fmp: toPositiveInt(config.fmpDailyLimit ?? process.env.FMP_DAILY_LIMIT),
-      alphavantage: toPositiveInt(config.alphavantageDailyLimit ?? process.env.ALPHAVANTAGE_DAILY_LIMIT)
+      web: toPositiveInt(config.webDailyLimit ?? process.env.MARKET_WEB_DAILY_LIMIT),
+      fmp: toPositiveInt(config.fmpDailyLimit ?? process.env.FMP_DAILY_LIMIT)
     };
 
     this.providers = Object.fromEntries(

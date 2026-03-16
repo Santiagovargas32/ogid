@@ -34,6 +34,7 @@ const DIRECTION_COLORS = {
 };
 const MODE_BORDER_COLORS = {
   live: "#dff5ff",
+  "web-delayed": "#6fb1ff",
   "historical-eod": "#9faebd",
   "router-stale": "#f4c542",
   "synthetic-fallback": "#ffb36b",
@@ -42,6 +43,7 @@ const MODE_BORDER_COLORS = {
 };
 const MODE_POINT_STYLE = {
   live: "circle",
+  "web-delayed": "rectRounded",
   "historical-eod": "rectRot",
   "router-stale": "rectRounded",
   "synthetic-fallback": "triangle",
@@ -136,6 +138,7 @@ function cacheElements() {
   elements.newsDrawerImage = byId("news-drawer-image");
   elements.newsDrawerBody = byId("news-drawer-body");
   elements.newsDrawerLink = byId("news-drawer-link");
+  elements.adminMenuLink = byId("nav-admin-link");
 }
 
 function escapeHtml(value = "") {
@@ -368,6 +371,9 @@ function marketModeLabel(mode = "synthetic-fallback") {
   if (normalized === "live") {
     return "LIVE";
   }
+  if (normalized === "web-delayed") {
+    return "WEB DELAYED";
+  }
   if (normalized === "historical-eod") {
     return "EOD";
   }
@@ -379,6 +385,9 @@ function marketModeLabel(mode = "synthetic-fallback") {
 
 function marketModeShortLabel(mode = "synthetic-fallback") {
   const normalized = normalizeMarketDataMode(mode);
+  if (normalized === "web-delayed") {
+    return "W";
+  }
   if (normalized === "historical-eod") {
     return "E";
   }
@@ -609,7 +618,12 @@ function filterMapAssetsBySelection(mapAssets = {}, countriesSet) {
   }
 
   const filterItems = (items = []) =>
-    items.filter((item) => intersectsCountries(item.countries || (item.country ? [item.country] : []), countriesSet));
+    items.filter((item) => {
+      if (item?.alwaysVisible) {
+        return true;
+      }
+      return intersectsCountries(item.countries || (item.country ? [item.country] : []), countriesSet);
+    });
 
   return {
     ...mapAssets,
@@ -696,11 +710,11 @@ function renderMeta(meta, market) {
     market.sourceMode === "disabled" ? "Quotes: market disabled" : `Quotes: ${formatDate(market.updatedAt)}`;
   if (elements.marketCoverageText) {
     const coverage = market.coverageByMode || market.sourceMeta?.coverageByMode || {};
-    elements.marketCoverageText.textContent =
-      market.sourceMode === "disabled"
-        ? "Coverage: market disabled"
-        : `Coverage: ${coverage.live || 0} live / ${coverage.historicalEod || 0} EOD / ${coverage.routerStale || 0} stale cache / ${coverage.syntheticFallback || 0} sim`;
-  }
+      elements.marketCoverageText.textContent =
+        market.sourceMode === "disabled"
+          ? "Coverage: market disabled"
+          : `Coverage: ${coverage.live || 0} live / ${coverage.webDelayed || 0} web delayed / ${coverage.historicalEod || 0} EOD / ${coverage.routerStale || 0} stale cache / ${coverage.syntheticFallback || 0} sim`;
+    }
 
   const dq = meta.dataQuality || {};
   setQualityBadge(elements.qualityHotspotsBadge, "Hotspots", dq.news || {});
@@ -717,6 +731,11 @@ function renderMeta(meta, market) {
   setPanelMode(elements.panelAdvancedIntel, dq.insights?.mode || "fallback");
   setPanelMode(elements.panelSituational, dq.news?.mode || "fallback");
   setPanelMode(elements.panelWebcams, dq.news?.mode || "fallback");
+}
+
+function applyPublicHealthConfig(health = {}) {
+  const adminMenuVisible = health?.publicConfig?.adminMenuVisible === true;
+  elements.adminMenuLink?.classList.toggle("d-none", !adminMenuVisible);
 }
 
 function renderCountryFilters() {
@@ -2035,6 +2054,7 @@ function startPolling() {
 async function bootstrap() {
   cacheElements();
   initNewsDrawer();
+  elements.adminMenuLink?.classList.add("d-none");
   renderAnalyticsWindowSelector();
   hotspotMap = new HotspotMap("hotspot-map");
   hotspotMap.init();
@@ -2064,7 +2084,13 @@ async function bootstrap() {
   setWsStatus("connecting");
 
   try {
-    const snapshot = await api.getSnapshot({ countries: selectedCountryQueryValue(), limit: 100 });
+    const [health, snapshot] = await Promise.all([
+      api.getHealth().catch(() => null),
+      api.getSnapshot({ countries: selectedCountryQueryValue(), limit: 100 })
+    ]);
+    if (health) {
+      applyPublicHealthConfig(health);
+    }
     setSnapshot(snapshot);
     await refreshAnalytics();
   } catch (error) {

@@ -707,6 +707,17 @@ body {
   color: #ffb9ba;
 }
 
+.diagnostic-pill.partial {
+  background: rgba(255, 201, 107, 0.16);
+  color: #ffe0a3;
+}
+
+.diagnostic-pill.idle,
+.diagnostic-pill.disabled {
+  background: rgba(110, 129, 151, 0.16);
+  color: #d8e0ea;
+}
+
 .diagnostic-pill.empty {
   background: rgba(244, 197, 66, 0.16);
   color: #ffdd7d;
@@ -794,6 +805,11 @@ body {
 .market-mode-live {
   background: rgba(56, 193, 114, 0.16);
   color: #84e0ad;
+}
+
+.market-mode-web-delayed {
+  background: rgba(111, 177, 255, 0.18);
+  color: #cfe4ff;
 }
 
 .market-mode-historical-eod {

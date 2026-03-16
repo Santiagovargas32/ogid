@@ -1,3 +1,5 @@
 backend/node_modules/
 backend/.env
+backend/data/market/
+backend/backend/data/market/
 *.log

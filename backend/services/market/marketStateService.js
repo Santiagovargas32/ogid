@@ -3,6 +3,7 @@ const MAX_MARKET_POINTS = 120;
 function buildDisabledCoverageByMode() {
   return {
     live: 0,
+    webDelayed: 0,
     historicalEod: 0,
     routerStale: 0,
     syntheticFallback: 0
@@ -105,7 +106,7 @@ export function mergeMarketState(previousMarketState = {}, marketResult = {}) {
   }
 
   return {
-    provider: marketResult.provider || previousMarketState.provider || "alphavantage",
+    provider: marketResult.provider || previousMarketState.provider || "market-router",
     sourceMode: marketResult.sourceMode || previousMarketState.sourceMode || "fallback",
     sourceMeta: marketResult.sourceMeta || previousMarketState.sourceMeta || { provider: "unknown" },
     updatedAt: timestamp,

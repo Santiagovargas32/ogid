@@ -27,6 +27,26 @@ test("REST API exposes health and snapshot payloads", async () => {
       );
     }
 
+    if (value.includes("stooq.com/q/l/")) {
+      return new Response(
+        "Symbol,Date,Time,Open,High,Low,Close,Volume,Name\nGD.US,2026-03-16,18:45:00,300.00,301.00,299.00,300.50,1000,General Dynamics\nBA.US,2026-03-16,18:45:00,200.00,201.00,199.00,200.25,1100,Boeing\nNOC.US,2026-03-16,18:45:00,450.00,452.00,449.00,451.10,900,Northrop Grumman",
+        {
+          status: 200,
+          headers: { "content-type": "text/csv" }
+        }
+      );
+    }
+
+    if (value.includes("stooq.com/q/d/l/")) {
+      return new Response(
+        "Date,Open,High,Low,Close,Volume\n2026-03-14,296.00,299.00,295.00,298.00,1000\n2026-03-15,298.00,300.00,297.00,299.00,1100",
+        {
+          status: 200,
+          headers: { "content-type": "text/csv" }
+        }
+      );
+    }
+
     return new Response(
       `<?xml version="1.0" encoding="UTF-8"?>
       <rss version="2.0">
@@ -51,7 +71,23 @@ test("REST API exposes health and snapshot payloads", async () => {
     port: 0,
     disableBackgroundRefresh: true,
     refreshIntervalMs: 300_000,
-    market: { refreshIntervalMs: 300_000, apiKey: "", fmpApiKey: "", requestReserve: 0 },
+    security: {
+      adminMenuVisible: false,
+      adminIpAllowlist: []
+    },
+    market: {
+      provider: "web",
+      fallbackProvider: "fmp",
+      webSource: "stooq",
+      webBaseUrl: "https://stooq.com",
+      webUserAgent: "ogid/1.0",
+      tickers: ["GD", "BA", "NOC"],
+      refreshIntervalMs: 300_000,
+      apiKey: "",
+      fmpApiKey: "",
+      requestReserve: 0,
+      historyPersist: false
+    },
     news: {
       providers: ["rss"],
       rssFeeds: [{ label: "API Test Feed", url: "https://example.com/rss.xml" }],
@@ -63,8 +99,7 @@ test("REST API exposes health and snapshot payloads", async () => {
     apiLimits: {
       newsapiDailyLimit: 10,
       gnewsDailyLimit: 10,
-      mediastackDailyLimit: 10,
-      alphavantageDailyLimit: 10
+      mediastackDailyLimit: 10
     }
   });
 
@@ -72,6 +107,7 @@ test("REST API exposes health and snapshot payloads", async () => {
 
   try {
     await runtime.orchestrator.runCycle("test-bootstrap");
+    await runtime.orchestrator.runMarketCycle("test-bootstrap-market");
     const address = runtime.server.address();
     const baseUrl = `http://127.0.0.1:${address.port}`;
 
@@ -80,6 +116,11 @@ test("REST API exposes health and snapshot payloads", async () => {
     assert.equal(healthResponse.status, 200);
     assert.equal(healthPayload.ok, true);
     assert.equal(healthPayload.data.status, "ok");
+    assert.equal(healthPayload.data.publicConfig.adminMenuVisible, false);
+    assert.equal(healthPayload.data.market.configuredProvider, "web");
+    assert.equal(healthPayload.data.market.configuredFallbackProvider, "fmp");
+    assert.equal(healthPayload.data.market.effectiveProvider, "web");
+    assert.equal(healthPayload.data.market.historicalPersistence.enabled, false);
 
     const snapshotResponse = await fetch(`${baseUrl}/api/intel/snapshot?countries=US,IL,IR`);
     const snapshotPayload = await snapshotResponse.json();
@@ -227,6 +268,23 @@ test("REST API exposes health and snapshot payloads", async () => {
     assert.ok("lastStartedAt" in pipelinePayload.data.market);
     assert.ok("lastCompletedAt" in pipelinePayload.data.market);
     assert.ok("lastStatus" in pipelinePayload.data.market);
+    assert.ok(Array.isArray(pipelinePayload.data.market.providersUsed));
+    assert.ok(Array.isArray(pipelinePayload.data.market.unresolvedTickers));
+    assert.ok(Array.isArray(pipelinePayload.data.market.sampleQuotes));
+    assert.ok(pipelinePayload.data.market.webDiagnostics);
+    assert.equal(pipelinePayload.data.market.configuredProvider, "web");
+    assert.equal(pipelinePayload.data.market.configuredFallbackProvider, "fmp");
+    assert.equal(pipelinePayload.data.market.effectiveProvider, "web");
+    assert.ok(pipelinePayload.data.market.providerDiagnostics);
+    assert.ok(pipelinePayload.data.market.providerDiagnostics.web);
+    assert.ok(pipelinePayload.data.market.providerDiagnostics.fmp);
+    assert.equal(pipelinePayload.data.market.providerDiagnostics.web.status, "ok");
+    assert.equal(pipelinePayload.data.market.providerDiagnostics.fmp.status, "idle");
+    assert.equal(pipelinePayload.data.market.historicalPersistence.enabled, false);
+    assert.equal(pipelinePayload.data.market.webDiagnostics.configuredSource, "stooq");
+    assert.equal(pipelinePayload.data.market.webDiagnostics.status, "ok");
+    assert.ok(Array.isArray(pipelinePayload.data.market.webDiagnostics.returnedTickers));
+    assert.ok(Array.isArray(pipelinePayload.data.market.webDiagnostics.sampleQuotes));
     assert.ok(pipelinePayload.data.market.coverageByMode);
     assert.ok(Array.isArray(pipelinePayload.data.market.providerErrors));
     assert.ok(Array.isArray(pipelinePayload.data.news.selectionBySourceName));
@@ -313,7 +371,19 @@ test("pipeline status exposes provider and rss diagnostics for ok, error and ski
     port: 0,
     disableBackgroundRefresh: true,
     refreshIntervalMs: 300_000,
-    market: { refreshIntervalMs: 300_000, apiKey: "", fmpApiKey: "", requestReserve: 0 },
+    security: {
+      adminMenuVisible: false,
+      adminIpAllowlist: []
+    },
+    market: {
+      provider: "",
+      fallbackProvider: "",
+      refreshIntervalMs: 300_000,
+      apiKey: "",
+      fmpApiKey: "",
+      requestReserve: 0,
+      historyPersist: false
+    },
     news: {
       providers: ["newsapi", "gnews", "rss", "mediastack"],
       newsApiKey: "test-newsapi-key",
@@ -339,8 +409,7 @@ test("pipeline status exposes provider and rss diagnostics for ok, error and ski
       newsapiDailyLimit: 10,
       gnewsDailyLimit: 10,
       mediastackDailyLimit: 10,
-      rssDailyLimit: 10,
-      alphavantageDailyLimit: 10
+      rssDailyLimit: 10
     }
   });
 
@@ -365,6 +434,14 @@ test("pipeline status exposes provider and rss diagnostics for ok, error and ski
     assert.equal(market.requestMode, "disabled");
     assert.equal(market.disabledReason, "market-provider-empty");
     assert.deepEqual(market.providerErrors, []);
+    assert.deepEqual(market.providersUsed, []);
+    assert.deepEqual(market.unresolvedTickers, []);
+    assert.deepEqual(market.sampleQuotes, []);
+    assert.equal(market.webDiagnostics.status, "disabled");
+    assert.equal(market.webDiagnostics.configuredSource, "stooq");
+    assert.equal(market.providerDiagnostics.web.status, "disabled");
+    assert.equal(market.providerDiagnostics.fmp.status, "disabled");
+    assert.equal(market.historicalPersistence.enabled, false);
     assert.equal(news.rawCountByProvider.newsapi, 1);
     assert.equal(news.rawCountByProvider.gnews, 0);
     assert.equal(news.rawCountByProvider.mediastack, 0);
@@ -447,10 +524,59 @@ test("pipeline status exposes provider and rss diagnostics for ok, error and ski
   }
 });
 
+test("admin allowlist enforces trusted proxy client ip on admin routes", async () => {
+  const runtime = createAppServer({
+    port: 0,
+    disableBackgroundRefresh: true,
+    market: {
+      historyPersist: false
+    },
+    security: {
+      trustProxy: true,
+      adminIpAllowlist: ["198.51.100.10/32"]
+    }
+  });
+
+  await runtime.start();
+
+  try {
+    const address = runtime.server.address();
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+
+    const deniedResponse = await fetch(`${baseUrl}/api/admin/api-limits`, {
+      headers: {
+        "x-forwarded-for": "198.51.100.11"
+      }
+    });
+    const deniedPayload = await deniedResponse.json();
+    assert.equal(deniedResponse.status, 403);
+    assert.equal(deniedPayload.ok, false);
+    assert.equal(deniedPayload.error.code, "ADMIN_IP_FORBIDDEN");
+
+    const allowedResponse = await fetch(`${baseUrl}/api/admin/api-limits`, {
+      headers: {
+        "x-forwarded-for": "198.51.100.10"
+      }
+    });
+    const allowedPayload = await allowedResponse.json();
+    assert.equal(allowedResponse.status, 200);
+    assert.equal(allowedPayload.ok, true);
+
+    const adminPageResponse = await fetch(`${baseUrl}/admin`, {
+      headers: {
+        "x-forwarded-for": "198.51.100.10"
+      }
+    });
+    assert.equal(adminPageResponse.status, 200);
+  } finally {
+    await runtime.stop();
+  }
+});
+
 test("market disabled skips startup and manual refresh upstream market calls", async () => {
   const originalFetch = global.fetch;
+  let webCalls = 0;
   let fmpCalls = 0;
-  let alphaVantageCalls = 0;
 
   global.fetch = async (url, options) => {
     const value = String(url);
@@ -459,16 +585,16 @@ test("market disabled skips startup and manual refresh upstream market calls", a
       return originalFetch(url, options);
     }
 
-    if (value.includes("financialmodelingprep.com")) {
-      fmpCalls += 1;
+    if (value.includes("stooq.com")) {
+      webCalls += 1;
       return new Response("{}", {
         status: 500,
-        headers: { "content-type": "application/json" }
+        headers: { "content-type": "text/plain" }
       });
     }
 
-    if (value.includes("alphavantage.co")) {
-      alphaVantageCalls += 1;
+    if (value.includes("financialmodelingprep.com")) {
+      fmpCalls += 1;
       return new Response("{}", {
         status: 500,
         headers: { "content-type": "application/json" }
@@ -519,13 +645,13 @@ test("market disabled skips startup and manual refresh upstream market calls", a
       refreshIntervalMs: 300_000,
       apiKey: "",
       fmpApiKey: "",
-      requestReserve: 0
+      requestReserve: 0,
+      historyPersist: false
     },
     apiLimits: {
       newsapiDailyLimit: 10,
       gnewsDailyLimit: 10,
-      mediastackDailyLimit: 10,
-      alphavantageDailyLimit: 10
+      mediastackDailyLimit: 10
     }
   });
 
@@ -533,16 +659,16 @@ test("market disabled skips startup and manual refresh upstream market calls", a
 
   try {
     await runtime.orchestrator.waitForIdle();
+    assert.equal(webCalls, 0);
     assert.equal(fmpCalls, 0);
-    assert.equal(alphaVantageCalls, 0);
 
     await runtime.orchestrator.runManualRefresh({
       trigger: "disabled-market-test",
       countries: ["US", "IL", "IR"]
     });
 
+    assert.equal(webCalls, 0);
     assert.equal(fmpCalls, 0);
-    assert.equal(alphaVantageCalls, 0);
   } finally {
     global.fetch = originalFetch;
     await runtime.stop();

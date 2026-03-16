@@ -400,6 +400,35 @@ class StateManager {
 
     return this.getSnapshot();
   }
+
+  hydrateMarketState(market = null) {
+    if (!market || typeof market !== "object") {
+      return this.getSnapshot();
+    }
+
+    const nextMarket = {
+      ...this.state.market,
+      ...market,
+      quotes: market.quotes || this.state.market?.quotes || {},
+      timeseries: market.timeseries || this.state.market?.timeseries || {}
+    };
+
+    this.state = {
+      ...this.state,
+      market: nextMarket,
+      meta: {
+        ...this.state.meta,
+        dataQuality: buildDataQuality({
+          newsMode: this.state.meta?.sourceMode || "fallback",
+          newsMeta: this.state.meta?.sourceMeta || { provider: "unknown" },
+          marketMode: nextMarket?.sourceMode || "fallback",
+          marketMeta: nextMarket?.sourceMeta || { provider: "unknown" }
+        })
+      }
+    };
+
+    return this.getSnapshot();
+  }
 }
 
 const stateManager = new StateManager();

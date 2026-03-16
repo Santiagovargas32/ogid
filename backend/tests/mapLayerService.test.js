@@ -155,6 +155,12 @@ test("map layer service builds dashboard map assets with static and moving seeds
   assert.ok(assets.movingSeeds.length > 0);
   assert.ok(assets.staticPoints.some((asset) => asset.styleKey === "space_launch_sites"));
   assert.ok(assets.movingSeeds.some((asset) => asset.styleKey === "space_orbital_passes"));
+  const menaFacility = assets.staticPoints.find((asset) => asset.layerId === "military_bases" && asset.hostCountry);
+  assert.ok(menaFacility);
+  assert.equal(typeof menaFacility.facilityType, "string");
+  assert.equal(typeof menaFacility.iconKey, "string");
+  assert.equal(typeof menaFacility.approximate, "boolean");
+  assert.equal(menaFacility.alwaysVisible, true);
   const vessel = assets.movingSeeds.find((asset) => asset.layerId === "naval_vessels");
   assert.ok(vessel);
   assert.notEqual(vessel.status, "seeded");

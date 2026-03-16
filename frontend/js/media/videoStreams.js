@@ -1,3 +1,5 @@
+import { buildStreamPlaybackSignature, resolveVideoStreamSelection } from "./mediaPlaybackPolicy.js";
+
 const VIDEO_STREAMS = [
   {
     id: "bloomberg",
@@ -184,7 +186,7 @@ function regionOrder(items = []) {
   return [...new Set(items.map((item) => item.region))];
 }
 
-function renderPlayer(item) {
+function renderPlayerContent(item) {
   if (!item) {
     return '<div class="situational-placeholder">Select a stream to monitor.</div>';
   }
@@ -243,79 +245,166 @@ function resolveArgs(rootIdOrOptions = "video-streams-panel", maybeOptions = {})
   if (typeof rootIdOrOptions === "object" && rootIdOrOptions !== null) {
     return {
       rootId: rootIdOrOptions.rootId || "video-streams-panel",
-      streams: rootIdOrOptions.streams || []
+      streams: rootIdOrOptions.streams || [],
+      selectedRegion: rootIdOrOptions.selectedRegion || "",
+      selectedId: rootIdOrOptions.selectedId || "",
+      onSelectionChange:
+        typeof rootIdOrOptions.onSelectionChange === "function" ? rootIdOrOptions.onSelectionChange : null
     };
   }
 
   return {
     rootId: rootIdOrOptions || "video-streams-panel",
-    streams: maybeOptions.streams || []
+    streams: maybeOptions.streams || [],
+    selectedRegion: maybeOptions.selectedRegion || "",
+    selectedId: maybeOptions.selectedId || "",
+    onSelectionChange: typeof maybeOptions.onSelectionChange === "function" ? maybeOptions.onSelectionChange : null
   };
 }
 
 export function mountVideoStreams(rootIdOrOptions = "video-streams-panel", maybeOptions = {}) {
-  const { rootId, streams } = resolveArgs(rootIdOrOptions, maybeOptions);
+  const { rootId, streams, selectedRegion: initialRegion, selectedId: initialId, onSelectionChange } = resolveArgs(
+    rootIdOrOptions,
+    maybeOptions
+  );
   const root = document.getElementById(rootId);
   if (!root) {
-    return () => {};
+    return {
+      destroy() {},
+      update() {},
+      getSelection() {
+        return {
+          selectedRegion: "",
+          selectedId: ""
+        };
+      },
+      getPlaybackSignature() {
+        return "";
+      }
+    };
   }
 
-  const sourceStreams = normalizeVideoStreams(streams);
-  const regions = regionOrder(sourceStreams);
-  let selectedRegion = regions[0] || "";
-  let selectedId = sourceStreams.find((item) => item.region === selectedRegion)?.id || sourceStreams[0]?.id || "";
-
-  function render() {
-    const filteredStreams = sourceStreams.filter((item) => item.region === selectedRegion);
-    const selected = filteredStreams.find((item) => item.id === selectedId) || filteredStreams[0] || sourceStreams[0];
-    selectedId = selected?.id || "";
-
-    root.innerHTML = `
-      <div class="situational-stack">
-        <div class="situational-player-card">
-          <div class="situational-player-header">
-            <div>
-              <strong>${escapeHtml(selected?.name || "Stream")}</strong>
-              <div class="small text-light-emphasis">${escapeHtml(selected?.region || "Global")} watchlist stream</div>
-            </div>
-            <button class="btn btn-sm btn-outline-light" type="button" data-video-action="fullscreen">Fullscreen</button>
+  root.innerHTML = `
+    <div class="situational-stack">
+      <div class="situational-player-card">
+        <div class="situational-player-header">
+          <div>
+            <strong data-video-field="name">Stream</strong>
+            <div class="small text-light-emphasis" data-video-field="region">Global watchlist stream</div>
           </div>
-          ${renderPlayer(selected)}
+          <button class="btn btn-sm btn-outline-light" type="button" data-video-action="fullscreen">Fullscreen</button>
         </div>
-        <div class="situational-region-bar">${renderRegions(regions, selectedRegion)}</div>
-        <div class="situational-stream-browser">
-          <div class="situational-browser-head">
-            <strong>${escapeHtml(selectedRegion || "Global")} sources</strong>
-            <span class="small text-light-emphasis">${filteredStreams.length} available</span>
-          </div>
-          <div class="situational-stream-list">${renderList(filteredStreams, selected?.id)}</div>
-        </div>
+        <div data-video-player></div>
       </div>
-    `;
+      <div class="situational-region-bar" data-video-regions></div>
+      <div class="situational-stream-browser">
+        <div class="situational-browser-head">
+          <strong data-video-browser-title>Global sources</strong>
+          <span class="small text-light-emphasis" data-video-browser-count>0 available</span>
+        </div>
+        <div class="situational-stream-list" data-video-list></div>
+      </div>
+    </div>
+  `;
 
-    root.querySelectorAll("[data-region]").forEach((button) => {
-      button.addEventListener("click", () => {
-        selectedRegion = button.dataset.region || selectedRegion;
-        selectedId = sourceStreams.find((item) => item.region === selectedRegion)?.id || selectedId;
-        render();
-      });
-    });
+  const playerShell = root.querySelector("[data-video-player]");
+  const regionShell = root.querySelector("[data-video-regions]");
+  const listShell = root.querySelector("[data-video-list]");
+  const browserTitle = root.querySelector("[data-video-browser-title]");
+  const browserCount = root.querySelector("[data-video-browser-count]");
+  const streamName = root.querySelector("[data-video-field='name']");
+  const streamRegion = root.querySelector("[data-video-field='region']");
 
-    root.querySelectorAll("[data-stream-id]").forEach((button) => {
-      button.addEventListener("click", () => {
-        selectedId = button.dataset.streamId || selectedId;
-        render();
-      });
-    });
+  let sourceStreams = normalizeVideoStreams(streams);
+  let selection = resolveVideoStreamSelection(sourceStreams, {
+    selectedRegion: initialRegion,
+    selectedId: initialId
+  });
+  let playbackSignature = "";
 
-    root.querySelector("[data-video-action='fullscreen']")?.addEventListener("click", () => {
-      root.querySelector(".situational-player-frame")?.requestFullscreen?.();
+  function emitSelection() {
+    onSelectionChange?.({
+      selectedRegion: selection.selectedRegion,
+      selectedId: selection.selectedId
     });
   }
 
-  render();
-  return () => {
-    root.innerHTML = "";
+  function renderChrome() {
+    const selected = selection.selected;
+    streamName.textContent = selected?.name || "Stream";
+    streamRegion.textContent = `${selected?.region || "Global"} watchlist stream`;
+    regionShell.innerHTML = renderRegions(selection.regions, selection.selectedRegion);
+    listShell.innerHTML = renderList(selection.filteredStreams, selection.selectedId);
+    browserTitle.textContent = `${selection.selectedRegion || "Global"} sources`;
+    browserCount.textContent = `${selection.filteredStreams.length} available`;
+  }
+
+  function renderPlayer() {
+    const nextSignature = buildStreamPlaybackSignature(selection.selected);
+    if (nextSignature === playbackSignature) {
+      return;
+    }
+    playerShell.innerHTML = renderPlayerContent(selection.selected);
+    playbackSignature = nextSignature;
+  }
+
+  function rerender() {
+    renderChrome();
+    renderPlayer();
+    emitSelection();
+  }
+
+  function handleClick(event) {
+    const regionButton = event.target.closest("[data-region]");
+    if (regionButton) {
+      selection = resolveVideoStreamSelection(sourceStreams, {
+        selectedRegion: regionButton.dataset.region || selection.selectedRegion,
+        selectedId: ""
+      });
+      rerender();
+      return;
+    }
+
+    const streamButton = event.target.closest("[data-stream-id]");
+    if (streamButton) {
+      selection = resolveVideoStreamSelection(sourceStreams, {
+        selectedRegion: selection.selectedRegion,
+        selectedId: streamButton.dataset.streamId || selection.selectedId
+      });
+      rerender();
+      return;
+    }
+
+    if (event.target.closest("[data-video-action='fullscreen']")) {
+      root.querySelector(".situational-player-frame")?.requestFullscreen?.();
+    }
+  }
+
+  root.addEventListener("click", handleClick);
+  rerender();
+
+  return {
+    update(nextStreams = [], nextState = {}) {
+      sourceStreams = normalizeVideoStreams(nextStreams);
+      selection = resolveVideoStreamSelection(sourceStreams, {
+        selectedRegion: nextState.selectedRegion ?? selection.selectedRegion,
+        selectedId: nextState.selectedId ?? selection.selectedId
+      });
+      rerender();
+    },
+    destroy() {
+      root.removeEventListener("click", handleClick);
+      root.innerHTML = "";
+    },
+    getSelection() {
+      return {
+        selectedRegion: selection.selectedRegion,
+        selectedId: selection.selectedId
+      };
+    },
+    getPlaybackSignature() {
+      return playbackSignature;
+    }
   };
 }
 

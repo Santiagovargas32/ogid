@@ -15,6 +15,10 @@ const CARTO_ATTRIBUTION = "&copy; OpenStreetMap contributors &copy; CARTO";
 
 const SEED_STYLE_REGISTRY = Object.freeze({
   military_bases: Object.freeze({ primary: "#8f9bb0", accent: "#ff6e6e", glow: "rgba(255, 110, 110, 0.35)", shape: "hex" }),
+  "facility-air-base": Object.freeze({ primary: "#b22e2e", accent: "#ffd7d7", glow: "rgba(178, 46, 46, 0.32)", shape: "airBase" }),
+  "facility-naval": Object.freeze({ primary: "#0d7f9f", accent: "#d8f7ff", glow: "rgba(13, 127, 159, 0.28)", shape: "navalAnchor" }),
+  "facility-outpost": Object.freeze({ primary: "#1b8a5a", accent: "#dfffea", glow: "rgba(27, 138, 90, 0.28)", shape: "outpostFlag" }),
+  "facility-radar": Object.freeze({ primary: "#111827", accent: "#f3f4f6", glow: "rgba(17, 24, 39, 0.28)", shape: "radarDish" }),
   datacenters: Object.freeze({ primary: "#71d5ff", accent: "#b7f2ff", glow: "rgba(113, 213, 255, 0.34)", shape: "square" }),
   strategic_ports: Object.freeze({ primary: "#49d6c5", accent: "#d9fff7", glow: "rgba(73, 214, 197, 0.3)", shape: "openRing" }),
   airports: Object.freeze({ primary: "#86bbff", accent: "#edf6ff", glow: "rgba(134, 187, 255, 0.28)", shape: "diamond" }),
@@ -86,8 +90,15 @@ function humanizeStatus(status = "seeded") {
   return "Seeded";
 }
 
+function humanizeFacilityType(value = "") {
+  return String(value || "")
+    .replaceAll("_", " ")
+    .trim() || "--";
+}
+
 function seedStyleForAsset(asset = {}) {
-  return SEED_STYLE_REGISTRY[asset.styleKey] || {
+  const styleKey = asset.iconKey || asset.styleKey;
+  return SEED_STYLE_REGISTRY[styleKey] || {
     primary: asset.assetType === "moving" ? MOVING_SEED_COLOR : STATIC_SEED_COLOR,
     accent: "#eef7ff",
     glow: asset.assetType === "moving" ? "rgba(255, 156, 115, 0.34)" : "rgba(143, 217, 255, 0.3)",
@@ -241,6 +252,45 @@ function renderSeedSvg(style = {}, asset = {}) {
     `;
   }
 
+  if (style.shape === "airBase") {
+    return `
+      <svg class="seed-marker-svg" viewBox="0 0 28 28" aria-hidden="true">
+        <path d="M4.8 15.5 L12.4 13.7 L14.2 5 L16 13.7 L23.5 15.5 L16.2 17 L14.2 24 L12.2 17 Z" fill="${primary}" stroke="${primary}" stroke-width="1.2" stroke-linejoin="round"></path>
+        <path d="M8.4 11.2 L14.2 14 L20 11.2" fill="none" stroke="${accent}" stroke-width="1.2" stroke-linecap="round"></path>
+      </svg>
+    `;
+  }
+
+  if (style.shape === "navalAnchor") {
+    return `
+      <svg class="seed-marker-svg" viewBox="0 0 28 28" aria-hidden="true">
+        <circle cx="14" cy="5.5" r="2" fill="${accent}"></circle>
+        <path d="M14 7.8 V17.5 M9 13.2 C9 18.9 11.3 22 14 22 C16.7 22 19 18.9 19 13.2 M9 13.2 H19 M11 17.8 L6.7 20.6 M17 17.8 L21.3 20.6" fill="none" stroke="${primary}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></path>
+      </svg>
+    `;
+  }
+
+  if (style.shape === "outpostFlag") {
+    return `
+      <svg class="seed-marker-svg" viewBox="0 0 28 28" aria-hidden="true">
+        <path d="M9 5 V23" fill="none" stroke="${primary}" stroke-width="2" stroke-linecap="round"></path>
+        <path d="M10 6.2 C13.8 5.1 15.8 10.8 20.8 8.8 V16.7 C15.9 18.6 13.8 13.1 10 14.2 Z" fill="${primary}" fill-opacity="0.92" stroke="${primary}" stroke-width="1.2" stroke-linejoin="round"></path>
+        <circle cx="9" cy="23" r="1.4" fill="${accent}"></circle>
+      </svg>
+    `;
+  }
+
+  if (style.shape === "radarDish") {
+    return `
+      <svg class="seed-marker-svg" viewBox="0 0 28 28" aria-hidden="true">
+        <path d="M10.5 8.5 C15.5 8.5 19.8 12.6 19.8 17.6" fill="none" stroke="${primary}" stroke-width="1.9" stroke-linecap="round"></path>
+        <path d="M8.3 10.8 C12.4 10.8 15.8 14.2 15.8 18.2" fill="none" stroke="${primary}" stroke-width="1.4" stroke-linecap="round"></path>
+        <path d="M8.1 19.2 L15.4 15.4 L13.2 22.8 Z" fill="${accent}" stroke="${primary}" stroke-width="1.4" stroke-linejoin="round"></path>
+        <path d="M14.1 21.1 L17.9 24" fill="none" stroke="${primary}" stroke-width="1.7" stroke-linecap="round"></path>
+      </svg>
+    `;
+  }
+
   return `
     <svg class="seed-marker-svg seed-marker-svg-rotating" viewBox="0 0 28 28" aria-hidden="true">
       <circle cx="14" cy="14" r="3.1" fill="${accent}"></circle>
@@ -280,17 +330,22 @@ function buildSeedPopup(asset = {}) {
     ? `<div>Signals: ${escapeHtml(asset.evidenceSummary.join(" | "))}</div>`
     : "";
   const positionMode = asset.assetType === "moving" ? `<div>Position mode: ${escapeHtml(asset.positionMode || "synthetic")}</div>` : "";
+  const hostCountry = asset.hostCountryName || asset.hostCountry || asset.country || "--";
+  const facilityType = asset.facilityType ? `<div>Facility type: ${escapeHtml(humanizeFacilityType(asset.facilityType))}</div>` : "";
+  const approximate = asset.approximate ? "<div>Location: approximate</div>" : "";
 
   return `
     <div class="small">
       <strong>${escapeHtml(asset.title || "Seed asset")}</strong><br/>
       Layer: ${escapeHtml(asset.layerLabel || asset.layerId || "seed")}<br/>
-      Country: ${escapeHtml(asset.country || "--")}<br/>
+      Host country: ${escapeHtml(hostCountry)}<br/>
+      ${facilityType}
       Status: <strong>${escapeHtml(humanizeStatus(asset.status))}</strong><br/>
       Confidence: ${Math.round(numericValue(asset.confidence, 0) * 100)}%<br/>
       Activity: ${numericValue(asset.activityScore)}<br/>
       Linked signals: ${numericValue(asset.linkedArticleCount)}<br/>
       Last evidence: ${formatTimestamp(asset.lastEvidenceAt)}<br/>
+      ${approximate}
       ${positionMode}
       ${signalHeadline}
       ${evidenceSummary}
@@ -477,9 +532,9 @@ export class HotspotMap {
       return;
     }
 
-    this.legendElement.innerHTML = `
-      <div class="map-legend-heading">Operational Layers</div>
-      <div class="map-legend-items">
+      this.legendElement.innerHTML = `
+        <div class="map-legend-heading">Operational Layers</div>
+        <div class="map-legend-items">
         <span class="map-legend-pill">
           <span class="map-legend-swatch" style="background:${STATIC_SEED_COLOR}"></span>
           <span>Static Seeds</span>
@@ -496,13 +551,29 @@ export class HotspotMap {
           <span class="map-legend-swatch" style="background:${EVENT_COLOR}"></span>
           <span>News Signals</span>
         </span>
-        <span class="map-legend-pill">
-          <span class="map-legend-swatch" style="background:${WATCHLIST_COLOR}"></span>
-          <span>Watchlist</span>
-        </span>
-      </div>
-    `;
-  }
+          <span class="map-legend-pill">
+            <span class="map-legend-swatch" style="background:${WATCHLIST_COLOR}"></span>
+            <span>Watchlist</span>
+          </span>
+          <span class="map-legend-pill">
+            <span class="map-legend-swatch" style="background:#b22e2e"></span>
+            <span>Air Base</span>
+          </span>
+          <span class="map-legend-pill">
+            <span class="map-legend-swatch" style="background:#0d7f9f"></span>
+            <span>Naval Facility</span>
+          </span>
+          <span class="map-legend-pill">
+            <span class="map-legend-swatch" style="background:#1b8a5a"></span>
+            <span>Outpost</span>
+          </span>
+          <span class="map-legend-pill">
+            <span class="map-legend-swatch" style="background:#111827"></span>
+            <span>Radar Facility</span>
+          </span>
+        </div>
+      `;
+    }
 
   buildCountryIndex(hotspots = []) {
     this.countryIndex = new Map(

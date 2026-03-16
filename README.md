@@ -6,7 +6,7 @@ OGID is a local web app for monitoring geopolitical OSINT signals and their pote
 
 - Backend: Node.js + Express + ws
 - Frontend: HTML5 + Bootstrap 5 + Vanilla JS modules + Leaflet + Chart.js
-- State: in-memory singleton (no database)
+- State: in-memory singleton with optional local market snapshot/history persistence on disk
 
 ## Core Features (V1)
 
@@ -19,13 +19,13 @@ OGID is a local web app for monitoring geopolitical OSINT signals and their pote
 - Country risk scoring with deterministic engine.
 - Country watchlist default: `US, IL, IR`.
 - WebSocket live updates (`/ws`) for snapshot/update/heartbeat.
-- Market module (FMP stable + Alpha Vantage fallback):
-  - FMP `stable/batch-quote` for live bulk quotes
-  - FMP `stable/historical-price-eod/full` for EOD backfill
-  - Alpha Vantage burst protection via local backoff and per-run request cap
+- Market module (`web -> fmp -> router-stale -> synthetic-fallback`):
+  - public web/CSV delayed quotes via `stooq`
+  - FMP `stable/batch-quote` for API fallback and `stable/historical-price-eod/full` for EOD backfill
+  - entitlement-aware FMP diagnostics, including `provider-not-entitled`
   - stale quote reuse before deterministic fallback
-  - quote diagnostics by mode: `live`, `historical-eod`, `router-stale`, `synthetic-fallback`
-  - live quotes cache and ticker timeseries in memory
+  - quote diagnostics by mode: `live`, `web-delayed`, `historical-eod`, `router-stale`, `synthetic-fallback`
+  - in-memory quotes/timeseries plus optional persisted `snapshot.json` and per-ticker `jsonl` history
 - Deterministic event-window impact model:
   - correlates geopolitical news signals with ticker price reaction
 - Frontend controls:
@@ -56,7 +56,7 @@ NEWS_RSS_FEEDS=BBC World|https://feeds.bbci.co.uk/news/world/rss.xml,ABC Interna
 NEWS_RSS_DISABLED_FEEDS=ZeroHedge|https://www.zerohedge.com/|disabled-until-valid-xml-feed
 NEWS_PROVIDERS=newsapi,gnews,rss,gdelt,mediastack
 NEWS_QUERY=geopolitics OR conflict OR sanctions OR military
-NEWS_QUERY_PACKS={"defense":"missile OR defense contractor OR arms deal OR air defense","energy":"oil OR gas OR lng OR pipeline OR refinery","sanctions":"sanctions OR export controls OR secondary sanctions","shipping":"shipping lane OR tanker OR strait OR maritime security","macro":"central bank OR inflation OR tariffs OR sovereign risk","semiconductors":"semiconductor OR chip export OR foundry OR fab"}
+NEWS_QUERY_PACKS={"editorial":{"defense":"missile OR defense contractor OR arms deal OR air defense","energy":"oil OR gas OR lng OR pipeline OR refinery","sanctions":"sanctions OR export controls OR secondary sanctions","shipping":"shipping lane OR tanker OR strait OR maritime security","macro":"central bank OR inflation OR tariffs OR sovereign risk","semiconductors":"semiconductor OR chip export OR foundry OR fab"},"marketSignals":{"priceAction":"shares OR stock OR stocks OR equity OR equities OR premarket OR \"after hours\" OR \"price target\" OR upgrade OR downgrade OR guidance OR earnings OR selloff OR rally"}}
 NEWS_SOURCE_ALLOWLIST=
 NEWS_DOMAIN_ALLOWLIST=
 NEWS_LANGUAGE=en
@@ -80,18 +80,25 @@ WS_HEARTBEAT_MS=15000
 MANUAL_REFRESH_COOLDOWN_MS=120000
 MANUAL_REFRESH_PER_CLIENT_WINDOW_MS=900000
 MANUAL_REFRESH_PER_CLIENT_MAX=3
-MARKET_PROVIDER=fmp
-MARKET_PROVIDER_FALLBACK=alphavantage
+MARKET_PROVIDER=web
+MARKET_PROVIDER_FALLBACK=fmp
 FMP_API_KEY=your_fmp_key
 FMP_BASE_URL=https://financialmodelingprep.com/stable
 FMP_STABLE_BASE_URL=https://financialmodelingprep.com/stable
-ALPHAVANTAGE_API_KEY=your_alphavantage_key
-ALPHAVANTAGE_BASE_URL=https://www.alphavantage.co/query
-ALPHAVANTAGE_MAX_REQUESTS_PER_RUN=5
+MARKET_WEB_SOURCE=stooq
+MARKET_WEB_BASE_URL=https://stooq.com
+MARKET_WEB_TIMEOUT_MS=10000
+MARKET_WEB_USER_AGENT=ogid/1.0
 MARKET_TICKERS=GD,BA,NOC,LMT,RTX,XOM,CVX
 MARKET_TIMEOUT_MS=10000
 MARKET_REFRESH_INTERVAL_MS=60000
 MARKET_BATCH_CHUNK_SIZE=25
+MARKET_HISTORY_PERSIST=1
+MARKET_HISTORY_DIR=data/market
+MARKET_SNAPSHOT_FILE=snapshot.json
+TRUST_PROXY=
+ADMIN_IP_ALLOWLIST=
+ADMIN_MENU_VISIBLE=0
 MARKET_STALE_TTL_MS=14400000
 MARKET_REQUEST_RESERVE=25
 MARKET_ACTIVE_INTERVAL_MS=180000

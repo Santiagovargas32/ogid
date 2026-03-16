@@ -10,11 +10,198 @@ const countryIndex = buildBaselineCountryMap();
 
 const STATIC_POINTS = Object.freeze({
   military_bases: [
-    { id: "base-incirlik", name: "Incirlik Air Base", lat: 37.0017, lng: 35.4259, country: "TR" },
-    { id: "base-diego-garcia", name: "Diego Garcia", lat: -7.3133, lng: 72.4111, country: "IN" },
-    { id: "base-al-udeid", name: "Al Udeid Air Base", lat: 25.1188, lng: 51.3149, country: "IR" },
-    { id: "base-camp-humphreys", name: "Camp Humphreys", lat: 36.961, lng: 127.0286, country: "KR" },
-    { id: "base-guam", name: "Andersen AFB", lat: 13.584, lng: 144.93, country: "US" }
+    {
+      id: "base-incirlik",
+      name: "Incirlik Air Base",
+      lat: 37.0017,
+      lng: 35.4259,
+      country: "TR",
+      hostCountry: "TR",
+      facilityType: "Air Base",
+      iconKey: "facility-air-base",
+      approximate: true,
+      aliases: ["Adana Air Base"]
+    },
+    {
+      id: "base-kurecik",
+      name: "Kurecik Radar Site",
+      lat: 38.349,
+      lng: 37.794,
+      country: "TR",
+      hostCountry: "TR",
+      facilityType: "Radar Facility",
+      iconKey: "facility-radar",
+      approximate: true,
+      aliases: ["AN/TPY-2 Radar", "Kurecik"]
+    },
+    {
+      id: "base-muwaffaq-salti",
+      name: "Muwaffaq Salti Air Base",
+      lat: 31.831,
+      lng: 36.782,
+      country: "JO",
+      hostCountry: "JO",
+      facilityType: "Air Base",
+      iconKey: "facility-air-base",
+      approximate: true,
+      aliases: ["Azraq Air Base"]
+    },
+    {
+      id: "base-tower-22",
+      name: "Tower 22 Support Site",
+      lat: 33.372,
+      lng: 38.793,
+      country: "JO",
+      hostCountry: "JO",
+      facilityType: "Outpost",
+      iconKey: "facility-outpost",
+      approximate: true,
+      aliases: ["Tower 22", "Jordan Border Support Site"]
+    },
+    {
+      id: "base-al-tanf",
+      name: "Al Tanf Garrison",
+      lat: 33.488,
+      lng: 38.618,
+      country: "SY",
+      hostCountry: "SY",
+      facilityType: "Outpost",
+      iconKey: "facility-outpost",
+      approximate: true,
+      aliases: ["Al Tanf", "Tanf Garrison"]
+    },
+    {
+      id: "base-conoco",
+      name: "Conoco Mission Support Site",
+      lat: 35.338,
+      lng: 40.299,
+      country: "SY",
+      hostCountry: "SY",
+      facilityType: "Outpost",
+      iconKey: "facility-outpost",
+      approximate: true,
+      aliases: ["Conoco", "Deir ez-Zor Support Site"]
+    },
+    {
+      id: "base-erbil",
+      name: "Erbil Air Base",
+      lat: 36.2376,
+      lng: 43.9632,
+      country: "IQ",
+      hostCountry: "IQ",
+      facilityType: "Air Base",
+      iconKey: "facility-air-base",
+      approximate: true,
+      aliases: ["Erbil Air Base", "Harir Airfield"]
+    },
+    {
+      id: "base-al-asad",
+      name: "Al Asad Air Base",
+      lat: 33.7856,
+      lng: 42.4412,
+      country: "IQ",
+      hostCountry: "IQ",
+      facilityType: "Air Base",
+      iconKey: "facility-air-base",
+      approximate: true,
+      aliases: ["Ain al-Asad", "Al Assad"]
+    },
+    {
+      id: "base-ali-al-salem",
+      name: "Ali Al Salem Air Base",
+      lat: 29.3467,
+      lng: 47.5208,
+      country: "KW",
+      hostCountry: "KW",
+      facilityType: "Air Base",
+      iconKey: "facility-air-base",
+      approximate: true,
+      aliases: ["Ali Al Salem"]
+    },
+    {
+      id: "base-camp-buehring",
+      name: "Camp Buehring",
+      lat: 29.702,
+      lng: 47.728,
+      country: "KW",
+      hostCountry: "KW",
+      facilityType: "Outpost",
+      iconKey: "facility-outpost",
+      approximate: true,
+      aliases: ["Buehring", "Camp Buehring Kuwait"]
+    },
+    {
+      id: "base-nsa-bahrain",
+      name: "Naval Support Activity Bahrain",
+      lat: 26.233,
+      lng: 50.607,
+      country: "BH",
+      hostCountry: "BH",
+      facilityType: "Naval Facility",
+      iconKey: "facility-naval",
+      approximate: true,
+      aliases: ["NSA Bahrain", "Fifth Fleet Bahrain"]
+    },
+    {
+      id: "base-al-dhafra",
+      name: "Al Dhafra Air Base",
+      lat: 24.2481,
+      lng: 54.5477,
+      country: "AE",
+      hostCountry: "AE",
+      facilityType: "Air Base",
+      iconKey: "facility-air-base",
+      approximate: true,
+      aliases: ["Al Dhafra"]
+    },
+    {
+      id: "base-jebel-ali",
+      name: "Jebel Ali Port Facility",
+      lat: 25.0113,
+      lng: 55.0615,
+      country: "AE",
+      hostCountry: "AE",
+      facilityType: "Naval Facility",
+      iconKey: "facility-naval",
+      approximate: true,
+      aliases: ["Jebel Ali", "Dubai Port Facility"]
+    },
+    {
+      id: "base-masirah",
+      name: "Masirah Airfield",
+      lat: 20.6754,
+      lng: 58.8905,
+      country: "OM",
+      hostCountry: "OM",
+      facilityType: "Air Base",
+      iconKey: "facility-air-base",
+      approximate: true,
+      aliases: ["Masirah Island Airfield"]
+    },
+    {
+      id: "base-thumrait",
+      name: "Thumrait Air Base",
+      lat: 17.667,
+      lng: 54.024,
+      country: "OM",
+      hostCountry: "OM",
+      facilityType: "Air Base",
+      iconKey: "facility-air-base",
+      approximate: true,
+      aliases: ["Thumrait"]
+    },
+    {
+      id: "base-camp-lemonnier",
+      name: "Camp Lemonnier",
+      lat: 11.5473,
+      lng: 43.1595,
+      country: "DJ",
+      hostCountry: "DJ",
+      facilityType: "Naval Facility",
+      iconKey: "facility-naval",
+      approximate: true,
+      aliases: ["Camp Lemonnier Djibouti"]
+    }
   ],
   datacenters: [
     { id: "dc-london", name: "London Exchange Cluster", lat: 51.5072, lng: -0.1276, country: "UA" },
@@ -214,9 +401,9 @@ const ARTICLE_KEYWORDS = Object.freeze({
 
 const DASHBOARD_STATIC_LAYER_RULES = Object.freeze({
   military_bases: Object.freeze({
-    label: "Military Bases",
+    label: "US Facilities (MENA)",
     styleKey: "military_bases",
-    keywords: ["military base", "air base", "garrison", "deployment", "airfield"],
+    keywords: ["military base", "air base", "garrison", "deployment", "airfield", "outpost", "radar site", "naval support activity"],
     topicTags: ["conflict"]
   }),
   datacenters: Object.freeze({
@@ -395,6 +582,18 @@ function numericOrNull(value) {
 
 function listToUpper(items = []) {
   return [...new Set((items || []).map((item) => String(item || "").trim().toUpperCase()).filter(Boolean))];
+}
+
+function resolveAssetHostCountry(item = {}) {
+  return String(item.hostCountry || item.country || "").trim().toUpperCase();
+}
+
+function resolveAssetCountries(item = {}) {
+  const hostCountry = resolveAssetHostCountry(item);
+  if (Array.isArray(item.countries) && item.countries.length) {
+    return listToUpper(item.countries);
+  }
+  return listToUpper([hostCountry]);
 }
 
 function sameCoordinates(left, right, epsilon = 0.06) {
@@ -731,11 +930,14 @@ function buildDashboardStaticPointAssets(snapshot = {}, signalCorpus = [], rssSn
     };
 
     return items.map((item) => {
+      const hostCountry = resolveAssetHostCountry(item);
+      const countries = resolveAssetCountries(item);
+      const hostCountryName = countryIndex[hostCountry]?.country || hostCountry;
       const aliases = buildSeedAliases(item.name, item.aliases || []);
-      const evidence = candidatePoolForAsset([item.country], rule, corpus)
+      const evidence = candidatePoolForAsset([hostCountry], rule, corpus)
         .map((candidate) =>
           evaluateSeedEvidence(candidate, {
-            countries: [item.country],
+            countries: [hostCountry],
             aliases,
             rule,
             nowMs
@@ -752,9 +954,15 @@ function buildDashboardStaticPointAssets(snapshot = {}, signalCorpus = [], rssSn
         layerId,
         layerLabel: rule.label,
         styleKey: rule.styleKey,
+        iconKey: item.iconKey || rule.styleKey,
         title: item.name,
-        country: item.country,
-        countries: [item.country],
+        country: hostCountry,
+        countries,
+        hostCountry,
+        hostCountryName,
+        facilityType: item.facilityType || null,
+        approximate: item.approximate === true,
+        alwaysVisible: layerId === "military_bases",
         lat: Number(item.lat),
         lng: Number(item.lng),
         baseLat: Number(item.lat),
@@ -930,8 +1138,12 @@ function buildStaticPointFeatures(layerId, now) {
       item.lat,
       item.lng,
       {
-        country: item.country,
-        countries: [item.country],
+        country: resolveAssetHostCountry(item),
+        countries: resolveAssetCountries(item),
+        hostCountry: resolveAssetHostCountry(item),
+        facilityType: item.facilityType || null,
+        iconKey: item.iconKey || layerId,
+        approximate: item.approximate === true,
         severity: "monitoring",
         source: "seeded-map-catalog",
         synthetic: true

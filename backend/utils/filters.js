@@ -125,6 +125,9 @@ export function filterMapAssetsByCountries(mapAssets = { staticPoints: [], movin
   const set = new Set(countries);
   const filterAssets = (items = []) =>
     items.filter((item) => {
+      if (item?.alwaysVisible) {
+        return true;
+      }
       const linkedCountries = item?.countries?.length ? item.countries : item?.country ? [item.country] : [];
       return linkedCountries.some((iso2) => set.has(String(iso2 || "").toUpperCase()));
     });

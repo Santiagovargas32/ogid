@@ -66,23 +66,54 @@ export function mountSituationalWorkspace({
   let mediaPayload = normalizeMediaPayload({});
   let activeView = "situational";
   let transitioning = false;
-  let currentTeardown = null;
+  let currentController = null;
   let refreshInterval = null;
+  const viewState = {
+    situational: {
+      selectedRegion: "",
+      selectedId: ""
+    }
+  };
+
+  function destroyCurrentView() {
+    viewState.situational = currentController?.getSelection?.() || viewState.situational;
+    currentController?.destroy?.();
+    currentController = null;
+  }
 
   function mountCurrentView() {
-    currentTeardown?.();
+    destroyCurrentView();
     if (activeView === "webcams") {
-      currentTeardown = mountWebcamStreams({
+      currentController = mountWebcamStreams({
         rootId: workspaceId,
         streams: mediaPayload.sections.webcams
       });
       return;
     }
 
-    currentTeardown = mountVideoStreams({
+    currentController = mountVideoStreams({
       rootId: workspaceId,
-      streams: mediaPayload.sections.situational
+      streams: mediaPayload.sections.situational,
+      selectedRegion: viewState.situational.selectedRegion,
+      selectedId: viewState.situational.selectedId,
+      onSelectionChange(selection) {
+        viewState.situational = selection;
+      }
     });
+  }
+
+  function updateCurrentView() {
+    if (!currentController) {
+      mountCurrentView();
+      return;
+    }
+
+    if (activeView === "webcams") {
+      currentController.update?.(mediaPayload.sections.webcams);
+      return;
+    }
+
+    currentController.update?.(mediaPayload.sections.situational, viewState.situational);
   }
 
   function bindToggleEvents() {
@@ -142,7 +173,7 @@ export function mountSituationalWorkspace({
     refreshInterval = window.setInterval(async () => {
       await refreshMediaStreams(false);
       if (!transitioning) {
-        mountCurrentView();
+        updateCurrentView();
       }
     }, REFRESH_INTERVAL_MS);
   }
@@ -151,11 +182,10 @@ export function mountSituationalWorkspace({
 
   return () => {
     window.clearInterval(refreshInterval);
-    currentTeardown?.();
+    destroyCurrentView();
     root.innerHTML = "";
     if (toggleRoot) {
       toggleRoot.innerHTML = "";
     }
   };
 }
-
