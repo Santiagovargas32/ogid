@@ -5,7 +5,8 @@ export class SmartPollLoop {
     onError = null,
     intervalMs = 60_000,
     hiddenIntervalMs = null,
-    immediate = true
+    immediate = true,
+    delayResolver = null
   } = {}) {
     this.task = task;
     this.onData = onData;
@@ -13,6 +14,7 @@ export class SmartPollLoop {
     this.intervalMs = Math.max(2_000, Number(intervalMs || 60_000));
     this.hiddenIntervalMs = Math.max(this.intervalMs, Number(hiddenIntervalMs || intervalMs || 60_000));
     this.immediate = immediate;
+    this.delayResolver = typeof delayResolver === "function" ? delayResolver : null;
     this.timer = null;
     this.inFlight = false;
     this.stopped = true;
@@ -24,6 +26,18 @@ export class SmartPollLoop {
   }
 
   getDelayMs() {
+    if (this.delayResolver) {
+      const resolved = this.delayResolver({
+        hidden: document.hidden,
+        intervalMs: this.intervalMs,
+        hiddenIntervalMs: this.hiddenIntervalMs
+      });
+      const parsed = Number(resolved);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return parsed;
+      }
+    }
+
     return document.hidden ? this.hiddenIntervalMs : this.intervalMs;
   }
 

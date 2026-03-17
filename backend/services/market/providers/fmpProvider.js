@@ -605,7 +605,7 @@ export async function fetchFmpQuotes({
   configuredProvider = "fmp",
   configuredFallbackProvider = null
 }) {
-  const normalizedTickers = tickers.map((ticker) => String(ticker).toUpperCase());
+  const normalizedTickers = [...new Set(tickers.map((ticker) => String(ticker).toUpperCase()).filter(Boolean))];
   if (!apiKey) {
     return buildMissingApiKeyResult(normalizedTickers, timestamp, {
       configuredProvider,

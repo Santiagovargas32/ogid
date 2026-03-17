@@ -358,6 +358,7 @@ function renderMarketProviderDiagnostics(target, market = {}, diagnostics = {}, 
   }
 
   const status = normalizeDiagnosticStatus(diagnostics.status || (market.enabled === false ? "disabled" : "idle"));
+  const displaySource = diagnostics.configuredSource || diagnostics.effectiveSource || fallbackLabel || "provider";
   const coverage = diagnostics.coverageByMode || market.coverageByMode || {};
   const sampleQuotes = Array.isArray(diagnostics.sampleQuotes) ? diagnostics.sampleQuotes : [];
   const errors = Array.isArray(diagnostics.errors) ? diagnostics.errors.slice(0, 3) : [];
@@ -366,10 +367,12 @@ function renderMarketProviderDiagnostics(target, market = {}, diagnostics = {}, 
     `
       <article class="diagnostic-item">
         <div class="diagnostic-item-header">
-          <strong>${escapeHtml(diagnostics.configuredSource || fallbackLabel)}</strong>
+          <strong>${escapeHtml(displaySource)}</strong>
           <span class="diagnostic-pill ${status}">${escapeHtml(status)}</span>
         </div>
-        <div class="diagnostic-item-meta">configured: ${escapeHtml(diagnostics.configuredProvider || "--")} | effective: ${escapeHtml(diagnostics.effectiveProvider || "--")}</div>
+        <div class="diagnostic-item-meta">configured: ${escapeHtml(diagnostics.configuredProvider || "--")} | source: ${escapeHtml(diagnostics.configuredSource || "--")} | effective: ${escapeHtml(diagnostics.effectiveSource || diagnostics.effectiveProvider || "--")}</div>
+        <div class="diagnostic-item-meta">real state: ${escapeHtml(status)} | market: ${escapeHtml(market.session?.state || "--")} | session: ${escapeHtml(diagnostics.marketSession?.state || market.session?.state || "--")}</div>
+        <div class="diagnostic-item-meta">score: ${escapeHtml(String(diagnostics.providerScore ?? "--"))} | latency: ${escapeHtml(formatDurationMs(diagnostics.providerLatencyMs || 0))} | revision: ${escapeHtml((market.revision || diagnostics.revision || "--").toString())}</div>
         <div class="diagnostic-item-meta">mode: ${escapeHtml(diagnostics.requestMode || "--")} | returned: ${Number(diagnostics.returnedCount || 0)}</div>
         <div class="diagnostic-item-meta">returned tickers: ${escapeHtml(formatInlineList(diagnostics.returnedTickers || []))}</div>
       </article>
@@ -437,7 +440,8 @@ function renderMarketProviderDiagnostics(target, market = {}, diagnostics = {}, 
               <strong>${escapeHtml(quote.ticker || "--")}</strong>
               <span class="diagnostic-pill ${quote.dataMode === "web-delayed" ? "ok" : "partial"}">${escapeHtml(quote.dataMode || "--")}</span>
             </div>
-            <div class="diagnostic-item-meta">price: ${escapeHtml(formatPrice(quote.price))} | source: ${escapeHtml(quote.source || "--")}</div>
+            <div class="diagnostic-item-meta">price: ${escapeHtml(formatPrice(quote.price))} | source: ${escapeHtml(quote.source || "--")} / ${escapeHtml(quote.sourceDetail || "--")}</div>
+            <div class="diagnostic-item-meta">state: ${escapeHtml(quote.marketState || "--")} | score: ${escapeHtml(String(quote.providerScore ?? "--"))} | latency: ${escapeHtml(formatDurationMs(quote.providerLatencyMs || 0))}</div>
             <div class="diagnostic-item-meta">as of: ${escapeHtml(formatShortTime(quote.asOf))}</div>
           </article>
         `
@@ -465,6 +469,7 @@ function renderMarketRouterDiagnostics(market = {}) {
           <span class="diagnostic-item-meta">${escapeHtml(market.effectiveProvider || "--")}</span>
         </div>
         <div class="diagnostic-item-meta">configured: ${escapeHtml(market.configuredProvider || "--")} -> ${escapeHtml(market.configuredFallbackProvider || "--")}</div>
+        <div class="diagnostic-item-meta">session: ${escapeHtml(market.session?.state || "--")} | score: ${escapeHtml(String(market.providerScore ?? "--"))} | latency: ${escapeHtml(formatDurationMs(market.providerLatencyMs || 0))}</div>
         <div class="diagnostic-item-meta">attempted: ${escapeHtml(formatInlineList(router.attemptedOrder || []))}</div>
         <div class="diagnostic-item-meta">reason: ${escapeHtml(router.fallbackReason || "--")}</div>
       </article>
@@ -525,7 +530,7 @@ function renderPipelineDiagnostics(news = {}, market = {}) {
   if (!feedStatus.length) {
     elements.rssFeedStatusBody.innerHTML =
       '<div class="diagnostic-item diagnostic-item-meta">No RSS diagnostics available.</div>';
-    renderMarketProviderDiagnostics(elements.marketWebDiagnosticsBody, market, market.providerDiagnostics?.web || market.webDiagnostics || {}, "stooq");
+    renderMarketProviderDiagnostics(elements.marketWebDiagnosticsBody, market, market.providerDiagnostics?.web || market.webDiagnostics || {}, "market");
     renderMarketProviderDiagnostics(elements.marketApiDiagnosticsBody, market, market.providerDiagnostics?.fmp || {}, "fmp");
     renderMarketRouterDiagnostics(market);
     return;
@@ -546,7 +551,7 @@ function renderPipelineDiagnostics(news = {}, market = {}) {
     })
     .join("");
 
-  renderMarketProviderDiagnostics(elements.marketWebDiagnosticsBody, market, market.providerDiagnostics?.web || market.webDiagnostics || {}, "stooq");
+  renderMarketProviderDiagnostics(elements.marketWebDiagnosticsBody, market, market.providerDiagnostics?.web || market.webDiagnostics || {}, "market");
   renderMarketProviderDiagnostics(elements.marketApiDiagnosticsBody, market, market.providerDiagnostics?.fmp || {}, "fmp");
   renderMarketRouterDiagnostics(market);
 }

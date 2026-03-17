@@ -76,6 +76,31 @@ function trackEvent(events, type, connection = {}, extra = {}) {
   }
 }
 
+function buildMarketBootstrapPayload(snapshot = {}) {
+  const market = snapshot.market || {};
+  const quotes = market.quotes || {};
+  const orderedTickers = Object.keys(quotes);
+
+  return {
+    market: {
+      provider: market.provider || "market-router",
+      sourceMode: market.sourceMode || "fallback",
+      updatedAt: market.updatedAt || null,
+      revision: market.revision || null,
+      session: market.session || null,
+      sourceMeta: {
+        provider: market.sourceMeta?.provider || market.provider || "market-router",
+        effectiveProvider: market.sourceMeta?.effectiveProvider || market.provider || null,
+        providerScore: market.sourceMeta?.providerScore ?? null,
+        providerLatencyMs: market.sourceMeta?.providerLatencyMs ?? null,
+        marketSession: market.sourceMeta?.marketSession || market.session || null
+      },
+      coverageByMode: market.sourceMeta?.coverageByMode || null,
+      quotes: Object.fromEntries(orderedTickers.map((ticker) => [ticker, quotes[ticker]]))
+    }
+  };
+}
+
 export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000, stateManager }) {
   const wss = new WebSocketServer({ noServer: true });
   const clients = new Set();
@@ -160,6 +185,7 @@ export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000,
 
     const snapshot = stateManager.getSnapshot();
     if (client.readyState === WebSocket.OPEN) {
+      client.send(createEnvelope("market:quotes-bootstrap:v1", buildMarketBootstrapPayload(snapshot), snapshot.meta));
       client.send(createEnvelope("snapshot", snapshot, snapshot.meta));
     }
 

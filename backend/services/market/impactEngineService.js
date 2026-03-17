@@ -263,8 +263,12 @@ export function computeMarketImpact({ articles = [], countries = {}, marketQuote
         changePct: quote.changePct,
         asOf: quote.asOf,
         source: quote.source,
+        sourceDetail: quote.sourceDetail || null,
         synthetic: Boolean(quote.synthetic),
-        dataMode: quote.dataMode || (quote.synthetic ? "synthetic-fallback" : "live")
+        dataMode: quote.dataMode || (quote.synthetic ? "synthetic-fallback" : "live"),
+        providerScore: Number.isFinite(Number(quote.providerScore)) ? Number(quote.providerScore) : null,
+        providerLatencyMs: Number.isFinite(Number(quote.providerLatencyMs)) ? Number(quote.providerLatencyMs) : null,
+        marketState: quote.marketState || null
       }
     };
   });

@@ -48,3 +48,12 @@ test("resolveMarketIntervalMs honors explicit quota band interval mapping", () =
 
   assert.equal(interval, 600_000);
 });
+
+test("resolveMarketIntervalMs uses a ten minute closed-session cadence by default", () => {
+  const interval = resolveMarketIntervalMs({
+    now: new Date("2026-03-01T15:00:00.000Z"), // Sunday
+    activeIntervalMs: 120_000
+  });
+
+  assert.equal(interval, 600_000);
+});

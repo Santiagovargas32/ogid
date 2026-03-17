@@ -1,18 +1,36 @@
 import apiQuotaTracker from "../../admin/apiQuotaTrackerService.js";
 import { createLogger } from "../../../utils/logger.js";
 import { buildProviderDiagnosticRecord } from "../providerDiagnostics.js";
+import { isMarketOpenEt } from "../marketSessionService.js";
 
 const log = createLogger("backend/services/market/providers/webQuoteProvider");
-const DEFAULT_WEB_SOURCE = "stooq";
-const DEFAULT_WEB_BASE_URL = "https://stooq.com";
+const SUPPORTED_WEB_SOURCES = new Set(["yahoo", "twelve", "stooq"]);
+const DEFAULT_WEB_SOURCE = "yahoo";
+const DEFAULT_WEB_BASE_URL = "https://query1.finance.yahoo.com";
+const DEFAULT_TWELVE_BASE_URL = "https://api.twelvedata.com";
+const DEFAULT_STOOQ_BASE_URL = "https://stooq.com";
 const DEFAULT_WEB_USER_AGENT = "ogid/1.0";
 
 function parsePrice(value) {
-  const normalized = String(value ?? "")
-    .replaceAll(",", "")
-    .trim();
-  const parsed = Number.parseFloat(normalized);
+  const parsed = Number.parseFloat(String(value ?? "").replaceAll(",", "").trim());
   return Number.isFinite(parsed) ? Number(parsed.toFixed(2)) : null;
+}
+
+function parsePercent(value) {
+  const parsed = Number.parseFloat(
+    String(value ?? "")
+      .replaceAll("%", "")
+      .replaceAll("(", "")
+      .replaceAll(")", "")
+      .replaceAll("+", "")
+      .trim()
+  );
+  return Number.isFinite(parsed) ? Number(parsed.toFixed(2)) : null;
+}
+
+function parseInteger(value) {
+  const parsed = Number.parseInt(String(value ?? "").replaceAll(",", "").trim(), 10);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function ensureTrailingSlash(baseUrl = DEFAULT_WEB_BASE_URL) {
@@ -60,49 +78,73 @@ function parseCsvTable(text = "") {
     .map((line) => parseCsvLine(line));
 }
 
-function normalizeWebSymbol(ticker = "", source = DEFAULT_WEB_SOURCE) {
-  const normalizedTicker = String(ticker || "").trim().toLowerCase();
+function normalizeRequestedTickers(tickers = []) {
+  return [...new Set((Array.isArray(tickers) ? tickers : []).map((ticker) => String(ticker || "").toUpperCase()).filter(Boolean))];
+}
+
+function normalizeSourceTicker(ticker = "", source = DEFAULT_WEB_SOURCE) {
+  const normalizedTicker = String(ticker || "").trim().toUpperCase();
   if (!normalizedTicker) {
     return "";
   }
 
-  if (source !== "stooq") {
+  if (String(source || "").toLowerCase() !== "stooq") {
     return normalizedTicker;
   }
 
-  if (normalizedTicker.endsWith(".us")) {
-    return normalizedTicker;
+  const lowerTicker = normalizedTicker.toLowerCase();
+  if (lowerTicker.endsWith(".us")) {
+    return lowerTicker;
   }
 
-  return `${normalizedTicker.replaceAll(".", "-")}.us`;
+  return `${lowerTicker.replaceAll(".", "-")}.us`;
 }
 
-export function buildWebBatchQuoteUrl({
-  source = DEFAULT_WEB_SOURCE,
-  baseUrl = DEFAULT_WEB_BASE_URL,
-  symbols = []
-}) {
-  if (source !== "stooq") {
-    throw new Error(`Unsupported market web source: ${source}`);
-  }
-
-  const url = new URL("q/l/", ensureTrailingSlash(baseUrl));
-  url.searchParams.set("s", symbols.join(","));
-  url.searchParams.set("f", "sd2t2ohlcvn");
-  url.searchParams.set("e", "csv");
+function buildYahooBatchQuoteUrl({ baseUrl = DEFAULT_WEB_BASE_URL, symbols = [] } = {}) {
+  const url = new URL("v7/finance/quote", ensureTrailingSlash(baseUrl));
+  url.searchParams.set("symbols", symbols.join(","));
   return url;
 }
 
-export function buildWebHistoricalUrl({
-  source = DEFAULT_WEB_SOURCE,
-  baseUrl = DEFAULT_WEB_BASE_URL,
-  symbol = ""
-}) {
-  if (source !== "stooq") {
-    throw new Error(`Unsupported market web source: ${source}`);
+function buildTwelveBatchQuoteUrl({ baseUrl = DEFAULT_TWELVE_BASE_URL, symbols = [], apiKey = "" } = {}) {
+  const url = new URL("quote", ensureTrailingSlash(baseUrl));
+  url.searchParams.set("symbol", symbols.join(","));
+  url.searchParams.set("format", "JSON");
+  url.searchParams.set("prepost", "true");
+  if (apiKey) {
+    url.searchParams.set("apikey", apiKey);
+  }
+  return url;
+}
+
+export function buildWebBatchQuoteUrl({ source = DEFAULT_WEB_SOURCE, baseUrl = DEFAULT_WEB_BASE_URL, symbols = [], apiKey = "" } = {}) {
+  const normalizedSource = String(source || "").toLowerCase();
+
+  if (normalizedSource === "yahoo") {
+    return buildYahooBatchQuoteUrl({ baseUrl, symbols });
   }
 
-  const url = new URL("q/d/l/", ensureTrailingSlash(baseUrl));
+  if (normalizedSource === "twelve") {
+    return buildTwelveBatchQuoteUrl({ baseUrl, symbols, apiKey });
+  }
+
+  if (normalizedSource === "stooq") {
+    const url = new URL("q/l/", ensureTrailingSlash(baseUrl || DEFAULT_STOOQ_BASE_URL));
+    url.searchParams.set("s", symbols.join(","));
+    url.searchParams.set("f", "sd2t2ohlcvn");
+    url.searchParams.set("e", "csv");
+    return url;
+  }
+
+  throw new Error(`Unsupported market web source: ${source}`);
+}
+
+export function buildWebHistoricalUrl({ source = DEFAULT_WEB_SOURCE, baseUrl = DEFAULT_STOOQ_BASE_URL, symbol = "" } = {}) {
+  if (String(source || "").toLowerCase() !== "stooq") {
+    throw new Error(`Unsupported market web historical source: ${source}`);
+  }
+
+  const url = new URL("q/d/l/", ensureTrailingSlash(baseUrl || DEFAULT_STOOQ_BASE_URL));
   url.searchParams.set("s", symbol);
   url.searchParams.set("i", "d");
   return url;
@@ -122,16 +164,79 @@ async function fetchWithTimeout(url, options, timeoutMs) {
   }
 }
 
-function buildProviderError({
-  scope,
-  code,
-  message,
-  tickers = [],
-  ticker = null,
-  status = null,
-  requestUrl = null,
-  responsePreview = null
-}) {
+function normalizeCollection(payload) {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  if (!payload || typeof payload !== "object") {
+    return [];
+  }
+
+  if (Array.isArray(payload.quoteResponse?.result)) {
+    return payload.quoteResponse.result;
+  }
+  if (Array.isArray(payload.result)) {
+    return payload.result;
+  }
+  if (Array.isArray(payload.data)) {
+    return payload.data;
+  }
+  if (Array.isArray(payload.quotes)) {
+    return payload.quotes;
+  }
+  if (payload.symbol || payload.ticker) {
+    return [payload];
+  }
+
+  return Object.values(payload).flatMap((value) => {
+    if (Array.isArray(value)) {
+      return value;
+    }
+    if (value && typeof value === "object" && (value.symbol || value.ticker)) {
+      return [value];
+    }
+    return [];
+  });
+}
+
+function toIsoTimestamp(value, fallbackTimestamp) {
+  if (value === undefined || value === null || value === "") {
+    return fallbackTimestamp;
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const numeric = value > 1e12 ? value : value * 1000;
+    return new Date(numeric).toISOString();
+  }
+
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : fallbackTimestamp;
+}
+
+function computeChangePct(price, previousClose, fallbackChangePct = null) {
+  if (Number.isFinite(fallbackChangePct)) {
+    return Number(fallbackChangePct.toFixed(2));
+  }
+
+  if (Number.isFinite(previousClose) && previousClose > 0 && Number.isFinite(price)) {
+    return Number((((price - previousClose) / previousClose) * 100).toFixed(2));
+  }
+
+  return 0;
+}
+
+function computeSourceScore({ returnedCount = 0, totalTickers = 0, durationMs = 0, errorCount = 0, marketOpen = true, source = "yahoo", dataMode = "live" } = {}) {
+  const coverage = totalTickers > 0 ? returnedCount / totalTickers : 0;
+  const freshnessBonus = dataMode === "live" ? 18 : dataMode === "web-delayed" ? 8 : 0;
+  const sourceBonus = source === "yahoo" ? 10 : source === "twelve" ? 8 : 4;
+  const marketBonus = marketOpen ? 5 : 0;
+  const latencyPenalty = Number.isFinite(durationMs) ? Math.min(28, durationMs / 180) : 10;
+  const errorPenalty = errorCount * 7;
+  return Math.max(0, Math.round(coverage * 60 + freshnessBonus + sourceBonus + marketBonus - latencyPenalty - errorPenalty));
+}
+
+function buildProviderError({ scope, code, message, tickers = [], ticker = null, status = null, requestUrl = null, responsePreview = null }) {
   return {
     provider: "web",
     scope,
@@ -205,7 +310,7 @@ function buildSymbolUnmappedResult(tickers = [], timestamp = new Date().toISOStr
     sourceMeta: {
       provider: "web",
       reason: "web-symbol-unmapped",
-      requestMode: "web-delayed",
+      requestMode: "unavailable",
       liveCount: 0,
       totalTickers: tickers.length,
       errors: [error],
@@ -216,7 +321,7 @@ function buildSymbolUnmappedResult(tickers = [], timestamp = new Date().toISOStr
           configuredFallbackProvider: options.configuredFallbackProvider || null,
           effectiveProvider: null,
           configuredSource: options.source || DEFAULT_WEB_SOURCE,
-          requestMode: "web-delayed",
+          requestMode: "unavailable",
           lastAttemptAt: timestamp,
           requestedTickers: tickers,
           returnedTickers: [],
@@ -230,258 +335,524 @@ function buildSymbolUnmappedResult(tickers = [], timestamp = new Date().toISOStr
   };
 }
 
-function parseBatchQuoteRows(rows = [], tickerBySymbol = new Map()) {
-  if (rows.length <= 1) {
-    return {};
+function parseYahooQuote(item = {}, timestamp = new Date().toISOString(), marketSession = {}, providerLatencyMs = null, providerScore = null) {
+  const symbol = String(item?.symbol || item?.ticker || "").trim().toUpperCase();
+  const price =
+    parsePrice(item?.regularMarketPrice) ??
+    parsePrice(item?.postMarketPrice) ??
+    parsePrice(item?.preMarketPrice) ??
+    parsePrice(item?.price);
+
+  if (!symbol || !Number.isFinite(price)) {
+    return null;
   }
 
-  return Object.fromEntries(
-    rows
-      .slice(1)
-      .map((row) => {
-        const [symbol, date, time, open, high, low, close] = row;
-        const normalizedSymbol = String(symbol || "").trim().toLowerCase();
-        const ticker = tickerBySymbol.get(normalizedSymbol);
-        const price = parsePrice(close);
-        const openPrice = parsePrice(open);
-
-        if (!ticker || !Number.isFinite(price)) {
-          return null;
-        }
-
-        return [
-          ticker,
-          {
-            ticker,
-            symbol: normalizedSymbol,
-            date: String(date || "").trim(),
-            time: String(time || "").trim(),
-            price,
-            openPrice: Number.isFinite(openPrice) ? openPrice : null,
-            dayRange: {
-              high: parsePrice(high),
-              low: parsePrice(low)
-            }
-          }
-        ];
-      })
-      .filter(Boolean)
-  );
-}
-
-function parseHistoricalRows(rows = []) {
-  if (rows.length <= 1) {
-    return [];
-  }
-
-  return rows
-    .slice(1)
-    .map((row) => {
-      const [date, open, high, low, close] = row;
-      const price = parsePrice(close);
-      return {
-        timestamp: date ? new Date(`${date}T00:00:00.000Z`).toISOString() : null,
-        open: parsePrice(open),
-        high: parsePrice(high),
-        low: parsePrice(low),
-        price
-      };
-    })
-    .filter((row) => row.timestamp && Number.isFinite(row.price))
-    .sort((left, right) => new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime());
-}
-
-function deriveChangePct({ price, previousClose, openPrice }) {
-  if (Number.isFinite(previousClose) && previousClose > 0) {
-    return Number((((price - previousClose) / previousClose) * 100).toFixed(2));
-  }
-
-  if (Number.isFinite(openPrice) && openPrice > 0) {
-    return Number((((price - openPrice) / openPrice) * 100).toFixed(2));
-  }
-
-  return 0;
-}
-
-async function fetchHistoricalPreviousClose({
-  ticker,
-  symbol,
-  source,
-  baseUrl,
-  timeoutMs,
-  userAgent
-}) {
-  const url = buildWebHistoricalUrl({
-    source,
-    baseUrl,
-    symbol
-  });
-  const attemptedAt = new Date().toISOString();
-  const response = await fetchWithTimeout(
-    url,
-    {
-      headers: {
-        "User-Agent": userAgent || DEFAULT_WEB_USER_AGENT
-      }
-    },
-    timeoutMs
-  );
-  const text = await response.text();
-
-  if (!response.ok) {
-    const providerError = buildProviderError({
-      scope: "historical",
-      ticker,
-      code: "web-upstream-status",
-      message: `Market web historical source returned HTTP ${response.status}.`,
-      status: response.status,
-      requestUrl: url.toString(),
-      responsePreview: text
-    });
-    const error = new Error(providerError.message);
-    error.providerError = providerError;
-    throw error;
-  }
-
-  const rows = parseHistoricalRows(parseCsvTable(text));
-  const latest = rows.at(-1) || null;
-  const previous = rows.length >= 2 ? rows.at(-2) : null;
+  const previousClose =
+    parsePrice(item?.regularMarketPreviousClose) ??
+    parsePrice(item?.postMarketPreviousClose) ??
+    parsePrice(item?.preMarketPreviousClose) ??
+    parsePrice(item?.previousClose);
+  const fallbackChangePct =
+    parsePercent(item?.regularMarketChangePercent) ??
+    parsePercent(item?.postMarketChangePercent) ??
+    parsePercent(item?.preMarketChangePercent) ??
+    parsePercent(item?.changePercent);
+  const changePct = computeChangePct(price, previousClose, fallbackChangePct);
+  const marketState = String(item?.marketState || (marketSession?.open ? "REGULAR" : "CLOSED")).toUpperCase();
 
   return {
-    latestPrice: latest?.price ?? null,
-    previousClose: previous?.price ?? null,
-    series: rows.map((row, index) => ({
-      timestamp: row.timestamp,
-      price: row.price,
-      changePct:
-        index > 0 && Number.isFinite(rows[index - 1]?.price) && rows[index - 1].price > 0
-          ? Number((((row.price - rows[index - 1].price) / rows[index - 1].price) * 100).toFixed(2))
-          : 0
-    })),
-    requestUrl: url.toString(),
-    attemptedAt,
-    responsePreview: text
+    price,
+    changePct,
+    high: parsePrice(item?.regularMarketDayHigh) ?? parsePrice(item?.dayHigh) ?? parsePrice(item?.high),
+    low: parsePrice(item?.regularMarketDayLow) ?? parsePrice(item?.dayLow) ?? parsePrice(item?.low),
+    volume: parseInteger(item?.regularMarketVolume) ?? parseInteger(item?.volume),
+    previousClose,
+    marketState,
+    asOf: toIsoTimestamp(item?.regularMarketTime ?? item?.regularMarketTimestamp ?? item?.postMarketTime ?? item?.preMarketTime, timestamp),
+    source: "web",
+    sourceDetail: "yahoo",
+    synthetic: false,
+    dataMode: "live",
+    providerLatencyMs,
+    providerScore
   };
 }
 
-async function recoverWebBatchQuotes({
-  symbolEntries = [],
-  source = DEFAULT_WEB_SOURCE,
-  baseUrl = DEFAULT_WEB_BASE_URL,
-  timeoutMs = 9_000,
-  userAgent = DEFAULT_WEB_USER_AGENT,
-  timestamp = new Date().toISOString()
-}) {
+function parseTwelveQuote(item = {}, timestamp = new Date().toISOString(), marketSession = {}, providerLatencyMs = null, providerScore = null) {
+  const symbol = String(item?.symbol || item?.ticker || item?.instrument?.symbol || "").trim().toUpperCase();
+  const price =
+    parsePrice(item?.close) ??
+    parsePrice(item?.price) ??
+    parsePrice(item?.latestPrice) ??
+    parsePrice(item?.last) ??
+    parsePrice(item?.close_price);
+
+  if (!symbol || !Number.isFinite(price)) {
+    return null;
+  }
+
+  const previousClose =
+    parsePrice(item?.previous_close) ??
+    parsePrice(item?.previousClose) ??
+    parsePrice(item?.previous_close_price) ??
+    parsePrice(item?.prev_close);
+  const fallbackChangePct =
+    parsePercent(item?.percent_change) ??
+    parsePercent(item?.change_percent) ??
+    parsePercent(item?.change_pct) ??
+    parsePercent(item?.changePercent);
+  const changePct = computeChangePct(price, previousClose, fallbackChangePct);
+  const marketState = String(item?.market_state || item?.marketState || (marketSession?.open ? "REGULAR" : "CLOSED")).toUpperCase();
+
+  return {
+    price,
+    changePct,
+    high: parsePrice(item?.high) ?? parsePrice(item?.day_high) ?? null,
+    low: parsePrice(item?.low) ?? parsePrice(item?.day_low) ?? null,
+    volume: parseInteger(item?.volume) ?? parseInteger(item?.turnover) ?? null,
+    previousClose,
+    marketState,
+    asOf: toIsoTimestamp(item?.datetime ?? item?.timestamp ?? item?.date ?? item?.time, timestamp),
+    source: "web",
+    sourceDetail: "twelve",
+    synthetic: false,
+    dataMode: "live",
+    providerLatencyMs,
+    providerScore
+  };
+}
+
+function parseStooqQuote(row = [], ticker = "", timestamp = new Date().toISOString(), marketSession = {}, providerLatencyMs = null, providerScore = null) {
+  const [, date, time, open, high, low, close, volume] = row;
+  const price = parsePrice(close);
+  if (!ticker || !Number.isFinite(price)) {
+    return null;
+  }
+
+  const openPrice = parsePrice(open);
+  const changePct = Number.isFinite(openPrice) && openPrice > 0 ? Number((((price - openPrice) / openPrice) * 100).toFixed(2)) : 0;
+  const asOf = date && time ? toIsoTimestamp(`${date}T${time}.000Z`, timestamp) : toIsoTimestamp(date || time, timestamp);
+
+  return {
+    price,
+    changePct,
+    high: parsePrice(high),
+    low: parsePrice(low),
+    volume: parseInteger(volume),
+    previousClose: null,
+    marketState: marketSession?.open ? "REGULAR" : "CLOSED",
+    asOf,
+    source: "web",
+    sourceDetail: "stooq",
+    synthetic: false,
+    dataMode: "web-delayed",
+    providerLatencyMs,
+    providerScore
+  };
+}
+
+function parseYahooBatchResponse(text, requestedTickers, timestamp, marketSession, providerLatencyMs) {
+  const payload = JSON.parse(text);
+  const rows = normalizeCollection(payload);
   const quotes = {};
-  const historicalSeries = {};
-  const requestUrls = [];
-  const errors = [];
 
-  for (const [ticker, symbol] of symbolEntries) {
-    const url = buildWebBatchQuoteUrl({
-      source,
-      baseUrl,
-      symbols: [symbol]
-    });
-
-    try {
-      const response = await fetchWithTimeout(
-        url,
-        {
-          headers: {
-            "User-Agent": userAgent || DEFAULT_WEB_USER_AGENT
-          }
-        },
-        timeoutMs
-      );
-      const text = await response.text();
-      requestUrls.push(url.toString());
-
-      if (!response.ok) {
-        errors.push(
-          buildProviderError({
-            scope: "batch",
-            tickers: [ticker],
-            code: "web-upstream-status",
-            message: `Market web source returned HTTP ${response.status}.`,
-            status: response.status,
-            requestUrl: url.toString(),
-            responsePreview: text
-          })
-        );
-        continue;
-      }
-
-      const table = parseCsvTable(text);
-      const parsedRows = parseBatchQuoteRows(table, new Map([[symbol, ticker]]));
-      const item = parsedRows[ticker];
-      if (!item) {
-        const reason = table.length <= 1 ? "web-csv-empty" : "web-symbol-unmapped";
-        errors.push(
-          buildProviderError({
-            scope: "batch",
-            tickers: [ticker],
-            code: reason,
-            message:
-              reason === "web-csv-empty"
-                ? "Market web batch CSV returned no quote rows."
-                : "Market web batch CSV did not contain usable symbols for the requested ticker.",
-            status: response.status,
-            requestUrl: url.toString(),
-            responsePreview: text
-          })
-        );
-        continue;
-      }
-
-      const historical = await fetchHistoricalPreviousClose({
-        ticker,
-        symbol: item.symbol,
-        source,
-        baseUrl,
-        timeoutMs,
-        userAgent
-      });
-      requestUrls.push(historical.requestUrl);
-      if (Array.isArray(historical.series) && historical.series.length) {
-        historicalSeries[ticker] = historical.series;
-      }
-
-      quotes[ticker] = {
-        price: item.price,
-        changePct: deriveChangePct({
-          price: item.price,
-          previousClose: historical.previousClose,
-          openPrice: item.openPrice
-        }),
-        asOf: timestamp,
-        source: "web",
-        synthetic: false,
-        dataMode: "web-delayed"
-      };
-    } catch (error) {
-      const providerError =
-        error.providerError ||
-        buildProviderError({
-          scope: "batch",
-          tickers: [ticker],
-          code: error?.name === "AbortError" ? "web-timeout" : "request-failed",
-          message:
-            error?.name === "AbortError"
-              ? "Market web batch request timed out."
-              : error?.message || "Market web batch request failed.",
-          requestUrl: url.toString()
-        });
-      errors.push(providerError);
+  for (const item of rows) {
+    const parsed = parseYahooQuote(item, timestamp, marketSession, providerLatencyMs, null);
+    if (!parsed) {
+      continue;
+    }
+    const symbol = String(item?.symbol || item?.ticker || "").trim().toUpperCase();
+    if (symbol && !quotes[symbol]) {
+      quotes[symbol] = parsed;
     }
   }
 
-  return {
-    quotes,
-    historicalSeries,
-    requestUrls,
-    errors
-  };
+  return quotes;
+}
+
+function parseTwelveBatchResponse(text, requestedTickers, timestamp, marketSession, providerLatencyMs) {
+  const payload = JSON.parse(text);
+  const rows = normalizeCollection(payload);
+  const quotes = {};
+
+  for (const item of rows) {
+    const parsed = parseTwelveQuote(item, timestamp, marketSession, providerLatencyMs, null);
+    if (!parsed) {
+      continue;
+    }
+    const symbol = String(item?.symbol || item?.ticker || "").trim().toUpperCase();
+    if (symbol && !quotes[symbol]) {
+      quotes[symbol] = parsed;
+    }
+  }
+
+  return quotes;
+}
+
+function parseStooqBatchResponse(text, requestedTickers, timestamp, marketSession, providerLatencyMs) {
+  const table = parseCsvTable(text);
+  const tickerBySymbol = new Map(
+    requestedTickers.map((ticker) => [normalizeSourceTicker(ticker, "stooq"), ticker])
+  );
+  const quotes = {};
+
+  for (const row of table.slice(1)) {
+    const symbol = String(row?.[0] || "").trim().toLowerCase();
+    const ticker = tickerBySymbol.get(symbol);
+    if (!ticker) {
+      continue;
+    }
+
+    const parsed = parseStooqQuote(row, ticker, timestamp, marketSession, providerLatencyMs, null);
+    if (!parsed) {
+      continue;
+    }
+    quotes[ticker] = parsed;
+  }
+
+  const error =
+    table.length <= 1
+      ? buildProviderError({
+          scope: "batch",
+          tickers: requestedTickers,
+          code: "web-csv-empty",
+          message: "Market web batch CSV returned no quote rows.",
+          responsePreview: text
+        })
+      : Object.keys(quotes).length > 0
+        ? null
+        : buildProviderError({
+            scope: "batch",
+            tickers: requestedTickers,
+            code: "web-symbol-unmapped",
+            message: "Market web batch CSV did not contain usable symbols for the requested tickers.",
+            responsePreview: text
+          });
+
+  return { quotes, error };
+}
+
+function resolveWebSourceOrder(source = DEFAULT_WEB_SOURCE) {
+  const normalized = String(source || "").toLowerCase();
+  if (!SUPPORTED_WEB_SOURCES.has(normalized)) {
+    return [];
+  }
+
+  if (normalized === "yahoo") {
+    return ["yahoo", "twelve", "stooq"];
+  }
+  if (normalized === "twelve") {
+    return ["twelve", "yahoo", "stooq"];
+  }
+  return ["stooq", "yahoo", "twelve"];
+}
+
+function resolveWebBaseUrl(source, primarySource, config = {}) {
+  const normalizedSource = String(source || "").toLowerCase();
+  const normalizedPrimary = String(primarySource || DEFAULT_WEB_SOURCE).toLowerCase();
+
+  if (normalizedSource === "yahoo") {
+    return config.yahooBaseUrl || (normalizedSource === normalizedPrimary && config.baseUrl ? config.baseUrl : DEFAULT_WEB_BASE_URL);
+  }
+  if (normalizedSource === "twelve") {
+    return config.twelveBaseUrl || DEFAULT_TWELVE_BASE_URL;
+  }
+  if (normalizedSource === "stooq") {
+    return config.stooqBaseUrl || DEFAULT_STOOQ_BASE_URL;
+  }
+  if (normalizedSource === normalizedPrimary && config.baseUrl) {
+    return config.baseUrl;
+  }
+  return config.baseUrl || DEFAULT_WEB_BASE_URL;
+}
+
+async function requestWebSourceQuotes({
+  source,
+  baseUrl,
+  apiKey = "",
+  tickers = [],
+  timeoutMs = 9_000,
+  timestamp = new Date().toISOString(),
+  userAgent = DEFAULT_WEB_USER_AGENT,
+  marketSession = { open: false }
+}) {
+  const normalizedSource = String(source || "").toLowerCase();
+  const requestedTickers = normalizeRequestedTickers(tickers);
+  const symbols = requestedTickers.map((ticker) => normalizeSourceTicker(ticker, normalizedSource)).filter(Boolean);
+  const startedAt = Date.now();
+  const requestUrls = [];
+
+  if (!SUPPORTED_WEB_SOURCES.has(normalizedSource)) {
+    return {
+      source: normalizedSource,
+      quotes: {},
+      missingTickers: requestedTickers,
+      requestUrls,
+      errors: [
+        buildProviderError({
+          scope: "provider",
+          tickers: requestedTickers,
+          code: "web-source-invalid",
+          message: "The configured market web source is not supported."
+        })
+      ],
+      requestMode: "unavailable",
+      providerScore: 0,
+      durationMs: 0,
+      httpStatus: null,
+      responsePreview: null,
+      effectiveSource: null,
+      returnedTickers: [],
+      lastSuccessAt: null,
+      lastAttemptAt: timestamp
+    };
+  }
+
+  if (!symbols.length) {
+    return {
+      source: normalizedSource,
+      quotes: {},
+      missingTickers: requestedTickers,
+      requestUrls,
+      errors: [
+        buildProviderError({
+          scope: "provider",
+          tickers: requestedTickers,
+          code: "web-symbol-unmapped",
+          message: "No valid symbols were produced for the configured web source."
+        })
+      ],
+      requestMode: "unavailable",
+      providerScore: 0,
+      durationMs: 0,
+      httpStatus: null,
+      responsePreview: null,
+      effectiveSource: null,
+      returnedTickers: [],
+      lastSuccessAt: null,
+      lastAttemptAt: timestamp
+    };
+  }
+
+  if (normalizedSource === "twelve" && !apiKey) {
+    return {
+      source: normalizedSource,
+      quotes: {},
+      missingTickers: requestedTickers,
+      requestUrls,
+      errors: [
+        buildProviderError({
+          scope: "provider",
+          tickers: requestedTickers,
+          code: "api-key-missing",
+          message: "Twelve Data API key is missing."
+        })
+      ],
+      requestMode: "unavailable",
+      providerScore: 0,
+      durationMs: 0,
+      httpStatus: null,
+      responsePreview: null,
+      effectiveSource: null,
+      returnedTickers: [],
+      lastSuccessAt: null,
+      lastAttemptAt: timestamp
+    };
+  }
+
+  const requestUrl = buildWebBatchQuoteUrl({
+    source: normalizedSource,
+    baseUrl,
+    symbols,
+    apiKey
+  });
+  requestUrls.push(requestUrl.toString());
+
+  try {
+    const response = await fetchWithTimeout(
+      requestUrl,
+      {
+        headers: {
+          "User-Agent": userAgent || DEFAULT_WEB_USER_AGENT,
+          Accept: normalizedSource === "stooq" ? "text/csv" : "application/json"
+        }
+      },
+      timeoutMs
+    );
+    const text = await response.text();
+    const durationMs = Date.now() - startedAt;
+    let quotes = {};
+    let parseError = null;
+
+    try {
+      quotes =
+        normalizedSource === "yahoo"
+          ? parseYahooBatchResponse(text, requestedTickers, timestamp, marketSession, durationMs)
+          : normalizedSource === "twelve"
+            ? parseTwelveBatchResponse(text, requestedTickers, timestamp, marketSession, durationMs)
+            : parseStooqBatchResponse(text, requestedTickers, timestamp, marketSession, durationMs).quotes;
+    } catch (error) {
+      parseError =
+        error.providerError ||
+        buildProviderError({
+          scope: "batch",
+          tickers: requestedTickers,
+          code: "web-parse-failed",
+          message: `${normalizedSource} batch payload could not be parsed.`,
+          requestUrl: requestUrl.toString(),
+          responsePreview: text
+        });
+    }
+
+    if (!response.ok) {
+      const providerError = buildProviderError({
+        scope: "batch",
+        tickers: requestedTickers,
+        code: "web-upstream-status",
+        message: `Market web source returned HTTP ${response.status}.`,
+        status: response.status,
+        requestUrl: requestUrl.toString(),
+        responsePreview: text
+      });
+      return {
+        source: normalizedSource,
+        quotes,
+        missingTickers: requestedTickers.filter((ticker) => !quotes[ticker]),
+        requestUrls,
+        errors: [parseError, providerError].filter(Boolean),
+        requestMode: normalizedSource === "stooq" ? "web-delayed" : "live-batch",
+        providerScore: computeSourceScore({
+          returnedCount: Object.keys(quotes).length,
+          totalTickers: requestedTickers.length,
+          durationMs,
+          errorCount: 1,
+          marketOpen: Boolean(marketSession?.open),
+          source: normalizedSource,
+          dataMode: normalizedSource === "stooq" ? "web-delayed" : "live"
+        }),
+        durationMs,
+        httpStatus: response.status,
+        responsePreview: text,
+        effectiveSource: Object.keys(quotes).length ? normalizedSource : null,
+        returnedTickers: Object.keys(quotes),
+        lastSuccessAt: Object.keys(quotes).length ? new Date().toISOString() : null,
+        lastAttemptAt: timestamp
+      };
+    }
+
+    if (!Object.keys(quotes).length) {
+      const emptyError =
+        parseError ||
+        (normalizedSource === "stooq"
+          ? parseStooqBatchResponse(text, requestedTickers, timestamp, marketSession, durationMs).error
+          : buildProviderError({
+              scope: "batch",
+              tickers: requestedTickers,
+              code: "web-symbol-unmapped",
+              message: "Market web source did not contain usable symbols for the requested tickers.",
+            requestUrl: requestUrl.toString(),
+            responsePreview: text
+          }));
+      return {
+        source: normalizedSource,
+        quotes: {},
+        missingTickers: requestedTickers,
+        requestUrls,
+        errors: [emptyError].filter(Boolean),
+        requestMode: normalizedSource === "stooq" ? "web-delayed" : "live-batch",
+        providerScore: computeSourceScore({
+          returnedCount: 0,
+          totalTickers: requestedTickers.length,
+          durationMs,
+          errorCount: 1,
+          marketOpen: Boolean(marketSession?.open),
+          source: normalizedSource,
+          dataMode: normalizedSource === "stooq" ? "web-delayed" : "live"
+        }),
+        durationMs,
+        httpStatus: response.status,
+        responsePreview: text,
+        effectiveSource: null,
+        returnedTickers: [],
+        lastSuccessAt: null,
+        lastAttemptAt: timestamp
+      };
+    }
+
+    const missingTickers = requestedTickers.filter((ticker) => !quotes[ticker]);
+    const providerScore = computeSourceScore({
+      returnedCount: Object.keys(quotes).length,
+      totalTickers: requestedTickers.length,
+      durationMs,
+      errorCount: 0,
+      marketOpen: Boolean(marketSession?.open),
+      source: normalizedSource,
+      dataMode: normalizedSource === "stooq" ? "web-delayed" : "live"
+    });
+
+    for (const [ticker, quote] of Object.entries(quotes)) {
+      quotes[ticker] = {
+        ...quote,
+        providerLatencyMs: durationMs,
+        providerScore
+      };
+    }
+
+    return {
+      source: normalizedSource,
+      quotes,
+      missingTickers,
+      requestUrls,
+      errors: [parseError].filter(Boolean),
+      requestMode: normalizedSource === "stooq" ? "web-delayed" : "live-batch",
+      providerScore,
+      durationMs,
+      httpStatus: response.status,
+      responsePreview: text,
+      effectiveSource: normalizedSource,
+      returnedTickers: Object.keys(quotes),
+      lastSuccessAt: new Date().toISOString(),
+      lastAttemptAt: timestamp
+    };
+  } catch (error) {
+    const durationMs = Date.now() - startedAt;
+    return {
+      source: normalizedSource,
+      quotes: {},
+      missingTickers: requestedTickers,
+      requestUrls,
+      errors: [
+        error.providerError ||
+          buildProviderError({
+            scope: "batch",
+            tickers: requestedTickers,
+            code: error?.name === "AbortError" ? "web-timeout" : "request-failed",
+            message:
+              error?.name === "AbortError"
+                ? "Market web batch request timed out."
+                : error?.message || "Market web batch request failed.",
+            requestUrl: requestUrl.toString()
+          })
+      ],
+      requestMode: normalizedSource === "stooq" ? "web-delayed" : "live-batch",
+      providerScore: computeSourceScore({
+        returnedCount: 0,
+        totalTickers: requestedTickers.length,
+        durationMs,
+        errorCount: 1,
+        marketOpen: Boolean(marketSession?.open),
+        source: normalizedSource,
+        dataMode: normalizedSource === "stooq" ? "web-delayed" : "live"
+      }),
+      durationMs,
+      httpStatus: null,
+      responsePreview: null,
+      effectiveSource: null,
+      returnedTickers: [],
+      lastSuccessAt: null,
+      lastAttemptAt: timestamp
+    };
+  }
 }
 
 export async function fetchWebQuotes({
@@ -492,489 +863,206 @@ export async function fetchWebQuotes({
   timestamp = new Date().toISOString(),
   userAgent = DEFAULT_WEB_USER_AGENT,
   configuredProvider = "web",
-  configuredFallbackProvider = null
+  configuredFallbackProvider = null,
+  yahooBaseUrl = DEFAULT_WEB_BASE_URL,
+  stooqBaseUrl = DEFAULT_STOOQ_BASE_URL,
+  twelveApiKey = "",
+  twelveBaseUrl = DEFAULT_TWELVE_BASE_URL,
+  session = null
 }) {
-  const normalizedTickers = tickers.map((ticker) => String(ticker).toUpperCase());
-  if (source !== "stooq") {
-    return buildSourceInvalidResult(normalizedTickers, timestamp, {
+  const requestedTickers = normalizeRequestedTickers(tickers);
+  const primarySource = String(source || DEFAULT_WEB_SOURCE).toLowerCase();
+
+  if (!SUPPORTED_WEB_SOURCES.has(primarySource)) {
+    return buildSourceInvalidResult(requestedTickers, timestamp, {
       configuredProvider,
       configuredFallbackProvider,
-      source
+      source: primarySource
     });
   }
 
-  const symbolEntries = normalizedTickers
-    .map((ticker) => [ticker, normalizeWebSymbol(ticker, source)])
-    .filter(([, symbol]) => symbol);
-  const symbols = symbolEntries.map(([, symbol]) => symbol);
-  const tickerBySymbol = new Map(symbolEntries.map(([ticker, symbol]) => [symbol, ticker]));
-
-  if (!symbols.length) {
-    return buildSymbolUnmappedResult(normalizedTickers, timestamp, {
+  if (!requestedTickers.length) {
+    return buildSymbolUnmappedResult(requestedTickers, timestamp, {
       configuredProvider,
       configuredFallbackProvider,
-      source
+      source: primarySource
     });
   }
 
-  const startedAt = Date.now();
+  const marketSession =
+    session || {
+      open: isMarketOpenEt(new Date(timestamp)),
+      state: isMarketOpenEt(new Date(timestamp)) ? "open" : "closed",
+      checkedAt: timestamp
+    };
+  const sourceOrder = resolveWebSourceOrder(primarySource);
+  const sourceAttempts = [];
+  const quotes = {};
   const errors = [];
-  const historicalSeries = {};
   const requestUrls = [];
-  let quotes = {};
-  let batchStatus = null;
-  let batchPreview = null;
   let lastSuccessAt = null;
-  const attemptedAt = new Date().toISOString();
+  const startedAt = Date.now();
+  let unresolved = [...requestedTickers];
 
-  try {
-    const url = buildWebBatchQuoteUrl({
-      source,
-      baseUrl,
-      symbols
-    });
-    requestUrls.push(url.toString());
-    const response = await fetchWithTimeout(
-      url,
-      {
-        headers: {
-          "User-Agent": userAgent || DEFAULT_WEB_USER_AGENT
-        }
-      },
-      timeoutMs
-    );
-    batchStatus = response.status;
-    const text = await response.text();
-    batchPreview = text;
-
-    if (!response.ok) {
-      const providerError = buildProviderError({
-        scope: "batch",
-        tickers: normalizedTickers,
-        code: "web-upstream-status",
-        message: `Market web source returned HTTP ${response.status}.`,
-        status: response.status,
-        requestUrl: url.toString(),
-        responsePreview: text
-      });
-      apiQuotaTracker.recordCall("web", { status: "error", fallback: true, timestamp });
-      return {
-        provider: "web",
-        quotes: {},
-        missingTickers: normalizedTickers,
-        historicalSeries: {},
-        sourceMode: "fallback",
-        sourceMeta: {
-          provider: "web",
-          reason: providerError.code,
-          requestMode: "web-delayed",
-          liveCount: 0,
-          totalTickers: normalizedTickers.length,
-          errors: [providerError],
-          providerDiagnostics: {
-            web: buildProviderDiagnosticRecord({
-              provider: "web",
-              configuredProvider,
-              configuredFallbackProvider,
-              effectiveProvider: null,
-              configuredSource: source,
-              requestMode: "web-delayed",
-              lastAttemptAt: attemptedAt,
-              durationMs: Date.now() - startedAt,
-              requestUrl: url.toString(),
-              requestUrls,
-              requestedTickers: normalizedTickers,
-              returnedTickers: [],
-              missingTickers: normalizedTickers,
-              httpStatus: response.status,
-              responsePreview: text,
-              errorCode: providerError.code,
-              errorMessage: providerError.message
-            })
-          }
-        },
-        updatedAt: timestamp
-      };
+  for (const currentSource of sourceOrder) {
+    if (!unresolved.length) {
+      break;
     }
 
-    let table = [];
-    try {
-      table = parseCsvTable(text);
-    } catch {
-      const providerError = buildProviderError({
-        scope: "batch",
-        tickers: normalizedTickers,
-        code: "web-parse-failed",
-        message: "Market web batch CSV could not be parsed.",
-        status: response.status,
-        requestUrl: url.toString(),
-        responsePreview: text
-      });
-      apiQuotaTracker.recordCall("web", { status: "error", fallback: true, timestamp });
-      return {
-        provider: "web",
-        quotes: {},
-        missingTickers: normalizedTickers,
-        historicalSeries: {},
-        sourceMode: "fallback",
-        sourceMeta: {
-          provider: "web",
-          reason: providerError.code,
-          requestMode: "web-delayed",
-          liveCount: 0,
-          totalTickers: normalizedTickers.length,
-          errors: [providerError],
-          providerDiagnostics: {
-            web: buildProviderDiagnosticRecord({
-              provider: "web",
-              configuredProvider,
-              configuredFallbackProvider,
-              effectiveProvider: null,
-              configuredSource: source,
-              requestMode: "web-delayed",
-              lastAttemptAt: attemptedAt,
-              durationMs: Date.now() - startedAt,
-              requestUrl: url.toString(),
-              requestUrls,
-              requestedTickers: normalizedTickers,
-              returnedTickers: [],
-              missingTickers: normalizedTickers,
-              httpStatus: response.status,
-              responsePreview: text,
-              errorCode: providerError.code,
-              errorMessage: providerError.message
-            })
-          }
-        },
-        updatedAt: timestamp
-      };
-    }
-
-    if (table.length <= 1) {
-      const recoveryResult =
-        symbolEntries.length > 1
-          ? await recoverWebBatchQuotes({
-              symbolEntries,
-              source,
-              baseUrl,
-              timeoutMs,
-              userAgent,
-              timestamp
-            })
-          : null;
-
-      if (recoveryResult?.quotes && Object.keys(recoveryResult.quotes).length) {
-        quotes = recoveryResult.quotes;
-        Object.assign(historicalSeries, recoveryResult.historicalSeries || {});
-        requestUrls.push(...(recoveryResult.requestUrls || []));
-        errors.push(...(recoveryResult.errors || []));
-        lastSuccessAt = new Date().toISOString();
-      } else {
-        const providerError = buildProviderError({
-          scope: "batch",
-          tickers: normalizedTickers,
-          code: "web-csv-empty",
-          message: "Market web batch CSV returned no quote rows.",
-          status: response.status,
-          requestUrl: url.toString(),
-          responsePreview: text
-        });
-        errors.push(...(recoveryResult?.errors || []));
-        errors.push(providerError);
-        apiQuotaTracker.recordCall("web", { status: "empty", fallback: true, timestamp });
-        return {
-          provider: "web",
-          quotes: {},
-          missingTickers: normalizedTickers,
-          historicalSeries: {},
-          sourceMode: "fallback",
-          sourceMeta: {
-            provider: "web",
-            reason: providerError.code,
-            requestMode: "web-delayed",
-            liveCount: 0,
-            totalTickers: normalizedTickers.length,
-            errors,
-            providerDiagnostics: {
-              web: buildProviderDiagnosticRecord({
-                provider: "web",
-                configuredProvider,
-                configuredFallbackProvider,
-                effectiveProvider: null,
-                configuredSource: source,
-                requestMode: "web-delayed",
-                lastAttemptAt: attemptedAt,
-                durationMs: Date.now() - startedAt,
-                requestUrl: url.toString(),
-                requestUrls,
-                requestedTickers: normalizedTickers,
-                returnedTickers: [],
-                missingTickers: normalizedTickers,
-                httpStatus: response.status,
-                responsePreview: text,
-                errorCode: providerError.code,
-                errorMessage: providerError.message
-              })
-            }
-          },
-          updatedAt: timestamp
-        };
-      }
-    }
-
-    const parsedRows = parseBatchQuoteRows(table, tickerBySymbol);
-    if (!Object.keys(parsedRows).length) {
-      const recoveryResult =
-        symbolEntries.length > 1
-          ? await recoverWebBatchQuotes({
-              symbolEntries,
-              source,
-              baseUrl,
-              timeoutMs,
-              userAgent,
-              timestamp
-            })
-          : null;
-
-      if (recoveryResult?.quotes && Object.keys(recoveryResult.quotes).length) {
-        quotes = recoveryResult.quotes;
-        Object.assign(historicalSeries, recoveryResult.historicalSeries || {});
-        requestUrls.push(...(recoveryResult.requestUrls || []));
-        errors.push(...(recoveryResult.errors || []));
-        lastSuccessAt = new Date().toISOString();
-      } else {
-        const providerError = buildProviderError({
-          scope: "batch",
-          tickers: normalizedTickers,
-          code: "web-symbol-unmapped",
-          message: "Market web batch CSV did not contain usable symbols for the requested tickers.",
-          status: response.status,
-          requestUrl: url.toString(),
-          responsePreview: text
-        });
-        errors.push(...(recoveryResult?.errors || []));
-        errors.push(providerError);
-        apiQuotaTracker.recordCall("web", { status: "empty", fallback: true, timestamp });
-        return {
-          provider: "web",
-          quotes: {},
-          missingTickers: normalizedTickers,
-          historicalSeries: {},
-          sourceMode: "fallback",
-          sourceMeta: {
-            provider: "web",
-            reason: providerError.code,
-            requestMode: "web-delayed",
-            liveCount: 0,
-            totalTickers: normalizedTickers.length,
-            errors,
-            providerDiagnostics: {
-              web: buildProviderDiagnosticRecord({
-                provider: "web",
-                configuredProvider,
-                configuredFallbackProvider,
-                effectiveProvider: null,
-                configuredSource: source,
-                requestMode: "web-delayed",
-                lastAttemptAt: attemptedAt,
-                durationMs: Date.now() - startedAt,
-                requestUrl: url.toString(),
-                requestUrls,
-                requestedTickers: normalizedTickers,
-                returnedTickers: [],
-                missingTickers: normalizedTickers,
-                httpStatus: response.status,
-                responsePreview: text,
-                errorCode: providerError.code,
-                errorMessage: providerError.message
-              })
-            }
-          },
-          updatedAt: timestamp
-        };
-      }
-    }
-
-    if (Object.keys(parsedRows).length) {
-      quotes = Object.fromEntries(
-        Object.entries(parsedRows).map(([ticker, item]) => [
-          ticker,
-          {
-            price: item.price,
-            changePct: deriveChangePct({ price: item.price, previousClose: null, openPrice: item.openPrice }),
-            asOf: timestamp,
-            source: "web",
-            synthetic: false,
-            dataMode: "web-delayed"
-          }
-        ])
-      );
-      lastSuccessAt = new Date().toISOString();
-
-      const historicalResults = await Promise.allSettled(
-        Object.entries(parsedRows).map(async ([ticker, item]) => {
-          const historical = await fetchHistoricalPreviousClose({
-            ticker,
-            symbol: item.symbol,
-            source,
-            baseUrl,
-            timeoutMs,
-            userAgent
-          });
-          return {
-            ticker,
-            historical,
-            openPrice: item.openPrice
-          };
-        })
-      );
-
-      for (const result of historicalResults) {
-        if (result.status === "fulfilled") {
-          const { ticker, historical, openPrice } = result.value;
-          requestUrls.push(historical.requestUrl);
-          if (Array.isArray(historical.series) && historical.series.length) {
-            historicalSeries[ticker] = historical.series;
-          }
-          if (quotes[ticker]) {
-            quotes[ticker] = {
-              ...quotes[ticker],
-              changePct: deriveChangePct({
-                price: quotes[ticker].price,
-                previousClose: historical.previousClose,
-                openPrice
-              })
-            };
-          }
-          continue;
-        }
-
-        const providerError =
-          result.reason?.providerError ||
-          buildProviderError({
-            scope: "historical",
-            code: result.reason?.name === "AbortError" ? "web-timeout" : "historical-request-failed",
-            message:
-              result.reason?.name === "AbortError"
-                ? "Market web historical request timed out."
-                : result.reason?.message || "Market web historical request failed."
-          });
-        errors.push(providerError);
-      }
-    }
-
-    const missingTickers = normalizedTickers.filter((ticker) => !quotes[ticker]);
-    apiQuotaTracker.recordCall("web", {
-      status: Object.keys(quotes).length > 0 ? "success" : "empty",
-      fallback: missingTickers.length > 0,
-      timestamp
-    });
-    const durationMs = Date.now() - startedAt;
-
-    log.info("market_provider_summary", {
-      provider: "web",
-      source,
-      webDelayedCount: Object.keys(quotes).length,
-      fallbackCount: missingTickers.length,
-      totalTickers: normalizedTickers.length,
-      durationMs
+    const attempt = await requestWebSourceQuotes({
+      source: currentSource,
+      baseUrl: resolveWebBaseUrl(currentSource, primarySource, {
+        baseUrl,
+        yahooBaseUrl,
+        stooqBaseUrl,
+        twelveBaseUrl
+      }),
+      apiKey: currentSource === "twelve" ? twelveApiKey : "",
+      tickers: unresolved,
+      timeoutMs,
+      timestamp,
+      userAgent,
+      marketSession
     });
 
-    return {
-      provider: "web",
-      quotes,
-      missingTickers,
-      historicalSeries,
-      sourceMode:
-        Object.keys(quotes).length <= 0
-          ? "fallback"
-          : Object.keys(quotes).length >= normalizedTickers.length
-            ? "live"
-            : "mixed",
-      sourceMeta: {
-        provider: "web",
-        requestMode: "web-delayed",
-        liveCount: 0,
-        totalTickers: normalizedTickers.length,
-        errors,
-        providerDiagnostics: {
-          web: buildProviderDiagnosticRecord({
-            provider: "web",
-            configuredProvider,
-            configuredFallbackProvider,
-            effectiveProvider: Object.keys(quotes).length ? "web" : null,
-            configuredSource: source,
-            requestMode: "web-delayed",
-            lastAttemptAt: attemptedAt,
-            lastSuccessAt,
-            durationMs,
-            requestUrl: url.toString(),
-            requestUrls,
-            requestedTickers: normalizedTickers,
-            returnedTickers: Object.keys(quotes),
-            missingTickers,
-            httpStatus: batchStatus,
-            responsePreview: batchPreview,
-            errorCode: errors.at(-1)?.code || null,
-            errorMessage: errors.at(-1)?.message || null
-          })
-        }
-      },
-      updatedAt: timestamp
-    };
-  } catch (error) {
-    const providerError =
-      error.providerError ||
-      buildProviderError({
-        scope: "batch",
-        tickers: normalizedTickers,
-        code: error?.name === "AbortError" ? "web-timeout" : "request-failed",
-        message:
-          error?.name === "AbortError"
-            ? "Market web batch request timed out."
-            : error.message || "Market web batch request failed.",
-        requestUrl: requestUrls[0] || null,
-        responsePreview: batchPreview
-      });
-    apiQuotaTracker.recordCall("web", { status: "error", fallback: true, timestamp });
-    return {
-      provider: "web",
-      quotes: {},
-      missingTickers: normalizedTickers,
-      historicalSeries: {},
-      sourceMode: "fallback",
-      sourceMeta: {
-        provider: "web",
-        reason: providerError.code,
-        requestMode: "web-delayed",
-        liveCount: 0,
-        totalTickers: normalizedTickers.length,
-        errors: [providerError],
-        providerDiagnostics: {
-          web: buildProviderDiagnosticRecord({
-            provider: "web",
-            configuredProvider,
-            configuredFallbackProvider,
-            effectiveProvider: null,
-            configuredSource: source,
-            requestMode: "web-delayed",
-            lastAttemptAt: attemptedAt,
-            durationMs: Date.now() - startedAt,
-            requestUrl: requestUrls[0] || null,
-            requestUrls,
-            requestedTickers: normalizedTickers,
-            returnedTickers: [],
-            missingTickers: normalizedTickers,
-            httpStatus: batchStatus,
-            responsePreview: batchPreview,
-            errorCode: providerError.code,
-            errorMessage: providerError.message
-          })
-        }
-      },
-      updatedAt: timestamp
-    };
+    sourceAttempts.push(attempt);
+    requestUrls.push(...(attempt.requestUrls || []));
+    errors.push(...(attempt.errors || []));
+
+    for (const [ticker, quote] of Object.entries(attempt.quotes || {})) {
+      quotes[ticker] = quote;
+    }
+
+    unresolved = unresolved.filter((ticker) => !attempt.quotes?.[ticker]);
+    if (Object.keys(attempt.quotes || {}).length > 0) {
+      lastSuccessAt = attempt.lastSuccessAt || new Date().toISOString();
+    }
   }
+
+  const durationMs = Date.now() - startedAt;
+  const liveCount = Object.values(quotes).filter((quote) => quote?.dataMode === "live").length;
+  const delayedCount = Object.values(quotes).filter((quote) => quote?.dataMode === "web-delayed").length;
+  const requestMode = [...new Set(sourceAttempts.map((attempt) => attempt.requestMode).filter(Boolean))].join("+") || "unavailable";
+  const providerScores = Object.fromEntries(sourceAttempts.map((attempt) => [attempt.source, attempt.providerScore ?? 0]));
+  const effectiveSource =
+    sourceAttempts
+      .filter((attempt) => Object.keys(attempt.quotes || {}).length > 0)
+      .sort((left, right) => {
+        if ((right.providerScore ?? 0) !== (left.providerScore ?? 0)) {
+          return (right.providerScore ?? 0) - (left.providerScore ?? 0);
+        }
+        if ((left.durationMs ?? 0) !== (right.durationMs ?? 0)) {
+          return (left.durationMs ?? 0) - (right.durationMs ?? 0);
+        }
+        return (left.errors?.length ?? 0) - (right.errors?.length ?? 0);
+      })[0]?.source || null;
+  const providerScore = effectiveSource ? providerScores[effectiveSource] ?? 0 : 0;
+  const providerErrors = errors.map((error) => ({
+    ...error,
+    code: error.code || error.reason || "unknown-error",
+    reason: error.reason || error.code || "unknown-error"
+  }));
+  const fallbackCount = requestedTickers.filter((ticker) => !quotes[ticker]).length;
+  const sourceMode = Object.keys(quotes).length <= 0 ? "fallback" : Object.keys(quotes).length >= requestedTickers.length ? "live" : "mixed";
+  const latestAttempt = sourceAttempts.at(-1) || {};
+  const latestSuccess = [...sourceAttempts].reverse().find((attempt) => Object.keys(attempt.quotes || {}).length > 0) || null;
+  const requestUrlsUnique = [...new Set(requestUrls.filter(Boolean))];
+
+  apiQuotaTracker.recordCall("web", {
+    status: Object.keys(quotes).length > 0 ? "success" : "error",
+    fallback: fallbackCount > 0,
+    timestamp
+  });
+
+  const finalError = providerErrors.at(-1) || null;
+  const providerDiagnostics = buildProviderDiagnosticRecord({
+    provider: "web",
+    configuredProvider,
+    configuredFallbackProvider,
+    effectiveProvider: Object.keys(quotes).length ? "web" : null,
+    configuredSource: primarySource,
+    requestMode,
+    lastAttemptAt: latestAttempt.lastAttemptAt || timestamp,
+    lastSuccessAt: latestSuccess?.lastSuccessAt || lastSuccessAt,
+    durationMs,
+    requestUrl: requestUrlsUnique[0] || null,
+    requestUrls: requestUrlsUnique,
+    requestedTickers,
+    returnedTickers: Object.keys(quotes),
+    missingTickers: requestedTickers.filter((ticker) => !quotes[ticker]),
+    httpStatus: latestAttempt.httpStatus || null,
+    responsePreview: latestAttempt.responsePreview || null,
+    errorCode: finalError?.code || null,
+    errorMessage: finalError?.message || null,
+    extras: {
+      marketSession,
+      effectiveSource,
+      providerScore,
+      providerScores,
+      liveCount,
+      delayedCount,
+      sourceOrder,
+      sourceAttempts: sourceAttempts.map((attempt) => ({
+        source: attempt.source,
+        requestMode: attempt.requestMode,
+        providerScore: attempt.providerScore,
+        durationMs: attempt.durationMs,
+        returnedTickers: attempt.returnedTickers,
+        missingTickers: attempt.missingTickers,
+        httpStatus: attempt.httpStatus,
+        lastAttemptAt: attempt.lastAttemptAt,
+        lastSuccessAt: attempt.lastSuccessAt,
+        errors: (attempt.errors || []).map((error) => ({
+          code: error.code || error.reason || "unknown-error",
+          message: error.message || null,
+          scope: error.scope || null
+        }))
+      }))
+    }
+  });
+
+  log.info("market_provider_summary", {
+    provider: "web",
+    source: primarySource,
+    effectiveSource,
+    liveCount,
+    delayedCount,
+    fallbackCount,
+    totalTickers: requestedTickers.length,
+    durationMs,
+    providerScore
+  });
+
+  return {
+    provider: "web",
+    quotes,
+    missingTickers: requestedTickers.filter((ticker) => !quotes[ticker]),
+    historicalSeries: {},
+    sourceMode,
+    sourceMeta: {
+      provider: "web",
+      requestMode,
+      liveCount,
+      delayedCount,
+      totalTickers: requestedTickers.length,
+      sourceOrder,
+      effectiveSource,
+      providerScore,
+      providerScores,
+      marketSession,
+      requestUrls: requestUrlsUnique,
+      errors: providerErrors,
+      providerDiagnostics: {
+        web: providerDiagnostics
+      },
+      lastUpstreamError: finalError?.code || finalError?.reason || null,
+      requestedTickers,
+      returnedTickers: Object.keys(quotes),
+      missingTickers: requestedTickers.filter((ticker) => !quotes[ticker]),
+      fallbackCount
+    },
+    updatedAt: timestamp
+  };
 }
 
 export { DEFAULT_WEB_BASE_URL, DEFAULT_WEB_SOURCE, DEFAULT_WEB_USER_AGENT };

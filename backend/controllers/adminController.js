@@ -115,7 +115,11 @@ function buildMarketSampleQuotes(quotes = {}, orderedTickers = [], maxItems = 5)
         price: Number.isFinite(Number(quote.price)) ? Number(quote.price) : null,
         asOf: quote.asOf || quote.updatedAt || null,
         source: quote.source || null,
-        dataMode: quote.dataMode || null
+        sourceDetail: quote.sourceDetail || null,
+        dataMode: quote.dataMode || null,
+        providerScore: Number.isFinite(Number(quote.providerScore)) ? Number(quote.providerScore) : null,
+        providerLatencyMs: Number.isFinite(Number(quote.providerLatencyMs)) ? Number(quote.providerLatencyMs) : null,
+        marketState: quote.marketState || null
       };
     })
     .filter(Boolean)
@@ -350,6 +354,10 @@ export function getPipelineStatus(_req, res) {
               marketSnapshot?.provider ||
               null
             : null,
+        providerScore: marketEnabled ? marketSourceMeta?.providerScore ?? null : null,
+        providerLatencyMs: marketEnabled ? marketSourceMeta?.providerLatencyMs ?? null : null,
+        revision: marketEnabled ? marketSnapshot?.revision || null : null,
+        session: marketSnapshot?.session || marketSourceMeta?.marketSession || null,
         sourceMode: marketEnabled ? marketSnapshot?.sourceMode || "fallback" : "disabled",
         requestMode: marketEnabled ? marketSourceMeta?.requestMode || "unavailable" : "disabled",
         providersUsed: marketProvidersUsed,

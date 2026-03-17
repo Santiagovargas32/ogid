@@ -94,7 +94,15 @@ test("WebSocket emits snapshot and update envelopes", async () => {
   });
 
   try {
-    const snapshotMessage = await waitForMessage(socket, "snapshot");
+    const bootstrapPromise = waitForMessage(socket, "market:quotes-bootstrap:v1");
+    const snapshotPromise = waitForMessage(socket, "snapshot");
+
+    const bootstrapMessage = await bootstrapPromise;
+    assert.equal(bootstrapMessage.type, "market:quotes-bootstrap:v1");
+    assert.ok(bootstrapMessage.data.market);
+    assert.ok("session" in bootstrapMessage.data.market);
+
+    const snapshotMessage = await snapshotPromise;
     assert.equal(snapshotMessage.type, "snapshot");
     assert.ok(Array.isArray(snapshotMessage.data.hotspots));
     assert.ok(snapshotMessage.data.mapAssets);

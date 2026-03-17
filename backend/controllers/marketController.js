@@ -28,8 +28,12 @@ function buildDataModesByTicker(tickers = [], marketQuotes = {}) {
           dataMode: quote.dataMode || "synthetic-fallback",
           synthetic: Boolean(quote.synthetic),
           source: quote.source || "unknown",
+          sourceDetail: quote.sourceDetail || null,
           quoteOriginStage: quote.quoteOriginStage || resolveQuoteOriginStage(quote),
-          quoteAgeMin: quote.quoteAgeMin ?? computeQuoteAgeMin(quote)
+          quoteAgeMin: quote.quoteAgeMin ?? computeQuoteAgeMin(quote),
+          providerScore: Number.isFinite(Number(quote.providerScore)) ? Number(quote.providerScore) : null,
+          providerLatencyMs: Number.isFinite(Number(quote.providerLatencyMs)) ? Number(quote.providerLatencyMs) : null,
+          marketState: quote.marketState || null
         }
       ];
     })

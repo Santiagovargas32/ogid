@@ -118,6 +118,8 @@ test("REST API exposes health and snapshot payloads", async () => {
     assert.equal(healthPayload.data.market.configuredProvider, "web");
     assert.equal(healthPayload.data.market.configuredFallbackProvider, "fmp");
     assert.equal(healthPayload.data.market.effectiveProvider, "web");
+    assert.equal(typeof healthPayload.data.market.providerScore, "number");
+    assert.ok(healthPayload.data.market.session);
     assert.equal(healthPayload.data.market.historicalPersistence.enabled, false);
 
     const snapshotResponse = await fetch(`${baseUrl}/api/intel/snapshot?countries=US,IL,IR`);
@@ -192,6 +194,9 @@ test("REST API exposes health and snapshot payloads", async () => {
     assert.ok(quotesPayload.data.quotes.GD);
     assert.ok("quoteOriginStage" in quotesPayload.data.quotes.GD);
     assert.ok("quoteAgeMin" in quotesPayload.data.quotes.GD);
+    assert.equal(quotesPayload.data.quotes.GD.sourceDetail, "stooq");
+    assert.ok("providerScore" in quotesPayload.data.quotes.GD);
+    assert.ok("providerLatencyMs" in quotesPayload.data.quotes.GD);
     assert.ok(quotesPayload.data.market.coverageByMode);
 
     const newsResponse = await fetch(`${baseUrl}/api/intel/news?countries=US,IL,IR&limit=25&sources=fallback`);
@@ -273,6 +278,8 @@ test("REST API exposes health and snapshot payloads", async () => {
     assert.equal(pipelinePayload.data.market.configuredProvider, "web");
     assert.equal(pipelinePayload.data.market.configuredFallbackProvider, "fmp");
     assert.equal(pipelinePayload.data.market.effectiveProvider, "web");
+    assert.equal(typeof pipelinePayload.data.market.providerScore, "number");
+    assert.ok(pipelinePayload.data.market.session);
     assert.ok(pipelinePayload.data.market.providerDiagnostics);
     assert.ok(pipelinePayload.data.market.providerDiagnostics.web);
     assert.ok(pipelinePayload.data.market.providerDiagnostics.fmp);
@@ -432,9 +439,10 @@ test("pipeline status exposes provider and rss diagnostics for ok, error and ski
     assert.deepEqual(market.unresolvedTickers, []);
     assert.deepEqual(market.sampleQuotes, []);
     assert.equal(market.webDiagnostics.status, "disabled");
-    assert.equal(market.webDiagnostics.configuredSource, "stooq");
+    assert.equal(market.webDiagnostics.configuredSource, "yahoo");
     assert.equal(market.providerDiagnostics.web.status, "disabled");
     assert.equal(market.providerDiagnostics.fmp.status, "disabled");
+    assert.ok(market.session);
     assert.equal(market.historicalPersistence.enabled, false);
     assert.equal(news.rawCountByProvider.newsapi, 1);
     assert.equal(news.rawCountByProvider.gnews, 0);

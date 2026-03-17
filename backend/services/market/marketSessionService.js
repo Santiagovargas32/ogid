@@ -54,7 +54,7 @@ export function isMarketOpenEt(date = new Date()) {
 export function resolveMarketIntervalMs({
   now = new Date(),
   activeIntervalMs = 120_000,
-  offHoursIntervalMs = 900_000,
+  offHoursIntervalMs = 600_000,
   quotaRemaining = null,
   quotaBand = "GREEN",
   bandIntervals = {}

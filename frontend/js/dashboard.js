@@ -1,6 +1,8 @@
 import { api } from "./api.js";
 import { applyUpdate, getState, setSnapshot, subscribe } from "./state.js";
 import { RealtimeSocket } from "./websocket.js";
+import { SmartPollLoop } from "./smartPollLoop.js";
+import { resolveMarketQuotesPollDelayMs } from "./marketPolling.js";
 import { HotspotMap, getLevelColor } from "./map.js";
 import { mountSituationalWorkspace } from "./media/situationalWorkspace.js";
 import { startWorldBrief } from "./intelligence/worldBrief.js";
@@ -69,6 +71,8 @@ let analyticsRequestToken = 0;
 let selectedCouplingTickers = [];
 let couplingSelectionTouched = false;
 let selectedAnalyticsWindowMin = 120;
+let marketQuotesPoller = null;
+let marketQuotesPollerStarted = false;
 let manualRefreshPendingId = null;
 let manualRefreshState = "idle";
 let manualRefreshMessage = "Refresh: idle";
@@ -702,11 +706,20 @@ function renderMeta(meta, market) {
   elements.sourceModeBadge.textContent = `Source: ${meta.sourceMode}`;
 
   elements.marketModeBadge.className = `badge ${sourceBadgeClass(market.sourceMode)}`;
-  elements.marketModeBadge.textContent = `Market: ${market.sourceMode || "fallback"}`;
+  const sessionOpen = market.session?.open ? "open" : market.session?.state || "closed";
+  elements.marketModeBadge.textContent = `Market: ${sessionOpen} / ${market.sourceMode || "fallback"}`;
+  elements.marketModeBadge.title = [
+    `session: ${market.session?.state || "--"}`,
+    `providerScore: ${Number.isFinite(Number(market.sourceMeta?.providerScore)) ? Number(market.sourceMeta.providerScore) : "--"}`,
+    `latency: ${Number.isFinite(Number(market.sourceMeta?.providerLatencyMs)) ? `${Number(market.sourceMeta.providerLatencyMs)}ms` : "--"}`,
+    `revision: ${market.revision || "--"}`
+  ].join(" | ");
 
   elements.lastUpdateText.textContent = `Last update: ${formatDate(meta.lastRefreshAt)}`;
   elements.marketUpdatedText.textContent =
-    market.sourceMode === "disabled" ? "Quotes: market disabled" : `Quotes: ${formatDate(market.updatedAt)}`;
+    market.sourceMode === "disabled"
+      ? "Quotes: market disabled"
+      : `Quotes: ${formatDate(market.updatedAt)}${market.revision ? ` | rev ${String(market.revision).slice(0, 8)}` : ""}`;
   if (elements.marketCoverageText) {
     const coverage = market.coverageByMode || market.sourceMeta?.coverageByMode || {};
       elements.marketCoverageText.textContent =
@@ -1213,7 +1226,12 @@ function renderMarketQuotes(market = { quotes: {} }) {
       const modeCell = `<span class="market-mode-pill ${marketModeClass(mode)}">${marketModeLabel(mode)}</span>`;
       const quoteAgeMin = deriveQuoteAgeMin(quote);
       const ageLabel = Number.isFinite(quoteAgeMin) ? `${quoteAgeMin}m old` : "age --";
-      const sourceLabel = quote.source || "unknown";
+      const sourceLabel = [quote.source || "unknown", quote.sourceDetail ? `/${quote.sourceDetail}` : ""].join("");
+      const qualityBits = [
+        Number.isFinite(Number(quote.providerScore)) ? `score ${Number(quote.providerScore)}` : null,
+        Number.isFinite(Number(quote.providerLatencyMs)) ? `${Number(quote.providerLatencyMs)}ms` : null,
+        quote.marketState ? `state ${String(quote.marketState).toLowerCase()}` : null
+      ].filter(Boolean);
       return `
         <tr>
           <td>
@@ -1221,7 +1239,7 @@ function renderMarketQuotes(market = { quotes: {} }) {
               <strong>${escapeHtml(ticker)}</strong>
               ${modeCell}
             </div>
-            <div class="market-quote-meta">${escapeHtml(sourceLabel)} | ${escapeHtml(ageLabel)}</div>
+            <div class="market-quote-meta">${escapeHtml(sourceLabel)} | ${escapeHtml(ageLabel)}${qualityBits.length ? ` | ${escapeHtml(qualityBits.join(" | "))}` : ""}</div>
           </td>
           <td>${Number.isFinite(quote.price) ? quote.price.toFixed(2) : "--"}</td>
           <td class="${cls}">${sign}${change.toFixed(2)}%</td>
@@ -1229,6 +1247,64 @@ function renderMarketQuotes(market = { quotes: {} }) {
       `;
     })
     .join("");
+}
+
+function shouldIgnoreMarketPayload(market = {}) {
+  const currentMarket = getState().market || {};
+  const currentStamp = currentMarket.revision || currentMarket.updatedAt || null;
+  const nextStamp = market.revision || market.updatedAt || null;
+  return Boolean(nextStamp && currentStamp && nextStamp === currentStamp);
+}
+
+function applyMarketPayload(payload = {}) {
+  if (!payload || !payload.market) {
+    return false;
+  }
+
+  if (shouldIgnoreMarketPayload(payload.market)) {
+    return false;
+  }
+
+  applyUpdate(payload);
+  scheduleAnalyticsRefresh();
+  return true;
+}
+
+function startMarketQuotesPolling() {
+  if (marketQuotesPollerStarted) {
+    return marketQuotesPoller;
+  }
+
+  marketQuotesPoller = new SmartPollLoop({
+    immediate: false,
+    delayResolver: ({ hidden }) =>
+      resolveMarketQuotesPollDelayMs({
+        hidden,
+        marketOpen: Boolean(getState().market?.session?.open),
+        dataMode: getState().market?.sourceMode || "live"
+      }),
+    task: async () => {
+      const currentState = getState();
+      const tickers = Object.keys(currentState.market?.quotes || {});
+      if (!tickers.length) {
+        return null;
+      }
+
+      return api.getMarketQuotes({ tickers });
+    },
+    onData: (payload) => {
+      if (!payload) {
+        return;
+      }
+      applyMarketPayload(payload);
+    },
+    onError: (error) => {
+      console.error("Failed to refresh market quotes:", error);
+    }
+  });
+  marketQuotesPollerStarted = true;
+  marketQuotesPoller.start();
+  return marketQuotesPoller;
 }
 
 function renderImpact(impact = { items: [] }) {
@@ -1750,6 +1826,10 @@ function mountWebSocket() {
     path: "/ws",
     onStatusChange: setWsStatus,
     onMessage: (message) => {
+      if (message.type === "market:quotes-bootstrap:v1") {
+        applyMarketPayload(message.data || {});
+        return;
+      }
       if (message.type === "snapshot") {
         setSnapshot(message.data);
         scheduleAnalyticsRefresh();
@@ -2075,6 +2155,7 @@ async function bootstrap() {
   });
 
   setWsStatus("connecting");
+  mountWebSocket();
 
   try {
     const snapshot = await api.getSnapshot({ countries: selectedCountryQueryValue(), limit: 100 });
@@ -2086,10 +2167,12 @@ async function bootstrap() {
       '<div class="p-3 small text-danger">Failed to load initial intelligence snapshot.</div>';
   }
 
-  mountWebSocket();
+  startMarketQuotesPolling();
+  marketQuotesPoller?.trigger(0);
 
   window.addEventListener("beforeunload", () => {
     socket?.close();
+    marketQuotesPoller?.stop();
     clearInterval(apiLimitsPoller);
     clearTimeout(analyticsRefreshTimer);
     clearInterval(manualRefreshCooldownTimer);

@@ -229,7 +229,7 @@ class RefreshOrchestratorService {
     const quotaBand = resolveBandByProviderSnapshots(this.getMarketProviderSnapshots());
     return resolveMarketIntervalMs({
       activeIntervalMs: this.config.market?.activeIntervalMs || this.config.market?.refreshIntervalMs || 120_000,
-      offHoursIntervalMs: this.config.market?.offHoursIntervalMs || 900_000,
+      offHoursIntervalMs: this.config.market?.offHoursIntervalMs || 600_000,
       quotaRemaining: this.getMarketRemainingQuota(),
       quotaBand,
       bandIntervals: this.config.market?.intervalByBandMs || {}

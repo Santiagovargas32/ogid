@@ -4,6 +4,7 @@ import { createLogger } from "../../utils/logger.js";
 import { fetchFmpQuotes } from "./providers/fmpProvider.js";
 import { buildFallbackQuote } from "./providers/quoteFallback.js";
 import { fetchWebQuotes } from "./providers/webQuoteProvider.js";
+import { isMarketOpenEt } from "./marketSessionService.js";
 import { buildCoverageByMode } from "./quoteMetadata.js";
 
 const log = createLogger("backend/services/market/marketProviderRouter");
@@ -20,6 +21,56 @@ function buildDisabledCoverageByMode() {
     historicalEod: 0,
     routerStale: 0,
     syntheticFallback: 0
+  };
+}
+
+function buildMarketSession(timestamp = new Date().toISOString()) {
+  const now = new Date(timestamp);
+  const open = isMarketOpenEt(now);
+  return {
+    open,
+    state: open ? "open" : "closed",
+    checkedAt: timestamp,
+    timezone: "America/New_York"
+  };
+}
+
+function computeProviderScore(provider, providerResult = {}, marketSession = {}) {
+  const diagnostic = providerResult.sourceMeta?.providerDiagnostics?.[provider] || {};
+  const returnedCount = Number((diagnostic.returnedTickers || Object.keys(providerResult.quotes || {})).length || 0);
+  const totalCount = Number(providerResult.sourceMeta?.totalTickers || returnedCount || 0);
+  const durationMs = Number.isFinite(Number(diagnostic.durationMs))
+    ? Number(diagnostic.durationMs)
+    : Number.isFinite(Number(providerResult.sourceMeta?.providerLatencyMs))
+      ? Number(providerResult.sourceMeta.providerLatencyMs)
+      : 0;
+  const coverage = totalCount > 0 ? returnedCount / totalCount : 0;
+  const liveCount = Number(providerResult.sourceMeta?.liveCount || 0);
+  const delayedCount = Number(providerResult.sourceMeta?.delayedCount || 0);
+  const freshnessBonus = liveCount > 0 ? 20 : delayedCount > 0 ? 10 : 0;
+  const latencyPenalty = Math.min(30, durationMs / 180);
+  const errorPenalty = Number((providerResult.sourceMeta?.errors || []).length || 0) * 5;
+  const sessionBonus = marketSession?.open ? 5 : 0;
+
+  return Math.max(0, Math.round(coverage * 60 + freshnessBonus + sessionBonus - latencyPenalty - errorPenalty));
+}
+
+function decorateProviderDiagnostic(provider, providerResult = {}, marketSession = {}) {
+  const diagnostic = providerResult.sourceMeta?.providerDiagnostics?.[provider] || {};
+  const providerScore = computeProviderScore(provider, providerResult, marketSession);
+  return {
+    ...diagnostic,
+    providerScore,
+    providerLatencyMs: Number.isFinite(Number(diagnostic.durationMs))
+      ? Number(diagnostic.durationMs)
+      : Number.isFinite(Number(providerResult.sourceMeta?.providerLatencyMs))
+        ? Number(providerResult.sourceMeta.providerLatencyMs)
+        : null,
+    marketSession,
+    sourceMode: providerResult.sourceMode || diagnostic.sourceMode || null,
+    liveCount: providerResult.sourceMeta?.liveCount ?? null,
+    delayedCount: providerResult.sourceMeta?.delayedCount ?? null,
+    effectiveSource: providerResult.sourceMeta?.effectiveSource || diagnostic.effectiveSource || null
   };
 }
 
@@ -43,7 +94,12 @@ function buildProviderConfig(provider, config, primaryProvider, fallbackProvider
     return {
       source: config.webSource || "stooq",
       baseUrl: config.webBaseUrl || "https://stooq.com",
+      yahooBaseUrl: config.webYahooBaseUrl || "https://query1.finance.yahoo.com",
+      stooqBaseUrl: config.webStooqBaseUrl || "https://stooq.com",
       userAgent: config.webUserAgent || "ogid/1.0",
+      twelveApiKey: config.twelveApiKey || "",
+      twelveBaseUrl: config.twelveBaseUrl || "https://api.twelvedata.com",
+      session: config.session || null,
       configuredProvider: primaryProvider,
       configuredFallbackProvider: fallbackProvider
     };
@@ -189,16 +245,20 @@ function buildFallbackSet(unresolved, timestamp) {
 function buildDisabledMarketResult(config = {}, timestamp = new Date().toISOString()) {
   const tickers = (config.tickers || []).map((ticker) => String(ticker).toUpperCase());
   const batchSize = Number.parseInt(String(config.batchChunkSize ?? 25), 10) || 25;
+  const session = buildMarketSession(timestamp);
 
   return {
     provider: "disabled",
     sourceMode: "disabled",
+    revision: null,
+    session,
     sourceMeta: {
       enabled: false,
       provider: "disabled",
       configuredProvider: null,
       configuredFallbackProvider: null,
       effectiveProvider: null,
+      providerScore: 0,
       providersUsed: [],
       providersSkipped: [],
       liveCount: 0,
@@ -224,7 +284,9 @@ function buildDisabledMarketResult(config = {}, timestamp = new Date().toISOStri
         syntheticFallbackTickers: [],
         fallbackReason: "market-provider-empty"
       },
-      disabledReason: config.disabledReason || "market-provider-empty"
+      disabledReason: config.disabledReason || "market-provider-empty",
+      marketSession: session,
+      providerScores: {}
     },
     quotes: Object.fromEntries(
       tickers.map((ticker) => [
@@ -235,7 +297,9 @@ function buildDisabledMarketResult(config = {}, timestamp = new Date().toISOStri
           asOf: null,
           source: "disabled",
           synthetic: true,
-          dataMode: "synthetic-fallback"
+          dataMode: "synthetic-fallback",
+          providerScore: 0,
+          providerLatencyMs: null
         }
       ])
     ),
@@ -272,8 +336,9 @@ export async function fetchMarketQuotes(config = {}) {
     return buildDisabledMarketResult(config);
   }
 
-  const tickers = (config.tickers || []).map((ticker) => String(ticker).toUpperCase());
+  const tickers = [...new Set((config.tickers || []).map((ticker) => String(ticker).toUpperCase()).filter(Boolean))];
   const timestamp = new Date().toISOString();
+  const session = buildMarketSession(timestamp);
   const primaryProvider = normalizeProvider(config.provider || "fmp", config.provider === "web" ? "web" : "fmp");
   const fallbackProvider = normalizeProvider(
     config.fallbackProvider || resolveDefaultFallbackProvider(primaryProvider),
@@ -295,6 +360,7 @@ export async function fetchMarketQuotes(config = {}) {
   let lastUpstreamError = null;
   const requestModes = [];
   let providerDiagnostics = {};
+  const providerScores = {};
   let unresolved = [...tickers];
 
   for (const provider of providerOrder.providersAvailable) {
@@ -309,6 +375,7 @@ export async function fetchMarketQuotes(config = {}) {
       provider,
       {
         ...config,
+        session,
         enableHistoricalBackfill: historicalBackfillTickers.length > 0,
         historicalBackfillTickers
       },
@@ -326,7 +393,12 @@ export async function fetchMarketQuotes(config = {}) {
     providersUsed.push(provider);
     Object.assign(mergedQuotes, providerResult.quotes || {});
     Object.assign(historicalSeries, providerResult.historicalSeries || {});
-    providerDiagnostics = mergeProviderDiagnostics(providerDiagnostics, providerResult);
+    const decoratedDiagnostic = decorateProviderDiagnostic(provider, providerResult, session);
+    providerDiagnostics = {
+      ...providerDiagnostics,
+      [provider]: decoratedDiagnostic
+    };
+    providerScores[provider] = decoratedDiagnostic.providerScore;
     errors.push(
       ...(providerResult.sourceMeta?.errors || []).map((error) => ({
         provider,
@@ -388,10 +460,26 @@ export async function fetchMarketQuotes(config = {}) {
     reason: error.reason || error.code || "unknown-error"
   }));
   const effectiveProvider =
-    providersUsed.find((provider) => {
-      const diagnostic = providerDiagnostics[provider];
-      return diagnostic?.returnedTickers?.length > 0 || diagnostic?.effectiveProvider === provider;
-    }) || null;
+    [...providersUsed]
+      .filter((provider) => Number((providerDiagnostics[provider]?.returnedTickers || []).length || 0) > 0)
+      .sort((left, right) => {
+        const leftScore = providerScores[left] ?? 0;
+        const rightScore = providerScores[right] ?? 0;
+        if (rightScore !== leftScore) {
+          return rightScore - leftScore;
+        }
+
+        const leftReturned = providerDiagnostics[left]?.returnedTickers?.length || 0;
+        const rightReturned = providerDiagnostics[right]?.returnedTickers?.length || 0;
+        if (rightReturned !== leftReturned) {
+          return rightReturned - leftReturned;
+        }
+
+        const leftLatency = providerDiagnostics[left]?.providerLatencyMs ?? Number.MAX_SAFE_INTEGER;
+        const rightLatency = providerDiagnostics[right]?.providerLatencyMs ?? Number.MAX_SAFE_INTEGER;
+        return leftLatency - rightLatency;
+      })[0] || null;
+  const effectiveProviderScore = effectiveProvider ? providerScores[effectiveProvider] ?? 0 : 0;
   const routerDecision = {
     attemptedOrder: providerOrder.attemptedOrder,
     providersSkipped: providerOrder.providersSkipped,
@@ -409,6 +497,7 @@ export async function fetchMarketQuotes(config = {}) {
     primaryProvider,
     fallbackProvider,
     effectiveProvider,
+    effectiveProviderScore,
     providersUsed,
     providersSkipped: providerOrder.providersSkipped,
     liveCount,
@@ -428,9 +517,15 @@ export async function fetchMarketQuotes(config = {}) {
       configuredProvider: primaryProvider,
       configuredFallbackProvider: fallbackProvider || null,
       effectiveProvider,
+      providerScore: effectiveProviderScore,
+      providerLatencyMs: effectiveProvider ? providerDiagnostics[effectiveProvider]?.providerLatencyMs ?? null : null,
+      marketSession: session,
+      session,
+      providerScores,
       providersUsed,
       providersSkipped: providerOrder.providersSkipped,
       liveCount,
+      delayedCount: coverageByMode.webDelayed,
       webDelayedCount: coverageByMode.webDelayed,
       totalTickers,
       fallbackCount,
@@ -451,6 +546,8 @@ export async function fetchMarketQuotes(config = {}) {
     },
     quotes: mergedQuotes,
     historicalSeries,
-    updatedAt: timestamp
+    updatedAt: timestamp,
+    session,
+    revision: null
   };
 }

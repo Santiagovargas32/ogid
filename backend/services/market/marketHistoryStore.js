@@ -116,6 +116,8 @@ export class MarketHistoryStore {
       provider: snapshot.provider || "market-router",
       sourceMode: snapshot.sourceMode || "fallback",
       sourceMeta: snapshot.sourceMeta || { provider: "unknown" },
+      revision: snapshot.revision || null,
+      session: snapshot.session || null,
       updatedAt: snapshot.updatedAt || null,
       quotes: snapshot.quotes || {},
       timeseries: Object.fromEntries(timeseriesEntries)
@@ -147,6 +149,8 @@ export class MarketHistoryStore {
         provider: marketState.provider || "market-router",
         sourceMode: marketState.sourceMode || "fallback",
         sourceMeta: marketState.sourceMeta || { provider: "unknown" },
+        revision: marketState.revision || null,
+        session: marketState.session || null,
         updatedAt: marketState.updatedAt || null,
         tickers: ensureTickerList([...Object.keys(marketState.quotes || {}), ...this.tickers]),
         quotes: marketState.quotes || {}

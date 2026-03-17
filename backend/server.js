@@ -207,6 +207,7 @@ function readConfig(overrides = {}) {
   );
   const envMarketProvider = toTrimmedString(process.env.MARKET_PROVIDER);
   const envMarketFallbackProvider = toTrimmedString(process.env.MARKET_PROVIDER_FALLBACK);
+  const envMarketWebSource = toTrimmedString(process.env.MARKET_WEB_SOURCE).toLowerCase() || "yahoo";
   const marketTickers = toList(process.env.MARKET_TICKERS, ["GD", "BA", "NOC", "LMT", "RTX", "XOM", "CVX"]).map(
     (ticker) => ticker.toUpperCase()
   );
@@ -283,8 +284,18 @@ function readConfig(overrides = {}) {
         process.env.FMP_STABLE_BASE_URL ||
         process.env.FMP_BASE_URL ||
         "https://financialmodelingprep.com/stable",
-      webSource: process.env.MARKET_WEB_SOURCE || "stooq",
-      webBaseUrl: process.env.MARKET_WEB_BASE_URL || "https://stooq.com",
+      webSource: envMarketWebSource,
+      webBaseUrl:
+        process.env.MARKET_WEB_BASE_URL ||
+        (envMarketWebSource === "stooq"
+          ? "https://stooq.com"
+          : envMarketWebSource === "twelve"
+            ? "https://api.twelvedata.com"
+            : "https://query1.finance.yahoo.com"),
+      webYahooBaseUrl: process.env.MARKET_YAHOO_BASE_URL || "https://query1.finance.yahoo.com",
+      webStooqBaseUrl: process.env.MARKET_STOOQ_BASE_URL || "https://stooq.com",
+      twelveApiKey: process.env.MARKET_TWELVE_API_KEY || process.env.TWELVE_DATA_API_KEY || process.env.TWELVEDATA_API_KEY || "",
+      twelveBaseUrl: process.env.MARKET_TWELVE_BASE_URL || "https://api.twelvedata.com",
       webTimeoutMs: toInt(process.env.MARKET_WEB_TIMEOUT_MS, toInt(process.env.MARKET_TIMEOUT_MS, 10_000)),
       webUserAgent: process.env.MARKET_WEB_USER_AGENT || "ogid/1.0",
       timeoutMs: toInt(process.env.MARKET_TIMEOUT_MS, 10_000),
@@ -301,23 +312,23 @@ function readConfig(overrides = {}) {
         process.env.MARKET_ACTIVE_INTERVAL_MS,
         toInt(process.env.MARKET_REFRESH_INTERVAL_MS, 180_000)
       ),
-      offHoursIntervalMs: toInt(process.env.MARKET_OFFHOURS_INTERVAL_MS, 1_800_000),
+      offHoursIntervalMs: toInt(process.env.MARKET_OFFHOURS_INTERVAL_MS, 600_000),
       intervalByBandMs: {
         GREEN: {
           activeIntervalMs: 180_000,
-          offHoursIntervalMs: 1_800_000
+          offHoursIntervalMs: 600_000
         },
         YELLOW: {
           activeIntervalMs: 300_000,
-          offHoursIntervalMs: 3_600_000
+          offHoursIntervalMs: 600_000
         },
         RED: {
           activeIntervalMs: 900_000,
-          offHoursIntervalMs: 7_200_000
+          offHoursIntervalMs: 600_000
         },
         CRITICAL: {
           activeIntervalMs: 7_200_000,
-          offHoursIntervalMs: 7_200_000
+          offHoursIntervalMs: 600_000
         }
       },
       impactWindowMin: toInt(process.env.IMPACT_WINDOW_MIN, 120)
@@ -586,7 +597,7 @@ export function createAppServer(overrides = {}) {
         newsIntervalMs: config.news.intervalMs,
         newsIntervalByBandMs: config.news.intervalByBandMs,
         marketActiveIntervalMs: config.market.activeIntervalMs,
-        marketOffHoursIntervalMs: config.market.offHoursIntervalMs,
+      marketOffHoursIntervalMs: config.market.offHoursIntervalMs,
         manualRefresh: config.manualRefresh,
         mediaRefreshIntervalMs: config.media?.refreshIntervalMs,
         mediaTimeoutMs: config.media?.timeoutMs

@@ -32,7 +32,11 @@ export function buildFallbackQuote(ticker, timestamp) {
     changePct: Number(changePct.toFixed(2)),
     asOf: timestamp,
     source: "fallback",
+    sourceDetail: "synthetic",
     synthetic: true,
-    dataMode: "synthetic-fallback"
+    dataMode: "synthetic-fallback",
+    providerScore: 0,
+    providerLatencyMs: null,
+    marketState: "SYNTHETIC"
   };
 }

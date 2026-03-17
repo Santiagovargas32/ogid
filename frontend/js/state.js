@@ -46,7 +46,14 @@ const appState = {
     quotes: {},
     timeseries: {},
     sourceMode: "fallback",
-    updatedAt: null
+    updatedAt: null,
+    revision: null,
+    session: {
+      open: false,
+      state: "closed",
+      checkedAt: null,
+      timezone: "America/New_York"
+    }
   },
   impact: {
     items: [],
@@ -59,6 +66,29 @@ const appState = {
 };
 
 const subscribers = new Set();
+
+function mergeMarketPayload(previousMarket = {}, nextMarket = {}) {
+  const merged = {
+    ...previousMarket,
+    ...nextMarket
+  };
+
+  if (nextMarket.quotes && typeof nextMarket.quotes === "object") {
+    merged.quotes = {
+      ...(previousMarket.quotes || {}),
+      ...nextMarket.quotes
+    };
+  }
+
+  if (nextMarket.timeseries && typeof nextMarket.timeseries === "object") {
+    merged.timeseries = {
+      ...(previousMarket.timeseries || {}),
+      ...nextMarket.timeseries
+    };
+  }
+
+  return merged;
+}
 
 function notify() {
   const snapshot = structuredClone(appState);
@@ -93,7 +123,7 @@ function applyPayload(payload = {}) {
     appState.timeseries = payload.timeseries;
   }
   if (payload.market && typeof payload.market === "object") {
-    appState.market = payload.market;
+    appState.market = mergeMarketPayload(appState.market, payload.market);
   }
   if (payload.impact && typeof payload.impact === "object") {
     appState.impact = payload.impact;

@@ -110,9 +110,16 @@ function classifyDirection(momentum, pressure) {
   return "Sideways";
 }
 
-function quoteModePenalty(quote = {}) {
+function quoteQualityPenalty(quote = {}) {
   const normalizedMode = normalizeQuoteDataMode(quote?.dataMode || (quote?.synthetic ? "synthetic-fallback" : "live"));
-  return MODE_CONFIDENCE_PENALTY[normalizedMode] || MODE_CONFIDENCE_PENALTY["synthetic-fallback"];
+  const modePenalty = MODE_CONFIDENCE_PENALTY[normalizedMode] || MODE_CONFIDENCE_PENALTY["synthetic-fallback"];
+  const latencyPenalty = Number.isFinite(Number(quote?.providerLatencyMs))
+    ? Math.min(8, Math.round(Number(quote.providerLatencyMs) / 250))
+    : 0;
+  const scoreBonus = Number.isFinite(Number(quote?.providerScore))
+    ? Math.min(6, Math.round(Number(quote.providerScore) / 20))
+    : 0;
+  return Math.max(0, modePenalty + latencyPenalty - scoreBonus);
 }
 
 function buildSectorPrediction({ sector, articles, tickers, countries, marketQuotes, inputMode }) {
@@ -121,7 +128,7 @@ function buildSectorPrediction({ sector, articles, tickers, countries, marketQuo
   const momentum = Number(
     average(tickers.map((ticker) => Number(marketQuotes[ticker]?.changePct || 0))).toFixed(2)
   );
-  const averageMarketPenalty = Math.round(average(tickers.map((ticker) => quoteModePenalty(marketQuotes[ticker]))) * 0.6);
+  const averageMarketPenalty = Math.round(average(tickers.map((ticker) => quoteQualityPenalty(marketQuotes[ticker]))) * 0.6);
   const direction = classifyDirection(momentum, sectorPressure);
   const confidence = Math.max(
     35,
@@ -153,7 +160,7 @@ function buildTickerPredictions(sectorPredictions = [], marketQuotes = {}) {
       const confidenceBoost = Math.min(8, Math.round(Math.abs(changePct)));
       const confidence = Math.max(
         25,
-        Math.min(95, sectorPrediction.confidence + confidenceBoost - quoteModePenalty(quote))
+        Math.min(95, sectorPrediction.confidence + confidenceBoost - quoteQualityPenalty(quote))
       );
       const predictionScore = Number((sectorPrediction.score * (confidence / 100)).toFixed(2));
       items.push({

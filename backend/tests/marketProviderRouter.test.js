@@ -4,6 +4,20 @@ import apiQuotaTracker from "../services/admin/apiQuotaTrackerService.js";
 import { fetchMarketQuotes } from "../services/market/marketProviderRouter.js";
 import { resetFmpProviderStateForTests } from "../services/market/providers/fmpProvider.js";
 
+function jsonResponse(payload, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { "content-type": "application/json" }
+  });
+}
+
+function csvResponse(text, status = 200) {
+  return new Response(text, {
+    status,
+    headers: { "content-type": "text/csv" }
+  });
+}
+
 test("market provider router returns deterministic fallback when web and fmp are unavailable", async () => {
   resetFmpProviderStateForTests();
   apiQuotaTracker.reset({
@@ -41,7 +55,7 @@ test("market provider router returns deterministic fallback when web and fmp are
   assert.equal(result.sourceMeta.providerDiagnostics.fmp.errorCode, "api-key-missing");
 });
 
-test("market provider router merges delayed web quotes with fmp fallback", async () => {
+test("market provider router prefers yahoo, dedupes duplicate tickers and ignores duplicate upstream symbols", async () => {
   resetFmpProviderStateForTests();
   apiQuotaTracker.reset({
     webDailyLimit: 0,
@@ -54,111 +68,166 @@ test("market provider router merges delayed web quotes with fmp fallback", async
     const value = String(url);
     seenUrls.push(value);
 
-    if (value.includes("stooq.com/q/l/")) {
-      if (value.includes("s=gd.us%2Cba.us")) {
-        return new Response(
-          "Symbol,Date,Time,Open,High,Low,Close,Volume,Name",
-          {
-            status: 200,
-            headers: { "content-type": "text/csv" }
-          }
-        );
-      }
-
-      if (value.includes("s=gd.us")) {
-        return new Response(
-          "Symbol,Date,Time,Open,High,Low,Close,Volume,Name\nGD.US,2026-03-16,18:45:00,300.00,301.00,299.00,300.50,1000,General Dynamics",
-          {
-            status: 200,
-            headers: { "content-type": "text/csv" }
-          }
-        );
-      }
-
-      if (value.includes("s=ba.us")) {
-        return new Response(
-          "Symbol,Date,Time,Open,High,Low,Close,Volume,Name",
-          {
-            status: 200,
-            headers: { "content-type": "text/csv" }
-          }
-        );
-      }
-
-      return new Response(
-        "Symbol,Date,Time,Open,High,Low,Close,Volume,Name\nBA.US,2026-03-16,18:45:00,200.00,201.00,199.00,200.25,1100,Boeing",
-        {
-          status: 200,
-          headers: { "content-type": "text/csv" }
+    if (value.includes("query1.finance.yahoo.com/v7/finance/quote")) {
+      return jsonResponse({
+        quoteResponse: {
+          result: [
+            {
+              symbol: "GD",
+              regularMarketPrice: 300.5,
+              regularMarketChangePercent: 0.25,
+              regularMarketPreviousClose: 299.75,
+              regularMarketDayHigh: 301.2,
+              regularMarketDayLow: 298.8,
+              regularMarketVolume: 1200,
+              regularMarketTime: 1_742_141_100,
+              marketState: "REGULAR"
+            },
+            {
+              symbol: "BA",
+              regularMarketPrice: 205.22,
+              regularMarketChangePercent: 0.8,
+              regularMarketPreviousClose: 203.6,
+              regularMarketDayHigh: 206.0,
+              regularMarketDayLow: 202.0,
+              regularMarketVolume: 1800,
+              regularMarketTime: 1_742_141_100,
+              marketState: "REGULAR"
+            },
+            {
+              symbol: "BA",
+              regularMarketPrice: 206.11,
+              regularMarketChangePercent: 1.1,
+              regularMarketPreviousClose: 203.6,
+              regularMarketDayHigh: 206.5,
+              regularMarketDayLow: 202.0,
+              regularMarketVolume: 1801,
+              regularMarketTime: 1_742_141_160,
+              marketState: "REGULAR"
+            }
+          ]
         }
-      );
+      });
     }
 
-    if (value.includes("stooq.com/q/d/l/")) {
-      return new Response(
-        "Date,Open,High,Low,Close,Volume\n2026-03-14,296.00,299.00,295.00,298.00,1000\n2026-03-15,298.00,300.00,297.00,299.00,1100",
-        {
-          status: 200,
-          headers: { "content-type": "text/csv" }
-        }
-      );
-    }
-
-    if (value.includes("/stable/batch-quote")) {
-      return new Response(
-        JSON.stringify([
-          {
-            symbol: "BA",
-            price: 205.22,
-            changePercentage: "(+0.80%)"
-          }
-        ]),
-        {
-          status: 200,
-          headers: { "content-type": "application/json" }
-        }
-      );
-    }
-
-    return new Response("{}", { status: 500 });
+    return jsonResponse({}, 404);
   };
 
   try {
     const result = await fetchMarketQuotes({
       provider: "web",
       fallbackProvider: "fmp",
-      webSource: "stooq",
-      webBaseUrl: "https://stooq.com",
-      webUserAgent: "ogid/1.0",
-      fmpApiKey: "test-key",
-      fmpBaseUrl: "https://financialmodelingprep.com/api/v3",
-      tickers: ["GD", "BA"],
+      webSource: "yahoo",
+      webBaseUrl: "https://query1.finance.yahoo.com",
+      twelveApiKey: "demo",
+      tickers: ["GD", "GD", "BA"],
       timeoutMs: 500
     });
 
-    assert.ok(seenUrls.some((value) => value.includes("stooq.com/q/l/")));
-    assert.ok(seenUrls.some((value) => value.includes("stooq.com/q/l/?s=gd.us&")));
-    assert.ok(
-      seenUrls.some((value) => value.includes("/stable/batch-quote") && value.includes("symbols=BA"))
-    );
     assert.equal(result.sourceMode, "live");
-    assert.equal(result.sourceMeta.totalTickers, 2);
-    assert.equal(result.sourceMeta.effectiveProvider, "web");
-    assert.deepEqual(result.sourceMeta.providersUsed, ["web", "fmp"]);
-    assert.equal(result.quotes.GD.source, "web");
-    assert.equal(result.quotes.GD.dataMode, "web-delayed");
-    assert.equal(result.quotes.BA.source, "fmp");
+    assert.deepEqual(Object.keys(result.quotes).sort(), ["BA", "GD"]);
+    assert.equal(result.quotes.GD.sourceDetail, "yahoo");
+    assert.equal(result.quotes.BA.sourceDetail, "yahoo");
     assert.equal(result.quotes.BA.dataMode, "live");
+    assert.equal(result.sourceMeta.providerDiagnostics.web.effectiveSource, "yahoo");
+    assert.deepEqual(result.sourceMeta.providerDiagnostics.web.requestedTickers, ["GD", "BA"]);
+    assert.equal(result.sourceMeta.providerDiagnostics.web.requestUrls.length, 1);
+    assert.equal(result.sourceMeta.providerScore > 0, true);
     assert.deepEqual(result.sourceMeta.coverageByMode, {
-      live: 1,
-      webDelayed: 1,
+      live: 2,
+      webDelayed: 0,
       historicalEod: 0,
       routerStale: 0,
       syntheticFallback: 0
     });
-    assert.equal(result.sourceMeta.fallbackCount, 0);
-    assert.equal(result.sourceMeta.providerDiagnostics.web.returnedTickers.includes("GD"), true);
-    assert.equal(result.sourceMeta.providerDiagnostics.fmp.returnedTickers.includes("BA"), true);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("market provider router falls back from slow yahoo to delayed stooq and records latency", async () => {
+  resetFmpProviderStateForTests();
+  apiQuotaTracker.reset({
+    webDailyLimit: 0,
+    fmpDailyLimit: 250
+  });
+
+  const originalFetch = global.fetch;
+  const seenUrls = [];
+  global.fetch = async (url, options = {}) => {
+    const value = String(url);
+    seenUrls.push(value);
+
+    if (value.includes("query1.finance.yahoo.com/v7/finance/quote")) {
+      return new Promise((resolve, reject) => {
+        const signal = options.signal;
+        const abort = () => {
+          const error = new Error("Aborted");
+          error.name = "AbortError";
+          reject(error);
+        };
+
+        if (signal) {
+          if (signal.aborted) {
+            abort();
+            return;
+          }
+          signal.addEventListener("abort", abort, { once: true });
+        }
+
+        setTimeout(() => {
+          resolve(jsonResponse({ quoteResponse: { result: [] } }));
+        }, 50);
+      });
+    }
+
+    if (value.includes("api.twelvedata.com/quote")) {
+      return jsonResponse({
+        status: "ok",
+        data: []
+      });
+    }
+
+    if (value.includes("stooq.com/q/l/")) {
+      return csvResponse(
+        "Symbol,Date,Time,Open,High,Low,Close,Volume,Name\nGD.US,2026-03-16,18:45:00,300.00,301.00,299.00,300.50,1000,General Dynamics\nBA.US,2026-03-16,18:45:00,200.00,201.00,199.00,200.25,1100,Boeing"
+      );
+    }
+
+    return jsonResponse({}, 404);
+  };
+
+  try {
+    const result = await fetchMarketQuotes({
+      provider: "web",
+      fallbackProvider: "fmp",
+      webSource: "yahoo",
+      webBaseUrl: "https://query1.finance.yahoo.com",
+      twelveApiKey: "demo",
+      twelveBaseUrl: "https://api.twelvedata.com",
+      webUserAgent: "ogid/1.0",
+      tickers: ["GD", "BA"],
+      timeoutMs: 15
+    });
+
+    assert.ok(seenUrls.some((value) => value.includes("query1.finance.yahoo.com/v7/finance/quote")));
+    assert.ok(seenUrls.some((value) => value.includes("api.twelvedata.com/quote")));
+    assert.ok(seenUrls.some((value) => value.includes("stooq.com/q/l/")));
+    assert.equal(result.sourceMode, "live");
+    assert.equal(result.quotes.GD.sourceDetail, "stooq");
+    assert.equal(result.quotes.GD.dataMode, "web-delayed");
+    assert.equal(result.quotes.BA.sourceDetail, "stooq");
+    assert.equal(result.sourceMeta.providerDiagnostics.web.effectiveSource, "stooq");
+    assert.equal(Number.isFinite(Number(result.sourceMeta.providerDiagnostics.web.providerLatencyMs)), true);
+    assert.equal(result.sourceMeta.providerDiagnostics.web.providerLatencyMs > 0, true);
+    assert.equal(result.sourceMeta.providerDiagnostics.web.providerScore >= 0, true);
+    assert.deepEqual(result.sourceMeta.coverageByMode, {
+      live: 0,
+      webDelayed: 2,
+      historicalEod: 0,
+      routerStale: 0,
+      syntheticFallback: 0
+    });
   } finally {
     global.fetch = originalFetch;
   }
@@ -176,8 +245,7 @@ test("market provider router uses stale quotes before deterministic fallback whe
   const result = await fetchMarketQuotes({
     provider: "web",
     fallbackProvider: "fmp",
-    webSource: "stooq",
-    fmpApiKey: "test-key",
+    webSource: "yahoo",
     tickers: ["GD", "BA"],
     timeoutMs: 500,
     staleTtlMs: 60_000,
@@ -188,7 +256,8 @@ test("market provider router uses stale quotes before deterministic fallback whe
         asOf: new Date().toISOString(),
         source: "web",
         synthetic: false,
-        dataMode: "web-delayed"
+        dataMode: "live",
+        sourceDetail: "yahoo"
       }
     }
   });

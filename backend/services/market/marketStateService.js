@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto";
+import { isMarketOpenEt } from "./marketSessionService.js";
+
 const MAX_MARKET_POINTS = 120;
 
 function buildDisabledCoverageByMode() {
@@ -10,13 +13,51 @@ function buildDisabledCoverageByMode() {
   };
 }
 
+function buildMarketSession(timestamp = new Date().toISOString()) {
+  const open = isMarketOpenEt(new Date(timestamp));
+  return {
+    open,
+    state: open ? "open" : "closed",
+    checkedAt: timestamp,
+    timezone: "America/New_York"
+  };
+}
+
+function computeMarketRevision(quotes = {}, session = {}, provider = "market-router", sourceMode = "fallback") {
+  const revisionSeed = Object.keys(quotes || {})
+    .sort()
+    .map((ticker) => {
+      const quote = quotes[ticker] || {};
+      return [
+        ticker,
+        Number.isFinite(Number(quote.price)) ? Number(quote.price).toFixed(2) : "null",
+        Number.isFinite(Number(quote.changePct)) ? Number(quote.changePct).toFixed(2) : "null",
+        quote.asOf || quote.staleAt || "null",
+        quote.source || "null",
+        quote.sourceDetail || "null",
+        quote.dataMode || "null",
+        quote.marketState || "null"
+      ].join("|");
+    })
+    .join("||");
+
+  return createHash("sha1")
+    .update([provider, sourceMode, session?.state || "unknown", revisionSeed].join("::"))
+    .digest("hex")
+    .slice(0, 16);
+}
+
 export function buildInitialMarketState(tickers = [], { enabled = true, disabledReason = null } = {}) {
   const normalizedTickers = Array.isArray(tickers) ? tickers : [];
   const marketDisabled = enabled === false;
+  const now = new Date().toISOString();
+  const session = buildMarketSession(now);
 
   return {
     provider: marketDisabled ? "disabled" : "market-router",
     sourceMode: marketDisabled ? "disabled" : "fallback",
+    revision: null,
+    session,
     sourceMeta: marketDisabled
       ? {
           provider: "disabled",
@@ -25,14 +66,16 @@ export function buildInitialMarketState(tickers = [], { enabled = true, disabled
           requestMode: "disabled",
           disabledReason: disabledReason || "market-provider-empty",
           coverageByMode: buildDisabledCoverageByMode(),
-          providerErrors: []
+          providerErrors: [],
+          marketSession: session
         }
       : {
           provider: "seed",
           reason: "initial-state",
-          enabled: true
+          enabled: true,
+          marketSession: session
         },
-    updatedAt: null,
+    updatedAt: now,
     quotes: Object.fromEntries(
       normalizedTickers.map((ticker) => [
         ticker,
@@ -42,7 +85,9 @@ export function buildInitialMarketState(tickers = [], { enabled = true, disabled
           asOf: null,
           source: marketDisabled ? "disabled" : "seed",
           synthetic: true,
-          dataMode: "synthetic-fallback"
+          dataMode: "synthetic-fallback",
+          providerScore: 0,
+          providerLatencyMs: null
         }
       ])
     ),
@@ -87,6 +132,7 @@ export function mergeMarketState(previousMarketState = {}, marketResult = {}) {
 
   const nextTimeseries = { ...(previousMarketState.timeseries || {}) };
   const timestamp = marketResult.updatedAt || new Date().toISOString();
+  const nextSession = marketResult.session || previousMarketState.session || buildMarketSession(timestamp);
 
   for (const [ticker, seededSeries] of Object.entries(marketResult.historicalSeries || {})) {
     nextTimeseries[ticker] = seedHistoricalSeries(nextTimeseries[ticker] || [], seededSeries);
@@ -109,6 +155,15 @@ export function mergeMarketState(previousMarketState = {}, marketResult = {}) {
     provider: marketResult.provider || previousMarketState.provider || "market-router",
     sourceMode: marketResult.sourceMode || previousMarketState.sourceMode || "fallback",
     sourceMeta: marketResult.sourceMeta || previousMarketState.sourceMeta || { provider: "unknown" },
+    revision:
+      marketResult.revision ||
+      computeMarketRevision(
+        nextQuotes,
+        nextSession,
+        marketResult.provider || previousMarketState.provider || "market-router",
+        marketResult.sourceMode || previousMarketState.sourceMode || "fallback"
+      ),
+    session: nextSession,
     updatedAt: timestamp,
     quotes: nextQuotes,
     timeseries: nextTimeseries
