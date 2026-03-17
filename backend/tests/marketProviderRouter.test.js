@@ -55,8 +55,38 @@ test("market provider router merges delayed web quotes with fmp fallback", async
     seenUrls.push(value);
 
     if (value.includes("stooq.com/q/l/")) {
+      if (value.includes("s=gd.us%2Cba.us")) {
+        return new Response(
+          "Symbol,Date,Time,Open,High,Low,Close,Volume,Name",
+          {
+            status: 200,
+            headers: { "content-type": "text/csv" }
+          }
+        );
+      }
+
+      if (value.includes("s=gd.us")) {
+        return new Response(
+          "Symbol,Date,Time,Open,High,Low,Close,Volume,Name\nGD.US,2026-03-16,18:45:00,300.00,301.00,299.00,300.50,1000,General Dynamics",
+          {
+            status: 200,
+            headers: { "content-type": "text/csv" }
+          }
+        );
+      }
+
+      if (value.includes("s=ba.us")) {
+        return new Response(
+          "Symbol,Date,Time,Open,High,Low,Close,Volume,Name",
+          {
+            status: 200,
+            headers: { "content-type": "text/csv" }
+          }
+        );
+      }
+
       return new Response(
-        "Symbol,Date,Time,Open,High,Low,Close,Volume,Name\nGD.US,2026-03-16,18:45:00,300.00,301.00,299.00,300.50,1000,General Dynamics",
+        "Symbol,Date,Time,Open,High,Low,Close,Volume,Name\nBA.US,2026-03-16,18:45:00,200.00,201.00,199.00,200.25,1100,Boeing",
         {
           status: 200,
           headers: { "content-type": "text/csv" }
@@ -107,7 +137,10 @@ test("market provider router merges delayed web quotes with fmp fallback", async
     });
 
     assert.ok(seenUrls.some((value) => value.includes("stooq.com/q/l/")));
-    assert.ok(seenUrls.some((value) => value.includes("/stable/batch-quote?symbols=BA")));
+    assert.ok(seenUrls.some((value) => value.includes("stooq.com/q/l/?s=gd.us&")));
+    assert.ok(
+      seenUrls.some((value) => value.includes("/stable/batch-quote") && value.includes("symbols=BA"))
+    );
     assert.equal(result.sourceMode, "live");
     assert.equal(result.sourceMeta.totalTickers, 2);
     assert.equal(result.sourceMeta.effectiveProvider, "web");

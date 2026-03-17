@@ -100,8 +100,10 @@ export function requestLogger(req, res, next) {
       durationMs: Number(durationMs.toFixed(2)),
       ip: clientIpInfo.clientIp || req.ip || null,
       clientIp: clientIpInfo.clientIp,
-      forwardedFor: clientIpInfo.forwardedFor,
-      remoteAddress: clientIpInfo.remoteAddress
+      remoteAddress: clientIpInfo.remoteAddress,
+      userAgent: req.headers["user-agent"] || null,
+      origin: req.headers.origin || null,
+      referer: req.headers.referer || req.headers.referrer || null
     });
   });
 

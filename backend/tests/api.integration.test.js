@@ -71,10 +71,6 @@ test("REST API exposes health and snapshot payloads", async () => {
     port: 0,
     disableBackgroundRefresh: true,
     refreshIntervalMs: 300_000,
-    security: {
-      adminMenuVisible: false,
-      adminIpAllowlist: []
-    },
     market: {
       provider: "web",
       fallbackProvider: "fmp",
@@ -116,7 +112,9 @@ test("REST API exposes health and snapshot payloads", async () => {
     assert.equal(healthResponse.status, 200);
     assert.equal(healthPayload.ok, true);
     assert.equal(healthPayload.data.status, "ok");
-    assert.equal(healthPayload.data.publicConfig.adminMenuVisible, false);
+    assert.equal(healthPayload.data.websocketClients, 0);
+    assert.equal(healthPayload.data.websocket.clientCount, 0);
+    assert.equal(healthPayload.data.websocket.path, "/ws");
     assert.equal(healthPayload.data.market.configuredProvider, "web");
     assert.equal(healthPayload.data.market.configuredFallbackProvider, "fmp");
     assert.equal(healthPayload.data.market.effectiveProvider, "web");
@@ -371,10 +369,6 @@ test("pipeline status exposes provider and rss diagnostics for ok, error and ski
     port: 0,
     disableBackgroundRefresh: true,
     refreshIntervalMs: 300_000,
-    security: {
-      adminMenuVisible: false,
-      adminIpAllowlist: []
-    },
     market: {
       provider: "",
       fallbackProvider: "",
@@ -524,17 +518,14 @@ test("pipeline status exposes provider and rss diagnostics for ok, error and ski
   }
 });
 
-test("admin allowlist enforces trusted proxy client ip on admin routes", async () => {
+test("admin routes remain open without IP allowlisting", async () => {
   const runtime = createAppServer({
     port: 0,
     disableBackgroundRefresh: true,
     market: {
       historyPersist: false
     },
-    security: {
-      trustProxy: true,
-      adminIpAllowlist: ["198.51.100.10/32"]
-    }
+    security: {}
   });
 
   await runtime.start();
@@ -543,19 +534,9 @@ test("admin allowlist enforces trusted proxy client ip on admin routes", async (
     const address = runtime.server.address();
     const baseUrl = `http://127.0.0.1:${address.port}`;
 
-    const deniedResponse = await fetch(`${baseUrl}/api/admin/api-limits`, {
-      headers: {
-        "x-forwarded-for": "198.51.100.11"
-      }
-    });
-    const deniedPayload = await deniedResponse.json();
-    assert.equal(deniedResponse.status, 403);
-    assert.equal(deniedPayload.ok, false);
-    assert.equal(deniedPayload.error.code, "ADMIN_IP_FORBIDDEN");
-
     const allowedResponse = await fetch(`${baseUrl}/api/admin/api-limits`, {
       headers: {
-        "x-forwarded-for": "198.51.100.10"
+        "x-forwarded-for": "198.51.100.11"
       }
     });
     const allowedPayload = await allowedResponse.json();
@@ -564,7 +545,7 @@ test("admin allowlist enforces trusted proxy client ip on admin routes", async (
 
     const adminPageResponse = await fetch(`${baseUrl}/admin`, {
       headers: {
-        "x-forwarded-for": "198.51.100.10"
+        "x-forwarded-for": "198.51.100.11"
       }
     });
     assert.equal(adminPageResponse.status, 200);

@@ -34,7 +34,7 @@ function closeSocket(socket) {
       return;
     }
     socket.once("close", resolve);
-    socket.close();
+    socket.close(1000, "test-complete");
   });
 }
 
@@ -86,7 +86,12 @@ test("WebSocket emits snapshot and update envelopes", async () => {
   await runtime.orchestrator.runCycle("test-bootstrap");
 
   const address = runtime.server.address();
-  const socket = new WebSocket(`ws://127.0.0.1:${address.port}/ws`);
+  const socket = new WebSocket(`ws://127.0.0.1:${address.port}/ws`, {
+    headers: {
+      "user-agent": "OGID WS Integration Test/1.0",
+      origin: "http://127.0.0.1"
+    }
+  });
 
   try {
     const snapshotMessage = await waitForMessage(socket, "snapshot");
@@ -97,6 +102,19 @@ test("WebSocket emits snapshot and update envelopes", async () => {
     assert.ok(snapshotMessage.data.meta.dataQuality);
     assert.ok(snapshotMessage.data.meta.refreshStatus);
     assert.ok(snapshotMessage.data.predictions);
+
+    const healthResponse = await fetch(`http://127.0.0.1:${address.port}/api/health`);
+    const healthPayload = await healthResponse.json();
+    assert.equal(healthResponse.status, 200);
+    assert.equal(healthPayload.ok, true);
+    assert.equal(healthPayload.data.websocketClients, 1);
+    assert.equal(healthPayload.data.websocket.clientCount, 1);
+    assert.equal(healthPayload.data.websocket.path, "/ws");
+    assert.equal(healthPayload.data.websocket.heartbeatMs, 60_000);
+    assert.equal(healthPayload.data.websocket.activeConnections.length, 1);
+    assert.equal(healthPayload.data.websocket.lastConnection.clientIp, "127.0.0.1");
+    assert.equal(healthPayload.data.websocket.lastConnection.userAgent, "OGID WS Integration Test/1.0");
+    assert.equal(healthPayload.data.websocket.lastConnection.origin, "http://127.0.0.1");
 
     const updatePromise = waitForMessage(socket, "update");
     await runtime.orchestrator.runCycle("test-websocket-update");
@@ -110,6 +128,14 @@ test("WebSocket emits snapshot and update envelopes", async () => {
     assert.ok(updateMessage.data.impact);
     assert.ok(updateMessage.data.predictions);
     assert.ok(Array.isArray(updateMessage.data.impactHistory));
+
+    await closeSocket(socket);
+    const postCloseHealthResponse = await fetch(`http://127.0.0.1:${address.port}/api/health`);
+    const postCloseHealthPayload = await postCloseHealthResponse.json();
+    assert.equal(postCloseHealthResponse.status, 200);
+    assert.equal(postCloseHealthPayload.data.websocket.clientCount, 0);
+    assert.equal(postCloseHealthPayload.data.websocket.lastDisconnection.clientIp, "127.0.0.1");
+    assert.equal(postCloseHealthPayload.data.websocket.lastDisconnection.closeCode, 1000);
   } finally {
     global.fetch = originalFetch;
     await closeSocket(socket);

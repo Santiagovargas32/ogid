@@ -200,7 +200,7 @@ export function postRefresh(req, res) {
   const defaultCountries = config.watchlistCountries || [];
   const countries = parseCountries(req.body?.countries ?? req.query.countries, defaultCountries);
   const reason = String(req.body?.reason || "manual").trim().toLowerCase() || "manual";
-  const clientIpInfo = req.clientIpInfo || resolveClientIp(req, { trustProxy: config.security?.trustProxy });
+  const clientIpInfo = req.clientIpInfo || resolveClientIp(req);
   const clientId = String(clientIpInfo.clientIp || req.requestId || "anonymous");
   const outcome = refreshService.request({
     clientId,

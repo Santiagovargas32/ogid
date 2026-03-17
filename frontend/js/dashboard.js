@@ -138,7 +138,6 @@ function cacheElements() {
   elements.newsDrawerImage = byId("news-drawer-image");
   elements.newsDrawerBody = byId("news-drawer-body");
   elements.newsDrawerLink = byId("news-drawer-link");
-  elements.adminMenuLink = byId("nav-admin-link");
 }
 
 function escapeHtml(value = "") {
@@ -731,11 +730,6 @@ function renderMeta(meta, market) {
   setPanelMode(elements.panelAdvancedIntel, dq.insights?.mode || "fallback");
   setPanelMode(elements.panelSituational, dq.news?.mode || "fallback");
   setPanelMode(elements.panelWebcams, dq.news?.mode || "fallback");
-}
-
-function applyPublicHealthConfig(health = {}) {
-  const adminMenuVisible = health?.publicConfig?.adminMenuVisible === true;
-  elements.adminMenuLink?.classList.toggle("d-none", !adminMenuVisible);
 }
 
 function renderCountryFilters() {
@@ -2054,7 +2048,6 @@ function startPolling() {
 async function bootstrap() {
   cacheElements();
   initNewsDrawer();
-  elements.adminMenuLink?.classList.add("d-none");
   renderAnalyticsWindowSelector();
   hotspotMap = new HotspotMap("hotspot-map");
   hotspotMap.init();
@@ -2084,13 +2077,7 @@ async function bootstrap() {
   setWsStatus("connecting");
 
   try {
-    const [health, snapshot] = await Promise.all([
-      api.getHealth().catch(() => null),
-      api.getSnapshot({ countries: selectedCountryQueryValue(), limit: 100 })
-    ]);
-    if (health) {
-      applyPublicHealthConfig(health);
-    }
+    const snapshot = await api.getSnapshot({ countries: selectedCountryQueryValue(), limit: 100 });
     setSnapshot(snapshot);
     await refreshAnalytics();
   } catch (error) {

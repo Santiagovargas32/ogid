@@ -364,6 +364,126 @@ async function fetchHistoricalPreviousClose({
   };
 }
 
+async function recoverWebBatchQuotes({
+  symbolEntries = [],
+  source = DEFAULT_WEB_SOURCE,
+  baseUrl = DEFAULT_WEB_BASE_URL,
+  timeoutMs = 9_000,
+  userAgent = DEFAULT_WEB_USER_AGENT,
+  timestamp = new Date().toISOString()
+}) {
+  const quotes = {};
+  const historicalSeries = {};
+  const requestUrls = [];
+  const errors = [];
+
+  for (const [ticker, symbol] of symbolEntries) {
+    const url = buildWebBatchQuoteUrl({
+      source,
+      baseUrl,
+      symbols: [symbol]
+    });
+
+    try {
+      const response = await fetchWithTimeout(
+        url,
+        {
+          headers: {
+            "User-Agent": userAgent || DEFAULT_WEB_USER_AGENT
+          }
+        },
+        timeoutMs
+      );
+      const text = await response.text();
+      requestUrls.push(url.toString());
+
+      if (!response.ok) {
+        errors.push(
+          buildProviderError({
+            scope: "batch",
+            tickers: [ticker],
+            code: "web-upstream-status",
+            message: `Market web source returned HTTP ${response.status}.`,
+            status: response.status,
+            requestUrl: url.toString(),
+            responsePreview: text
+          })
+        );
+        continue;
+      }
+
+      const table = parseCsvTable(text);
+      const parsedRows = parseBatchQuoteRows(table, new Map([[symbol, ticker]]));
+      const item = parsedRows[ticker];
+      if (!item) {
+        const reason = table.length <= 1 ? "web-csv-empty" : "web-symbol-unmapped";
+        errors.push(
+          buildProviderError({
+            scope: "batch",
+            tickers: [ticker],
+            code: reason,
+            message:
+              reason === "web-csv-empty"
+                ? "Market web batch CSV returned no quote rows."
+                : "Market web batch CSV did not contain usable symbols for the requested ticker.",
+            status: response.status,
+            requestUrl: url.toString(),
+            responsePreview: text
+          })
+        );
+        continue;
+      }
+
+      const historical = await fetchHistoricalPreviousClose({
+        ticker,
+        symbol: item.symbol,
+        source,
+        baseUrl,
+        timeoutMs,
+        userAgent
+      });
+      requestUrls.push(historical.requestUrl);
+      if (Array.isArray(historical.series) && historical.series.length) {
+        historicalSeries[ticker] = historical.series;
+      }
+
+      quotes[ticker] = {
+        price: item.price,
+        changePct: deriveChangePct({
+          price: item.price,
+          previousClose: historical.previousClose,
+          openPrice: item.openPrice
+        }),
+        asOf: timestamp,
+        source: "web",
+        synthetic: false,
+        dataMode: "web-delayed"
+      };
+    } catch (error) {
+      const providerError =
+        error.providerError ||
+        buildProviderError({
+          scope: "batch",
+          tickers: [ticker],
+          code: error?.name === "AbortError" ? "web-timeout" : "request-failed",
+          message:
+            error?.name === "AbortError"
+              ? "Market web batch request timed out."
+              : error?.message || "Market web batch request failed.",
+          requestUrl: url.toString()
+        });
+      errors.push(providerError);
+    }
+  }
+
+  return {
+    quotes,
+    historicalSeries,
+    requestUrls,
+    errors
+  };
+}
+
 export async function fetchWebQuotes({
   source = DEFAULT_WEB_SOURCE,
   baseUrl = DEFAULT_WEB_BASE_URL,
@@ -531,170 +651,216 @@ export async function fetchWebQuotes({
     }
 
     if (table.length <= 1) {
-      const providerError = buildProviderError({
-        scope: "batch",
-        tickers: normalizedTickers,
-        code: "web-csv-empty",
-        message: "Market web batch CSV returned no quote rows.",
-        status: response.status,
-        requestUrl: url.toString(),
-        responsePreview: text
-      });
-      apiQuotaTracker.recordCall("web", { status: "empty", fallback: true, timestamp });
-      return {
-        provider: "web",
-        quotes: {},
-        missingTickers: normalizedTickers,
-        historicalSeries: {},
-        sourceMode: "fallback",
-        sourceMeta: {
-          provider: "web",
-          reason: providerError.code,
-          requestMode: "web-delayed",
-          liveCount: 0,
-          totalTickers: normalizedTickers.length,
-          errors: [providerError],
-          providerDiagnostics: {
-            web: buildProviderDiagnosticRecord({
-              provider: "web",
-              configuredProvider,
-              configuredFallbackProvider,
-              effectiveProvider: null,
-              configuredSource: source,
-              requestMode: "web-delayed",
-              lastAttemptAt: attemptedAt,
-              durationMs: Date.now() - startedAt,
-              requestUrl: url.toString(),
-              requestUrls,
-              requestedTickers: normalizedTickers,
-              returnedTickers: [],
-              missingTickers: normalizedTickers,
-              httpStatus: response.status,
-              responsePreview: text,
-              errorCode: providerError.code,
-              errorMessage: providerError.message
+      const recoveryResult =
+        symbolEntries.length > 1
+          ? await recoverWebBatchQuotes({
+              symbolEntries,
+              source,
+              baseUrl,
+              timeoutMs,
+              userAgent,
+              timestamp
             })
-          }
-        },
-        updatedAt: timestamp
-      };
+          : null;
+
+      if (recoveryResult?.quotes && Object.keys(recoveryResult.quotes).length) {
+        quotes = recoveryResult.quotes;
+        Object.assign(historicalSeries, recoveryResult.historicalSeries || {});
+        requestUrls.push(...(recoveryResult.requestUrls || []));
+        errors.push(...(recoveryResult.errors || []));
+        lastSuccessAt = new Date().toISOString();
+      } else {
+        const providerError = buildProviderError({
+          scope: "batch",
+          tickers: normalizedTickers,
+          code: "web-csv-empty",
+          message: "Market web batch CSV returned no quote rows.",
+          status: response.status,
+          requestUrl: url.toString(),
+          responsePreview: text
+        });
+        errors.push(...(recoveryResult?.errors || []));
+        errors.push(providerError);
+        apiQuotaTracker.recordCall("web", { status: "empty", fallback: true, timestamp });
+        return {
+          provider: "web",
+          quotes: {},
+          missingTickers: normalizedTickers,
+          historicalSeries: {},
+          sourceMode: "fallback",
+          sourceMeta: {
+            provider: "web",
+            reason: providerError.code,
+            requestMode: "web-delayed",
+            liveCount: 0,
+            totalTickers: normalizedTickers.length,
+            errors,
+            providerDiagnostics: {
+              web: buildProviderDiagnosticRecord({
+                provider: "web",
+                configuredProvider,
+                configuredFallbackProvider,
+                effectiveProvider: null,
+                configuredSource: source,
+                requestMode: "web-delayed",
+                lastAttemptAt: attemptedAt,
+                durationMs: Date.now() - startedAt,
+                requestUrl: url.toString(),
+                requestUrls,
+                requestedTickers: normalizedTickers,
+                returnedTickers: [],
+                missingTickers: normalizedTickers,
+                httpStatus: response.status,
+                responsePreview: text,
+                errorCode: providerError.code,
+                errorMessage: providerError.message
+              })
+            }
+          },
+          updatedAt: timestamp
+        };
+      }
     }
 
     const parsedRows = parseBatchQuoteRows(table, tickerBySymbol);
     if (!Object.keys(parsedRows).length) {
-      const providerError = buildProviderError({
-        scope: "batch",
-        tickers: normalizedTickers,
-        code: "web-symbol-unmapped",
-        message: "Market web batch CSV did not contain usable symbols for the requested tickers.",
-        status: response.status,
-        requestUrl: url.toString(),
-        responsePreview: text
-      });
-      apiQuotaTracker.recordCall("web", { status: "empty", fallback: true, timestamp });
-      return {
-        provider: "web",
-        quotes: {},
-        missingTickers: normalizedTickers,
-        historicalSeries: {},
-        sourceMode: "fallback",
-        sourceMeta: {
-          provider: "web",
-          reason: providerError.code,
-          requestMode: "web-delayed",
-          liveCount: 0,
-          totalTickers: normalizedTickers.length,
-          errors: [providerError],
-          providerDiagnostics: {
-            web: buildProviderDiagnosticRecord({
-              provider: "web",
-              configuredProvider,
-              configuredFallbackProvider,
-              effectiveProvider: null,
-              configuredSource: source,
-              requestMode: "web-delayed",
-              lastAttemptAt: attemptedAt,
-              durationMs: Date.now() - startedAt,
-              requestUrl: url.toString(),
-              requestUrls,
-              requestedTickers: normalizedTickers,
-              returnedTickers: [],
-              missingTickers: normalizedTickers,
-              httpStatus: response.status,
-              responsePreview: text,
-              errorCode: providerError.code,
-              errorMessage: providerError.message
+      const recoveryResult =
+        symbolEntries.length > 1
+          ? await recoverWebBatchQuotes({
+              symbolEntries,
+              source,
+              baseUrl,
+              timeoutMs,
+              userAgent,
+              timestamp
             })
-          }
-        },
-        updatedAt: timestamp
-      };
+          : null;
+
+      if (recoveryResult?.quotes && Object.keys(recoveryResult.quotes).length) {
+        quotes = recoveryResult.quotes;
+        Object.assign(historicalSeries, recoveryResult.historicalSeries || {});
+        requestUrls.push(...(recoveryResult.requestUrls || []));
+        errors.push(...(recoveryResult.errors || []));
+        lastSuccessAt = new Date().toISOString();
+      } else {
+        const providerError = buildProviderError({
+          scope: "batch",
+          tickers: normalizedTickers,
+          code: "web-symbol-unmapped",
+          message: "Market web batch CSV did not contain usable symbols for the requested tickers.",
+          status: response.status,
+          requestUrl: url.toString(),
+          responsePreview: text
+        });
+        errors.push(...(recoveryResult?.errors || []));
+        errors.push(providerError);
+        apiQuotaTracker.recordCall("web", { status: "empty", fallback: true, timestamp });
+        return {
+          provider: "web",
+          quotes: {},
+          missingTickers: normalizedTickers,
+          historicalSeries: {},
+          sourceMode: "fallback",
+          sourceMeta: {
+            provider: "web",
+            reason: providerError.code,
+            requestMode: "web-delayed",
+            liveCount: 0,
+            totalTickers: normalizedTickers.length,
+            errors,
+            providerDiagnostics: {
+              web: buildProviderDiagnosticRecord({
+                provider: "web",
+                configuredProvider,
+                configuredFallbackProvider,
+                effectiveProvider: null,
+                configuredSource: source,
+                requestMode: "web-delayed",
+                lastAttemptAt: attemptedAt,
+                durationMs: Date.now() - startedAt,
+                requestUrl: url.toString(),
+                requestUrls,
+                requestedTickers: normalizedTickers,
+                returnedTickers: [],
+                missingTickers: normalizedTickers,
+                httpStatus: response.status,
+                responsePreview: text,
+                errorCode: providerError.code,
+                errorMessage: providerError.message
+              })
+            }
+          },
+          updatedAt: timestamp
+        };
+      }
     }
 
-    quotes = Object.fromEntries(
-      Object.entries(parsedRows).map(([ticker, item]) => [
-        ticker,
-        {
-          price: item.price,
-          changePct: deriveChangePct({ price: item.price, previousClose: null, openPrice: item.openPrice }),
-          asOf: timestamp,
-          source: "web",
-          synthetic: false,
-          dataMode: "web-delayed"
-        }
-      ])
-    );
-    lastSuccessAt = new Date().toISOString();
-
-    const historicalResults = await Promise.allSettled(
-      Object.entries(parsedRows).map(async ([ticker, item]) => {
-        const historical = await fetchHistoricalPreviousClose({
+    if (Object.keys(parsedRows).length) {
+      quotes = Object.fromEntries(
+        Object.entries(parsedRows).map(([ticker, item]) => [
           ticker,
-          symbol: item.symbol,
-          source,
-          baseUrl,
-          timeoutMs,
-          userAgent
-        });
-        return {
-          ticker,
-          historical,
-          openPrice: item.openPrice
-        };
-      })
-    );
+          {
+            price: item.price,
+            changePct: deriveChangePct({ price: item.price, previousClose: null, openPrice: item.openPrice }),
+            asOf: timestamp,
+            source: "web",
+            synthetic: false,
+            dataMode: "web-delayed"
+          }
+        ])
+      );
+      lastSuccessAt = new Date().toISOString();
 
-    for (const result of historicalResults) {
-      if (result.status === "fulfilled") {
-        const { ticker, historical, openPrice } = result.value;
-        requestUrls.push(historical.requestUrl);
-        if (Array.isArray(historical.series) && historical.series.length) {
-          historicalSeries[ticker] = historical.series;
-        }
-        if (quotes[ticker]) {
-          quotes[ticker] = {
-            ...quotes[ticker],
-            changePct: deriveChangePct({
-              price: quotes[ticker].price,
-              previousClose: historical.previousClose,
-              openPrice
-            })
+      const historicalResults = await Promise.allSettled(
+        Object.entries(parsedRows).map(async ([ticker, item]) => {
+          const historical = await fetchHistoricalPreviousClose({
+            ticker,
+            symbol: item.symbol,
+            source,
+            baseUrl,
+            timeoutMs,
+            userAgent
+          });
+          return {
+            ticker,
+            historical,
+            openPrice: item.openPrice
           };
-        }
-        continue;
-      }
+        })
+      );
 
-      const providerError =
-        result.reason?.providerError ||
-        buildProviderError({
-          scope: "historical",
-          code: result.reason?.name === "AbortError" ? "web-timeout" : "historical-request-failed",
-          message:
-            result.reason?.name === "AbortError"
-              ? "Market web historical request timed out."
-              : result.reason?.message || "Market web historical request failed."
-        });
-      errors.push(providerError);
+      for (const result of historicalResults) {
+        if (result.status === "fulfilled") {
+          const { ticker, historical, openPrice } = result.value;
+          requestUrls.push(historical.requestUrl);
+          if (Array.isArray(historical.series) && historical.series.length) {
+            historicalSeries[ticker] = historical.series;
+          }
+          if (quotes[ticker]) {
+            quotes[ticker] = {
+              ...quotes[ticker],
+              changePct: deriveChangePct({
+                price: quotes[ticker].price,
+                previousClose: historical.previousClose,
+                openPrice
+              })
+            };
+          }
+          continue;
+        }
+
+        const providerError =
+          result.reason?.providerError ||
+          buildProviderError({
+            scope: "historical",
+            code: result.reason?.name === "AbortError" ? "web-timeout" : "historical-request-failed",
+            message:
+              result.reason?.name === "AbortError"
+                ? "Market web historical request timed out."
+                : result.reason?.message || "Market web historical request failed."
+          });
+        errors.push(providerError);
+      }
     }
 
     const missingTickers = normalizedTickers.filter((ticker) => !quotes[ticker]);

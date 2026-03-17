@@ -4,7 +4,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
 import helmet from "helmet";
-import { createAdminAccessMiddleware } from "./middleware/adminAccessMiddleware.js";
 import routes from "./routes/index.js";
 import stateManager from "./state/stateManager.js";
 import RefreshOrchestratorService from "./services/refreshOrchestratorService.js";
@@ -16,7 +15,6 @@ import { SignalCorrelatorService } from "./services/intel/signalCorrelator.js";
 import { MapLayerService } from "./services/map/mapLayerService.js";
 import { MarketHistoryStore } from "./services/market/marketHistoryStore.js";
 import MediaStreamService from "./services/media/mediaStreamService.js";
-import { compileIpAllowlist, parseTrustProxySetting } from "./utils/clientIp.js";
 import { createSocketServer } from "./websocket/socketServer.js";
 import { errorHandler, notFoundHandler } from "./utils/error.js";
 import { createLogger, requestLogger } from "./utils/logger.js";
@@ -219,8 +217,6 @@ function readConfig(overrides = {}) {
       defaultEditorialPacks: DEFAULT_NEWS_QUERY_PACKS
     }
   );
-  const trustProxy = parseTrustProxySetting(process.env.TRUST_PROXY, false);
-  const adminIpAllowlist = toList(process.env.ADMIN_IP_ALLOWLIST, []);
 
   const config = {
     port: toInt(process.env.PORT, 8080),
@@ -339,12 +335,7 @@ function readConfig(overrides = {}) {
       refreshIntervalMs: toInt(process.env.MEDIA_STREAM_REFRESH_INTERVAL_MS, 300_000),
       timeoutMs: toInt(process.env.MEDIA_STREAM_TIMEOUT_MS, 8_000)
     },
-    security: {
-      trustProxy,
-      adminIpAllowlist,
-      adminIpAllowlistMatcher: compileIpAllowlist(adminIpAllowlist),
-      adminMenuVisible: toBool(process.env.ADMIN_MENU_VISIBLE, false)
-    }
+    security: {}
   };
 
   const mergedConfig = {
@@ -416,15 +407,7 @@ function readConfig(overrides = {}) {
     },
     security: {
       ...config.security,
-      ...(overrides.security || {}),
-      trustProxy: parseTrustProxySetting(overrides.security?.trustProxy ?? config.security.trustProxy, false),
-      adminIpAllowlist:
-        overrides.security?.adminIpAllowlist !== undefined
-          ? toList(overrides.security.adminIpAllowlist, [])
-          : config.security.adminIpAllowlist,
-      adminMenuVisible:
-        overrides.security?.adminMenuVisible ??
-        config.security.adminMenuVisible
+      ...(overrides.security || {})
     },
     runtime: {
       disableBackgroundRefresh:
@@ -447,10 +430,6 @@ function readConfig(overrides = {}) {
       ...mergedQueryPackGroups.editorial,
       ...mergedQueryPackGroups.marketSignals
     }
-  };
-  mergedConfig.security = {
-    ...mergedConfig.security,
-    adminIpAllowlistMatcher: compileIpAllowlist(mergedConfig.security.adminIpAllowlist || [])
   };
 
   const resolvedMarketProvider = toTrimmedString(mergedConfig.market?.provider);
@@ -478,10 +457,8 @@ export function createAppServer(overrides = {}) {
   const config = readConfig(overrides);
   const frontendPath = path.resolve(__dirname, "../frontend");
   const app = express();
-  const adminAccessMiddleware = createAdminAccessMiddleware();
 
   app.disable("x-powered-by");
-  app.set("trust proxy", config.security?.trustProxy ?? false);
   app.use(
     helmet({
       contentSecurityPolicy: false
@@ -491,9 +468,8 @@ export function createAppServer(overrides = {}) {
   app.use(requestLogger);
 
   app.use(express.static(frontendPath, { index: "index.html" }));
-  app.use("/api/admin", adminAccessMiddleware);
   app.use("/api", routes);
-  app.get(["/admin", "/admin/"], adminAccessMiddleware, (_req, res) => {
+  app.get(["/admin", "/admin/"], (_req, res) => {
     res.sendFile(path.join(frontendPath, "admin.html"));
   });
 
@@ -595,10 +571,6 @@ export function createAppServer(overrides = {}) {
         gnewsApiKeyConfigured: isRealKey(config.news.gnewsApiKey),
         mediastackKeyConfigured: isRealKey(config.news.mediastackApiKey),
         fmpApiKeyConfigured: isRealKey(config.market.fmpApiKey),
-        trustProxy: config.security?.trustProxy ?? false,
-        adminIpAllowlistEnabled: Boolean(config.security?.adminIpAllowlistMatcher?.enabled),
-        adminIpAllowlistInvalidEntries: config.security?.adminIpAllowlistMatcher?.invalidEntries || [],
-        adminMenuVisible: config.security?.adminMenuVisible === true,
         marketEnabled: config.market.enabled,
         marketProvider: config.market.provider,
         marketFallbackProvider: config.market.fallbackProvider,

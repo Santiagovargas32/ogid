@@ -6,6 +6,14 @@ export function getHealth(_req, res) {
   const orchestrator = res.app.locals.orchestrator;
   const meta = stateManager.getMeta();
   const snapshot = stateManager.getSnapshot();
+  const websocket = socketServer?.getHealth?.() || {
+    clientCount: socketServer?.clientCount?.() ?? 0,
+    path: config?.wsPath || "/ws",
+    heartbeatMs: config?.wsHeartbeatMs ?? null,
+    activeConnections: [],
+    lastConnection: null,
+    lastDisconnection: null
+  };
 
   res.json({
     ok: true,
@@ -13,7 +21,8 @@ export function getHealth(_req, res) {
       status: "ok",
       timestamp: new Date().toISOString(),
       uptimeSeconds: Math.floor(process.uptime()),
-      websocketClients: socketServer?.clientCount?.() ?? 0,
+      websocketClients: websocket.clientCount ?? 0,
+      websocket,
       lastRefreshAt: meta.lastRefreshAt,
       refreshIntervalMs: meta.refreshIntervalMs,
       sourceMode: meta.sourceMode,
@@ -24,9 +33,6 @@ export function getHealth(_req, res) {
         configuredFallbackProvider: config?.market?.fallbackProvider || null,
         effectiveProvider: snapshot?.market?.sourceMeta?.effectiveProvider || snapshot?.market?.provider || null,
         historicalPersistence: orchestrator?.getMarketHistoryStatus?.() || null
-      },
-      publicConfig: {
-        adminMenuVisible: config?.security?.adminMenuVisible === true
       }
     }
   });

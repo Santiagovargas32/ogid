@@ -4,7 +4,7 @@ import { buildProviderDiagnosticRecord } from "../providerDiagnostics.js";
 
 const log = createLogger("backend/services/market/providers/fmpProvider");
 const DEFAULT_FMP_STABLE_BASE_URL = "https://financialmodelingprep.com/stable";
-const ENTITLEMENT_STATUS_CODES = new Set([402]);
+const ENTITLEMENT_STATUS_CODES = new Set([402, 403]);
 const DEFAULT_USER_AGENT = "ogid/1.0";
 
 let entitlementDisabledAt = null;

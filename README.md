@@ -18,9 +18,9 @@ OGID is a local web app for monitoring geopolitical OSINT signals and their pote
 - Manual user-triggered refresh (`POST /api/intel/refresh`) with cooldown and per-client limits.
 - Country risk scoring with deterministic engine.
 - Country watchlist default: `US, IL, IR`.
-- WebSocket live updates (`/ws`) for snapshot/update/heartbeat.
+- WebSocket live updates (`/ws`) for snapshot/update/heartbeat, plus admin-visible connection diagnostics.
 - Market module (`web -> fmp -> router-stale -> synthetic-fallback`):
-  - public web/CSV delayed quotes via `stooq`
+  - public web/CSV delayed quotes via `stooq`, with single-symbol recovery when the batch CSV is empty or unusable
   - FMP `stable/batch-quote` for API fallback and `stable/historical-price-eod/full` for EOD backfill
   - entitlement-aware FMP diagnostics, including `provider-not-entitled`
   - stale quote reuse before deterministic fallback
@@ -96,9 +96,6 @@ MARKET_BATCH_CHUNK_SIZE=25
 MARKET_HISTORY_PERSIST=1
 MARKET_HISTORY_DIR=data/market
 MARKET_SNAPSHOT_FILE=snapshot.json
-TRUST_PROXY=
-ADMIN_IP_ALLOWLIST=
-ADMIN_MENU_VISIBLE=0
 MARKET_STALE_TTL_MS=14400000
 MARKET_REQUEST_RESERVE=25
 MARKET_ACTIVE_INTERVAL_MS=180000

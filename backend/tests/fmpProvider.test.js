@@ -90,3 +90,40 @@ test("fmp provider classifies 402 entitlement failures and skips historical fall
     resetFmpProviderStateForTests();
   }
 });
+
+test("fmp provider classifies 403 entitlement failures as provider lock events", async () => {
+  resetFmpProviderStateForTests();
+  const originalFetch = global.fetch;
+  let fetchCalls = 0;
+  global.fetch = async () => {
+    fetchCalls += 1;
+    return new Response(
+      JSON.stringify({
+        Error: "Forbidden"
+      }),
+      {
+        status: 403,
+        headers: { "content-type": "application/json" }
+      }
+    );
+  };
+
+  try {
+    const result = await fetchFmpQuotes({
+      apiKey: "demo",
+      baseUrl: "https://financialmodelingprep.com/api/v3",
+      tickers: ["LMT", "RTX"],
+      timeoutMs: 1000,
+      enableHistoricalBackfill: true,
+      historicalBackfillTickers: ["LMT", "RTX"]
+    });
+
+    assert.equal(fetchCalls, 1);
+    assert.equal(result.sourceMeta.requestMode, "batch");
+    assert.equal(result.sourceMeta.providerDisabledReason, "provider-not-entitled");
+    assert.equal(result.sourceMeta.errors[0].code, "provider-not-entitled");
+  } finally {
+    global.fetch = originalFetch;
+    resetFmpProviderStateForTests();
+  }
+});

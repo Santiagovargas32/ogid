@@ -96,6 +96,45 @@ function formatPrice(value) {
   });
 }
 
+function compactText(value = "", maxLength = 96) {
+  const normalized = String(value || "").replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return "--";
+  }
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, Math.max(0, maxLength - 3))}...`;
+}
+
+function summarizeSocketConnection(connection = {}) {
+  if (!connection || typeof connection !== "object") {
+    return "--";
+  }
+
+  const parts = [];
+  if (connection.clientIp) {
+    parts.push(String(connection.clientIp));
+  }
+  if (connection.userAgent) {
+    parts.push(compactText(connection.userAgent, 72));
+  }
+  if (connection.origin) {
+    parts.push(compactText(connection.origin, 48));
+  }
+
+  const summary = parts.join(" | ") || "--";
+  const closeParts = [];
+  if (connection.closeCode !== null && connection.closeCode !== undefined) {
+    closeParts.push(`code ${connection.closeCode}`);
+  }
+  if (connection.closeReason) {
+    closeParts.push(compactText(connection.closeReason, 48));
+  }
+
+  return closeParts.length ? `${summary} | ${closeParts.join(" | ")}` : summary;
+}
+
 function formatInlineList(items = [], emptyValue = "--") {
   const values = (Array.isArray(items) ? items : [])
     .map((item) => {
@@ -149,6 +188,10 @@ function renderServerSummary(health = {}, pipeline = {}) {
   const market = pipeline?.market || {};
   const news = pipeline?.news || {};
   const healthMarket = health?.market || {};
+  const websocket = health?.websocket || {};
+  const websocketClientCount = Number(websocket.clientCount ?? health.websocketClients ?? 0);
+  const lastConnectionSummary = summarizeSocketConnection(websocket.lastConnection || {});
+  const lastDisconnectionSummary = summarizeSocketConnection(websocket.lastDisconnection || {});
   elements.serverSummaryBody.innerHTML = renderSummaryCard([
     {
       label: "Health",
@@ -156,9 +199,11 @@ function renderServerSummary(health = {}, pipeline = {}) {
       meta: `Uptime ${Math.max(0, Number(health.uptimeSeconds || 0))}s`
     },
     {
-      label: "WebSocket clients",
-      value: String(health.websocketClients ?? 0),
-      meta: `Last refresh ${formatDate(health.lastRefreshAt)}`
+      label: "WebSocket",
+      value: `${websocketClientCount}`,
+      meta:
+        `path ${String(websocket.path || "--")} | heartbeat ${formatDurationMs(websocket.heartbeatMs)} | ` +
+        `last connect ${lastConnectionSummary} | last disconnect ${lastDisconnectionSummary}`
     },
     {
       label: "Source mode",
