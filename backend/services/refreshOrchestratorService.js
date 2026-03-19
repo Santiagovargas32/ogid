@@ -54,6 +54,15 @@ function sumCountRecord(record = {}) {
   return Object.values(record || {}).reduce((total, value) => total + (Number(value) || 0), 0);
 }
 
+function resolveMarketQuotaProviderName(provider, marketConfig = {}) {
+  const normalized = String(provider || "").toLowerCase();
+  if (normalized !== "web") {
+    return normalized;
+  }
+
+  return String(marketConfig?.webSource || "twelve").toLowerCase() === "yahoo" ? "yahoo" : "twelve";
+}
+
 class RefreshOrchestratorService {
   constructor({
     stateManager,
@@ -195,16 +204,24 @@ class RefreshOrchestratorService {
     return policy.intervalMs;
   }
 
-  getMarketProviderSnapshots() {
+  getMarketQuotaProviders() {
     if (!this.isMarketEnabled()) {
       return [];
     }
 
     const providers = [this.config.market?.provider, this.config.market?.fallbackProvider]
-      .map((provider) => String(provider || "").toLowerCase())
+      .map((provider) => resolveMarketQuotaProviderName(provider, this.config.market))
       .filter(Boolean);
-    const uniqueProviders = [...new Set(providers)];
-    return uniqueProviders
+
+    return [...new Set(providers.filter(Boolean))];
+  }
+
+  getMarketProviderSnapshots() {
+    if (!this.isMarketEnabled()) {
+      return [];
+    }
+
+    return this.getMarketQuotaProviders()
       .map((provider) => apiQuotaTracker.getProviderSnapshot(provider))
       .filter(Boolean);
   }
@@ -533,7 +550,9 @@ class RefreshOrchestratorService {
       snapshot = await this.enrichSnapshotWithMapAssets(snapshot, aggregateNews);
       await this.refreshSecondaryIntel(snapshot, aggregateNews);
       try {
-        await this.marketHistoryStore?.persistMarketState?.(previousSnapshot.market || {}, marketState);
+        await this.marketHistoryStore?.persistMarketState?.(previousSnapshot.market || {}, marketState, {
+          trigger
+        });
       } catch (error) {
         log.warn("market_history_persist_failed", {
           message: error.message

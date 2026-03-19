@@ -100,7 +100,7 @@
                   </div>
                   <div class="col-12 col-xl-6 col-xxl-4">
                     <section class="diagnostic-card h-100">
-                      <header class="diagnostic-card-header">Market API Provider</header>
+                      <header class="diagnostic-card-header">Fallback API Provider</header>
                       <div id="market-api-diagnostics-body" class="diagnostic-list"></div>
                     </section>
                   </div>
@@ -186,7 +186,7 @@
             <div class="col-12">
               <section class="panel panel-vertical h-100">
                 <header class="panel-header d-flex justify-content-between align-items-center">
-                  <h2 class="panel-title mb-0">API Limits Monitor (24h)</h2>
+                  <h2 class="panel-title mb-0">API Limits Monitor</h2>
                   <span id="api-limits-updated" class="small text-light-emphasis">--</span>
                 </header>
                 <div class="table-responsive px-2 py-2">
@@ -195,11 +195,13 @@
                       <tr>
                         <th>Provider</th>
                         <th>Band</th>
+                        <th>Calls 1m</th>
                         <th>Calls 24h</th>
-                        <th>Success</th>
-                        <th>Errors</th>
-                        <th>Fallbacks</th>
-                        <th>Remaining</th>
+                        <th>Remain 1m</th>
+                        <th>Remain 24h</th>
+                        <th>Reset 1m</th>
+                        <th>Reset 24h</th>
+                        <th>Exhausted</th>
                         <th>Status</th>
                       </tr>
                     </thead>

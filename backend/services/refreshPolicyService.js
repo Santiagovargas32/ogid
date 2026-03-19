@@ -16,29 +16,40 @@ function toFinite(value) {
   return Number.isFinite(value) ? value : null;
 }
 
-function toRatio(snapshot = {}) {
-  const remaining = toFinite(snapshot.effectiveRemaining);
-  if (!Number.isFinite(remaining)) {
+function toRatio(remaining, limit) {
+  const safeRemaining = toFinite(remaining);
+  const safeLimit = toFinite(limit);
+  if (!Number.isFinite(safeRemaining) || !Number.isFinite(safeLimit) || safeLimit <= 0) {
     return null;
   }
 
-  const limit = toFinite(snapshot.headerLimit) ?? toFinite(snapshot.configuredLimit);
-  if (!Number.isFinite(limit) || limit <= 0) {
-    return null;
-  }
+  return Math.max(0, Math.min(1, safeRemaining / safeLimit));
+}
 
-  return Math.max(0, Math.min(1, remaining / limit));
+function resolveSnapshotRatios(snapshot = {}) {
+  const dailyRatio = toRatio(
+    snapshot.effectiveRemainingDay,
+    toFinite(snapshot.configuredDailyLimit) ?? toFinite(snapshot.configuredLimit)
+  );
+  const minuteRatio = toRatio(
+    snapshot.effectiveRemainingMinute,
+    toFinite(snapshot.configuredMinuteLimit) ?? toFinite(snapshot.headerLimit)
+  );
+
+  return [dailyRatio, minuteRatio].filter(Number.isFinite);
 }
 
 export function resolveQuotaBandFromSnapshot(snapshot = {}) {
-  if (snapshot?.exhausted) {
+  if (snapshot?.exhausted || snapshot?.exhaustedDay || snapshot?.exhaustedMinute) {
     return QUOTA_BANDS.CRITICAL;
   }
 
-  const ratio = toRatio(snapshot);
-  if (!Number.isFinite(ratio)) {
+  const ratios = resolveSnapshotRatios(snapshot);
+  if (!ratios.length) {
     return QUOTA_BANDS.GREEN;
   }
+
+  const ratio = Math.min(...ratios);
   if (ratio <= 0.05) {
     return QUOTA_BANDS.CRITICAL;
   }
@@ -88,4 +99,3 @@ export function resolveNewsPolicy({
     pageSize: Math.max(10, Number(pageSize))
   };
 }
-

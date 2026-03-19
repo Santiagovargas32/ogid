@@ -21,7 +21,8 @@ function csvResponse(text, status = 200) {
 test("market provider router returns deterministic fallback when web and fmp are unavailable", async () => {
   resetFmpProviderStateForTests();
   apiQuotaTracker.reset({
-    webDailyLimit: 0,
+    twelveDailyLimit: 800,
+    twelveMinuteLimit: 8,
     fmpDailyLimit: 250
   });
 
@@ -58,7 +59,9 @@ test("market provider router returns deterministic fallback when web and fmp are
 test("market provider router prefers yahoo, dedupes duplicate tickers and ignores duplicate upstream symbols", async () => {
   resetFmpProviderStateForTests();
   apiQuotaTracker.reset({
-    webDailyLimit: 0,
+    yahooDailyLimit: 100,
+    twelveDailyLimit: 800,
+    twelveMinuteLimit: 8,
     fmpDailyLimit: 250
   });
 
@@ -145,10 +148,12 @@ test("market provider router prefers yahoo, dedupes duplicate tickers and ignore
   }
 });
 
-test("market provider router falls back from slow yahoo to delayed stooq and records latency", async () => {
+test("market provider router falls back from yahoo to twelve and records source attempts", async () => {
   resetFmpProviderStateForTests();
   apiQuotaTracker.reset({
-    webDailyLimit: 0,
+    yahooDailyLimit: 100,
+    twelveDailyLimit: 800,
+    twelveMinuteLimit: 8,
     fmpDailyLimit: 250
   });
 
@@ -183,15 +188,31 @@ test("market provider router falls back from slow yahoo to delayed stooq and rec
 
     if (value.includes("api.twelvedata.com/quote")) {
       return jsonResponse({
-        status: "ok",
-        data: []
+        data: [
+          {
+            symbol: "GD",
+            close: "300.50",
+            percent_change: "0.25",
+            previous_close: "299.75",
+            high: "301.20",
+            low: "298.80",
+            volume: "1200",
+            datetime: "2026-03-16 18:45:00",
+            market_state: "REGULAR"
+          },
+          {
+            symbol: "BA",
+            close: "200.25",
+            percent_change: "0.80",
+            previous_close: "198.66",
+            high: "201.00",
+            low: "199.00",
+            volume: "1100",
+            datetime: "2026-03-16 18:45:00",
+            market_state: "REGULAR"
+          }
+        ]
       });
-    }
-
-    if (value.includes("stooq.com/q/l/")) {
-      return csvResponse(
-        "Symbol,Date,Time,Open,High,Low,Close,Volume,Name\nGD.US,2026-03-16,18:45:00,300.00,301.00,299.00,300.50,1000,General Dynamics\nBA.US,2026-03-16,18:45:00,200.00,201.00,199.00,200.25,1100,Boeing"
-      );
     }
 
     return jsonResponse({}, 404);
@@ -212,18 +233,21 @@ test("market provider router falls back from slow yahoo to delayed stooq and rec
 
     assert.ok(seenUrls.some((value) => value.includes("query1.finance.yahoo.com/v7/finance/quote")));
     assert.ok(seenUrls.some((value) => value.includes("api.twelvedata.com/quote")));
-    assert.ok(seenUrls.some((value) => value.includes("stooq.com/q/l/")));
     assert.equal(result.sourceMode, "live");
-    assert.equal(result.quotes.GD.sourceDetail, "stooq");
-    assert.equal(result.quotes.GD.dataMode, "web-delayed");
-    assert.equal(result.quotes.BA.sourceDetail, "stooq");
-    assert.equal(result.sourceMeta.providerDiagnostics.web.effectiveSource, "stooq");
+    assert.equal(result.quotes.GD.sourceDetail, "twelve");
+    assert.equal(result.quotes.GD.dataMode, "live");
+    assert.equal(result.quotes.BA.sourceDetail, "twelve");
+    assert.equal(result.sourceMeta.providerDiagnostics.web.effectiveSource, "twelve");
+    assert.equal(Array.isArray(result.sourceMeta.sourceAttempts), true);
+    assert.equal(result.sourceMeta.sourceAttempts.length >= 2, true);
+    assert.equal(result.sourceMeta.sourceAttempts[0].source, "yahoo");
+    assert.equal(result.sourceMeta.sourceAttempts[1].source, "twelve");
     assert.equal(Number.isFinite(Number(result.sourceMeta.providerDiagnostics.web.providerLatencyMs)), true);
     assert.equal(result.sourceMeta.providerDiagnostics.web.providerLatencyMs > 0, true);
     assert.equal(result.sourceMeta.providerDiagnostics.web.providerScore >= 0, true);
     assert.deepEqual(result.sourceMeta.coverageByMode, {
-      live: 0,
-      webDelayed: 2,
+      live: 2,
+      webDelayed: 0,
       historicalEod: 0,
       routerStale: 0,
       syntheticFallback: 0
@@ -236,16 +260,17 @@ test("market provider router falls back from slow yahoo to delayed stooq and rec
 test("market provider router uses stale quotes before deterministic fallback when providers are exhausted", async () => {
   resetFmpProviderStateForTests();
   apiQuotaTracker.reset({
-    webDailyLimit: 1,
+    twelveDailyLimit: 1,
+    twelveMinuteLimit: 1,
     fmpDailyLimit: 1
   });
-  apiQuotaTracker.recordCall("web", { status: "success" });
+  apiQuotaTracker.recordCall("twelve", { status: "success" });
   apiQuotaTracker.recordCall("fmp", { status: "success" });
 
   const result = await fetchMarketQuotes({
     provider: "web",
     fallbackProvider: "fmp",
-    webSource: "yahoo",
+    webSource: "twelve",
     tickers: ["GD", "BA"],
     timeoutMs: 500,
     staleTtlMs: 60_000,

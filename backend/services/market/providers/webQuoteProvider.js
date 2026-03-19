@@ -4,11 +4,11 @@ import { buildProviderDiagnosticRecord } from "../providerDiagnostics.js";
 import { isMarketOpenEt } from "../marketSessionService.js";
 
 const log = createLogger("backend/services/market/providers/webQuoteProvider");
-const SUPPORTED_WEB_SOURCES = new Set(["yahoo", "twelve", "stooq"]);
-const DEFAULT_WEB_SOURCE = "yahoo";
-const DEFAULT_WEB_BASE_URL = "https://query1.finance.yahoo.com";
+const SUPPORTED_WEB_SOURCES = new Set(["twelve", "yahoo"]);
+const DEFAULT_WEB_SOURCE = "twelve";
+const DEFAULT_WEB_BASE_URL = "https://api.twelvedata.com";
 const DEFAULT_TWELVE_BASE_URL = "https://api.twelvedata.com";
-const DEFAULT_STOOQ_BASE_URL = "https://stooq.com";
+const DEFAULT_YAHOO_BASE_URL = "https://query1.finance.yahoo.com";
 const DEFAULT_WEB_USER_AGENT = "ogid/1.0";
 
 function parsePrice(value) {
@@ -37,131 +37,8 @@ function ensureTrailingSlash(baseUrl = DEFAULT_WEB_BASE_URL) {
   return String(baseUrl).endsWith("/") ? String(baseUrl) : `${String(baseUrl)}/`;
 }
 
-function parseCsvLine(line = "") {
-  const values = [];
-  let current = "";
-  let inQuotes = false;
-
-  for (let index = 0; index < line.length; index += 1) {
-    const character = line[index];
-    const nextCharacter = line[index + 1];
-
-    if (character === '"' && inQuotes && nextCharacter === '"') {
-      current += '"';
-      index += 1;
-      continue;
-    }
-
-    if (character === '"') {
-      inQuotes = !inQuotes;
-      continue;
-    }
-
-    if (character === "," && !inQuotes) {
-      values.push(current);
-      current = "";
-      continue;
-    }
-
-    current += character;
-  }
-
-  values.push(current);
-  return values.map((value) => String(value || "").trim());
-}
-
-function parseCsvTable(text = "") {
-  return String(text || "")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => parseCsvLine(line));
-}
-
 function normalizeRequestedTickers(tickers = []) {
   return [...new Set((Array.isArray(tickers) ? tickers : []).map((ticker) => String(ticker || "").toUpperCase()).filter(Boolean))];
-}
-
-function normalizeSourceTicker(ticker = "", source = DEFAULT_WEB_SOURCE) {
-  const normalizedTicker = String(ticker || "").trim().toUpperCase();
-  if (!normalizedTicker) {
-    return "";
-  }
-
-  if (String(source || "").toLowerCase() !== "stooq") {
-    return normalizedTicker;
-  }
-
-  const lowerTicker = normalizedTicker.toLowerCase();
-  if (lowerTicker.endsWith(".us")) {
-    return lowerTicker;
-  }
-
-  return `${lowerTicker.replaceAll(".", "-")}.us`;
-}
-
-function buildYahooBatchQuoteUrl({ baseUrl = DEFAULT_WEB_BASE_URL, symbols = [] } = {}) {
-  const url = new URL("v7/finance/quote", ensureTrailingSlash(baseUrl));
-  url.searchParams.set("symbols", symbols.join(","));
-  return url;
-}
-
-function buildTwelveBatchQuoteUrl({ baseUrl = DEFAULT_TWELVE_BASE_URL, symbols = [], apiKey = "" } = {}) {
-  const url = new URL("quote", ensureTrailingSlash(baseUrl));
-  url.searchParams.set("symbol", symbols.join(","));
-  url.searchParams.set("format", "JSON");
-  url.searchParams.set("prepost", "true");
-  if (apiKey) {
-    url.searchParams.set("apikey", apiKey);
-  }
-  return url;
-}
-
-export function buildWebBatchQuoteUrl({ source = DEFAULT_WEB_SOURCE, baseUrl = DEFAULT_WEB_BASE_URL, symbols = [], apiKey = "" } = {}) {
-  const normalizedSource = String(source || "").toLowerCase();
-
-  if (normalizedSource === "yahoo") {
-    return buildYahooBatchQuoteUrl({ baseUrl, symbols });
-  }
-
-  if (normalizedSource === "twelve") {
-    return buildTwelveBatchQuoteUrl({ baseUrl, symbols, apiKey });
-  }
-
-  if (normalizedSource === "stooq") {
-    const url = new URL("q/l/", ensureTrailingSlash(baseUrl || DEFAULT_STOOQ_BASE_URL));
-    url.searchParams.set("s", symbols.join(","));
-    url.searchParams.set("f", "sd2t2ohlcvn");
-    url.searchParams.set("e", "csv");
-    return url;
-  }
-
-  throw new Error(`Unsupported market web source: ${source}`);
-}
-
-export function buildWebHistoricalUrl({ source = DEFAULT_WEB_SOURCE, baseUrl = DEFAULT_STOOQ_BASE_URL, symbol = "" } = {}) {
-  if (String(source || "").toLowerCase() !== "stooq") {
-    throw new Error(`Unsupported market web historical source: ${source}`);
-  }
-
-  const url = new URL("q/d/l/", ensureTrailingSlash(baseUrl || DEFAULT_STOOQ_BASE_URL));
-  url.searchParams.set("s", symbol);
-  url.searchParams.set("i", "d");
-  return url;
-}
-
-async function fetchWithTimeout(url, options, timeoutMs) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    return await fetch(url, {
-      ...options,
-      signal: controller.signal
-    });
-  } finally {
-    clearTimeout(timeout);
-  }
 }
 
 function normalizeCollection(payload) {
@@ -226,17 +103,32 @@ function computeChangePct(price, previousClose, fallbackChangePct = null) {
   return 0;
 }
 
-function computeSourceScore({ returnedCount = 0, totalTickers = 0, durationMs = 0, errorCount = 0, marketOpen = true, source = "yahoo", dataMode = "live" } = {}) {
+function computeSourceScore({
+  returnedCount = 0,
+  totalTickers = 0,
+  durationMs = 0,
+  errorCount = 0,
+  marketOpen = true,
+  source = DEFAULT_WEB_SOURCE
+} = {}) {
   const coverage = totalTickers > 0 ? returnedCount / totalTickers : 0;
-  const freshnessBonus = dataMode === "live" ? 18 : dataMode === "web-delayed" ? 8 : 0;
-  const sourceBonus = source === "yahoo" ? 10 : source === "twelve" ? 8 : 4;
+  const sourceBonus = source === "twelve" ? 12 : 8;
   const marketBonus = marketOpen ? 5 : 0;
   const latencyPenalty = Number.isFinite(durationMs) ? Math.min(28, durationMs / 180) : 10;
   const errorPenalty = errorCount * 7;
-  return Math.max(0, Math.round(coverage * 60 + freshnessBonus + sourceBonus + marketBonus - latencyPenalty - errorPenalty));
+  return Math.max(0, Math.round(coverage * 65 + sourceBonus + marketBonus - latencyPenalty - errorPenalty));
 }
 
-function buildProviderError({ scope, code, message, tickers = [], ticker = null, status = null, requestUrl = null, responsePreview = null }) {
+function buildProviderError({
+  scope,
+  code,
+  message,
+  tickers = [],
+  ticker = null,
+  status = null,
+  requestUrl = null,
+  responsePreview = null
+}) {
   return {
     provider: "web",
     scope,
@@ -358,7 +250,6 @@ function parseYahooQuote(item = {}, timestamp = new Date().toISOString(), market
     parsePercent(item?.preMarketChangePercent) ??
     parsePercent(item?.changePercent);
   const changePct = computeChangePct(price, previousClose, fallbackChangePct);
-  const marketState = String(item?.marketState || (marketSession?.open ? "REGULAR" : "CLOSED")).toUpperCase();
 
   return {
     price,
@@ -367,8 +258,11 @@ function parseYahooQuote(item = {}, timestamp = new Date().toISOString(), market
     low: parsePrice(item?.regularMarketDayLow) ?? parsePrice(item?.dayLow) ?? parsePrice(item?.low),
     volume: parseInteger(item?.regularMarketVolume) ?? parseInteger(item?.volume),
     previousClose,
-    marketState,
-    asOf: toIsoTimestamp(item?.regularMarketTime ?? item?.regularMarketTimestamp ?? item?.postMarketTime ?? item?.preMarketTime, timestamp),
+    marketState: String(item?.marketState || (marketSession?.open ? "REGULAR" : "CLOSED")).toUpperCase(),
+    asOf: toIsoTimestamp(
+      item?.regularMarketTime ?? item?.regularMarketTimestamp ?? item?.postMarketTime ?? item?.preMarketTime,
+      timestamp
+    ),
     source: "web",
     sourceDetail: "yahoo",
     synthetic: false,
@@ -402,7 +296,6 @@ function parseTwelveQuote(item = {}, timestamp = new Date().toISOString(), marke
     parsePercent(item?.change_pct) ??
     parsePercent(item?.changePercent);
   const changePct = computeChangePct(price, previousClose, fallbackChangePct);
-  const marketState = String(item?.market_state || item?.marketState || (marketSession?.open ? "REGULAR" : "CLOSED")).toUpperCase();
 
   return {
     price,
@@ -411,7 +304,7 @@ function parseTwelveQuote(item = {}, timestamp = new Date().toISOString(), marke
     low: parsePrice(item?.low) ?? parsePrice(item?.day_low) ?? null,
     volume: parseInteger(item?.volume) ?? parseInteger(item?.turnover) ?? null,
     previousClose,
-    marketState,
+    marketState: String(item?.market_state || item?.marketState || (marketSession?.open ? "REGULAR" : "CLOSED")).toUpperCase(),
     asOf: toIsoTimestamp(item?.datetime ?? item?.timestamp ?? item?.date ?? item?.time, timestamp),
     source: "web",
     sourceDetail: "twelve",
@@ -422,37 +315,34 @@ function parseTwelveQuote(item = {}, timestamp = new Date().toISOString(), marke
   };
 }
 
-function parseStooqQuote(row = [], ticker = "", timestamp = new Date().toISOString(), marketSession = {}, providerLatencyMs = null, providerScore = null) {
-  const [, date, time, open, high, low, close, volume] = row;
-  const price = parsePrice(close);
-  if (!ticker || !Number.isFinite(price)) {
-    return null;
-  }
+function buildLogicalPayloadError(source, payload, requestedTickers, requestUrl = null) {
+  const codeFromPayload =
+    payload?.finance?.error?.code ||
+    payload?.quoteResponse?.error?.code ||
+    payload?.code ||
+    payload?.status ||
+    `${source}-logical-error`;
+  const messageFromPayload =
+    payload?.finance?.error?.description ||
+    payload?.quoteResponse?.error?.description ||
+    payload?.message ||
+    `${source} returned a logical error payload.`;
 
-  const openPrice = parsePrice(open);
-  const changePct = Number.isFinite(openPrice) && openPrice > 0 ? Number((((price - openPrice) / openPrice) * 100).toFixed(2)) : 0;
-  const asOf = date && time ? toIsoTimestamp(`${date}T${time}.000Z`, timestamp) : toIsoTimestamp(date || time, timestamp);
-
-  return {
-    price,
-    changePct,
-    high: parsePrice(high),
-    low: parsePrice(low),
-    volume: parseInteger(volume),
-    previousClose: null,
-    marketState: marketSession?.open ? "REGULAR" : "CLOSED",
-    asOf,
-    source: "web",
-    sourceDetail: "stooq",
-    synthetic: false,
-    dataMode: "web-delayed",
-    providerLatencyMs,
-    providerScore
-  };
+  return buildProviderError({
+    scope: "batch",
+    tickers: requestedTickers,
+    code: String(codeFromPayload || `${source}-logical-error`).toLowerCase().replaceAll(/\s+/g, "-"),
+    message: String(messageFromPayload || `${source} returned a logical error payload.`),
+    requestUrl
+  });
 }
 
-function parseYahooBatchResponse(text, requestedTickers, timestamp, marketSession, providerLatencyMs) {
+function parseYahooBatchResponse(text, requestedTickers, timestamp, marketSession, providerLatencyMs, requestUrl) {
   const payload = JSON.parse(text);
+  const logicalError =
+    payload?.finance?.error || payload?.quoteResponse?.error
+      ? buildLogicalPayloadError("yahoo", payload, requestedTickers, requestUrl)
+      : null;
   const rows = normalizeCollection(payload);
   const quotes = {};
 
@@ -467,11 +357,19 @@ function parseYahooBatchResponse(text, requestedTickers, timestamp, marketSessio
     }
   }
 
-  return quotes;
+  return {
+    quotes,
+    logicalError
+  };
 }
 
-function parseTwelveBatchResponse(text, requestedTickers, timestamp, marketSession, providerLatencyMs) {
+function parseTwelveBatchResponse(text, requestedTickers, timestamp, marketSession, providerLatencyMs, requestUrl) {
   const payload = JSON.parse(text);
+  const payloadStatus = String(payload?.status || "").toLowerCase();
+  const logicalError =
+    payloadStatus === "error" || (payload?.code && payload?.message && !Array.isArray(payload?.data) && !payload?.symbol)
+      ? buildLogicalPayloadError("twelve", payload, requestedTickers, requestUrl)
+      : null;
   const rows = normalizeCollection(payload);
   const quotes = {};
 
@@ -480,56 +378,73 @@ function parseTwelveBatchResponse(text, requestedTickers, timestamp, marketSessi
     if (!parsed) {
       continue;
     }
-    const symbol = String(item?.symbol || item?.ticker || "").trim().toUpperCase();
+    const symbol = String(item?.symbol || item?.ticker || item?.instrument?.symbol || "").trim().toUpperCase();
     if (symbol && !quotes[symbol]) {
       quotes[symbol] = parsed;
     }
   }
 
-  return quotes;
+  return {
+    quotes,
+    logicalError
+  };
 }
 
-function parseStooqBatchResponse(text, requestedTickers, timestamp, marketSession, providerLatencyMs) {
-  const table = parseCsvTable(text);
-  const tickerBySymbol = new Map(
-    requestedTickers.map((ticker) => [normalizeSourceTicker(ticker, "stooq"), ticker])
-  );
-  const quotes = {};
+function buildYahooBatchQuoteUrl({ baseUrl = DEFAULT_YAHOO_BASE_URL, symbols = [] } = {}) {
+  const url = new URL("v7/finance/quote", ensureTrailingSlash(baseUrl));
+  url.searchParams.set("symbols", symbols.join(","));
+  return url;
+}
 
-  for (const row of table.slice(1)) {
-    const symbol = String(row?.[0] || "").trim().toLowerCase();
-    const ticker = tickerBySymbol.get(symbol);
-    if (!ticker) {
-      continue;
-    }
+function buildTwelveBatchQuoteUrl({ baseUrl = DEFAULT_TWELVE_BASE_URL, symbols = [], apiKey = "", enablePrepost = false } = {}) {
+  const url = new URL("quote", ensureTrailingSlash(baseUrl));
+  url.searchParams.set("symbol", symbols.join(","));
+  url.searchParams.set("format", "JSON");
+  if (enablePrepost) {
+    url.searchParams.set("prepost", "true");
+  }
+  if (apiKey) {
+    url.searchParams.set("apikey", apiKey);
+  }
+  return url;
+}
 
-    const parsed = parseStooqQuote(row, ticker, timestamp, marketSession, providerLatencyMs, null);
-    if (!parsed) {
-      continue;
-    }
-    quotes[ticker] = parsed;
+export function buildWebBatchQuoteUrl({
+  source = DEFAULT_WEB_SOURCE,
+  baseUrl = DEFAULT_WEB_BASE_URL,
+  symbols = [],
+  apiKey = "",
+  enablePrepost = false
+} = {}) {
+  const normalizedSource = String(source || "").toLowerCase();
+
+  if (normalizedSource === "yahoo") {
+    return buildYahooBatchQuoteUrl({ baseUrl, symbols });
   }
 
-  const error =
-    table.length <= 1
-      ? buildProviderError({
-          scope: "batch",
-          tickers: requestedTickers,
-          code: "web-csv-empty",
-          message: "Market web batch CSV returned no quote rows.",
-          responsePreview: text
-        })
-      : Object.keys(quotes).length > 0
-        ? null
-        : buildProviderError({
-            scope: "batch",
-            tickers: requestedTickers,
-            code: "web-symbol-unmapped",
-            message: "Market web batch CSV did not contain usable symbols for the requested tickers.",
-            responsePreview: text
-          });
+  if (normalizedSource === "twelve") {
+    return buildTwelveBatchQuoteUrl({ baseUrl, symbols, apiKey, enablePrepost });
+  }
 
-  return { quotes, error };
+  throw new Error(`Unsupported market web source: ${source}`);
+}
+
+export function buildWebHistoricalUrl({ source = DEFAULT_WEB_SOURCE } = {}) {
+  throw new Error(`Unsupported market web historical source: ${source}`);
+}
+
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function resolveWebSourceOrder(source = DEFAULT_WEB_SOURCE) {
@@ -537,14 +452,7 @@ function resolveWebSourceOrder(source = DEFAULT_WEB_SOURCE) {
   if (!SUPPORTED_WEB_SOURCES.has(normalized)) {
     return [];
   }
-
-  if (normalized === "yahoo") {
-    return ["yahoo", "twelve", "stooq"];
-  }
-  if (normalized === "twelve") {
-    return ["twelve", "yahoo", "stooq"];
-  }
-  return ["stooq", "yahoo", "twelve"];
+  return normalized === "yahoo" ? ["yahoo", "twelve"] : ["twelve", "yahoo"];
 }
 
 function resolveWebBaseUrl(source, primarySource, config = {}) {
@@ -552,18 +460,47 @@ function resolveWebBaseUrl(source, primarySource, config = {}) {
   const normalizedPrimary = String(primarySource || DEFAULT_WEB_SOURCE).toLowerCase();
 
   if (normalizedSource === "yahoo") {
-    return config.yahooBaseUrl || (normalizedSource === normalizedPrimary && config.baseUrl ? config.baseUrl : DEFAULT_WEB_BASE_URL);
+    return config.yahooBaseUrl || (normalizedPrimary === "yahoo" && config.baseUrl ? config.baseUrl : DEFAULT_YAHOO_BASE_URL);
   }
   if (normalizedSource === "twelve") {
-    return config.twelveBaseUrl || DEFAULT_TWELVE_BASE_URL;
-  }
-  if (normalizedSource === "stooq") {
-    return config.stooqBaseUrl || DEFAULT_STOOQ_BASE_URL;
-  }
-  if (normalizedSource === normalizedPrimary && config.baseUrl) {
-    return config.baseUrl;
+    return config.twelveBaseUrl || (normalizedPrimary === "twelve" && config.baseUrl ? config.baseUrl : DEFAULT_TWELVE_BASE_URL);
   }
   return config.baseUrl || DEFAULT_WEB_BASE_URL;
+}
+
+function buildUnavailableAttempt({
+  source,
+  code,
+  message,
+  requestedTickers,
+  timestamp,
+  quotaSnapshot = null
+}) {
+  return {
+    source,
+    status: code === "source-quota-exhausted" || code === "source-reserve-floor" ? "skipped" : "error",
+    quotes: {},
+    missingTickers: requestedTickers,
+    requestUrls: [],
+    errors: [
+      buildProviderError({
+        scope: "provider",
+        code,
+        message,
+        tickers: requestedTickers
+      })
+    ],
+    requestMode: "unavailable",
+    providerScore: 0,
+    durationMs: 0,
+    httpStatus: null,
+    responsePreview: null,
+    effectiveSource: null,
+    returnedTickers: [],
+    lastSuccessAt: null,
+    lastAttemptAt: timestamp,
+    quotaSnapshot
+  };
 }
 
 async function requestWebSourceQuotes({
@@ -574,99 +511,78 @@ async function requestWebSourceQuotes({
   timeoutMs = 9_000,
   timestamp = new Date().toISOString(),
   userAgent = DEFAULT_WEB_USER_AGENT,
-  marketSession = { open: false }
+  marketSession = { open: false },
+  allowExhaustedSources = false,
+  reserve = 0,
+  twelveEnablePrepost = false
 }) {
   const normalizedSource = String(source || "").toLowerCase();
   const requestedTickers = normalizeRequestedTickers(tickers);
-  const symbols = requestedTickers.map((ticker) => normalizeSourceTicker(ticker, normalizedSource)).filter(Boolean);
-  const startedAt = Date.now();
-  const requestUrls = [];
+  const quotaSnapshotBefore = apiQuotaTracker.getProviderSnapshot(normalizedSource);
 
   if (!SUPPORTED_WEB_SOURCES.has(normalizedSource)) {
-    return {
+    return buildUnavailableAttempt({
       source: normalizedSource,
-      quotes: {},
-      missingTickers: requestedTickers,
-      requestUrls,
-      errors: [
-        buildProviderError({
-          scope: "provider",
-          tickers: requestedTickers,
-          code: "web-source-invalid",
-          message: "The configured market web source is not supported."
-        })
-      ],
-      requestMode: "unavailable",
-      providerScore: 0,
-      durationMs: 0,
-      httpStatus: null,
-      responsePreview: null,
-      effectiveSource: null,
-      returnedTickers: [],
-      lastSuccessAt: null,
-      lastAttemptAt: timestamp
-    };
+      code: "web-source-invalid",
+      message: "The configured market web source is not supported.",
+      requestedTickers,
+      timestamp,
+      quotaSnapshot: quotaSnapshotBefore
+    });
   }
 
-  if (!symbols.length) {
-    return {
+  const remaining = quotaSnapshotBefore?.effectiveRemaining;
+  if (!allowExhaustedSources && quotaSnapshotBefore?.exhausted) {
+    return buildUnavailableAttempt({
       source: normalizedSource,
-      quotes: {},
-      missingTickers: requestedTickers,
-      requestUrls,
-      errors: [
-        buildProviderError({
-          scope: "provider",
-          tickers: requestedTickers,
-          code: "web-symbol-unmapped",
-          message: "No valid symbols were produced for the configured web source."
-        })
-      ],
-      requestMode: "unavailable",
-      providerScore: 0,
-      durationMs: 0,
-      httpStatus: null,
-      responsePreview: null,
-      effectiveSource: null,
-      returnedTickers: [],
-      lastSuccessAt: null,
-      lastAttemptAt: timestamp
-    };
+      code: "source-quota-exhausted",
+      message: `${normalizedSource} is exhausted and was skipped.`,
+      requestedTickers,
+      timestamp,
+      quotaSnapshot: quotaSnapshotBefore
+    });
+  }
+  if (!allowExhaustedSources && Number.isFinite(remaining) && remaining <= Math.max(0, Number.parseInt(String(reserve ?? 0), 10) || 0)) {
+    return buildUnavailableAttempt({
+      source: normalizedSource,
+      code: "source-reserve-floor",
+      message: `${normalizedSource} was skipped because it is at or below the reserve floor.`,
+      requestedTickers,
+      timestamp,
+      quotaSnapshot: quotaSnapshotBefore
+    });
+  }
+
+  if (!requestedTickers.length) {
+    return buildUnavailableAttempt({
+      source: normalizedSource,
+      code: "web-symbol-unmapped",
+      message: "No valid symbols were produced for the configured web source.",
+      requestedTickers,
+      timestamp,
+      quotaSnapshot: quotaSnapshotBefore
+    });
   }
 
   if (normalizedSource === "twelve" && !apiKey) {
-    return {
+    return buildUnavailableAttempt({
       source: normalizedSource,
-      quotes: {},
-      missingTickers: requestedTickers,
-      requestUrls,
-      errors: [
-        buildProviderError({
-          scope: "provider",
-          tickers: requestedTickers,
-          code: "api-key-missing",
-          message: "Twelve Data API key is missing."
-        })
-      ],
-      requestMode: "unavailable",
-      providerScore: 0,
-      durationMs: 0,
-      httpStatus: null,
-      responsePreview: null,
-      effectiveSource: null,
-      returnedTickers: [],
-      lastSuccessAt: null,
-      lastAttemptAt: timestamp
-    };
+      code: "api-key-missing",
+      message: "Twelve Data API key is missing.",
+      requestedTickers,
+      timestamp,
+      quotaSnapshot: quotaSnapshotBefore
+    });
   }
 
   const requestUrl = buildWebBatchQuoteUrl({
     source: normalizedSource,
     baseUrl,
-    symbols,
-    apiKey
+    symbols: requestedTickers,
+    apiKey,
+    enablePrepost: normalizedSource === "twelve" ? twelveEnablePrepost : false
   });
-  requestUrls.push(requestUrl.toString());
+  const startedAt = Date.now();
 
   try {
     const response = await fetchWithTimeout(
@@ -674,7 +590,7 @@ async function requestWebSourceQuotes({
       {
         headers: {
           "User-Agent": userAgent || DEFAULT_WEB_USER_AGENT,
-          Accept: normalizedSource === "stooq" ? "text/csv" : "application/json"
+          Accept: "application/json"
         }
       },
       timeoutMs
@@ -683,14 +599,15 @@ async function requestWebSourceQuotes({
     const durationMs = Date.now() - startedAt;
     let quotes = {};
     let parseError = null;
+    let logicalError = null;
 
     try {
-      quotes =
+      const parsed =
         normalizedSource === "yahoo"
-          ? parseYahooBatchResponse(text, requestedTickers, timestamp, marketSession, durationMs)
-          : normalizedSource === "twelve"
-            ? parseTwelveBatchResponse(text, requestedTickers, timestamp, marketSession, durationMs)
-            : parseStooqBatchResponse(text, requestedTickers, timestamp, marketSession, durationMs).quotes;
+          ? parseYahooBatchResponse(text, requestedTickers, timestamp, marketSession, durationMs, requestUrl.toString())
+          : parseTwelveBatchResponse(text, requestedTickers, timestamp, marketSession, durationMs, requestUrl.toString());
+      quotes = parsed.quotes;
+      logicalError = parsed.logicalError;
     } catch (error) {
       parseError =
         error.providerError ||
@@ -704,92 +621,64 @@ async function requestWebSourceQuotes({
         });
     }
 
-    if (!response.ok) {
-      const providerError = buildProviderError({
-        scope: "batch",
-        tickers: requestedTickers,
-        code: "web-upstream-status",
-        message: `Market web source returned HTTP ${response.status}.`,
-        status: response.status,
-        requestUrl: requestUrl.toString(),
+    const missingTickers = requestedTickers.filter((ticker) => !quotes[ticker]);
+    const requestStatus =
+      !response.ok || logicalError || parseError
+        ? "error"
+        : Object.keys(quotes).length > 0
+          ? "success"
+          : "empty";
+    const quotaSnapshot = apiQuotaTracker.recordCall(normalizedSource, {
+      status: requestStatus,
+      fallback: missingTickers.length > 0,
+      headers: response.headers,
+      timestamp
+    });
+
+    const errors = [];
+    if (parseError) {
+      errors.push(parseError);
+    }
+    if (logicalError) {
+      errors.push({
+        ...logicalError,
         responsePreview: text
       });
-      return {
-        source: normalizedSource,
-        quotes,
-        missingTickers: requestedTickers.filter((ticker) => !quotes[ticker]),
-        requestUrls,
-        errors: [parseError, providerError].filter(Boolean),
-        requestMode: normalizedSource === "stooq" ? "web-delayed" : "live-batch",
-        providerScore: computeSourceScore({
-          returnedCount: Object.keys(quotes).length,
-          totalTickers: requestedTickers.length,
-          durationMs,
-          errorCount: 1,
-          marketOpen: Boolean(marketSession?.open),
-          source: normalizedSource,
-          dataMode: normalizedSource === "stooq" ? "web-delayed" : "live"
-        }),
-        durationMs,
-        httpStatus: response.status,
-        responsePreview: text,
-        effectiveSource: Object.keys(quotes).length ? normalizedSource : null,
-        returnedTickers: Object.keys(quotes),
-        lastSuccessAt: Object.keys(quotes).length ? new Date().toISOString() : null,
-        lastAttemptAt: timestamp
-      };
+    }
+    if (!response.ok) {
+      errors.push(
+        buildProviderError({
+          scope: "batch",
+          tickers: requestedTickers,
+          code: "web-upstream-status",
+          message: `Market web source returned HTTP ${response.status}.`,
+          status: response.status,
+          requestUrl: requestUrl.toString(),
+          responsePreview: text
+        })
+      );
+    }
+    if (!Object.keys(quotes).length && !logicalError && !parseError) {
+      errors.push(
+        buildProviderError({
+          scope: "batch",
+          tickers: requestedTickers,
+          code: "web-symbol-unmapped",
+          message: "Market web source did not contain usable symbols for the requested tickers.",
+          requestUrl: requestUrl.toString(),
+          responsePreview: text
+        })
+      );
     }
 
-    if (!Object.keys(quotes).length) {
-      const emptyError =
-        parseError ||
-        (normalizedSource === "stooq"
-          ? parseStooqBatchResponse(text, requestedTickers, timestamp, marketSession, durationMs).error
-          : buildProviderError({
-              scope: "batch",
-              tickers: requestedTickers,
-              code: "web-symbol-unmapped",
-              message: "Market web source did not contain usable symbols for the requested tickers.",
-            requestUrl: requestUrl.toString(),
-            responsePreview: text
-          }));
-      return {
-        source: normalizedSource,
-        quotes: {},
-        missingTickers: requestedTickers,
-        requestUrls,
-        errors: [emptyError].filter(Boolean),
-        requestMode: normalizedSource === "stooq" ? "web-delayed" : "live-batch",
-        providerScore: computeSourceScore({
-          returnedCount: 0,
-          totalTickers: requestedTickers.length,
-          durationMs,
-          errorCount: 1,
-          marketOpen: Boolean(marketSession?.open),
-          source: normalizedSource,
-          dataMode: normalizedSource === "stooq" ? "web-delayed" : "live"
-        }),
-        durationMs,
-        httpStatus: response.status,
-        responsePreview: text,
-        effectiveSource: null,
-        returnedTickers: [],
-        lastSuccessAt: null,
-        lastAttemptAt: timestamp
-      };
-    }
-
-    const missingTickers = requestedTickers.filter((ticker) => !quotes[ticker]);
     const providerScore = computeSourceScore({
       returnedCount: Object.keys(quotes).length,
       totalTickers: requestedTickers.length,
       durationMs,
-      errorCount: 0,
+      errorCount: errors.length,
       marketOpen: Boolean(marketSession?.open),
-      source: normalizedSource,
-      dataMode: normalizedSource === "stooq" ? "web-delayed" : "live"
+      source: normalizedSource
     });
-
     for (const [ticker, quote] of Object.entries(quotes)) {
       quotes[ticker] = {
         ...quote,
@@ -800,27 +689,36 @@ async function requestWebSourceQuotes({
 
     return {
       source: normalizedSource,
+      status: !Object.keys(quotes).length ? (errors.length ? "error" : "empty") : missingTickers.length ? "partial" : "ok",
       quotes,
       missingTickers,
-      requestUrls,
-      errors: [parseError].filter(Boolean),
-      requestMode: normalizedSource === "stooq" ? "web-delayed" : "live-batch",
+      requestUrls: [requestUrl.toString()],
+      errors,
+      requestMode: "live-batch",
       providerScore,
       durationMs,
       httpStatus: response.status,
       responsePreview: text,
-      effectiveSource: normalizedSource,
+      effectiveSource: Object.keys(quotes).length ? normalizedSource : null,
       returnedTickers: Object.keys(quotes),
-      lastSuccessAt: new Date().toISOString(),
-      lastAttemptAt: timestamp
+      lastSuccessAt: Object.keys(quotes).length ? new Date().toISOString() : null,
+      lastAttemptAt: timestamp,
+      quotaSnapshot
     };
   } catch (error) {
     const durationMs = Date.now() - startedAt;
+    const quotaSnapshot = apiQuotaTracker.recordCall(normalizedSource, {
+      status: "error",
+      fallback: true,
+      timestamp
+    });
+
     return {
       source: normalizedSource,
+      status: "error",
       quotes: {},
       missingTickers: requestedTickers,
-      requestUrls,
+      requestUrls: [requestUrl.toString()],
       errors: [
         error.providerError ||
           buildProviderError({
@@ -834,15 +732,14 @@ async function requestWebSourceQuotes({
             requestUrl: requestUrl.toString()
           })
       ],
-      requestMode: normalizedSource === "stooq" ? "web-delayed" : "live-batch",
+      requestMode: "live-batch",
       providerScore: computeSourceScore({
         returnedCount: 0,
         totalTickers: requestedTickers.length,
         durationMs,
         errorCount: 1,
         marketOpen: Boolean(marketSession?.open),
-        source: normalizedSource,
-        dataMode: normalizedSource === "stooq" ? "web-delayed" : "live"
+        source: normalizedSource
       }),
       durationMs,
       httpStatus: null,
@@ -850,7 +747,8 @@ async function requestWebSourceQuotes({
       effectiveSource: null,
       returnedTickers: [],
       lastSuccessAt: null,
-      lastAttemptAt: timestamp
+      lastAttemptAt: timestamp,
+      quotaSnapshot
     };
   }
 }
@@ -864,10 +762,12 @@ export async function fetchWebQuotes({
   userAgent = DEFAULT_WEB_USER_AGENT,
   configuredProvider = "web",
   configuredFallbackProvider = null,
-  yahooBaseUrl = DEFAULT_WEB_BASE_URL,
-  stooqBaseUrl = DEFAULT_STOOQ_BASE_URL,
+  yahooBaseUrl = DEFAULT_YAHOO_BASE_URL,
   twelveApiKey = "",
   twelveBaseUrl = DEFAULT_TWELVE_BASE_URL,
+  twelveEnablePrepost = false,
+  requestReserve = 0,
+  allowExhaustedSources = false,
   session = null
 }) {
   const requestedTickers = normalizeRequestedTickers(tickers);
@@ -914,7 +814,6 @@ export async function fetchWebQuotes({
       baseUrl: resolveWebBaseUrl(currentSource, primarySource, {
         baseUrl,
         yahooBaseUrl,
-        stooqBaseUrl,
         twelveBaseUrl
       }),
       apiKey: currentSource === "twelve" ? twelveApiKey : "",
@@ -922,17 +821,16 @@ export async function fetchWebQuotes({
       timeoutMs,
       timestamp,
       userAgent,
-      marketSession
+      marketSession,
+      allowExhaustedSources,
+      reserve: requestReserve,
+      twelveEnablePrepost
     });
 
     sourceAttempts.push(attempt);
     requestUrls.push(...(attempt.requestUrls || []));
     errors.push(...(attempt.errors || []));
-
-    for (const [ticker, quote] of Object.entries(attempt.quotes || {})) {
-      quotes[ticker] = quote;
-    }
-
+    Object.assign(quotes, attempt.quotes || {});
     unresolved = unresolved.filter((ticker) => !attempt.quotes?.[ticker]);
     if (Object.keys(attempt.quotes || {}).length > 0) {
       lastSuccessAt = attempt.lastSuccessAt || new Date().toISOString();
@@ -941,7 +839,6 @@ export async function fetchWebQuotes({
 
   const durationMs = Date.now() - startedAt;
   const liveCount = Object.values(quotes).filter((quote) => quote?.dataMode === "live").length;
-  const delayedCount = Object.values(quotes).filter((quote) => quote?.dataMode === "web-delayed").length;
   const requestMode = [...new Set(sourceAttempts.map((attempt) => attempt.requestMode).filter(Boolean))].join("+") || "unavailable";
   const providerScores = Object.fromEntries(sourceAttempts.map((attempt) => [attempt.source, attempt.providerScore ?? 0]));
   const effectiveSource =
@@ -962,19 +859,17 @@ export async function fetchWebQuotes({
     code: error.code || error.reason || "unknown-error",
     reason: error.reason || error.code || "unknown-error"
   }));
-  const fallbackCount = requestedTickers.filter((ticker) => !quotes[ticker]).length;
-  const sourceMode = Object.keys(quotes).length <= 0 ? "fallback" : Object.keys(quotes).length >= requestedTickers.length ? "live" : "mixed";
+  const requestUrlsUnique = [...new Set(requestUrls.filter(Boolean))];
   const latestAttempt = sourceAttempts.at(-1) || {};
   const latestSuccess = [...sourceAttempts].reverse().find((attempt) => Object.keys(attempt.quotes || {}).length > 0) || null;
-  const requestUrlsUnique = [...new Set(requestUrls.filter(Boolean))];
-
-  apiQuotaTracker.recordCall("web", {
-    status: Object.keys(quotes).length > 0 ? "success" : "error",
-    fallback: fallbackCount > 0,
-    timestamp
-  });
-
+  const sourceSnapshots = Object.fromEntries(
+    sourceAttempts
+      .filter((attempt) => attempt.source)
+      .map((attempt) => [attempt.source, attempt.quotaSnapshot || apiQuotaTracker.getProviderSnapshot(attempt.source)])
+  );
+  const sourceMode = Object.keys(quotes).length <= 0 ? "fallback" : Object.keys(quotes).length >= requestedTickers.length ? "live" : "mixed";
   const finalError = providerErrors.at(-1) || null;
+
   const providerDiagnostics = buildProviderDiagnosticRecord({
     provider: "web",
     configuredProvider,
@@ -1000,24 +895,31 @@ export async function fetchWebQuotes({
       providerScore,
       providerScores,
       liveCount,
-      delayedCount,
+      delayedCount: 0,
       sourceOrder,
       sourceAttempts: sourceAttempts.map((attempt) => ({
         source: attempt.source,
+        status: attempt.status,
         requestMode: attempt.requestMode,
         providerScore: attempt.providerScore,
         durationMs: attempt.durationMs,
+        requestUrls: attempt.requestUrls || [],
         returnedTickers: attempt.returnedTickers,
         missingTickers: attempt.missingTickers,
         httpStatus: attempt.httpStatus,
+        responsePreview: attempt.responsePreview || null,
         lastAttemptAt: attempt.lastAttemptAt,
         lastSuccessAt: attempt.lastSuccessAt,
+        quotaSnapshot: attempt.quotaSnapshot || null,
+        errorCode: attempt.errors?.[0]?.code || attempt.errors?.[0]?.reason || null,
+        errorMessage: attempt.errors?.[0]?.message || null,
         errors: (attempt.errors || []).map((error) => ({
           code: error.code || error.reason || "unknown-error",
           message: error.message || null,
           scope: error.scope || null
         }))
-      }))
+      })),
+      sourceSnapshots
     }
   });
 
@@ -1026,8 +928,7 @@ export async function fetchWebQuotes({
     source: primarySource,
     effectiveSource,
     liveCount,
-    delayedCount,
-    fallbackCount,
+    fallbackCount: requestedTickers.filter((ticker) => !quotes[ticker]).length,
     totalTickers: requestedTickers.length,
     durationMs,
     providerScore
@@ -1043,7 +944,7 @@ export async function fetchWebQuotes({
       provider: "web",
       requestMode,
       liveCount,
-      delayedCount,
+      delayedCount: 0,
       totalTickers: requestedTickers.length,
       sourceOrder,
       effectiveSource,
@@ -1051,6 +952,8 @@ export async function fetchWebQuotes({
       providerScores,
       marketSession,
       requestUrls: requestUrlsUnique,
+      sourceAttempts,
+      sourceSnapshots,
       errors: providerErrors,
       providerDiagnostics: {
         web: providerDiagnostics
@@ -1059,7 +962,7 @@ export async function fetchWebQuotes({
       requestedTickers,
       returnedTickers: Object.keys(quotes),
       missingTickers: requestedTickers.filter((ticker) => !quotes[ticker]),
-      fallbackCount
+      fallbackCount: requestedTickers.filter((ticker) => !quotes[ticker]).length
     },
     updatedAt: timestamp
   };

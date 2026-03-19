@@ -207,7 +207,7 @@ function readConfig(overrides = {}) {
   );
   const envMarketProvider = toTrimmedString(process.env.MARKET_PROVIDER);
   const envMarketFallbackProvider = toTrimmedString(process.env.MARKET_PROVIDER_FALLBACK);
-  const envMarketWebSource = toTrimmedString(process.env.MARKET_WEB_SOURCE).toLowerCase() || "yahoo";
+  const envMarketWebSource = toTrimmedString(process.env.MARKET_WEB_SOURCE).toLowerCase() || "twelve";
   const marketTickers = toList(process.env.MARKET_TICKERS, ["GD", "BA", "NOC", "LMT", "RTX", "XOM", "CVX"]).map(
     (ticker) => ticker.toUpperCase()
   );
@@ -287,15 +287,11 @@ function readConfig(overrides = {}) {
       webSource: envMarketWebSource,
       webBaseUrl:
         process.env.MARKET_WEB_BASE_URL ||
-        (envMarketWebSource === "stooq"
-          ? "https://stooq.com"
-          : envMarketWebSource === "twelve"
-            ? "https://api.twelvedata.com"
-            : "https://query1.finance.yahoo.com"),
+        (envMarketWebSource === "twelve" ? "https://api.twelvedata.com" : "https://query1.finance.yahoo.com"),
       webYahooBaseUrl: process.env.MARKET_YAHOO_BASE_URL || "https://query1.finance.yahoo.com",
-      webStooqBaseUrl: process.env.MARKET_STOOQ_BASE_URL || "https://stooq.com",
       twelveApiKey: process.env.MARKET_TWELVE_API_KEY || process.env.TWELVE_DATA_API_KEY || process.env.TWELVEDATA_API_KEY || "",
       twelveBaseUrl: process.env.MARKET_TWELVE_BASE_URL || "https://api.twelvedata.com",
+      twelveEnablePrepost: toBool(process.env.MARKET_TWELVE_PREPOST, false),
       webTimeoutMs: toInt(process.env.MARKET_WEB_TIMEOUT_MS, toInt(process.env.MARKET_TIMEOUT_MS, 10_000)),
       webUserAgent: process.env.MARKET_WEB_USER_AGENT || "ogid/1.0",
       timeoutMs: toInt(process.env.MARKET_TIMEOUT_MS, 10_000),
@@ -339,8 +335,10 @@ function readConfig(overrides = {}) {
       mediastackDailyLimit: toInt(process.env.MEDIASTACK_DAILY_LIMIT, 500),
       rssDailyLimit: toInt(process.env.RSS_DAILY_LIMIT, 0),
       gdeltDailyLimit: toInt(process.env.GDELT_DAILY_LIMIT, 0),
+      twelveDailyLimit: toInt(process.env.MARKET_TWELVE_DAILY_LIMIT, 800),
+      twelveMinuteLimit: toInt(process.env.MARKET_TWELVE_MINUTE_LIMIT, 8),
+      yahooDailyLimit: toInt(process.env.MARKET_YAHOO_DAILY_LIMIT, toInt(process.env.MARKET_WEB_DAILY_LIMIT, 0)),
       fmpDailyLimit: toInt(process.env.FMP_DAILY_LIMIT, 250),
-      webDailyLimit: toInt(process.env.MARKET_WEB_DAILY_LIMIT, 0)
     },
     media: {
       refreshIntervalMs: toInt(process.env.MEDIA_STREAM_REFRESH_INTERVAL_MS, 300_000),

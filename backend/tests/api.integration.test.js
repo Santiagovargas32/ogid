@@ -27,22 +27,48 @@ test("REST API exposes health and snapshot payloads", async () => {
       );
     }
 
-    if (value.includes("stooq.com/q/l/")) {
+    if (value.includes("api.twelvedata.com/quote")) {
       return new Response(
-        "Symbol,Date,Time,Open,High,Low,Close,Volume,Name\nGD.US,2026-03-16,18:45:00,300.00,301.00,299.00,300.50,1000,General Dynamics\nBA.US,2026-03-16,18:45:00,200.00,201.00,199.00,200.25,1100,Boeing\nNOC.US,2026-03-16,18:45:00,450.00,452.00,449.00,451.10,900,Northrop Grumman",
+        JSON.stringify({
+          data: [
+            {
+              symbol: "GD",
+              close: "300.50",
+              percent_change: "0.25",
+              previous_close: "299.75",
+              high: "301.20",
+              low: "298.80",
+              volume: "1000",
+              datetime: "2026-03-16 18:45:00",
+              market_state: "REGULAR"
+            },
+            {
+              symbol: "BA",
+              close: "200.25",
+              percent_change: "0.80",
+              previous_close: "198.66",
+              high: "201.00",
+              low: "199.00",
+              volume: "1100",
+              datetime: "2026-03-16 18:45:00",
+              market_state: "REGULAR"
+            },
+            {
+              symbol: "NOC",
+              close: "451.10",
+              percent_change: "0.24",
+              previous_close: "450.02",
+              high: "452.00",
+              low: "449.00",
+              volume: "900",
+              datetime: "2026-03-16 18:45:00",
+              market_state: "REGULAR"
+            }
+          ]
+        }),
         {
           status: 200,
-          headers: { "content-type": "text/csv" }
-        }
-      );
-    }
-
-    if (value.includes("stooq.com/q/d/l/")) {
-      return new Response(
-        "Date,Open,High,Low,Close,Volume\n2026-03-14,296.00,299.00,295.00,298.00,1000\n2026-03-15,298.00,300.00,297.00,299.00,1100",
-        {
-          status: 200,
-          headers: { "content-type": "text/csv" }
+          headers: { "content-type": "application/json" }
         }
       );
     }
@@ -74,9 +100,11 @@ test("REST API exposes health and snapshot payloads", async () => {
     market: {
       provider: "web",
       fallbackProvider: "fmp",
-      webSource: "stooq",
-      webBaseUrl: "https://stooq.com",
+      webSource: "twelve",
+      webBaseUrl: "https://api.twelvedata.com",
       webUserAgent: "ogid/1.0",
+      twelveApiKey: "demo",
+      twelveBaseUrl: "https://api.twelvedata.com",
       tickers: ["GD", "BA", "NOC"],
       refreshIntervalMs: 300_000,
       apiKey: "",
@@ -95,7 +123,9 @@ test("REST API exposes health and snapshot payloads", async () => {
     apiLimits: {
       newsapiDailyLimit: 10,
       gnewsDailyLimit: 10,
-      mediastackDailyLimit: 10
+      mediastackDailyLimit: 10,
+      twelveDailyLimit: 800,
+      twelveMinuteLimit: 8
     }
   });
 
@@ -118,6 +148,7 @@ test("REST API exposes health and snapshot payloads", async () => {
     assert.equal(healthPayload.data.market.configuredProvider, "web");
     assert.equal(healthPayload.data.market.configuredFallbackProvider, "fmp");
     assert.equal(healthPayload.data.market.effectiveProvider, "web");
+    assert.equal(healthPayload.data.market.effectiveSource, "twelve");
     assert.equal(typeof healthPayload.data.market.providerScore, "number");
     assert.ok(healthPayload.data.market.session);
     assert.equal(healthPayload.data.market.historicalPersistence.enabled, false);
@@ -194,7 +225,7 @@ test("REST API exposes health and snapshot payloads", async () => {
     assert.ok(quotesPayload.data.quotes.GD);
     assert.ok("quoteOriginStage" in quotesPayload.data.quotes.GD);
     assert.ok("quoteAgeMin" in quotesPayload.data.quotes.GD);
-    assert.equal(quotesPayload.data.quotes.GD.sourceDetail, "stooq");
+    assert.equal(quotesPayload.data.quotes.GD.sourceDetail, "twelve");
     assert.ok("providerScore" in quotesPayload.data.quotes.GD);
     assert.ok("providerLatencyMs" in quotesPayload.data.quotes.GD);
     assert.ok(quotesPayload.data.market.coverageByMode);
@@ -258,6 +289,7 @@ test("REST API exposes health and snapshot payloads", async () => {
     assert.equal(limitsPayload.ok, true);
     assert.equal(Array.isArray(limitsPayload.data.providers), true);
     assert.ok(limitsPayload.data.providers.some((provider) => provider.provider === "newsapi"));
+    assert.ok(limitsPayload.data.providers.some((provider) => provider.provider === "twelve"));
     assert.ok(limitsPayload.data.providers.every((provider) => "quotaBand" in provider));
 
     const pipelineResponse = await fetch(`${baseUrl}/api/admin/pipeline-status`);
@@ -286,9 +318,11 @@ test("REST API exposes health and snapshot payloads", async () => {
     assert.equal(pipelinePayload.data.market.providerDiagnostics.web.status, "ok");
     assert.equal(pipelinePayload.data.market.providerDiagnostics.fmp.status, "idle");
     assert.equal(pipelinePayload.data.market.historicalPersistence.enabled, false);
-    assert.equal(pipelinePayload.data.market.webDiagnostics.configuredSource, "stooq");
+    assert.equal(pipelinePayload.data.market.effectiveSource, "twelve");
+    assert.equal(pipelinePayload.data.market.webDiagnostics.configuredSource, "twelve");
     assert.equal(pipelinePayload.data.market.webDiagnostics.status, "ok");
     assert.ok(Array.isArray(pipelinePayload.data.market.webDiagnostics.returnedTickers));
+    assert.ok(Array.isArray(pipelinePayload.data.market.webDiagnostics.sourceAttempts));
     assert.ok(Array.isArray(pipelinePayload.data.market.webDiagnostics.sampleQuotes));
     assert.ok(pipelinePayload.data.market.coverageByMode);
     assert.ok(Array.isArray(pipelinePayload.data.market.providerErrors));
@@ -439,7 +473,7 @@ test("pipeline status exposes provider and rss diagnostics for ok, error and ski
     assert.deepEqual(market.unresolvedTickers, []);
     assert.deepEqual(market.sampleQuotes, []);
     assert.equal(market.webDiagnostics.status, "disabled");
-    assert.equal(market.webDiagnostics.configuredSource, "yahoo");
+    assert.equal(market.webDiagnostics.configuredSource, "twelve");
     assert.equal(market.providerDiagnostics.web.status, "disabled");
     assert.equal(market.providerDiagnostics.fmp.status, "disabled");
     assert.ok(market.session);
@@ -574,7 +608,7 @@ test("market disabled skips startup and manual refresh upstream market calls", a
       return originalFetch(url, options);
     }
 
-    if (value.includes("stooq.com")) {
+    if (value.includes("api.twelvedata.com") || value.includes("query1.finance.yahoo.com")) {
       webCalls += 1;
       return new Response("{}", {
         status: 500,

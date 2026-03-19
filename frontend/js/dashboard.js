@@ -1140,7 +1140,56 @@ function renderRiskChart(countries) {
   riskChart.update();
 }
 
-function renderPredictions(predictions = { sectors: [] }) {
+function renderPredictions(predictions = { tickers: [], sectors: [] }, market = { quotes: {} }) {
+  const tickerPredictions = [...(predictions.tickers || [])].sort(
+    (left, right) => Number(right.predictionScore || 0) - Number(left.predictionScore || 0)
+  );
+
+  if (tickerPredictions.length) {
+    elements.predictionsList.innerHTML = tickerPredictions
+      .map((prediction) => {
+        const quote = market.quotes?.[prediction.ticker] || {};
+        const direction = prediction.direction || "Sideways";
+        const marketDataMode = normalizeMarketDataMode(
+          prediction.marketDataMode || quote.dataMode || (quote.synthetic ? "synthetic-fallback" : "live")
+        );
+        const quoteFreshnessMin = deriveQuoteAgeMin(quote);
+        const quoteFreshness = Number.isFinite(quoteFreshnessMin) ? `${quoteFreshnessMin}m` : "--";
+        const changePct = Number(quote.changePct || 0);
+        const changeLabel = Number.isFinite(changePct) ? `${changePct >= 0 ? "+" : ""}${changePct.toFixed(2)}%` : "--";
+
+        return `
+          <article class="prediction-item prediction-item-ticker">
+            <div class="title-row">
+              <div class="prediction-title-stack">
+                <strong>${escapeHtml(prediction.ticker || "N/A")}</strong>
+                <div class="prediction-kicker">${escapeHtml((prediction.sector || "unknown").toUpperCase())}</div>
+              </div>
+              <div class="prediction-badges">
+                <span class="badge ${qualityBadgeClass(prediction.inputMode || "fallback")}">${escapeHtml(direction)}</span>
+                <span class="market-mode-pill ${marketModeClass(marketDataMode)}">${escapeHtml(marketModeLabel(marketDataMode))}</span>
+              </div>
+            </div>
+            <div class="prediction-grid">
+              <div class="prediction-meta">Confidence: ${escapeHtml(String(prediction.confidence ?? "--"))}%</div>
+              <div class="prediction-meta">Score: ${escapeHtml(String(prediction.predictionScore ?? "--"))}</div>
+              <div class="prediction-meta">Horizon: ${escapeHtml(String(prediction.horizonHours ?? "--"))}h</div>
+              <div class="prediction-meta">Quote freshness: ${escapeHtml(quoteFreshness)}</div>
+              <div class="prediction-meta">Source: ${escapeHtml(quote.sourceDetail || quote.source || "--")}</div>
+              <div class="prediction-meta">Price move: ${escapeHtml(changeLabel)}</div>
+            </div>
+            <div class="insight-drivers mt-1">
+              ${(prediction.drivers || [])
+                .map((driver) => `<span class="driver-pill">${escapeHtml(driver)}</span>`)
+                .join("")}
+            </div>
+          </article>
+        `;
+      })
+      .join("");
+    return;
+  }
+
   const sectors = predictions.sectors || [];
   if (!sectors.length) {
     elements.predictionsList.innerHTML = '<div class="p-3 small text-light-emphasis">No predictions available.</div>';
@@ -1713,7 +1762,7 @@ function renderDashboard(rawState) {
   renderNews(state.news, state.countries);
   renderDistribution(state.countries);
   renderRiskChart(state.countries);
-  renderPredictions(rawState.predictions || {});
+  renderPredictions(rawState.predictions || {}, rawState.market || {});
   renderInsights(state.insights, resolveInsightsEmptyReason(rawState, state));
   renderMarketQuotes(rawState.market || {});
   renderImpact(resolveRenderedImpact(rawState, state, analytics));

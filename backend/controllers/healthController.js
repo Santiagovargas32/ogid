@@ -32,6 +32,7 @@ export function getHealth(_req, res) {
         configuredProvider: config?.market?.provider || null,
         configuredFallbackProvider: config?.market?.fallbackProvider || null,
         effectiveProvider: snapshot?.market?.sourceMeta?.effectiveProvider || snapshot?.market?.provider || null,
+        effectiveSource: snapshot?.market?.sourceMeta?.effectiveSource || null,
         providerScore: snapshot?.market?.sourceMeta?.providerScore ?? null,
         providerLatencyMs: snapshot?.market?.sourceMeta?.providerLatencyMs ?? null,
         revision: snapshot?.market?.revision || null,

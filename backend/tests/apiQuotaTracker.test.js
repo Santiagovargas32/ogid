@@ -28,21 +28,34 @@ test("api quota tracker computes effective remaining using env + headers", () =>
   assert.equal(snapshot.exhausted, false);
 });
 
-test("api quota tracker marks fallback and errors for market providers", () => {
+test("api quota tracker tracks twelve minute/day quotas, fallback and credit headers", () => {
   apiQuotaTracker.reset({
-    webDailyLimit: 2,
+    twelveDailyLimit: 2,
+    twelveMinuteLimit: 2,
     fmpDailyLimit: 2
   });
 
-  apiQuotaTracker.recordCall("web", { status: "error", fallback: true });
+  apiQuotaTracker.recordCall("twelve", {
+    status: "error",
+    fallback: true,
+    headers: {
+      "api-credits-used": "1",
+      "api-credits-left": "1"
+    }
+  });
   apiQuotaTracker.recordCall("fmp", { status: "success" });
 
-  const webSnapshot = apiQuotaTracker.getProviderSnapshot("web");
+  const twelveSnapshot = apiQuotaTracker.getProviderSnapshot("twelve");
   const fmpSnapshot = apiQuotaTracker.getProviderSnapshot("fmp");
-  assert.equal(webSnapshot.calls24h, 1);
-  assert.equal(webSnapshot.errors24h, 1);
-  assert.equal(webSnapshot.fallback24h, 1);
-  assert.equal(webSnapshot.effectiveRemaining, 1);
+  assert.equal(twelveSnapshot.calls24h, 1);
+  assert.equal(twelveSnapshot.callsMinute, 1);
+  assert.equal(twelveSnapshot.errors24h, 1);
+  assert.equal(twelveSnapshot.fallback24h, 1);
+  assert.equal(twelveSnapshot.configuredMinuteLimit, 2);
+  assert.equal(twelveSnapshot.apiCreditsLeft, 1);
+  assert.equal(twelveSnapshot.effectiveRemainingMinute, 1);
+  assert.equal(twelveSnapshot.effectiveRemainingDay, 1);
+  assert.equal(twelveSnapshot.effectiveRemaining, 1);
   assert.equal(fmpSnapshot.calls24h, 1);
   assert.equal(fmpSnapshot.success24h, 1);
   assert.equal(fmpSnapshot.effectiveRemaining, 1);

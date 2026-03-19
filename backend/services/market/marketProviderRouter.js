@@ -92,13 +92,15 @@ function resolveSourceMode(providerCount, totalCount) {
 function buildProviderConfig(provider, config, primaryProvider, fallbackProvider) {
   if (provider === "web") {
     return {
-      source: config.webSource || "stooq",
-      baseUrl: config.webBaseUrl || "https://stooq.com",
+      source: config.webSource || "twelve",
+      baseUrl: config.webBaseUrl || "https://api.twelvedata.com",
       yahooBaseUrl: config.webYahooBaseUrl || "https://query1.finance.yahoo.com",
-      stooqBaseUrl: config.webStooqBaseUrl || "https://stooq.com",
       userAgent: config.webUserAgent || "ogid/1.0",
       twelveApiKey: config.twelveApiKey || "",
       twelveBaseUrl: config.twelveBaseUrl || "https://api.twelvedata.com",
+      twelveEnablePrepost: config.twelveEnablePrepost === true,
+      requestReserve: config.requestReserve,
+      allowExhaustedSources: config.allowExhaustedProviders === true,
       session: config.session || null,
       configuredProvider: primaryProvider,
       configuredFallbackProvider: fallbackProvider
@@ -126,8 +128,17 @@ function resolveDefaultFallbackProvider(primaryProvider = "fmp") {
   return "";
 }
 
-function resolveProviderAvailability(provider, { reserve = 0, allowExhaustedProviders = false } = {}) {
-  const snapshot = apiQuotaTracker.getProviderSnapshot(provider);
+function resolveQuotaProviderName(provider, config = {}) {
+  if (String(provider || "").toLowerCase() !== "web") {
+    return String(provider || "").toLowerCase();
+  }
+
+  return String(config.webSource || "twelve").toLowerCase() === "yahoo" ? "yahoo" : "twelve";
+}
+
+function resolveProviderAvailability(provider, config = {}, { reserve = 0, allowExhaustedProviders = false } = {}) {
+  const quotaProvider = resolveQuotaProviderName(provider, config);
+  const snapshot = apiQuotaTracker.getProviderSnapshot(quotaProvider);
   const remaining = snapshot?.effectiveRemaining;
   const reserveFloor = Math.max(0, Number.parseInt(String(reserve ?? ""), 10) || 0);
 
@@ -135,6 +146,7 @@ function resolveProviderAvailability(provider, { reserve = 0, allowExhaustedProv
     return {
       available: true,
       snapshot,
+      quotaProvider,
       reason: null
     };
   }
@@ -143,6 +155,7 @@ function resolveProviderAvailability(provider, { reserve = 0, allowExhaustedProv
     return {
       available: false,
       snapshot,
+      quotaProvider,
       reason: "exhausted"
     };
   }
@@ -151,6 +164,7 @@ function resolveProviderAvailability(provider, { reserve = 0, allowExhaustedProv
     return {
       available: false,
       snapshot,
+      quotaProvider,
       reason: "reserve-floor"
     };
   }
@@ -158,20 +172,24 @@ function resolveProviderAvailability(provider, { reserve = 0, allowExhaustedProv
   return {
     available: true,
     snapshot,
+    quotaProvider,
     reason: null
   };
 }
 
-function buildProviderOrder(primaryProvider, fallbackProvider, options) {
+function buildProviderOrder(primaryProvider, fallbackProvider, config, options) {
   const attemptedOrder = [...new Set([primaryProvider, fallbackProvider].filter(Boolean))];
   const providersAvailable = [];
   const providersSkipped = [];
   const providerSnapshots = [];
 
   for (const provider of attemptedOrder) {
-    const availability = resolveProviderAvailability(provider, options);
+    const availability = resolveProviderAvailability(provider, config, options);
     if (availability.snapshot) {
-      providerSnapshots.push(availability.snapshot);
+      providerSnapshots.push({
+        ...availability.snapshot,
+        routerProvider: provider
+      });
     }
 
     if (availability.available) {
@@ -181,6 +199,7 @@ function buildProviderOrder(primaryProvider, fallbackProvider, options) {
 
     providersSkipped.push({
       provider,
+      quotaProvider: availability.quotaProvider,
       reason: availability.reason,
       remaining: availability.snapshot?.effectiveRemaining ?? null
     });
@@ -258,6 +277,7 @@ function buildDisabledMarketResult(config = {}, timestamp = new Date().toISOStri
       configuredProvider: null,
       configuredFallbackProvider: null,
       effectiveProvider: null,
+      effectiveSource: null,
       providerScore: 0,
       providersUsed: [],
       providersSkipped: [],
@@ -273,6 +293,8 @@ function buildDisabledMarketResult(config = {}, timestamp = new Date().toISOStri
       lastUpstreamError: null,
       errors: [],
       providerErrors: [],
+      sourceAttempts: [],
+      sourceSnapshots: {},
       providerDiagnostics: {
         web: null,
         fmp: null
@@ -348,7 +370,7 @@ export async function fetchMarketQuotes(config = {}) {
   const staleTtlMs = Math.max(0, Number.parseInt(String(config.staleTtlMs ?? 0), 10) || 0);
   const previousQuotes = config.previousQuotes || {};
 
-  const providerOrder = buildProviderOrder(primaryProvider, fallbackProvider, {
+  const providerOrder = buildProviderOrder(primaryProvider, fallbackProvider, config, {
     reserve: requestReserve,
     allowExhaustedProviders: config.allowExhaustedProviders === true
   });
@@ -369,7 +391,7 @@ export async function fetchMarketQuotes(config = {}) {
     }
 
     const fetcher = PROVIDER_MAP[provider];
-    const providerSnapshot = providerOrder.providerSnapshots.find((snapshot) => snapshot.provider === provider) || null;
+    const providerSnapshot = providerOrder.providerSnapshots.find((snapshot) => snapshot.routerProvider === provider) || null;
     const historicalBackfillTickers = resolveHistoricalBackfillTickers(config, unresolved, provider, providerSnapshot);
     const providerConfig = buildProviderConfig(
       provider,
@@ -443,7 +465,7 @@ export async function fetchMarketQuotes(config = {}) {
   if (syntheticFallbackTickers.length) {
     Object.assign(mergedQuotes, buildFallbackSet(syntheticFallbackTickers, timestamp));
     for (const provider of providersUsed) {
-      apiQuotaTracker.markFallback(provider, timestamp);
+      apiQuotaTracker.markFallback(resolveQuotaProviderName(provider, config), timestamp);
     }
   }
 
@@ -480,6 +502,9 @@ export async function fetchMarketQuotes(config = {}) {
         return leftLatency - rightLatency;
       })[0] || null;
   const effectiveProviderScore = effectiveProvider ? providerScores[effectiveProvider] ?? 0 : 0;
+  const effectiveSource = effectiveProvider === "web" ? providerDiagnostics.web?.effectiveSource || null : null;
+  const sourceAttempts = providerDiagnostics.web?.sourceAttempts || [];
+  const sourceSnapshots = providerDiagnostics.web?.sourceSnapshots || {};
   const routerDecision = {
     attemptedOrder: providerOrder.attemptedOrder,
     providersSkipped: providerOrder.providersSkipped,
@@ -517,6 +542,7 @@ export async function fetchMarketQuotes(config = {}) {
       configuredProvider: primaryProvider,
       configuredFallbackProvider: fallbackProvider || null,
       effectiveProvider,
+      effectiveSource,
       providerScore: effectiveProviderScore,
       providerLatencyMs: effectiveProvider ? providerDiagnostics[effectiveProvider]?.providerLatencyMs ?? null : null,
       marketSession: session,
@@ -538,6 +564,8 @@ export async function fetchMarketQuotes(config = {}) {
       lastUpstreamError,
       errors: providerErrors,
       providerErrors,
+      sourceAttempts,
+      sourceSnapshots,
       providerDiagnostics: {
         web: providerDiagnostics.web || null,
         fmp: providerDiagnostics.fmp || null

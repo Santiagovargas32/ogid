@@ -1,4 +1,4 @@
-import apiQuotaTracker, { WINDOW_MS } from "../services/admin/apiQuotaTrackerService.js";
+import apiQuotaTracker, { MINUTE_WINDOW_MS, WINDOW_MS } from "../services/admin/apiQuotaTrackerService.js";
 import { buildCoverageByMode } from "../services/market/quoteMetadata.js";
 import { normalizeAdminArticles } from "../services/normalizeService.js";
 import { resolveBandByProviderSnapshots, resolveNewsPolicy, resolveQuotaBandFromSnapshot } from "../services/refreshPolicyService.js";
@@ -32,10 +32,17 @@ function inferProviderFromLog(entry = {}) {
     return entry.provider;
   }
   const scope = String(entry.scope || "").toLowerCase();
+  const message = String(entry.message || entry.details || entry.reason || "").toLowerCase();
+  if (scope.includes("twelve") || message.includes("twelve")) {
+    return "twelve";
+  }
+  if (scope.includes("yahoo") || message.includes("yahoo")) {
+    return "yahoo";
+  }
   if (scope.includes("fmp")) {
     return "fmp";
   }
-  if (scope.includes("webquoteprovider") || scope.includes("stooq")) {
+  if (scope.includes("webquoteprovider")) {
     return "web";
   }
   if (scope.includes("gdelt")) {
@@ -176,6 +183,43 @@ function buildProviderSpecificSampleQuotes(quotes = {}, orderedTickers = [], pro
   return buildMarketSampleQuotes(filteredQuotes, orderedTickers, maxItems);
 }
 
+function resolveConfiguredMarketSource(providerKey = "", marketConfig = {}) {
+  const targetProvider = String(providerKey || "").toLowerCase();
+  if (targetProvider === "web") {
+    return marketConfig.webSource || "twelve";
+  }
+
+  if (targetProvider === "fmp") {
+    return marketConfig.fmpStableBaseUrl || marketConfig.fmpBaseUrl || "https://financialmodelingprep.com/stable";
+  }
+
+  return null;
+}
+
+function resolveWebSourceAttempts(sourceDiagnostic = {}, marketSnapshot = {}) {
+  if (Array.isArray(sourceDiagnostic?.sourceAttempts) && sourceDiagnostic.sourceAttempts.length) {
+    return sourceDiagnostic.sourceAttempts;
+  }
+
+  if (Array.isArray(marketSnapshot?.sourceMeta?.sourceAttempts) && marketSnapshot.sourceMeta.sourceAttempts.length) {
+    return marketSnapshot.sourceMeta.sourceAttempts;
+  }
+
+  return [];
+}
+
+function resolveWebSourceSnapshots(sourceDiagnostic = {}, marketSnapshot = {}) {
+  if (sourceDiagnostic?.sourceSnapshots && typeof sourceDiagnostic.sourceSnapshots === "object") {
+    return sourceDiagnostic.sourceSnapshots;
+  }
+
+  if (marketSnapshot?.sourceMeta?.sourceSnapshots && typeof marketSnapshot.sourceMeta.sourceSnapshots === "object") {
+    return marketSnapshot.sourceMeta.sourceSnapshots;
+  }
+
+  return {};
+}
+
 function buildMarketProviderDiagnostics({
   providerKey,
   marketEnabled,
@@ -195,17 +239,16 @@ function buildMarketProviderDiagnostics({
   const sampleQuotes = marketEnabled
     ? buildProviderSpecificSampleQuotes(marketSnapshot?.quotes || {}, marketConfig?.tickers || [], targetProvider, 5)
     : [];
-  const configuredSource =
-    targetProvider === "web"
-      ? marketConfig.webSource || "stooq"
-      : marketConfig.fmpStableBaseUrl || marketConfig.fmpBaseUrl || "https://financialmodelingprep.com/stable";
+  const configuredSource = resolveConfiguredMarketSource(targetProvider, marketConfig);
+  const sourceAttempts = targetProvider === "web" ? resolveWebSourceAttempts(sourceDiagnostic, marketSnapshot) : [];
+  const sourceSnapshots = targetProvider === "web" ? resolveWebSourceSnapshots(sourceDiagnostic, marketSnapshot) : {};
 
   const enrichedDiagnostic = {
     configuredSource,
     configuredProvider: marketConfig.provider || null,
     configuredFallbackProvider: marketConfig.fallbackProvider || null,
     primaryProvider: marketConfig.provider || null,
-    returnedCount: Number(sourceDiagnostic?.returnedTickers?.length || 0),
+    returnedCount: Number(sourceDiagnostic?.returnedTickers?.length || sourceDiagnostic?.returnedCount || 0),
     returnedTickers: sourceDiagnostic?.returnedTickers || [],
     coverageByMode,
     providersUsed,
@@ -213,6 +256,11 @@ function buildMarketProviderDiagnostics({
     unresolvedTickers: marketSnapshot?.sourceMeta?.unresolvedTickers || [],
     errors: providerSpecificErrors,
     sampleQuotes,
+    effectiveSource:
+      sourceDiagnostic?.effectiveSource ||
+      (targetProvider === "web" ? marketSnapshot?.sourceMeta?.effectiveSource || null : null),
+    sourceAttempts,
+    sourceSnapshots,
     ...sourceDiagnostic
   };
 
@@ -251,6 +299,14 @@ export function getApiLimits(_req, res) {
     ok: true,
     data: {
       window: {
+        day: {
+          hours: 24,
+          ms: WINDOW_MS
+        },
+        minute: {
+          minutes: 1,
+          ms: MINUTE_WINDOW_MS
+        },
         hours: 24,
         ms: WINDOW_MS
       },
@@ -328,6 +384,13 @@ export function getPipelineStatus(_req, res) {
     lastSavedAt: null,
     snapshotPath: null
   };
+  const effectiveSource = marketEnabled
+    ? marketSourceMeta?.effectiveSource || marketWebDiagnostics.effectiveSource || null
+    : null;
+  const sourceAttempts = marketEnabled ? marketSourceMeta?.sourceAttempts || marketWebDiagnostics.sourceAttempts || [] : [];
+  const sourceSnapshots = marketEnabled
+    ? marketSourceMeta?.sourceSnapshots || marketWebDiagnostics.sourceSnapshots || {}
+    : {};
 
   res.json({
     ok: true,
@@ -354,6 +417,7 @@ export function getPipelineStatus(_req, res) {
               marketSnapshot?.provider ||
               null
             : null,
+        effectiveSource,
         providerScore: marketEnabled ? marketSourceMeta?.providerScore ?? null : null,
         providerLatencyMs: marketEnabled ? marketSourceMeta?.providerLatencyMs ?? null : null,
         revision: marketEnabled ? marketSnapshot?.revision || null : null,
@@ -367,6 +431,10 @@ export function getPipelineStatus(_req, res) {
         coverageByMode: marketCoverageByMode,
         providerErrors: marketProviderErrors,
         sampleQuotes: marketSampleQuotes,
+        sourceAttempts,
+        sourceSnapshots,
+        persistenceEligible: marketEnabled ? marketSourceMeta?.persistenceEligible === true : false,
+        persistReason: marketEnabled ? marketSourceMeta?.persistReason || null : null,
         webDiagnostics: marketWebDiagnostics,
         providerDiagnostics: {
           web: marketWebDiagnostics,
