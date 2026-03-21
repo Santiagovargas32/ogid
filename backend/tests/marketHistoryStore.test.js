@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import os from "node:os";
 import path from "node:path";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { MarketHistoryStore } from "../services/market/marketHistoryStore.js";
 
 test("market history store persists snapshot and per-ticker history, then hydrates state", async () => {
@@ -14,16 +14,17 @@ test("market history store persists snapshot and per-ticker history, then hydrat
   });
 
   const marketState = {
-    provider: "web+fmp",
+    provider: "twelve+yahoo",
     sourceMode: "live",
     sourceMeta: {
-      provider: "web+fmp",
-      effectiveProvider: "web",
-      configuredProvider: "web",
-      configuredFallbackProvider: "fmp",
+      provider: "twelve+yahoo",
+      providerChain: "twelve+yahoo",
+      effectiveProvider: "twelve",
+      configuredProvider: "twelve",
+      configuredFallbackProvider: "yahoo",
       coverageByMode: {
-        live: 1,
-        webDelayed: 1,
+        live: 2,
+        webDelayed: 0,
         historicalEod: 0,
         routerStale: 0,
         syntheticFallback: 0
@@ -35,15 +36,15 @@ test("market history store persists snapshot and per-ticker history, then hydrat
         price: 300.5,
         changePct: 0.5,
         asOf: "2026-03-16T18:45:00.000Z",
-        source: "web",
+        source: "twelve",
         synthetic: false,
-        dataMode: "web-delayed"
+        dataMode: "live"
       },
       BA: {
         price: 205.22,
         changePct: 0.8,
         asOf: "2026-03-16T18:45:00.000Z",
-        source: "fmp",
+        source: "yahoo",
         synthetic: false,
         dataMode: "live"
       }
@@ -56,9 +57,9 @@ test("market history store persists snapshot and per-ticker history, then hydrat
 
     const loaded = await store.loadMarketState();
     assert.ok(loaded);
-    assert.equal(loaded.provider, "web+fmp");
+    assert.equal(loaded.provider, "twelve+yahoo");
     assert.equal(loaded.quotes.GD.price, 300.5);
-    assert.equal(loaded.quotes.BA.source, "fmp");
+    assert.equal(loaded.quotes.BA.source, "yahoo");
     assert.equal(Array.isArray(loaded.timeseries.GD), true);
     assert.equal(loaded.timeseries.GD.length, 1);
     assert.equal(loaded.timeseries.BA.length, 1);
@@ -72,7 +73,7 @@ test("market history store persists snapshot and per-ticker history, then hydrat
     await store.hydrateState(fakeStateManager);
 
     assert.ok(hydratedMarket);
-    assert.equal(hydratedMarket.quotes.GD.dataMode, "web-delayed");
+    assert.equal(hydratedMarket.quotes.GD.dataMode, "live");
     assert.equal(hydratedMarket.timeseries.GD[0].price, 300.5);
     assert.ok(store.getStatus().lastSavedAt);
     assert.ok(store.getStatus().lastLoadedAt);
@@ -90,10 +91,10 @@ test("market history store skips fallback-only snapshots and persists only provi
   });
 
   const fallbackOnlyState = {
-    provider: "market-router",
+    provider: "twelve+yahoo",
     sourceMode: "fallback",
     sourceMeta: {
-      provider: "market-router"
+      provider: "twelve+yahoo"
     },
     updatedAt: "2026-03-16T18:50:00.000Z",
     session: {
@@ -107,7 +108,7 @@ test("market history store skips fallback-only snapshots and persists only provi
         price: 300.5,
         changePct: 0.5,
         asOf: "2026-03-16T18:50:00.000Z",
-        source: "web",
+        source: "twelve",
         sourceDetail: "twelve",
         synthetic: false,
         dataMode: "router-stale"
@@ -116,7 +117,7 @@ test("market history store skips fallback-only snapshots and persists only provi
         price: 205.22,
         changePct: 0.8,
         asOf: "2026-03-16T18:50:00.000Z",
-        source: "market-router",
+        source: "fallback",
         synthetic: true,
         dataMode: "synthetic-fallback"
       }
@@ -127,7 +128,7 @@ test("market history store skips fallback-only snapshots and persists only provi
     ...fallbackOnlyState,
     sourceMode: "mixed",
     sourceMeta: {
-      provider: "web"
+      provider: "twelve+yahoo"
     },
     updatedAt: "2026-03-16T19:00:00.000Z",
     session: {
@@ -141,7 +142,7 @@ test("market history store skips fallback-only snapshots and persists only provi
         price: 301.15,
         changePct: 0.72,
         asOf: "2026-03-16T19:00:00.000Z",
-        source: "web",
+        source: "twelve",
         sourceDetail: "twelve",
         synthetic: false,
         dataMode: "live"
@@ -150,7 +151,7 @@ test("market history store skips fallback-only snapshots and persists only provi
         price: 205.22,
         changePct: 0.8,
         asOf: "2026-03-16T18:50:00.000Z",
-        source: "market-router",
+        source: "fallback",
         synthetic: true,
         dataMode: "synthetic-fallback"
       }
@@ -176,6 +177,44 @@ test("market history store skips fallback-only snapshots and persists only provi
     assert.deepEqual(loaded.sourceMeta.persistence.providerBackedTickers, ["GD"]);
     assert.equal(loaded.timeseries.GD.length, 1);
     assert.equal(loaded.timeseries.BA.length, 0);
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("market history store ignores snapshots from the legacy provider schema", async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "ogid-market-history-"));
+  const store = new MarketHistoryStore({
+    enabled: true,
+    rootDir: tempRoot,
+    tickers: ["GD"]
+  });
+
+  try {
+    await store.ensureDirectories();
+    await writeFile(
+      path.join(tempRoot, "snapshot.json"),
+      JSON.stringify({
+        provider: "web+fmp",
+        sourceMeta: {
+          provider: "web+fmp"
+        },
+        tickers: ["GD"],
+        quotes: {
+          GD: {
+            price: 300.5,
+            changePct: 0.5,
+            asOf: "2026-03-16T18:45:00.000Z",
+            source: "web",
+            dataMode: "live"
+          }
+        }
+      }),
+      "utf8"
+    );
+
+    const loaded = await store.loadMarketState();
+    assert.equal(loaded, null);
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }

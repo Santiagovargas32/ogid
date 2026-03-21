@@ -19,12 +19,11 @@ OGID is a local web app for monitoring geopolitical OSINT signals and their pote
 - Country risk scoring with deterministic engine.
 - Country watchlist default: `US, IL, IR`.
 - WebSocket live updates (`/ws`) for snapshot/update/heartbeat, plus admin-visible connection diagnostics.
-- Market module (`web -> fmp -> router-stale -> synthetic-fallback`):
-  - web market routing with `twelve` as primary source and `yahoo` as best-effort fallback
-  - FMP `stable/batch-quote` for API fallback and `stable/historical-price-eod/full` for EOD backfill
-  - entitlement-aware FMP diagnostics, including `provider-not-entitled`
+- Market module (`twelve -> yahoo -> router-stale -> synthetic-fallback`):
+  - `twelve` as primary API provider
+  - `yahoo` as fallback web provider via page scraping
   - stale quote reuse before deterministic fallback
-  - quote diagnostics by mode: `live`, `web-delayed`, `historical-eod`, `router-stale`, `synthetic-fallback`
+  - quote diagnostics by mode: `live`, `web-delayed`, `router-stale`, `synthetic-fallback`
   - in-memory quotes/timeseries plus optional persisted `snapshot.json` and per-ticker `jsonl` history
 - Deterministic event-window impact model:
   - correlates geopolitical news signals with ticker price reaction
@@ -80,21 +79,15 @@ WS_HEARTBEAT_MS=15000
 MANUAL_REFRESH_COOLDOWN_MS=120000
 MANUAL_REFRESH_PER_CLIENT_WINDOW_MS=900000
 MANUAL_REFRESH_PER_CLIENT_MAX=3
-MARKET_PROVIDER=web
-MARKET_PROVIDER_FALLBACK=fmp
-FMP_API_KEY=your_fmp_key
-FMP_BASE_URL=https://financialmodelingprep.com/stable
-FMP_STABLE_BASE_URL=https://financialmodelingprep.com/stable
-MARKET_WEB_SOURCE=twelve
-MARKET_WEB_BASE_URL=https://api.twelvedata.com
-MARKET_YAHOO_BASE_URL=https://query1.finance.yahoo.com
+MARKET_PROVIDER=twelve
+MARKET_PROVIDER_FALLBACK=yahoo
+MARKET_YAHOO_BASE_URL=https://finance.yahoo.com
+MARKET_YAHOO_USER_AGENT=ogid/1.0
 MARKET_TWELVE_API_KEY=your_twelve_key
 MARKET_TWELVE_BASE_URL=https://api.twelvedata.com
 MARKET_TWELVE_DAILY_LIMIT=800
 MARKET_TWELVE_MINUTE_LIMIT=8
 MARKET_TWELVE_PREPOST=0
-MARKET_WEB_TIMEOUT_MS=10000
-MARKET_WEB_USER_AGENT=ogid/1.0
 MARKET_TICKERS=GD,BA,NOC,LMT,RTX,XOM,CVX
 MARKET_TIMEOUT_MS=10000
 MARKET_REFRESH_INTERVAL_MS=60000
@@ -103,10 +96,9 @@ MARKET_HISTORY_PERSIST=1
 MARKET_HISTORY_DIR=data/market
 MARKET_SNAPSHOT_FILE=snapshot.json
 MARKET_STALE_TTL_MS=14400000
-MARKET_REQUEST_RESERVE=25
+MARKET_REQUEST_RESERVE=1
 MARKET_ACTIVE_INTERVAL_MS=180000
 MARKET_OFFHOURS_INTERVAL_MS=1800000
-FMP_DAILY_LIMIT=250
 IMPACT_WINDOW_MIN=120
 LOG_LEVEL=info
 ```

@@ -8,7 +8,7 @@ import { mergeMarketState } from "./market/marketStateService.js";
 import { computeMarketImpact } from "./market/impactEngineService.js";
 import { generatePredictions } from "./market/predictionEngineService.js";
 import { fetchMarketQuotes } from "./market/marketProviderRouter.js";
-import { resolveMarketIntervalMs } from "./market/marketSessionService.js";
+import { isMarketOpenEt, resolveMarketIntervalMs } from "./market/marketSessionService.js";
 import { resolveBandByProviderSnapshots, resolveNewsPolicy } from "./refreshPolicyService.js";
 import { buildIntelNewsSelection } from "./news/newsSelectionService.js";
 
@@ -54,13 +54,14 @@ function sumCountRecord(record = {}) {
   return Object.values(record || {}).reduce((total, value) => total + (Number(value) || 0), 0);
 }
 
-function resolveMarketQuotaProviderName(provider, marketConfig = {}) {
-  const normalized = String(provider || "").toLowerCase();
-  if (normalized !== "web") {
-    return normalized;
-  }
+function normalizeOffHoursStrategy(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  return ["skip", "yahoo", "keep"].includes(normalized) ? normalized : "keep";
+}
 
-  return String(marketConfig?.webSource || "twelve").toLowerCase() === "yahoo" ? "yahoo" : "twelve";
+function isAutomatedMarketTrigger(trigger = "") {
+  const normalized = String(trigger || "").trim().toLowerCase();
+  return normalized === "startup-market" || normalized.startsWith("interval-market");
 }
 
 class RefreshOrchestratorService {
@@ -112,7 +113,10 @@ class RefreshOrchestratorService {
     }
 
     try {
-      return await this.rssAggregator.getSnapshot({ force: false, limit: 200 });
+      return await this.rssAggregator.getSnapshot({
+        force: false,
+        limit: this.config.news?.rssAggregateMaxItems
+      });
     } catch (error) {
       log.warn("rss_aggregate_refresh_skipped", {
         message: error.message
@@ -174,11 +178,11 @@ class RefreshOrchestratorService {
   }
 
   getNewsBaseIntervalMs() {
-    return this.config.news?.intervalMs || this.config.refreshIntervalMs || 30_000;
+    return this.config.news?.intervalMs ?? this.config.refreshIntervalMs ?? null;
   }
 
   getNewsBackoffMaxMs() {
-    return this.config.news?.backoffMaxMs || 300_000;
+    return this.config.news?.backoffMaxMs ?? this.getNewsBaseIntervalMs() ?? null;
   }
 
   getNewsProviderSnapshots() {
@@ -195,7 +199,7 @@ class RefreshOrchestratorService {
       intervalByBandMs: this.config.news?.intervalByBandMs || {},
       pageSizeByBand: this.config.news?.pageSizeByBand || {},
       fallbackIntervalMs: this.getNewsBaseIntervalMs(),
-      fallbackPageSize: this.config.news?.pageSize || 50
+      fallbackPageSize: this.config.news?.pageSize ?? null
     });
   }
 
@@ -210,7 +214,7 @@ class RefreshOrchestratorService {
     }
 
     const providers = [this.config.market?.provider, this.config.market?.fallbackProvider]
-      .map((provider) => resolveMarketQuotaProviderName(provider, this.config.market))
+      .map((provider) => String(provider || "").toLowerCase())
       .filter(Boolean);
 
     return [...new Set(providers.filter(Boolean))];
@@ -245,12 +249,30 @@ class RefreshOrchestratorService {
 
     const quotaBand = resolveBandByProviderSnapshots(this.getMarketProviderSnapshots());
     return resolveMarketIntervalMs({
-      activeIntervalMs: this.config.market?.activeIntervalMs || this.config.market?.refreshIntervalMs || 120_000,
-      offHoursIntervalMs: this.config.market?.offHoursIntervalMs || 600_000,
+      activeIntervalMs: this.config.market?.activeIntervalMs ?? this.config.market?.refreshIntervalMs ?? null,
+      offHoursIntervalMs:
+        this.config.market?.offHoursIntervalMs ??
+        this.config.market?.activeIntervalMs ??
+        this.config.market?.refreshIntervalMs ??
+        null,
       quotaRemaining: this.getMarketRemainingQuota(),
       quotaBand,
       bandIntervals: this.config.market?.intervalByBandMs || {}
     });
+  }
+
+  resolveMarketCycleDate(value = null) {
+    const parsed = value instanceof Date ? value : new Date(value || Date.now());
+    return Number.isFinite(parsed.getTime()) ? parsed : new Date();
+  }
+
+  shouldSkipAutomatedOffHoursMarketCycle(trigger = "", options = {}) {
+    const strategy = normalizeOffHoursStrategy(this.config.market?.offHoursStrategy);
+    if (strategy !== "skip" || !isAutomatedMarketTrigger(trigger)) {
+      return false;
+    }
+
+    return !isMarketOpenEt(this.resolveMarketCycleDate(options.now));
   }
 
   getNewsCycleTelemetry() {
@@ -276,8 +298,9 @@ class RefreshOrchestratorService {
     }
 
     clearTimeout(this.newsTimerHandle);
-    const baseIntervalMs = this.resolveNextNewsDelayMs();
-    const delayMs = Math.min(baseIntervalMs + this.newsBackoffMs, this.getNewsBackoffMaxMs());
+    const baseIntervalMs = this.resolveNextNewsDelayMs() ?? this.getNewsBaseIntervalMs() ?? 0;
+    const backoffCapMs = this.getNewsBackoffMaxMs() ?? baseIntervalMs;
+    const delayMs = Math.min(baseIntervalMs + this.newsBackoffMs, backoffCapMs);
     this.newsTimerHandle = setTimeout(async () => {
       await this.runNewsCycle(trigger, { allowExhaustedProviders: false });
       this.scheduleNextNewsCycle("interval-news");
@@ -426,8 +449,9 @@ class RefreshOrchestratorService {
         lastError: null
       };
     } catch (error) {
-      const baseIntervalMs = this.resolveNextNewsDelayMs();
-      const maxExtraBackoff = Math.max(0, this.getNewsBackoffMaxMs() - baseIntervalMs);
+      const baseIntervalMs = this.resolveNextNewsDelayMs() ?? this.getNewsBaseIntervalMs() ?? 0;
+      const backoffCapMs = this.getNewsBackoffMaxMs() ?? baseIntervalMs;
+      const maxExtraBackoff = Math.max(0, backoffCapMs - baseIntervalMs);
       this.newsBackoffMs = Math.min(maxExtraBackoff, this.newsBackoffMs ? this.newsBackoffMs * 2 : baseIntervalMs);
 
       log.error("news_cycle_failed", {
@@ -483,6 +507,22 @@ class RefreshOrchestratorService {
     };
 
     try {
+      if (this.shouldSkipAutomatedOffHoursMarketCycle(trigger, options)) {
+        log.info("market_cycle_skipped", {
+          trigger,
+          reason: "offhours-skip",
+          strategy: normalizeOffHoursStrategy(this.config.market?.offHoursStrategy)
+        });
+        this.marketCycleTelemetry = {
+          ...this.marketCycleTelemetry,
+          lastCompletedAt: new Date().toISOString(),
+          lastDurationMs: Date.now() - startedAt,
+          lastStatus: "skipped",
+          lastError: "offhours-skip"
+        };
+        return;
+      }
+
       const previousSnapshot = this.stateManager.getSnapshot();
       const minTickerTtlMs = this.config.market?.minTickerTtlMs || 0;
       const marketUpdatedAtMs = new Date(previousSnapshot.market?.updatedAt || 0).getTime();
@@ -504,11 +544,13 @@ class RefreshOrchestratorService {
         return;
       }
 
+      const cycleDate = this.resolveMarketCycleDate(options.now);
       const marketResult = await fetchMarketQuotes({
         ...this.config.market,
         previousQuotes: previousSnapshot.market?.quotes || {},
         previousTimeseries: previousSnapshot.market?.timeseries || {},
-        allowExhaustedProviders: options.allowExhaustedProviders === true
+        allowExhaustedProviders: options.allowExhaustedProviders === true,
+        timestamp: cycleDate.toISOString()
       });
       const marketState = mergeMarketState(previousSnapshot.market, marketResult);
       const inputMode = resolveInputMode(previousSnapshot.meta?.sourceMode, marketState.sourceMode);

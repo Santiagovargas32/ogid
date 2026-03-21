@@ -23,8 +23,8 @@ function cacheElements() {
   elements.pipelineGeneratedAt = byId("pipeline-generated-at");
   elements.pipelineStatusBody = byId("pipeline-status-body");
   elements.pipelineDiagnosticsBody = byId("pipeline-diagnostics-body");
-  elements.marketWebDiagnosticsBody = byId("market-web-diagnostics-body");
-  elements.marketApiDiagnosticsBody = byId("market-api-diagnostics-body");
+  elements.marketPrimaryDiagnosticsBody = byId("market-primary-diagnostics-body");
+  elements.marketFallbackDiagnosticsBody = byId("market-fallback-diagnostics-body");
   elements.marketRouterDiagnosticsBody = byId("market-router-diagnostics-body");
   elements.rssFeedStatusBody = byId("rss-feed-status-body");
   elements.recentCycleErrorsBody = byId("recent-cycle-errors-body");
@@ -172,6 +172,11 @@ function formatRemainingValue(value) {
   return Number.isFinite(number) ? String(number) : "--";
 }
 
+function formatLimitValue(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? String(number) : "--";
+}
+
 function formatQuotaReset(snapshot = {}) {
   if (!snapshot || typeof snapshot !== "object") {
     return "--";
@@ -187,16 +192,41 @@ function formatQuotaReset(snapshot = {}) {
   return items.join(" | ") || "--";
 }
 
+function resolveHardLimit(snapshot = {}, period = "day") {
+  if (period === "minute") {
+    return snapshot.hardMinuteLimit ?? snapshot.configuredMinuteLimit ?? null;
+  }
+  return snapshot.hardDailyLimit ?? snapshot.configuredDailyLimit ?? snapshot.configuredLimit ?? null;
+}
+
+function resolveBudgetLimit(snapshot = {}, period = "day") {
+  return period === "minute" ? snapshot.budgetMinuteLimit ?? null : snapshot.budgetDailyLimit ?? null;
+}
+
+function formatBudgetPolicy(snapshot = {}) {
+  const hardDaily = formatLimitValue(resolveHardLimit(snapshot, "day"));
+  const budgetDaily = formatLimitValue(resolveBudgetLimit(snapshot, "day"));
+  const hardMinute = formatLimitValue(resolveHardLimit(snapshot, "minute"));
+  const budgetMinute = formatLimitValue(resolveBudgetLimit(snapshot, "minute"));
+  return `24h budget ${budgetDaily} / hard ${hardDaily} | 1m budget ${budgetMinute} / hard ${hardMinute}`;
+}
+
 function formatQuotaSnapshotSummary(snapshot = {}) {
   if (!snapshot || typeof snapshot !== "object") {
     return "--";
   }
 
   const parts = [
-    `1m ${formatCountWithLimit(snapshot.callsMinute, snapshot.configuredMinuteLimit)}`,
-    `24h ${formatCountWithLimit(snapshot.calls24h, snapshot.configuredDailyLimit)}`,
-    `rem ${formatRemainingValue(snapshot.effectiveRemainingMinute)}/${formatRemainingValue(snapshot.effectiveRemainingDay)}`
+    `1m used ${formatCountWithLimit(snapshot.unitsMinute ?? snapshot.callsMinute, resolveHardLimit(snapshot, "minute"))}`,
+    `24h used ${formatCountWithLimit(snapshot.units24h ?? snapshot.calls24h, resolveHardLimit(snapshot, "day"))}`,
+    `op rem ${formatRemainingValue(snapshot.effectiveRemainingMinute)}/${formatRemainingValue(snapshot.effectiveRemainingDay)}`,
+    `state ${snapshot.operationalStatus || "--"}`
   ];
+
+  const policySummary = formatBudgetPolicy(snapshot);
+  if (policySummary !== "24h budget -- / hard -- | 1m budget -- / hard --") {
+    parts.push(policySummary);
+  }
 
   if (Number.isFinite(Number(snapshot.apiCreditsUsed)) || Number.isFinite(Number(snapshot.apiCreditsLeft))) {
     parts.push(
@@ -274,7 +304,7 @@ function renderServerSummary(health = {}, pipeline = {}) {
     },
     {
       label: "Market provider",
-      value: String(market.effectiveSource || market.effectiveProvider || market.provider || "--"),
+      value: String(market.providerChain || healthMarket.providerChain || market.provider || "--"),
       meta:
         market.enabled === false
           ? "Market disabled"
@@ -414,38 +444,33 @@ function buildNewsProviderDiagnostics(news = {}) {
     });
 }
 
-function renderMarketProviderDiagnostics(target, market = {}, diagnostics = {}, fallbackLabel = "provider") {
+function renderMarketProviderDiagnostics(target, market = {}, slot = {}, emptyLabel = "provider") {
   if (!target) {
     return;
   }
 
-  const status = normalizeDiagnosticStatus(diagnostics.status || (market.enabled === false ? "disabled" : "idle"));
-  const displaySource = diagnostics.provider === "web" ? "web" : diagnostics.configuredSource || fallbackLabel || "provider";
-  const coverage = diagnostics.coverageByMode || market.coverageByMode || {};
-  const sampleQuotes = Array.isArray(diagnostics.sampleQuotes) ? diagnostics.sampleQuotes : [];
-  const errors = Array.isArray(diagnostics.errors) ? diagnostics.errors.slice(0, 3) : [];
-  const sourceAttempts = Array.isArray(diagnostics.sourceAttempts) ? diagnostics.sourceAttempts : [];
-  const sourceSnapshots = diagnostics.sourceSnapshots && typeof diagnostics.sourceSnapshots === "object"
-    ? diagnostics.sourceSnapshots
-    : {};
-  const effectiveSourceQuota =
-    diagnostics.effectiveSource && sourceSnapshots[diagnostics.effectiveSource]
-      ? sourceSnapshots[diagnostics.effectiveSource]
-      : null;
+  const status = normalizeDiagnosticStatus(slot.status || (market.enabled === false ? "disabled" : "idle"));
+  const displayProvider = slot.provider || emptyLabel || "provider";
+  const coverage = market.coverageByMode || {};
+  const sampleQuotes = Array.isArray(slot.sampleQuotes) ? slot.sampleQuotes : [];
+  const quotaSnapshot = slot.quotaSnapshot || {};
+  const offHoursStrategy = market.offHoursStrategy || "--";
 
   const cards = [
     `
       <article class="diagnostic-item">
         <div class="diagnostic-item-header">
-          <strong>${escapeHtml(displaySource)}</strong>
+          <strong>${escapeHtml(displayProvider)}</strong>
           <span class="diagnostic-pill ${status}">${escapeHtml(status)}</span>
         </div>
-        <div class="diagnostic-item-meta">configured: ${escapeHtml(diagnostics.configuredProvider || "--")} | source: ${escapeHtml(diagnostics.configuredSource || "--")} | effective provider: ${escapeHtml(diagnostics.effectiveProvider || "--")} | effective source: ${escapeHtml(diagnostics.effectiveSource || "--")}</div>
-        <div class="diagnostic-item-meta">real state: ${escapeHtml(status)} | market: ${escapeHtml(market.session?.state || "--")} | session: ${escapeHtml(diagnostics.marketSession?.state || market.session?.state || "--")}</div>
-        <div class="diagnostic-item-meta">score: ${escapeHtml(String(diagnostics.providerScore ?? "--"))} | latency: ${escapeHtml(formatDurationMs(diagnostics.providerLatencyMs || 0))} | revision: ${escapeHtml((market.revision || diagnostics.revision || "--").toString())}</div>
-        <div class="diagnostic-item-meta">mode: ${escapeHtml(diagnostics.requestMode || "--")} | returned: ${Number(diagnostics.returnedCount || 0)}</div>
-        <div class="diagnostic-item-meta">returned tickers: ${escapeHtml(formatInlineList(diagnostics.returnedTickers || []))}</div>
-        ${effectiveSourceQuota ? `<div class="diagnostic-item-meta">quota: ${escapeHtml(formatQuotaSnapshotSummary(effectiveSourceQuota))}</div>` : ""}
+        <div class="diagnostic-item-meta">role: ${escapeHtml(slot.role || "--")} | transport: ${escapeHtml(slot.transport || "--")} | effective provider: ${escapeHtml(market.effectiveProvider || "--")}</div>
+        <div class="diagnostic-item-meta">configured base: ${escapeHtml(slot.configuredBaseUrl || "--")}</div>
+        <div class="diagnostic-item-meta">policy: off-hours ${escapeHtml(offHoursStrategy)} | ${escapeHtml(formatBudgetPolicy(quotaSnapshot))} | ${escapeHtml(quotaSnapshot.operationalStatus || "--")}</div>
+        <div class="diagnostic-item-meta">score: ${escapeHtml(String(slot.score ?? "--"))} | latency: ${escapeHtml(formatDurationMs(slot.latencyMs || 0))} | revision: ${escapeHtml((market.revision || "--").toString())}</div>
+        <div class="diagnostic-item-meta">mode: ${escapeHtml(slot.requestMode || "--")} | returned: ${Number((slot.returnedTickers || []).length || 0)} | missing: ${Number((slot.missingTickers || []).length || 0)}</div>
+        <div class="diagnostic-item-meta">returned tickers: ${escapeHtml(formatInlineList(slot.returnedTickers || []))}</div>
+        <div class="diagnostic-item-meta">quota: ${escapeHtml(formatQuotaSnapshotSummary(quotaSnapshot))}</div>
+        <div class="diagnostic-item-meta">reset: ${escapeHtml(formatQuotaReset(quotaSnapshot))}</div>
       </article>
     `,
     `
@@ -462,68 +487,24 @@ function renderMarketProviderDiagnostics(target, market = {}, diagnostics = {}, 
       <article class="diagnostic-item">
         <div class="diagnostic-item-header">
           <strong>Request</strong>
-          <span class="diagnostic-item-meta">${escapeHtml(formatDurationMs(diagnostics.durationMs))}</span>
+          <span class="diagnostic-item-meta">${escapeHtml(formatDurationMs(slot.latencyMs || 0))}</span>
         </div>
-        <div class="diagnostic-item-meta">last attempt: ${escapeHtml(formatDate(diagnostics.lastAttemptAt))}</div>
-        <div class="diagnostic-item-meta">last success: ${escapeHtml(formatDate(diagnostics.lastSuccessAt))}</div>
-        <div class="diagnostic-item-meta">http: ${escapeHtml(String(diagnostics.httpStatus ?? "--"))} | disabled: ${escapeHtml(diagnostics.providerDisabledReason || "--")}</div>
-        <div class="diagnostic-item-meta">urls: ${escapeHtml(formatRequestUrls(diagnostics.requestUrls || (diagnostics.requestUrl ? [diagnostics.requestUrl] : [])))}</div>
+        <div class="diagnostic-item-meta">last attempt: ${escapeHtml(formatDate(slot.lastAttemptAt))}</div>
+        <div class="diagnostic-item-meta">last success: ${escapeHtml(formatDate(slot.lastSuccessAt))}</div>
+        <div class="diagnostic-item-meta">http: ${escapeHtml(String(slot.httpStatus ?? "--"))} | market: ${escapeHtml(market.session?.state || "--")}</div>
+        <div class="diagnostic-item-meta">urls: ${escapeHtml(formatRequestUrls(slot.requestUrls || []))}</div>
       </article>
     `
   ];
-
-  if (sourceAttempts.length) {
-    cards.push('<div class="diagnostic-section-label">Upstream sources</div>');
-    cards.push(
-      ...sourceAttempts.map((attempt) => {
-        const attemptStatus = normalizeDiagnosticStatus(attempt.status || "idle");
-        const attemptErrors = Array.isArray(attempt.errors) ? attempt.errors : [];
-        return `
-          <article class="diagnostic-item">
-            <div class="diagnostic-item-header">
-              <strong>${escapeHtml(attempt.source || "source")}</strong>
-              <span class="diagnostic-pill ${attemptStatus}">${escapeHtml(attemptStatus)}</span>
-            </div>
-            <div class="diagnostic-item-meta">mode: ${escapeHtml(attempt.requestMode || "--")} | score: ${escapeHtml(String(attempt.providerScore ?? "--"))} | latency: ${escapeHtml(formatDurationMs(attempt.durationMs || 0))}</div>
-            <div class="diagnostic-item-meta">returned: ${escapeHtml(formatInlineList(attempt.returnedTickers || []))} | missing: ${escapeHtml(formatInlineList(attempt.missingTickers || []))}</div>
-            <div class="diagnostic-item-meta">last attempt: ${escapeHtml(formatDate(attempt.lastAttemptAt))} | last success: ${escapeHtml(formatDate(attempt.lastSuccessAt))}</div>
-            <div class="diagnostic-item-meta">http/logical: ${escapeHtml(String(attempt.httpStatus ?? "--"))} | ${escapeHtml(formatAttemptErrors(attemptErrors))}</div>
-            <div class="diagnostic-item-meta">quota: ${escapeHtml(formatQuotaSnapshotSummary(attempt.quotaSnapshot || {}))}</div>
-            <div class="diagnostic-item-meta">reset: ${escapeHtml(formatQuotaReset(attempt.quotaSnapshot || {}))}</div>
-            <div class="diagnostic-item-meta">urls: ${escapeHtml(formatRequestUrls(attempt.requestUrls || []))}</div>
-            ${attempt.responsePreview ? `<div class="diagnostic-item-meta">${escapeHtml(compactText(attempt.responsePreview, 160))}</div>` : ""}
-          </article>
-        `;
-      })
-    );
-  }
-
-  if (errors.length) {
-    cards.push(
-      ...errors.map(
-        (error) => `
-          <article class="diagnostic-item">
-            <div class="diagnostic-item-header">
-              <strong>${escapeHtml(error.provider || "market-router")}</strong>
-              <span class="diagnostic-pill error">${escapeHtml(error.code || error.reason || "error")}</span>
-            </div>
-            <div class="diagnostic-item-meta">${escapeHtml(error.reason || error.code || "unknown-error")}</div>
-          </article>
-        `
-      )
-    );
-  } else {
-    cards.push('<article class="diagnostic-item"><div class="diagnostic-item-meta">No recent market provider errors.</div></article>');
-  }
 
   cards.push(
     `
       <article class="diagnostic-item">
         <div class="diagnostic-item-header">
           <strong>Response</strong>
-          <span class="diagnostic-item-meta">${escapeHtml(diagnostics.errorCode || "--")}</span>
+          <span class="diagnostic-item-meta">${escapeHtml(slot.errorCode || "--")}</span>
         </div>
-        <div class="diagnostic-item-meta">${escapeHtml(diagnostics.errorMessage || diagnostics.responsePreview || "No response preview available.")}</div>
+        <div class="diagnostic-item-meta">${escapeHtml(slot.errorMessage || slot.responsePreview || "No response preview available.")}</div>
       </article>
     `
   );
@@ -566,7 +547,7 @@ function renderMarketRouterDiagnostics(market = {}) {
           <span class="diagnostic-item-meta">${escapeHtml(market.effectiveProvider || "--")}</span>
         </div>
         <div class="diagnostic-item-meta">configured: ${escapeHtml(market.configuredProvider || "--")} -> ${escapeHtml(market.configuredFallbackProvider || "--")}</div>
-        <div class="diagnostic-item-meta">effective source: ${escapeHtml(market.effectiveSource || "--")}</div>
+        <div class="diagnostic-item-meta">chain: ${escapeHtml(market.providerChain || market.provider || "--")}</div>
         <div class="diagnostic-item-meta">session: ${escapeHtml(market.session?.state || "--")} | score: ${escapeHtml(String(market.providerScore ?? "--"))} | latency: ${escapeHtml(formatDurationMs(market.providerLatencyMs || 0))}</div>
         <div class="diagnostic-item-meta">attempted: ${escapeHtml(formatInlineList(router.attemptedOrder || []))}</div>
         <div class="diagnostic-item-meta">reason: ${escapeHtml(router.fallbackReason || "--")}</div>
@@ -630,8 +611,8 @@ function renderPipelineDiagnostics(news = {}, market = {}) {
   if (!feedStatus.length) {
     elements.rssFeedStatusBody.innerHTML =
       '<div class="diagnostic-item diagnostic-item-meta">No RSS diagnostics available.</div>';
-    renderMarketProviderDiagnostics(elements.marketWebDiagnosticsBody, market, market.providerDiagnostics?.web || market.webDiagnostics || {}, "market");
-    renderMarketProviderDiagnostics(elements.marketApiDiagnosticsBody, market, market.providerDiagnostics?.fmp || {}, "fmp");
+    renderMarketProviderDiagnostics(elements.marketPrimaryDiagnosticsBody, market, market.providerSlots?.[0] || {}, "primary");
+    renderMarketProviderDiagnostics(elements.marketFallbackDiagnosticsBody, market, market.providerSlots?.[1] || {}, "fallback");
     renderMarketRouterDiagnostics(market);
     return;
   }
@@ -651,8 +632,8 @@ function renderPipelineDiagnostics(news = {}, market = {}) {
     })
     .join("");
 
-  renderMarketProviderDiagnostics(elements.marketWebDiagnosticsBody, market, market.providerDiagnostics?.web || market.webDiagnostics || {}, "market");
-  renderMarketProviderDiagnostics(elements.marketApiDiagnosticsBody, market, market.providerDiagnostics?.fmp || {}, "fmp");
+  renderMarketProviderDiagnostics(elements.marketPrimaryDiagnosticsBody, market, market.providerSlots?.[0] || {}, "primary");
+  renderMarketProviderDiagnostics(elements.marketFallbackDiagnosticsBody, market, market.providerSlots?.[1] || {}, "fallback");
   renderMarketRouterDiagnostics(market);
 }
 
@@ -685,27 +666,27 @@ function renderApiLimits(payload = {}) {
   const providers = payload.providers || [];
   elements.apiLimitsUpdated.textContent = `Updated: ${formatDate(payload.generatedAt)}`;
   if (!providers.length) {
-    elements.apiLimitsBody.innerHTML = renderEmptyRow(10, "No API limits data available.");
+    elements.apiLimitsBody.innerHTML = renderEmptyRow(14, "No API limits data available.");
     return;
   }
   elements.apiLimitsBody.innerHTML = providers
     .map((provider) => {
       const statusClass = provider.exhausted ? "text-danger" : "text-light-emphasis";
-      const exhaustedState =
-        provider.exhaustedMinute || provider.exhaustedDay || provider.exhausted
-          ? [provider.exhaustedMinute ? "1m" : "", provider.exhaustedDay ? "24h" : ""].filter(Boolean).join("+") || "yes"
-          : "--";
       return `
         <tr>
           <td>${escapeHtml(provider.provider)}</td>
           <td>${escapeHtml(provider.quotaBand || "--")}</td>
-          <td>${escapeHtml(formatCountWithLimit(provider.callsMinute, provider.configuredMinuteLimit))}</td>
-          <td>${escapeHtml(formatCountWithLimit(provider.calls24h, provider.configuredDailyLimit))}</td>
+          <td>${escapeHtml(String(provider.unitsMinute ?? provider.callsMinute ?? "--"))}</td>
+          <td>${escapeHtml(formatLimitValue(resolveHardLimit(provider, "minute")))}</td>
+          <td>${escapeHtml(formatLimitValue(resolveBudgetLimit(provider, "minute")))}</td>
           <td>${escapeHtml(formatRemainingValue(provider.effectiveRemainingMinute))}</td>
+          <td>${escapeHtml(String(provider.units24h ?? provider.calls24h ?? "--"))}</td>
+          <td>${escapeHtml(formatLimitValue(resolveHardLimit(provider, "day")))}</td>
+          <td>${escapeHtml(formatLimitValue(resolveBudgetLimit(provider, "day")))}</td>
           <td>${escapeHtml(formatRemainingValue(provider.effectiveRemainingDay))}</td>
           <td>${escapeHtml(formatShortTime(provider.nextMinuteResetAt))}</td>
           <td>${escapeHtml(formatShortTime(provider.nextDailyResetAt))}</td>
-          <td>${escapeHtml(exhaustedState)}</td>
+          <td>${escapeHtml(provider.operationalStatus || "--")}</td>
           <td class="${statusClass}">${escapeHtml(provider.lastStatus || "idle")}</td>
         </tr>
       `;

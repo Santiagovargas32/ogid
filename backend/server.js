@@ -1,7 +1,7 @@
-import "dotenv/config";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import dotenv from "dotenv";
 import express from "express";
 import helmet from "helmet";
 import routes from "./routes/index.js";
@@ -23,6 +23,7 @@ const log = createLogger("backend/server");
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.resolve(__dirname, ".env") });
 const DEFAULT_NEWS_QUERY_PACKS = Object.freeze({
   defense: "missile OR defense contractor OR arms deal OR air defense",
   energy: "oil OR gas OR lng OR pipeline OR refinery",
@@ -47,6 +48,16 @@ const DEFAULT_RSS_DISABLED_FEEDS = Object.freeze([
 function toInt(value, fallback) {
   const parsed = Number.parseInt(String(value ?? ""), 10);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function toPositiveInt(value, fallback = null) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function toNonNegativeInt(value, fallback = null) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
 function toList(value, fallback = []) {
@@ -189,6 +200,35 @@ function isRealKey(value) {
   return true;
 }
 
+const MARKET_PROVIDERS = new Set(["twelve", "yahoo"]);
+
+function normalizeMarketProvider(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return MARKET_PROVIDERS.has(normalized) ? normalized : "";
+}
+
+function resolveDefaultMarketFallbackProvider(provider = "") {
+  return provider === "twelve" ? "yahoo" : "";
+}
+
+function resolveMarketProviderChain(provider = "", fallbackProvider = "") {
+  return [provider, fallbackProvider].filter(Boolean).join("+") || null;
+}
+
+function resolveMarketHistoryDir(value) {
+  const candidate = String(value || "").trim();
+  if (!candidate) {
+    return path.resolve(__dirname, "./data/market");
+  }
+
+  return path.isAbsolute(candidate) ? candidate : path.resolve(__dirname, candidate);
+}
+
+function normalizeMarketOffHoursStrategy(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  return ["skip", "yahoo", "keep"].includes(normalized) ? normalized : "keep";
+}
+
 function readConfig(overrides = {}) {
   const newsOverrides = overrides.news || {};
   const watchlistCountries = toList(process.env.WATCHLIST_COUNTRIES, ["US", "IL", "IR"]).map((value) =>
@@ -205,12 +245,27 @@ function readConfig(overrides = {}) {
     DEFAULT_RSS_DISABLED_FEEDS,
     { disabled: true }
   );
+  const refreshIntervalMs = toPositiveInt(process.env.REFRESH_INTERVAL_MS);
+  const newsPageSize = toPositiveInt(process.env.NEWS_PAGE_SIZE);
+  const newsIntervalMs = toPositiveInt(process.env.NEWS_INTERVAL_MS, refreshIntervalMs);
+  const rssAggregateIntervalMs = toPositiveInt(process.env.NEWS_RSS_AGGREGATE_INTERVAL_MS, newsIntervalMs);
+  const rssAggregateFeedsPerRun = toPositiveInt(
+    process.env.NEWS_RSS_AGGREGATE_FEEDS_PER_RUN,
+    (rssActiveFeeds || []).length || DEFAULT_RSS_FEEDS.length
+  );
+  const rssAggregateMaxItems = toPositiveInt(
+    process.env.NEWS_RSS_AGGREGATE_MAX_ITEMS,
+    Math.max(newsPageSize, rssAggregateFeedsPerRun * newsPageSize)
+  );
   const envMarketProvider = toTrimmedString(process.env.MARKET_PROVIDER);
   const envMarketFallbackProvider = toTrimmedString(process.env.MARKET_PROVIDER_FALLBACK);
-  const envMarketWebSource = toTrimmedString(process.env.MARKET_WEB_SOURCE).toLowerCase() || "twelve";
   const marketTickers = toList(process.env.MARKET_TICKERS, ["GD", "BA", "NOC", "LMT", "RTX", "XOM", "CVX"]).map(
     (ticker) => ticker.toUpperCase()
   );
+  const marketRefreshIntervalMs = toPositiveInt(process.env.MARKET_REFRESH_INTERVAL_MS, refreshIntervalMs);
+  const marketActiveIntervalMs = toPositiveInt(process.env.MARKET_ACTIVE_INTERVAL_MS, marketRefreshIntervalMs);
+  const marketOffHoursIntervalMs = toPositiveInt(process.env.MARKET_OFFHOURS_INTERVAL_MS, marketActiveIntervalMs);
+  const newsBackoffMaxMs = toPositiveInt(process.env.NEWS_BACKOFF_MAX_MS, newsIntervalMs);
   const normalizedNewsQueryPacks = normalizeNewsQueryPacks(
     toStructuredObject(process.env.NEWS_QUERY_PACKS, DEFAULT_NEWS_QUERY_PACKS),
     {
@@ -221,7 +276,7 @@ function readConfig(overrides = {}) {
 
   const config = {
     port: toInt(process.env.PORT, 8080),
-    refreshIntervalMs: toInt(process.env.REFRESH_INTERVAL_MS, 30_000),
+    refreshIntervalMs: refreshIntervalMs ?? newsIntervalMs ?? marketRefreshIntervalMs ?? null,
     wsHeartbeatMs: toInt(process.env.WS_HEARTBEAT_MS, 15_000),
     wsPath: "/ws",
     watchlistCountries,
@@ -245,100 +300,95 @@ function readConfig(overrides = {}) {
       queryPacks: normalizedNewsQueryPacks.flattened,
       queryPackGroups: normalizedNewsQueryPacks,
       language: process.env.NEWS_LANGUAGE || "en",
-      pageSize: toInt(process.env.NEWS_PAGE_SIZE, 50),
+      pageSize: newsPageSize,
       timeoutMs: toInt(process.env.NEWS_TIMEOUT_MS, 9_000),
-      intervalMs: toInt(process.env.NEWS_INTERVAL_MS, toInt(process.env.REFRESH_INTERVAL_MS, 30_000)),
-      backoffMaxMs: toInt(process.env.NEWS_BACKOFF_MAX_MS, 300_000),
+      intervalMs: newsIntervalMs,
+      backoffMaxMs: newsBackoffMaxMs,
       analyzeLimit: toInt(process.env.NEWS_ANALYZE_LIMIT, 80),
       candidateWindowHours: toInt(process.env.NEWS_CANDIDATE_WINDOW_HOURS, 36),
       maxPerSource: toInt(process.env.NEWS_MAX_PER_SOURCE, 3),
       maxSimilarHeadline: toInt(process.env.NEWS_MAX_SIMILAR_HEADLINE, 2),
-      rssAggregateIntervalMs: toInt(process.env.NEWS_RSS_AGGREGATE_INTERVAL_MS, 900_000),
-      rssAggregateFeedsPerRun: toInt(process.env.NEWS_RSS_AGGREGATE_FEEDS_PER_RUN, 18),
-      rssAggregateMaxItems: toInt(process.env.NEWS_RSS_AGGREGATE_MAX_ITEMS, 900),
+      rssAggregateIntervalMs,
+      rssAggregateFeedsPerRun,
+      rssAggregateMaxItems,
       sourceAllowlist: newsSourceAllowlist,
       domainAllowlist: newsDomainAllowlist,
       intervalByBandMs: {
-        GREEN: toInt(process.env.NEWS_INTERVAL_GREEN_MS, 600_000),
-        YELLOW: toInt(process.env.NEWS_INTERVAL_YELLOW_MS, 1_200_000),
-        RED: toInt(process.env.NEWS_INTERVAL_RED_MS, 2_700_000),
-        CRITICAL: toInt(process.env.NEWS_INTERVAL_CRITICAL_MS, 7_200_000)
+        GREEN: toPositiveInt(process.env.NEWS_INTERVAL_GREEN_MS, newsIntervalMs),
+        YELLOW: toPositiveInt(process.env.NEWS_INTERVAL_YELLOW_MS, newsIntervalMs),
+        RED: toPositiveInt(process.env.NEWS_INTERVAL_RED_MS, newsIntervalMs),
+        CRITICAL: toPositiveInt(process.env.NEWS_INTERVAL_CRITICAL_MS, newsIntervalMs)
       },
       pageSizeByBand: {
-        GREEN: toInt(process.env.NEWS_PAGE_SIZE_GREEN, 100),
-        YELLOW: toInt(process.env.NEWS_PAGE_SIZE_YELLOW, 75),
-        RED: toInt(process.env.NEWS_PAGE_SIZE_RED, 40),
-        CRITICAL: toInt(process.env.NEWS_PAGE_SIZE_CRITICAL, 20)
+        GREEN: toPositiveInt(process.env.NEWS_PAGE_SIZE_GREEN, newsPageSize),
+        YELLOW: toPositiveInt(process.env.NEWS_PAGE_SIZE_YELLOW, newsPageSize),
+        RED: toPositiveInt(process.env.NEWS_PAGE_SIZE_RED, newsPageSize),
+        CRITICAL: toPositiveInt(process.env.NEWS_PAGE_SIZE_CRITICAL, newsPageSize)
       },
       countries: watchlistCountries,
       marketTickers
     },
     market: {
       enabled: Boolean(envMarketProvider),
-      provider: envMarketProvider,
-      fallbackProvider: envMarketProvider ? envMarketFallbackProvider : "",
+      provider: normalizeMarketProvider(envMarketProvider),
+      fallbackProvider: envMarketProvider ? normalizeMarketProvider(envMarketFallbackProvider) : "",
       disabledReason: envMarketProvider ? null : "market-provider-empty",
-      fmpApiKey: process.env.FMP_API_KEY || "",
-      fmpBaseUrl: process.env.FMP_BASE_URL || "https://financialmodelingprep.com/stable",
-      fmpStableBaseUrl:
-        process.env.FMP_STABLE_BASE_URL ||
-        process.env.FMP_BASE_URL ||
-        "https://financialmodelingprep.com/stable",
-      webSource: envMarketWebSource,
-      webBaseUrl:
-        process.env.MARKET_WEB_BASE_URL ||
-        (envMarketWebSource === "twelve" ? "https://api.twelvedata.com" : "https://query1.finance.yahoo.com"),
-      webYahooBaseUrl: process.env.MARKET_YAHOO_BASE_URL || "https://query1.finance.yahoo.com",
+      providerChain: null,
       twelveApiKey: process.env.MARKET_TWELVE_API_KEY || process.env.TWELVE_DATA_API_KEY || process.env.TWELVEDATA_API_KEY || "",
       twelveBaseUrl: process.env.MARKET_TWELVE_BASE_URL || "https://api.twelvedata.com",
       twelveEnablePrepost: toBool(process.env.MARKET_TWELVE_PREPOST, false),
-      webTimeoutMs: toInt(process.env.MARKET_WEB_TIMEOUT_MS, toInt(process.env.MARKET_TIMEOUT_MS, 10_000)),
-      webUserAgent: process.env.MARKET_WEB_USER_AGENT || "ogid/1.0",
+      yahooBaseUrl: process.env.MARKET_YAHOO_BASE_URL || "https://finance.yahoo.com",
+      yahooUserAgent: process.env.MARKET_YAHOO_USER_AGENT || "ogid/1.0",
       timeoutMs: toInt(process.env.MARKET_TIMEOUT_MS, 10_000),
+      offHoursStrategy: normalizeMarketOffHoursStrategy(process.env.MARKET_OFFHOURS_STRATEGY),
       tickers: marketTickers,
-      refreshIntervalMs: toInt(process.env.MARKET_REFRESH_INTERVAL_MS, 60_000),
+      refreshIntervalMs: marketRefreshIntervalMs,
       minTickerTtlMs: toInt(process.env.MARKET_MIN_TICKER_TTL_MS, 45_000),
-      batchChunkSize: toInt(process.env.MARKET_BATCH_CHUNK_SIZE, 25),
+      batchChunkSize: toPositiveInt(process.env.MARKET_BATCH_CHUNK_SIZE),
       staleTtlMs: toInt(process.env.MARKET_STALE_TTL_MS, 14_400_000),
-      requestReserve: toInt(process.env.MARKET_REQUEST_RESERVE, 25),
+      requestReserve: toNonNegativeInt(process.env.MARKET_REQUEST_RESERVE),
       historyPersist: toBool(process.env.MARKET_HISTORY_PERSIST, true),
-      historyDir: process.env.MARKET_HISTORY_DIR || path.resolve(__dirname, "./data/market"),
+      historyDir: resolveMarketHistoryDir(process.env.MARKET_HISTORY_DIR),
       snapshotFile: process.env.MARKET_SNAPSHOT_FILE || "snapshot.json",
-      activeIntervalMs: toInt(
-        process.env.MARKET_ACTIVE_INTERVAL_MS,
-        toInt(process.env.MARKET_REFRESH_INTERVAL_MS, 180_000)
-      ),
-      offHoursIntervalMs: toInt(process.env.MARKET_OFFHOURS_INTERVAL_MS, 600_000),
+      activeIntervalMs: marketActiveIntervalMs,
+      offHoursIntervalMs: marketOffHoursIntervalMs,
       intervalByBandMs: {
         GREEN: {
-          activeIntervalMs: 180_000,
-          offHoursIntervalMs: 600_000
+          activeIntervalMs: toPositiveInt(process.env.MARKET_ACTIVE_INTERVAL_GREEN_MS, marketActiveIntervalMs),
+          offHoursIntervalMs: toPositiveInt(process.env.MARKET_OFFHOURS_INTERVAL_GREEN_MS, marketOffHoursIntervalMs)
         },
         YELLOW: {
-          activeIntervalMs: 300_000,
-          offHoursIntervalMs: 600_000
+          activeIntervalMs: toPositiveInt(process.env.MARKET_ACTIVE_INTERVAL_YELLOW_MS, marketActiveIntervalMs),
+          offHoursIntervalMs: toPositiveInt(process.env.MARKET_OFFHOURS_INTERVAL_YELLOW_MS, marketOffHoursIntervalMs)
         },
         RED: {
-          activeIntervalMs: 900_000,
-          offHoursIntervalMs: 600_000
+          activeIntervalMs: toPositiveInt(process.env.MARKET_ACTIVE_INTERVAL_RED_MS, marketActiveIntervalMs),
+          offHoursIntervalMs: toPositiveInt(process.env.MARKET_OFFHOURS_INTERVAL_RED_MS, marketOffHoursIntervalMs)
         },
         CRITICAL: {
-          activeIntervalMs: 7_200_000,
-          offHoursIntervalMs: 600_000
+          activeIntervalMs: toPositiveInt(process.env.MARKET_ACTIVE_INTERVAL_CRITICAL_MS, marketActiveIntervalMs),
+          offHoursIntervalMs: toPositiveInt(process.env.MARKET_OFFHOURS_INTERVAL_CRITICAL_MS, marketOffHoursIntervalMs)
         }
       },
       impactWindowMin: toInt(process.env.IMPACT_WINDOW_MIN, 120)
     },
     apiLimits: {
-      newsapiDailyLimit: toInt(process.env.NEWSAPI_DAILY_LIMIT, 500),
-      gnewsDailyLimit: toInt(process.env.GNEWS_DAILY_LIMIT, 500),
-      mediastackDailyLimit: toInt(process.env.MEDIASTACK_DAILY_LIMIT, 500),
-      rssDailyLimit: toInt(process.env.RSS_DAILY_LIMIT, 0),
-      gdeltDailyLimit: toInt(process.env.GDELT_DAILY_LIMIT, 0),
-      twelveDailyLimit: toInt(process.env.MARKET_TWELVE_DAILY_LIMIT, 800),
-      twelveMinuteLimit: toInt(process.env.MARKET_TWELVE_MINUTE_LIMIT, 8),
-      yahooDailyLimit: toInt(process.env.MARKET_YAHOO_DAILY_LIMIT, toInt(process.env.MARKET_WEB_DAILY_LIMIT, 0)),
-      fmpDailyLimit: toInt(process.env.FMP_DAILY_LIMIT, 250),
+      newsapiDailyLimit: toPositiveInt(process.env.NEWSAPI_DAILY_LIMIT),
+      newsapiDailyBudget: toPositiveInt(process.env.NEWSAPI_DAILY_BUDGET),
+      gnewsDailyLimit: toPositiveInt(process.env.GNEWS_DAILY_LIMIT),
+      gnewsDailyBudget: toPositiveInt(process.env.GNEWS_DAILY_BUDGET),
+      mediastackDailyLimit: toPositiveInt(process.env.MEDIASTACK_DAILY_LIMIT),
+      mediastackDailyBudget: toPositiveInt(process.env.MEDIASTACK_DAILY_BUDGET),
+      rssDailyLimit: toPositiveInt(process.env.RSS_DAILY_LIMIT),
+      rssDailyBudget: toPositiveInt(process.env.RSS_DAILY_BUDGET),
+      gdeltDailyLimit: toPositiveInt(process.env.GDELT_DAILY_LIMIT),
+      gdeltDailyBudget: toPositiveInt(process.env.GDELT_DAILY_BUDGET),
+      twelveDailyLimit: toPositiveInt(process.env.MARKET_TWELVE_DAILY_LIMIT),
+      twelveDailyBudget: toPositiveInt(process.env.MARKET_TWELVE_DAILY_BUDGET),
+      twelveMinuteLimit: toPositiveInt(process.env.MARKET_TWELVE_MINUTE_LIMIT),
+      twelveMinuteBudget: toPositiveInt(process.env.MARKET_TWELVE_MINUTE_BUDGET),
+      yahooDailyLimit: toPositiveInt(process.env.MARKET_YAHOO_DAILY_LIMIT),
+      yahooDailyBudget: toPositiveInt(process.env.MARKET_YAHOO_DAILY_BUDGET)
     },
     media: {
       refreshIntervalMs: toInt(process.env.MEDIA_STREAM_REFRESH_INTERVAL_MS, 300_000),
@@ -387,13 +437,7 @@ function readConfig(overrides = {}) {
     market: {
       ...config.market,
       ...(overrides.market || {}),
-      fmpApiKey:
-        overrides.market?.fmpApiKey ??
-        config.market.fmpApiKey,
-      fmpStableBaseUrl:
-        overrides.market?.fmpStableBaseUrl ??
-        overrides.market?.fmpBaseUrl ??
-        config.market.fmpStableBaseUrl,
+      historyDir: resolveMarketHistoryDir(overrides.market?.historyDir ?? config.market.historyDir),
       activeIntervalMs:
         overrides.market?.activeIntervalMs ||
         overrides.market?.refreshIntervalMs ||
@@ -441,22 +485,36 @@ function readConfig(overrides = {}) {
     }
   };
 
-  const resolvedMarketProvider = toTrimmedString(mergedConfig.market?.provider);
-  const resolvedMarketFallbackProvider = toTrimmedString(mergedConfig.market?.fallbackProvider);
+  const requestedMarketProvider = toTrimmedString(mergedConfig.market?.provider);
+  const resolvedMarketProvider = normalizeMarketProvider(requestedMarketProvider);
+  const requestedMarketFallbackProvider = toTrimmedString(mergedConfig.market?.fallbackProvider);
+  const resolvedMarketFallbackProvider = normalizeMarketProvider(requestedMarketFallbackProvider);
   const marketEnabledOverride = Object.prototype.hasOwnProperty.call(overrides.market || {}, "enabled")
     ? overrides.market.enabled
     : undefined;
-  const marketEnabled = marketEnabledOverride !== undefined ? marketEnabledOverride !== false : Boolean(resolvedMarketProvider);
+  const requestedMarketEnabled =
+    marketEnabledOverride !== undefined ? marketEnabledOverride !== false : Boolean(requestedMarketProvider);
+  const fallbackProvider =
+    requestedMarketEnabled && resolvedMarketProvider
+      ? resolvedMarketFallbackProvider && resolvedMarketFallbackProvider !== resolvedMarketProvider
+        ? resolvedMarketFallbackProvider
+        : resolveDefaultMarketFallbackProvider(resolvedMarketProvider)
+      : "";
+  const marketEnabled = requestedMarketEnabled && Boolean(resolvedMarketProvider);
+  const disabledReason = marketEnabled
+    ? null
+    : requestedMarketProvider && !resolvedMarketProvider
+      ? "market-provider-invalid"
+      : "market-provider-empty";
 
   mergedConfig.market = {
     ...mergedConfig.market,
     enabled: marketEnabled,
-    provider: marketEnabled ? resolvedMarketProvider || "web" : "",
-    fallbackProvider:
-      marketEnabled
-        ? resolvedMarketFallbackProvider || (resolvedMarketProvider === "web" || !resolvedMarketProvider ? "fmp" : "")
-        : "",
-    disabledReason: marketEnabled ? null : "market-provider-empty"
+    provider: marketEnabled ? resolvedMarketProvider : "",
+    fallbackProvider,
+    providerChain: marketEnabled ? resolveMarketProviderChain(resolvedMarketProvider, fallbackProvider) : null,
+    offHoursStrategy: normalizeMarketOffHoursStrategy(mergedConfig.market?.offHoursStrategy),
+    disabledReason
   };
 
   return mergedConfig;
@@ -579,10 +637,12 @@ export function createAppServer(overrides = {}) {
         newsApiKeyConfigured: isRealKey(config.news.newsApiKey),
         gnewsApiKeyConfigured: isRealKey(config.news.gnewsApiKey),
         mediastackKeyConfigured: isRealKey(config.news.mediastackApiKey),
-        fmpApiKeyConfigured: isRealKey(config.market.fmpApiKey),
+        twelveApiKeyConfigured: isRealKey(config.market.twelveApiKey),
         marketEnabled: config.market.enabled,
         marketProvider: config.market.provider,
         marketFallbackProvider: config.market.fallbackProvider,
+        marketProviderChain: config.market.providerChain,
+        marketOffHoursStrategy: config.market.offHoursStrategy,
         marketDisabledReason: config.market.disabledReason,
         marketBatchChunkSize: config.market.batchChunkSize,
         marketRequestReserve: config.market.requestReserve,
@@ -595,7 +655,7 @@ export function createAppServer(overrides = {}) {
         newsIntervalMs: config.news.intervalMs,
         newsIntervalByBandMs: config.news.intervalByBandMs,
         marketActiveIntervalMs: config.market.activeIntervalMs,
-      marketOffHoursIntervalMs: config.market.offHoursIntervalMs,
+        marketOffHoursIntervalMs: config.market.offHoursIntervalMs,
         manualRefresh: config.manualRefresh,
         mediaRefreshIntervalMs: config.media?.refreshIntervalMs,
         mediaTimeoutMs: config.media?.timeoutMs

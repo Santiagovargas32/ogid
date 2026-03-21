@@ -1,18 +1,26 @@
 import apiQuotaTracker from "../admin/apiQuotaTrackerService.js";
 import { resolveBandByProviderSnapshots } from "../refreshPolicyService.js";
 import { createLogger } from "../../utils/logger.js";
-import { fetchFmpQuotes } from "./providers/fmpProvider.js";
+import { fetchTwelveQuotes } from "./providers/twelveProvider.js";
+import { fetchYahooQuotes } from "./providers/yahooProvider.js";
 import { buildFallbackQuote } from "./providers/quoteFallback.js";
-import { fetchWebQuotes } from "./providers/webQuoteProvider.js";
 import { isMarketOpenEt } from "./marketSessionService.js";
 import { buildCoverageByMode } from "./quoteMetadata.js";
 
 const log = createLogger("backend/services/market/marketProviderRouter");
 
-const PROVIDER_MAP = {
-  web: fetchWebQuotes,
-  fmp: fetchFmpQuotes
-};
+const PROVIDERS = Object.freeze({
+  twelve: {
+    fetcher: fetchTwelveQuotes,
+    transport: "api",
+    estimateUnits: () => 1
+  },
+  yahoo: {
+    fetcher: fetchYahooQuotes,
+    transport: "web",
+    estimateUnits: (tickers = []) => Math.max(1, Array.isArray(tickers) ? tickers.length : 0)
+  }
+});
 
 function buildDisabledCoverageByMode() {
   return {
@@ -35,118 +43,47 @@ function buildMarketSession(timestamp = new Date().toISOString()) {
   };
 }
 
-function computeProviderScore(provider, providerResult = {}, marketSession = {}) {
-  const diagnostic = providerResult.sourceMeta?.providerDiagnostics?.[provider] || {};
-  const returnedCount = Number((diagnostic.returnedTickers || Object.keys(providerResult.quotes || {})).length || 0);
-  const totalCount = Number(providerResult.sourceMeta?.totalTickers || returnedCount || 0);
-  const durationMs = Number.isFinite(Number(diagnostic.durationMs))
-    ? Number(diagnostic.durationMs)
-    : Number.isFinite(Number(providerResult.sourceMeta?.providerLatencyMs))
-      ? Number(providerResult.sourceMeta.providerLatencyMs)
-      : 0;
-  const coverage = totalCount > 0 ? returnedCount / totalCount : 0;
-  const liveCount = Number(providerResult.sourceMeta?.liveCount || 0);
-  const delayedCount = Number(providerResult.sourceMeta?.delayedCount || 0);
-  const freshnessBonus = liveCount > 0 ? 20 : delayedCount > 0 ? 10 : 0;
-  const latencyPenalty = Math.min(30, durationMs / 180);
-  const errorPenalty = Number((providerResult.sourceMeta?.errors || []).length || 0) * 5;
-  const sessionBonus = marketSession?.open ? 5 : 0;
-
-  return Math.max(0, Math.round(coverage * 60 + freshnessBonus + sessionBonus - latencyPenalty - errorPenalty));
+function normalizeProvider(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized in PROVIDERS ? normalized : "";
 }
 
-function decorateProviderDiagnostic(provider, providerResult = {}, marketSession = {}) {
-  const diagnostic = providerResult.sourceMeta?.providerDiagnostics?.[provider] || {};
-  const providerScore = computeProviderScore(provider, providerResult, marketSession);
-  return {
-    ...diagnostic,
-    providerScore,
-    providerLatencyMs: Number.isFinite(Number(diagnostic.durationMs))
-      ? Number(diagnostic.durationMs)
-      : Number.isFinite(Number(providerResult.sourceMeta?.providerLatencyMs))
-        ? Number(providerResult.sourceMeta.providerLatencyMs)
-        : null,
-    marketSession,
-    sourceMode: providerResult.sourceMode || diagnostic.sourceMode || null,
-    liveCount: providerResult.sourceMeta?.liveCount ?? null,
-    delayedCount: providerResult.sourceMeta?.delayedCount ?? null,
-    effectiveSource: providerResult.sourceMeta?.effectiveSource || diagnostic.effectiveSource || null
-  };
+function resolveDefaultFallbackProvider(primaryProvider = "") {
+  return primaryProvider === "twelve" ? "yahoo" : "";
 }
 
-function normalizeProvider(value, fallback) {
-  const normalized = String(value || "").toLowerCase();
-  return normalized in PROVIDER_MAP ? normalized : fallback;
+function buildProviderChain(primaryProvider = "", fallbackProvider = "") {
+  return [primaryProvider, fallbackProvider].filter(Boolean).join("+") || null;
 }
 
-function resolveSourceMode(providerCount, totalCount) {
-  if (providerCount <= 0) {
-    return "fallback";
-  }
-  if (providerCount >= totalCount) {
-    return "live";
-  }
-  return "mixed";
-}
-
-function buildProviderConfig(provider, config, primaryProvider, fallbackProvider) {
-  if (provider === "web") {
+function buildProviderConfig(provider, config = {}, session = null) {
+  if (provider === "twelve") {
     return {
-      source: config.webSource || "twelve",
-      baseUrl: config.webBaseUrl || "https://api.twelvedata.com",
-      yahooBaseUrl: config.webYahooBaseUrl || "https://query1.finance.yahoo.com",
-      userAgent: config.webUserAgent || "ogid/1.0",
-      twelveApiKey: config.twelveApiKey || "",
-      twelveBaseUrl: config.twelveBaseUrl || "https://api.twelvedata.com",
-      twelveEnablePrepost: config.twelveEnablePrepost === true,
-      requestReserve: config.requestReserve,
-      allowExhaustedSources: config.allowExhaustedProviders === true,
-      session: config.session || null,
-      configuredProvider: primaryProvider,
-      configuredFallbackProvider: fallbackProvider
+      baseUrl: config.twelveBaseUrl,
+      apiKey: config.twelveApiKey,
+      enablePrepost: config.twelveEnablePrepost === true,
+      session
     };
   }
 
   return {
-    apiKey: config.fmpApiKey || "",
-    baseUrl:
-      config.fmpStableBaseUrl ||
-      config.fmpBaseUrl ||
-      "https://financialmodelingprep.com/stable",
-    batchChunkSize: config.batchChunkSize,
-    enableHistoricalBackfill: config.enableHistoricalBackfill === true,
-    historicalBackfillTickers: config.historicalBackfillTickers || [],
-    configuredProvider: primaryProvider,
-    configuredFallbackProvider: fallbackProvider
+    baseUrl: config.yahooBaseUrl,
+    userAgent: config.yahooUserAgent,
+    session
   };
 }
 
-function resolveDefaultFallbackProvider(primaryProvider = "fmp") {
-  if (primaryProvider === "web") {
-    return "fmp";
-  }
-  return "";
-}
-
-function resolveQuotaProviderName(provider, config = {}) {
-  if (String(provider || "").toLowerCase() !== "web") {
-    return String(provider || "").toLowerCase();
-  }
-
-  return String(config.webSource || "twelve").toLowerCase() === "yahoo" ? "yahoo" : "twelve";
-}
-
-function resolveProviderAvailability(provider, config = {}, { reserve = 0, allowExhaustedProviders = false } = {}) {
-  const quotaProvider = resolveQuotaProviderName(provider, config);
-  const snapshot = apiQuotaTracker.getProviderSnapshot(quotaProvider);
+function resolveProviderAvailability(provider, config = {}, { reserve = 0, allowExhaustedProviders = false, tickers = [] } = {}) {
+  const snapshot = apiQuotaTracker.getProviderSnapshot(provider);
   const remaining = snapshot?.effectiveRemaining;
-  const reserveFloor = Math.max(0, Number.parseInt(String(reserve ?? ""), 10) || 0);
+  const normalizedReserve = Math.max(0, Number.parseInt(String(reserve ?? 0), 10) || 0);
+  const estimatedUnits = PROVIDERS[provider]?.estimateUnits?.(tickers) ?? 1;
 
   if (allowExhaustedProviders) {
     return {
       available: true,
       snapshot,
-      quotaProvider,
+      estimatedUnits,
       reason: null
     };
   }
@@ -155,16 +92,16 @@ function resolveProviderAvailability(provider, config = {}, { reserve = 0, allow
     return {
       available: false,
       snapshot,
-      quotaProvider,
+      estimatedUnits,
       reason: "exhausted"
     };
   }
 
-  if (Number.isFinite(remaining) && remaining <= reserveFloor) {
+  if (Number.isFinite(remaining) && remaining - estimatedUnits < normalizedReserve) {
     return {
       available: false,
       snapshot,
-      quotaProvider,
+      estimatedUnits,
       reason: "reserve-floor"
     };
   }
@@ -172,65 +109,9 @@ function resolveProviderAvailability(provider, config = {}, { reserve = 0, allow
   return {
     available: true,
     snapshot,
-    quotaProvider,
+    estimatedUnits,
     reason: null
   };
-}
-
-function buildProviderOrder(primaryProvider, fallbackProvider, config, options) {
-  const attemptedOrder = [...new Set([primaryProvider, fallbackProvider].filter(Boolean))];
-  const providersAvailable = [];
-  const providersSkipped = [];
-  const providerSnapshots = [];
-
-  for (const provider of attemptedOrder) {
-    const availability = resolveProviderAvailability(provider, config, options);
-    if (availability.snapshot) {
-      providerSnapshots.push({
-        ...availability.snapshot,
-        routerProvider: provider
-      });
-    }
-
-    if (availability.available) {
-      providersAvailable.push(provider);
-      continue;
-    }
-
-    providersSkipped.push({
-      provider,
-      quotaProvider: availability.quotaProvider,
-      reason: availability.reason,
-      remaining: availability.snapshot?.effectiveRemaining ?? null
-    });
-  }
-
-  return {
-    attemptedOrder,
-    providersAvailable,
-    providersSkipped,
-    providerSnapshots
-  };
-}
-
-function resolveHistoricalBackfillTickers(config = {}, tickers = [], provider, providerSnapshot) {
-  if (provider !== "fmp") {
-    return [];
-  }
-
-  const previousTimeseries = config.previousTimeseries || {};
-  const seedTickers = tickers.filter((ticker) => (previousTimeseries[ticker] || []).length === 0);
-  if (!seedTickers.length) {
-    return [];
-  }
-
-  const reserve = Math.max(0, Number.parseInt(String(config.requestReserve ?? 0), 10) || 0);
-  const remaining = providerSnapshot?.effectiveRemaining;
-  if (Number.isFinite(remaining) && remaining <= reserve + seedTickers.length) {
-    return [];
-  }
-
-  return seedTickers;
 }
 
 function buildStaleQuote(previousQuote, { timestamp, staleTtlMs }) {
@@ -261,10 +142,196 @@ function buildFallbackSet(unresolved, timestamp) {
   return Object.fromEntries(unresolved.map((ticker) => [ticker, buildFallbackQuote(ticker, timestamp)]));
 }
 
+function resolveProviderStatus(result = null, { idle = false, skipped = false, disabled = false } = {}) {
+  if (disabled) {
+    return "disabled";
+  }
+  if (skipped) {
+    return "skipped";
+  }
+  if (idle) {
+    return "idle";
+  }
+  if (!result) {
+    return "idle";
+  }
+
+  const returnedCount = Number((result.returnedTickers || []).length || 0);
+  const missingCount = Number((result.missingTickers || []).length || 0);
+  const errorCount = Number((result.errors || []).length || 0);
+
+  if (returnedCount <= 0) {
+    return errorCount > 0 ? "error" : "empty";
+  }
+  if (missingCount > 0 || errorCount > 0) {
+    return "partial";
+  }
+  return "ok";
+}
+
+function buildSampleQuotes(quotes = {}, orderedTickers = [], maxItems = 5) {
+  const order = [...new Set((orderedTickers || []).map((ticker) => String(ticker || "").toUpperCase()).filter(Boolean))];
+  return order
+    .map((ticker) => {
+      const quote = quotes?.[ticker];
+      if (!quote) {
+        return null;
+      }
+      return {
+        ticker,
+        price: Number.isFinite(Number(quote.price)) ? Number(quote.price) : null,
+        asOf: quote.asOf || quote.updatedAt || null,
+        source: quote.source || null,
+        sourceDetail: quote.sourceDetail || null,
+        dataMode: quote.dataMode || null,
+        providerScore: Number.isFinite(Number(quote.providerScore)) ? Number(quote.providerScore) : null,
+        providerLatencyMs: Number.isFinite(Number(quote.providerLatencyMs)) ? Number(quote.providerLatencyMs) : null,
+        marketState: quote.marketState || null
+      };
+    })
+    .filter(Boolean)
+    .slice(0, maxItems);
+}
+
+function buildProviderSlot({
+  role,
+  provider,
+  requestResult = null,
+  configuredBaseUrl = null,
+  quotaSnapshot = null,
+  requestedTickers = [],
+  statusOverride = null,
+  marketEnabled = true
+} = {}) {
+  const transport = PROVIDERS[provider]?.transport || null;
+  const status = statusOverride || resolveProviderStatus(requestResult, { disabled: marketEnabled === false });
+  const result = requestResult || {};
+  const errors = Array.isArray(result.errors) ? result.errors : [];
+  const sampleQuotes = buildSampleQuotes(result.quotes || {}, requestedTickers, 5);
+
+  return {
+    role,
+    provider,
+    transport,
+    configuredBaseUrl,
+    status,
+    requestMode: result.requestMode || (status === "idle" ? "standby" : "unavailable"),
+    returnedTickers: result.returnedTickers || [],
+    missingTickers: result.missingTickers || [],
+    score: Number.isFinite(Number(result.score)) ? Number(result.score) : 0,
+    latencyMs: Number.isFinite(Number(result.durationMs)) ? Number(result.durationMs) : 0,
+    quotaSnapshot: quotaSnapshot || result.quotaSnapshot || apiQuotaTracker.getProviderSnapshot(provider),
+    requestUrls: result.requestUrls || [],
+    httpStatus: Number.isFinite(Number(result.httpStatus)) ? Number(result.httpStatus) : null,
+    errorCode: errors.at(-1)?.code || errors.at(-1)?.reason || null,
+    errorMessage: errors.at(-1)?.message || null,
+    responsePreview: result.responsePreview || errors.at(-1)?.responsePreview || null,
+    sampleQuotes,
+    lastAttemptAt: result.lastAttemptAt || null,
+    lastSuccessAt: result.lastSuccessAt || null
+  };
+}
+
+function buildSkippedSlot({
+  role,
+  provider,
+  requestedTickers = [],
+  availability,
+  configuredBaseUrl = null
+} = {}) {
+  const reason = availability?.reason || "unavailable";
+  const message =
+    reason === "reserve-floor"
+      ? `${provider} was skipped because the request would cross the reserve floor.`
+      : `${provider} was skipped because quota is exhausted.`;
+
+  return buildProviderSlot({
+    role,
+    provider,
+    configuredBaseUrl,
+    quotaSnapshot: availability?.snapshot || apiQuotaTracker.getProviderSnapshot(provider),
+    requestedTickers,
+    statusOverride: "skipped",
+    requestResult: {
+      requestMode: "unavailable",
+      returnedTickers: [],
+      missingTickers: requestedTickers,
+      score: 0,
+      durationMs: 0,
+      requestUrls: [],
+      httpStatus: null,
+      lastAttemptAt: new Date().toISOString(),
+      lastSuccessAt: null,
+      errors: [
+        {
+          provider,
+          code: reason,
+          reason,
+          message
+        }
+      ]
+    }
+  });
+}
+
+function resolveSourceMode(providerCount, totalCount) {
+  if (providerCount <= 0) {
+    return "fallback";
+  }
+  if (providerCount >= totalCount) {
+    return "live";
+  }
+  return "mixed";
+}
+
+function resolveRouterFallbackReason({ providersSkipped = [], usedStaleQuotes = [], syntheticFallbackTickers = [], errors = [] }) {
+  if (syntheticFallbackTickers.length) {
+    return "synthetic-fallback";
+  }
+  if (usedStaleQuotes.length) {
+    return "router-stale";
+  }
+  if (providersSkipped.length) {
+    return providersSkipped.map((item) => `${item.provider}:${item.reason}`).join(", ");
+  }
+  if ((errors || []).length) {
+    return errors.map((error) => `${error.provider}:${error.code || error.reason || "error"}`).join(", ");
+  }
+  return null;
+}
+
+function buildDisabledProviderSlots(config = {}) {
+  const slots = [];
+  if (config.provider) {
+    slots.push(
+      buildProviderSlot({
+        role: "primary",
+        provider: config.provider,
+        configuredBaseUrl: config.provider === "twelve" ? config.twelveBaseUrl : config.yahooBaseUrl,
+        requestedTickers: config.tickers || [],
+        marketEnabled: false
+      })
+    );
+  }
+  if (config.fallbackProvider) {
+    slots.push(
+      buildProviderSlot({
+        role: "fallback",
+        provider: config.fallbackProvider,
+        configuredBaseUrl: config.fallbackProvider === "twelve" ? config.twelveBaseUrl : config.yahooBaseUrl,
+        requestedTickers: config.tickers || [],
+        marketEnabled: false
+      })
+    );
+  }
+  return slots;
+}
+
 function buildDisabledMarketResult(config = {}, timestamp = new Date().toISOString()) {
   const tickers = (config.tickers || []).map((ticker) => String(ticker).toUpperCase());
   const batchSize = Number.parseInt(String(config.batchChunkSize ?? 25), 10) || 25;
   const session = buildMarketSession(timestamp);
+  const providerChain = buildProviderChain(config.provider, config.fallbackProvider);
 
   return {
     provider: "disabled",
@@ -274,10 +341,10 @@ function buildDisabledMarketResult(config = {}, timestamp = new Date().toISOStri
     sourceMeta: {
       enabled: false,
       provider: "disabled",
-      configuredProvider: null,
-      configuredFallbackProvider: null,
+      providerChain,
+      configuredProvider: config.provider || null,
+      configuredFallbackProvider: config.fallbackProvider || null,
       effectiveProvider: null,
-      effectiveSource: null,
       providerScore: 0,
       providersUsed: [],
       providersSkipped: [],
@@ -293,18 +360,13 @@ function buildDisabledMarketResult(config = {}, timestamp = new Date().toISOStri
       lastUpstreamError: null,
       errors: [],
       providerErrors: [],
-      sourceAttempts: [],
-      sourceSnapshots: {},
-      providerDiagnostics: {
-        web: null,
-        fmp: null
-      },
+      providerSlots: buildDisabledProviderSlots(config),
       routerDecision: {
         attemptedOrder: [],
         providersSkipped: [],
         usedStaleQuotes: [],
         syntheticFallbackTickers: [],
-        fallbackReason: "market-provider-empty"
+        fallbackReason: config.disabledReason || "market-provider-empty"
       },
       disabledReason: config.disabledReason || "market-provider-empty",
       marketSession: session,
@@ -330,119 +392,118 @@ function buildDisabledMarketResult(config = {}, timestamp = new Date().toISOStri
   };
 }
 
-function mergeProviderDiagnostics(accumulator = {}, providerResult = {}) {
-  return {
-    ...accumulator,
-    ...(providerResult.sourceMeta?.providerDiagnostics || {})
-  };
-}
-
-function resolveRouterFallbackReason({ providersSkipped = [], usedStaleQuotes = [], syntheticFallbackTickers = [], errors = [] }) {
-  if (syntheticFallbackTickers.length) {
-    return "synthetic-fallback";
-  }
-  if (usedStaleQuotes.length) {
-    return "router-stale";
-  }
-  if (providersSkipped.length) {
-    return providersSkipped.map((item) => `${item.provider}:${item.reason}`).join(", ");
-  }
-  if ((errors || []).length) {
-    return errors.map((error) => `${error.provider}:${error.code || error.reason || "error"}`).join(", ");
-  }
-  return null;
-}
-
 export async function fetchMarketQuotes(config = {}) {
   if (config.enabled === false) {
     return buildDisabledMarketResult(config);
   }
 
   const tickers = [...new Set((config.tickers || []).map((ticker) => String(ticker).toUpperCase()).filter(Boolean))];
-  const timestamp = new Date().toISOString();
+  const timestampSource = config.timestamp || new Date().toISOString();
+  const parsedTimestamp = new Date(timestampSource);
+  const timestamp = Number.isFinite(parsedTimestamp.getTime()) ? parsedTimestamp.toISOString() : new Date().toISOString();
   const session = buildMarketSession(timestamp);
-  const primaryProvider = normalizeProvider(config.provider || "fmp", config.provider === "web" ? "web" : "fmp");
-  const fallbackProvider = normalizeProvider(
-    config.fallbackProvider || resolveDefaultFallbackProvider(primaryProvider),
-    resolveDefaultFallbackProvider(primaryProvider)
-  );
+  const primaryProvider = normalizeProvider(config.provider);
+  const fallbackProvider = normalizeProvider(config.fallbackProvider || resolveDefaultFallbackProvider(primaryProvider));
+  const providerChain = buildProviderChain(primaryProvider, fallbackProvider);
+
+  if (!primaryProvider) {
+    return buildDisabledMarketResult({
+      ...config,
+      provider: "",
+      fallbackProvider: "",
+      disabledReason: config.disabledReason || "market-provider-invalid"
+    });
+  }
+
+  const attemptedOrder = [...new Set([primaryProvider, fallbackProvider].filter(Boolean))];
   const requestReserve = Math.max(0, Number.parseInt(String(config.requestReserve ?? 0), 10) || 0);
   const staleTtlMs = Math.max(0, Number.parseInt(String(config.staleTtlMs ?? 0), 10) || 0);
   const previousQuotes = config.previousQuotes || {};
-
-  const providerOrder = buildProviderOrder(primaryProvider, fallbackProvider, config, {
-    reserve: requestReserve,
-    allowExhaustedProviders: config.allowExhaustedProviders === true
-  });
-  const quotaBand = resolveBandByProviderSnapshots(providerOrder.providerSnapshots);
   const mergedQuotes = {};
-  const providersUsed = [];
-  const errors = [];
   const historicalSeries = {};
-  let lastUpstreamError = null;
-  const requestModes = [];
-  let providerDiagnostics = {};
-  const providerScores = {};
+  const providersUsed = [];
+  const providersSkipped = [];
+  const providerErrors = [];
+  const providerResults = {};
   let unresolved = [...tickers];
+  let lastUpstreamError = null;
 
-  for (const provider of providerOrder.providersAvailable) {
+  for (const provider of attemptedOrder) {
     if (!unresolved.length) {
       break;
     }
 
-    const fetcher = PROVIDER_MAP[provider];
-    const providerSnapshot = providerOrder.providerSnapshots.find((snapshot) => snapshot.routerProvider === provider) || null;
-    const historicalBackfillTickers = resolveHistoricalBackfillTickers(config, unresolved, provider, providerSnapshot);
-    const providerConfig = buildProviderConfig(
-      provider,
-      {
-        ...config,
-        session,
-        enableHistoricalBackfill: historicalBackfillTickers.length > 0,
-        historicalBackfillTickers
-      },
-      primaryProvider,
-      fallbackProvider
-    );
+    const role = provider === primaryProvider ? "primary" : "fallback";
+    const configuredBaseUrl = provider === "twelve" ? config.twelveBaseUrl : config.yahooBaseUrl;
+    const availability = resolveProviderAvailability(provider, config, {
+      reserve: requestReserve,
+      allowExhaustedProviders: config.allowExhaustedProviders === true,
+      tickers: unresolved
+    });
 
-    const providerResult = await fetcher({
-      ...providerConfig,
+    if (!availability.available) {
+      providersSkipped.push({
+        provider,
+        reason: availability.reason,
+        remaining: availability.snapshot?.effectiveRemaining ?? null,
+        estimatedUnits: availability.estimatedUnits,
+        transport: PROVIDERS[provider]?.transport || null
+      });
+      providerResults[provider] = buildSkippedSlot({
+        role,
+        provider,
+        requestedTickers: unresolved,
+        availability,
+        configuredBaseUrl
+      });
+      continue;
+    }
+
+    const providerResult = await PROVIDERS[provider].fetcher({
+      ...buildProviderConfig(provider, config, session),
       tickers: unresolved,
       timeoutMs: config.timeoutMs,
       timestamp
     });
 
     providersUsed.push(provider);
+    providerResults[provider] = buildProviderSlot({
+      role,
+      provider,
+      requestResult: providerResult,
+      configuredBaseUrl,
+      quotaSnapshot: providerResult.quotaSnapshot,
+      requestedTickers: unresolved
+    });
     Object.assign(mergedQuotes, providerResult.quotes || {});
     Object.assign(historicalSeries, providerResult.historicalSeries || {});
-    const decoratedDiagnostic = decorateProviderDiagnostic(provider, providerResult, session);
-    providerDiagnostics = {
-      ...providerDiagnostics,
-      [provider]: decoratedDiagnostic
-    };
-    providerScores[provider] = decoratedDiagnostic.providerScore;
-    errors.push(
-      ...(providerResult.sourceMeta?.errors || []).map((error) => ({
+    providerErrors.push(
+      ...(providerResult.errors || []).map((error) => ({
         provider,
         ...error,
         code: error.code || error.reason || "unknown-error",
         reason: error.reason || error.code || "unknown-error"
       }))
     );
-    if (providerResult.sourceMeta?.requestMode) {
-      requestModes.push(providerResult.sourceMeta.requestMode);
+    const providerErrorCode = providerResult.errors?.at(-1)?.code || providerResult.errors?.at(-1)?.reason || null;
+    if (providerErrorCode) {
+      lastUpstreamError = providerErrorCode;
     }
-
-    const providerError =
-      providerResult.sourceMeta?.errors?.at?.(-1)?.code ||
-      providerResult.sourceMeta?.errors?.at?.(-1)?.reason ||
-      providerResult.sourceMeta?.reason ||
-      null;
-    if (providerError) {
-      lastUpstreamError = providerError;
-    }
-
     unresolved = unresolved.filter((ticker) => !providerResult.quotes?.[ticker]);
+  }
+
+  for (const provider of attemptedOrder) {
+    if (providerResults[provider]) {
+      continue;
+    }
+    const role = provider === primaryProvider ? "primary" : "fallback";
+    providerResults[provider] = buildProviderSlot({
+      role,
+      provider,
+      configuredBaseUrl: provider === "twelve" ? config.twelveBaseUrl : config.yahooBaseUrl,
+      requestedTickers: tickers,
+      statusOverride: "idle"
+    });
   }
 
   const staleQuotes = {};
@@ -464,54 +525,47 @@ export async function fetchMarketQuotes(config = {}) {
   const syntheticFallbackTickers = [...unresolved];
   if (syntheticFallbackTickers.length) {
     Object.assign(mergedQuotes, buildFallbackSet(syntheticFallbackTickers, timestamp));
-    for (const provider of providersUsed) {
-      apiQuotaTracker.markFallback(resolveQuotaProviderName(provider, config), timestamp);
-    }
   }
 
-  const liveCount = Object.values(mergedQuotes).filter((quote) => quote?.dataMode === "live").length;
-  const totalTickers = tickers.length;
-  const requestMode = [...new Set(requestModes)].join("+") || "unavailable";
-  const usedStaleQuotes = Object.keys(staleQuotes);
   const coverageByMode = buildCoverageByMode(mergedQuotes);
-  const providerCount = coverageByMode.live + coverageByMode.webDelayed + coverageByMode.historicalEod;
+  const providerBackedCount = coverageByMode.live + coverageByMode.webDelayed;
   const fallbackCount = coverageByMode.routerStale + coverageByMode.syntheticFallback;
-  const providerErrors = errors.map((error) => ({
-    ...error,
-    code: error.code || error.reason || "unknown-error",
-    reason: error.reason || error.code || "unknown-error"
-  }));
-  const effectiveProvider =
-    [...providersUsed]
-      .filter((provider) => Number((providerDiagnostics[provider]?.returnedTickers || []).length || 0) > 0)
-      .sort((left, right) => {
-        const leftScore = providerScores[left] ?? 0;
-        const rightScore = providerScores[right] ?? 0;
-        if (rightScore !== leftScore) {
-          return rightScore - leftScore;
-        }
+  const usedStaleQuotes = Object.keys(staleQuotes);
 
-        const leftReturned = providerDiagnostics[left]?.returnedTickers?.length || 0;
-        const rightReturned = providerDiagnostics[right]?.returnedTickers?.length || 0;
+  const providerSlots = attemptedOrder.map((provider) => providerResults[provider]).filter(Boolean);
+  const effectiveProvider =
+    providerSlots
+      .filter((slot) => Number((slot.returnedTickers || []).length || 0) > 0)
+      .sort((left, right) => {
+        const leftReturned = Number((left.returnedTickers || []).length || 0);
+        const rightReturned = Number((right.returnedTickers || []).length || 0);
         if (rightReturned !== leftReturned) {
           return rightReturned - leftReturned;
         }
-
-        const leftLatency = providerDiagnostics[left]?.providerLatencyMs ?? Number.MAX_SAFE_INTEGER;
-        const rightLatency = providerDiagnostics[right]?.providerLatencyMs ?? Number.MAX_SAFE_INTEGER;
-        return leftLatency - rightLatency;
-      })[0] || null;
-  const effectiveProviderScore = effectiveProvider ? providerScores[effectiveProvider] ?? 0 : 0;
-  const effectiveSource = effectiveProvider === "web" ? providerDiagnostics.web?.effectiveSource || null : null;
-  const sourceAttempts = providerDiagnostics.web?.sourceAttempts || [];
-  const sourceSnapshots = providerDiagnostics.web?.sourceSnapshots || {};
+        if ((right.score || 0) !== (left.score || 0)) {
+          return (right.score || 0) - (left.score || 0);
+        }
+        return (left.latencyMs || Number.MAX_SAFE_INTEGER) - (right.latencyMs || Number.MAX_SAFE_INTEGER);
+      })[0]?.provider || null;
+  const effectiveSlot = providerSlots.find((slot) => slot.provider === effectiveProvider) || null;
+  const providerSnapshots = attemptedOrder
+    .map((provider) => apiQuotaTracker.getProviderSnapshot(provider))
+    .filter(Boolean);
+  const quotaBand = resolveBandByProviderSnapshots(providerSnapshots);
+  const requestMode = [
+    ...new Set(
+      providerSlots
+        .map((slot) => slot.requestMode)
+        .filter((mode) => mode && mode !== "standby")
+    )
+  ].join("+") || "unavailable";
   const routerDecision = {
-    attemptedOrder: providerOrder.attemptedOrder,
-    providersSkipped: providerOrder.providersSkipped,
+    attemptedOrder,
+    providersSkipped,
     usedStaleQuotes,
     syntheticFallbackTickers,
     fallbackReason: resolveRouterFallbackReason({
-      providersSkipped: providerOrder.providersSkipped,
+      providersSkipped,
       usedStaleQuotes,
       syntheticFallbackTickers,
       errors: providerErrors
@@ -519,41 +573,38 @@ export async function fetchMarketQuotes(config = {}) {
   };
 
   log.info("market_router_completed", {
-    primaryProvider,
-    fallbackProvider,
+    providerChain,
     effectiveProvider,
-    effectiveProviderScore,
     providersUsed,
-    providersSkipped: providerOrder.providersSkipped,
-    liveCount,
-    webDelayedCount: coverageByMode.webDelayed,
-    staleCount: coverageByMode.routerStale,
+    providersSkipped,
+    liveCount: coverageByMode.live,
     fallbackCount,
-    totalTickers,
+    totalTickers: tickers.length,
     quotaBand,
-    sourceMode: resolveSourceMode(providerCount, totalTickers)
+    sourceMode: resolveSourceMode(providerBackedCount, tickers.length)
   });
 
   return {
-    provider: providersUsed.join("+") || "market-router",
-    sourceMode: resolveSourceMode(providerCount, totalTickers),
+    provider: providerChain || primaryProvider,
+    sourceMode: resolveSourceMode(providerBackedCount, tickers.length),
     sourceMeta: {
-      provider: providersUsed.join("+") || "market-router",
+      enabled: true,
+      provider: providerChain || primaryProvider,
+      providerChain,
       configuredProvider: primaryProvider,
       configuredFallbackProvider: fallbackProvider || null,
       effectiveProvider,
-      effectiveSource,
-      providerScore: effectiveProviderScore,
-      providerLatencyMs: effectiveProvider ? providerDiagnostics[effectiveProvider]?.providerLatencyMs ?? null : null,
+      providerScore: effectiveSlot?.score ?? 0,
+      providerLatencyMs: effectiveSlot?.latencyMs ?? null,
       marketSession: session,
       session,
-      providerScores,
+      providerScores: Object.fromEntries(providerSlots.map((slot) => [slot.provider, slot.score || 0])),
       providersUsed,
-      providersSkipped: providerOrder.providersSkipped,
-      liveCount,
+      providersSkipped,
+      liveCount: coverageByMode.live,
       delayedCount: coverageByMode.webDelayed,
       webDelayedCount: coverageByMode.webDelayed,
-      totalTickers,
+      totalTickers: tickers.length,
       fallbackCount,
       unresolvedTickers: syntheticFallbackTickers,
       usedStaleQuotes,
@@ -564,12 +615,7 @@ export async function fetchMarketQuotes(config = {}) {
       lastUpstreamError,
       errors: providerErrors,
       providerErrors,
-      sourceAttempts,
-      sourceSnapshots,
-      providerDiagnostics: {
-        web: providerDiagnostics.web || null,
-        fmp: providerDiagnostics.fmp || null
-      },
+      providerSlots,
       routerDecision
     },
     quotes: mergedQuotes,

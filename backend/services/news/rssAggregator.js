@@ -31,13 +31,19 @@ export class RssAggregatorService {
 
   configure(config = {}) {
     this.config = config;
-    this.refreshIntervalMs = toPositiveInt(config.refreshIntervalMs || config.news?.rssAggregateIntervalMs, 15 * 60_000);
+    this.refreshIntervalMs = toPositiveInt(config.refreshIntervalMs || config.news?.rssAggregateIntervalMs, config.news?.intervalMs);
     this.timeoutMs = toPositiveInt(config.timeoutMs || config.news?.timeoutMs, 9_000);
-    this.maxFeedsPerRun = toPositiveInt(config.maxFeedsPerRun || config.news?.rssAggregateFeedsPerRun, 18);
-    this.maxCorpusItems = toPositiveInt(config.maxCorpusItems || config.news?.rssAggregateMaxItems, 900);
     const catalog = buildExtendedRssFeedCatalog(config.rssFeeds || config.news?.rssFeeds || []);
     this.feedCatalog = catalog.feeds;
     this.feedCatalogStats = catalog.stats;
+    const derivedMaxFeedsPerRun = this.feedCatalog.filter((feed) => !feed.disabled).length || 1;
+    const configuredPageSize = toPositiveInt(config.news?.pageSize, null);
+    const derivedMaxCorpusItems = Math.max(
+      derivedMaxFeedsPerRun,
+      configuredPageSize ? derivedMaxFeedsPerRun * configuredPageSize : derivedMaxFeedsPerRun
+    );
+    this.maxFeedsPerRun = toPositiveInt(config.maxFeedsPerRun || config.news?.rssAggregateFeedsPerRun, derivedMaxFeedsPerRun);
+    this.maxCorpusItems = toPositiveInt(config.maxCorpusItems || config.news?.rssAggregateMaxItems, derivedMaxCorpusItems);
   }
 
   nextFeedBatch() {
@@ -121,11 +127,12 @@ export class RssAggregatorService {
     return snapshot;
   }
 
-  async getSnapshot({ force = false, countries = [], topic = "", threat = "", limit = 150 } = {}) {
+  async getSnapshot({ force = false, countries = [], topic = "", threat = "", limit = null } = {}) {
     const snapshot = await this.refresh({ force });
     const countriesSet = new Set((countries || []).map((iso2) => String(iso2 || "").toUpperCase()));
     const topicFilter = String(topic || "").trim().toLowerCase();
     const threatFilter = normalizeThreat(threat);
+    const resolvedLimit = toPositiveInt(limit, this.maxCorpusItems);
 
     const items = (snapshot.items || [])
       .filter((item) => {
@@ -140,7 +147,7 @@ export class RssAggregatorService {
         }
         return true;
       })
-      .slice(0, Math.max(1, Number.parseInt(String(limit ?? 150), 10) || 150));
+      .slice(0, resolvedLimit);
 
     return {
       generatedAt: snapshot.generatedAt,

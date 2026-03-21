@@ -1,6 +1,38 @@
 const WINDOW_MS = 24 * 60 * 60 * 1_000;
 const MINUTE_WINDOW_MS = 60 * 1_000;
-const PROVIDERS = ["newsapi", "gnews", "mediastack", "rss", "gdelt", "twelve", "yahoo", "fmp"];
+const PROVIDERS = ["newsapi", "gnews", "mediastack", "rss", "gdelt", "twelve", "yahoo"];
+const PROVIDER_LIMIT_FIELDS = Object.freeze({
+  newsapi: {
+    hardDaily: "newsapiDailyLimit",
+    budgetDaily: "newsapiDailyBudget"
+  },
+  gnews: {
+    hardDaily: "gnewsDailyLimit",
+    budgetDaily: "gnewsDailyBudget"
+  },
+  mediastack: {
+    hardDaily: "mediastackDailyLimit",
+    budgetDaily: "mediastackDailyBudget"
+  },
+  rss: {
+    hardDaily: "rssDailyLimit",
+    budgetDaily: "rssDailyBudget"
+  },
+  gdelt: {
+    hardDaily: "gdeltDailyLimit",
+    budgetDaily: "gdeltDailyBudget"
+  },
+  twelve: {
+    hardDaily: "twelveDailyLimit",
+    budgetDaily: "twelveDailyBudget",
+    hardMinute: "twelveMinuteLimit",
+    budgetMinute: "twelveMinuteBudget"
+  },
+  yahoo: {
+    hardDaily: "yahooDailyLimit",
+    budgetDaily: "yahooDailyBudget"
+  }
+});
 
 function toPositiveInt(value) {
   const parsed = Number.parseInt(String(value ?? ""), 10);
@@ -16,10 +48,17 @@ function createEventBucket() {
   return [];
 }
 
-function createProviderState({ configuredDailyLimit = null, configuredMinuteLimit = null } = {}) {
+function createProviderState({
+  hardDailyLimit = null,
+  hardMinuteLimit = null,
+  budgetDailyLimit = null,
+  budgetMinuteLimit = null
+} = {}) {
   return {
-    configuredDailyLimit,
-    configuredMinuteLimit,
+    hardDailyLimit,
+    hardMinuteLimit,
+    budgetDailyLimit,
+    budgetMinuteLimit,
     headerLimit: null,
     headerRemaining: null,
     apiCreditsUsed: null,
@@ -110,49 +149,62 @@ function parseRateLimitHeaders(headers = {}) {
   };
 }
 
-function deriveEffectiveRemaining({ configuredLimit, usedUnits, headerRemaining }) {
-  const configuredRemaining = Number.isFinite(configuredLimit) ? Math.max(0, configuredLimit - usedUnits) : null;
-
-  if (Number.isFinite(configuredRemaining) && Number.isFinite(headerRemaining)) {
-    return Math.min(configuredRemaining, headerRemaining);
-  }
-  if (Number.isFinite(configuredRemaining)) {
-    return configuredRemaining;
-  }
-  if (Number.isFinite(headerRemaining)) {
-    return headerRemaining;
-  }
-  return null;
+function minFinite(...values) {
+  const finiteValues = values.filter(Number.isFinite);
+  return finiteValues.length ? Math.min(...finiteValues) : null;
 }
 
 function resolveConfiguredProviderLimits(config = {}) {
+  return Object.fromEntries(
+    PROVIDERS.map((provider) => {
+      const fieldMap = PROVIDER_LIMIT_FIELDS[provider] || {};
+      return [
+        provider,
+        {
+          hardDailyLimit: toPositiveInt(config[fieldMap.hardDaily]),
+          hardMinuteLimit: toPositiveInt(config[fieldMap.hardMinute]),
+          budgetDailyLimit: toPositiveInt(config[fieldMap.budgetDaily]),
+          budgetMinuteLimit: toPositiveInt(config[fieldMap.budgetMinute])
+        }
+      ];
+    })
+  );
+}
+
+function deriveRemainingState({ hardLimit = null, budgetLimit = null, usedUnits = 0, headerRemaining = null } = {}) {
+  const hardRemaining = Number.isFinite(hardLimit) ? Math.max(0, hardLimit - usedUnits) : null;
+  const budgetRemaining = Number.isFinite(budgetLimit) ? Math.max(0, budgetLimit - usedUnits) : null;
+  const effectiveRemaining = minFinite(hardRemaining, budgetRemaining, headerRemaining);
+  const operationalLimit = minFinite(hardLimit, budgetLimit);
+
   return {
-    newsapi: {
-      configuredDailyLimit: toPositiveInt(config.newsapiDailyLimit ?? process.env.NEWSAPI_DAILY_LIMIT)
-    },
-    gnews: {
-      configuredDailyLimit: toPositiveInt(config.gnewsDailyLimit ?? process.env.GNEWS_DAILY_LIMIT)
-    },
-    mediastack: {
-      configuredDailyLimit: toPositiveInt(config.mediastackDailyLimit ?? process.env.MEDIASTACK_DAILY_LIMIT)
-    },
-    rss: {
-      configuredDailyLimit: toPositiveInt(config.rssDailyLimit ?? process.env.RSS_DAILY_LIMIT)
-    },
-    gdelt: {
-      configuredDailyLimit: toPositiveInt(config.gdeltDailyLimit ?? process.env.GDELT_DAILY_LIMIT)
-    },
-    twelve: {
-      configuredDailyLimit: toPositiveInt(config.twelveDailyLimit ?? process.env.MARKET_TWELVE_DAILY_LIMIT ?? 800),
-      configuredMinuteLimit: toPositiveInt(config.twelveMinuteLimit ?? process.env.MARKET_TWELVE_MINUTE_LIMIT ?? 8)
-    },
-    yahoo: {
-      configuredDailyLimit: toPositiveInt(config.yahooDailyLimit ?? process.env.MARKET_YAHOO_DAILY_LIMIT)
-    },
-    fmp: {
-      configuredDailyLimit: toPositiveInt(config.fmpDailyLimit ?? process.env.FMP_DAILY_LIMIT)
-    }
+    hardRemaining,
+    budgetRemaining,
+    effectiveRemaining,
+    operationalLimit
   };
+}
+
+function resolveOperationalStatus({
+  effectiveRemainingDay = null,
+  effectiveRemainingMinute = null,
+  operationalDailyLimit = null,
+  operationalMinuteLimit = null
+} = {}) {
+  const effectiveRemaining = minFinite(effectiveRemainingDay, effectiveRemainingMinute);
+  if (Number.isFinite(effectiveRemaining) && effectiveRemaining <= 0) {
+    return "budget-exhausted";
+  }
+
+  const ratios = [];
+  if (Number.isFinite(effectiveRemainingDay) && Number.isFinite(operationalDailyLimit) && operationalDailyLimit > 0) {
+    ratios.push(effectiveRemainingDay / operationalDailyLimit);
+  }
+  if (Number.isFinite(effectiveRemainingMinute) && Number.isFinite(operationalMinuteLimit) && operationalMinuteLimit > 0) {
+    ratios.push(effectiveRemainingMinute / operationalMinuteLimit);
+  }
+
+  return ratios.length && Math.min(...ratios) <= 0.15 ? "budget-near-limit" : "within-budget";
 }
 
 class ApiQuotaTrackerService {
@@ -253,18 +305,35 @@ class ApiQuotaTrackerService {
     const fallbackMinute = countEventsSince(providerState.events.fallback, minuteMinTs);
     const units24h = sumUnitsSince(providerState.events.calls, nowMs - WINDOW_MS);
     const unitsMinute = sumUnitsSince(providerState.events.calls, minuteMinTs);
-    const effectiveRemainingDay = deriveEffectiveRemaining({
-      configuredLimit: providerState.configuredDailyLimit,
+    const dailyRemaining = deriveRemainingState({
+      hardLimit: providerState.hardDailyLimit,
+      budgetLimit: providerState.budgetDailyLimit,
       usedUnits: units24h,
-      headerRemaining: null
-    });
-    const effectiveRemainingMinute = deriveEffectiveRemaining({
-      configuredLimit: providerState.configuredMinuteLimit,
-      usedUnits: unitsMinute,
       headerRemaining: providerState.headerRemaining
     });
+    const hasMinuteQuota =
+      Number.isFinite(providerState.hardMinuteLimit) || Number.isFinite(providerState.budgetMinuteLimit);
+    const minuteRemaining = hasMinuteQuota
+      ? deriveRemainingState({
+          hardLimit: providerState.hardMinuteLimit,
+          budgetLimit: providerState.budgetMinuteLimit,
+          usedUnits: unitsMinute,
+          headerRemaining: providerState.headerRemaining
+        })
+      : {
+          hardRemaining: null,
+          budgetRemaining: null,
+          effectiveRemaining: null,
+          operationalLimit: null
+        };
+    const effectiveRemainingDay = dailyRemaining.effectiveRemaining;
+    const effectiveRemainingMinute = minuteRemaining.effectiveRemaining;
     const remainingCandidates = [effectiveRemainingDay, effectiveRemainingMinute].filter(Number.isFinite);
     const effectiveRemaining = remainingCandidates.length ? Math.min(...remainingCandidates) : null;
+    const operationalDailyLimit = minFinite(providerState.hardDailyLimit, providerState.budgetDailyLimit, providerState.headerLimit);
+    const operationalMinuteLimit = hasMinuteQuota
+      ? minFinite(providerState.hardMinuteLimit, providerState.budgetMinuteLimit, providerState.headerLimit)
+      : null;
 
     return {
       provider: normalized,
@@ -278,9 +347,19 @@ class ApiQuotaTrackerService {
       fallbackMinute,
       units24h,
       unitsMinute,
-      configuredLimit: providerState.configuredDailyLimit,
-      configuredDailyLimit: providerState.configuredDailyLimit,
-      configuredMinuteLimit: providerState.configuredMinuteLimit,
+      configuredLimit: providerState.hardDailyLimit,
+      configuredDailyLimit: providerState.hardDailyLimit,
+      configuredMinuteLimit: providerState.hardMinuteLimit,
+      hardDailyLimit: providerState.hardDailyLimit,
+      hardMinuteLimit: providerState.hardMinuteLimit,
+      budgetDailyLimit: providerState.budgetDailyLimit,
+      budgetMinuteLimit: providerState.budgetMinuteLimit,
+      hardRemainingDay: dailyRemaining.hardRemaining,
+      hardRemainingMinute: minuteRemaining.hardRemaining,
+      budgetRemainingDay: dailyRemaining.budgetRemaining,
+      budgetRemainingMinute: minuteRemaining.budgetRemaining,
+      operationalDailyLimit,
+      operationalMinuteLimit,
       headerLimit: providerState.headerLimit,
       headerRemaining: providerState.headerRemaining,
       apiCreditsUsed: providerState.apiCreditsUsed,
@@ -288,6 +367,12 @@ class ApiQuotaTrackerService {
       effectiveRemaining,
       effectiveRemainingDay,
       effectiveRemainingMinute,
+      operationalStatus: resolveOperationalStatus({
+        effectiveRemainingDay,
+        effectiveRemainingMinute,
+        operationalDailyLimit,
+        operationalMinuteLimit
+      }),
       exhaustedDay: Number.isFinite(effectiveRemainingDay) ? effectiveRemainingDay <= 0 : false,
       exhaustedMinute: Number.isFinite(effectiveRemainingMinute) ? effectiveRemainingMinute <= 0 : false,
       exhausted: remainingCandidates.length ? Math.min(...remainingCandidates) <= 0 : false,

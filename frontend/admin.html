@@ -94,14 +94,14 @@
                   </div>
                   <div class="col-12 col-xl-6 col-xxl-4">
                     <section class="diagnostic-card h-100">
-                      <header class="diagnostic-card-header">Market Data Provider</header>
-                      <div id="market-web-diagnostics-body" class="diagnostic-list"></div>
+                      <header class="diagnostic-card-header">Primary Market Provider</header>
+                      <div id="market-primary-diagnostics-body" class="diagnostic-list"></div>
                     </section>
                   </div>
                   <div class="col-12 col-xl-6 col-xxl-4">
                     <section class="diagnostic-card h-100">
-                      <header class="diagnostic-card-header">Fallback API Provider</header>
-                      <div id="market-api-diagnostics-body" class="diagnostic-list"></div>
+                      <header class="diagnostic-card-header">Fallback Market Provider</header>
+                      <div id="market-fallback-diagnostics-body" class="diagnostic-list"></div>
                     </section>
                   </div>
                   <div class="col-12 col-xl-4">
@@ -195,13 +195,17 @@
                       <tr>
                         <th>Provider</th>
                         <th>Band</th>
-                        <th>Calls 1m</th>
-                        <th>Calls 24h</th>
-                        <th>Remain 1m</th>
-                        <th>Remain 24h</th>
+                        <th>Used 1m</th>
+                        <th>Hard 1m</th>
+                        <th>Budget 1m</th>
+                        <th>Remain Op 1m</th>
+                        <th>Used 24h</th>
+                        <th>Hard 24h</th>
+                        <th>Budget 24h</th>
+                        <th>Remain Op 24h</th>
                         <th>Reset 1m</th>
                         <th>Reset 24h</th>
-                        <th>Exhausted</th>
+                        <th>Op Status</th>
                         <th>Status</th>
                       </tr>
                     </thead>

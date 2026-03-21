@@ -42,8 +42,8 @@ test("advanced map and intelligence routes return bounded additive payloads", as
     },
     market: {
       refreshIntervalMs: 300_000,
-      apiKey: "",
-      fmpApiKey: "",
+      provider: "",
+      fallbackProvider: "",
       requestReserve: 0
     }
   });

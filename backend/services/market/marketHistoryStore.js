@@ -2,8 +2,9 @@ import path from "node:path";
 import { mkdir, readFile, rename, writeFile, appendFile } from "node:fs/promises";
 
 const MAX_MARKET_POINTS = 120;
-const PROVIDER_BACKED_MODES = new Set(["live", "web-delayed", "historical-eod"]);
+const PROVIDER_BACKED_MODES = new Set(["live", "web-delayed"]);
 const ANOMALOUS_MOVE_THRESHOLD_PCT = 3.5;
+const PROVIDER_SCHEMA_VERSION = 2;
 
 function ensureTickerList(tickers = []) {
   return [...new Set((Array.isArray(tickers) ? tickers : []).map((ticker) => String(ticker || "").toUpperCase()).filter(Boolean))];
@@ -206,6 +207,12 @@ export class MarketHistoryStore {
     if (!snapshot || typeof snapshot !== "object") {
       return null;
     }
+    if (Number(snapshot.providerSchemaVersion) !== PROVIDER_SCHEMA_VERSION) {
+      return null;
+    }
+    if (String(snapshot.provider || "").includes("web+fmp") || String(snapshot.sourceMeta?.provider || "").includes("web+fmp")) {
+      return null;
+    }
 
     const tickers = ensureTickerList(snapshot?.tickers?.length ? snapshot.tickers : this.tickers);
     const timeseriesEntries = await Promise.all(
@@ -334,6 +341,7 @@ export class MarketHistoryStore {
 
     const payload = JSON.stringify(
       {
+        providerSchemaVersion: PROVIDER_SCHEMA_VERSION,
         provider: marketState.provider || "market-router",
         sourceMode: marketState.sourceMode || "fallback",
         sourceMeta: marketState.sourceMeta || { provider: "unknown" },

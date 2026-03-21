@@ -10,7 +10,7 @@ test("fusion normalizes events and hotspot escalation ranks convergent countries
     market: {
       updatedAt: now,
       quotes: {
-        GD: { price: 200, changePct: 2.2, asOf: now, source: "fmp", synthetic: false }
+        GD: { price: 200, changePct: 2.2, asOf: now, source: "twelve", synthetic: false }
       }
     },
     predictions: {

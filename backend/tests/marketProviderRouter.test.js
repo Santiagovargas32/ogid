@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import apiQuotaTracker from "../services/admin/apiQuotaTrackerService.js";
 import { fetchMarketQuotes } from "../services/market/marketProviderRouter.js";
-import { resetFmpProviderStateForTests } from "../services/market/providers/fmpProvider.js";
 
 function jsonResponse(payload, status = 200) {
   return new Response(JSON.stringify(payload), {
@@ -11,58 +10,114 @@ function jsonResponse(payload, status = 200) {
   });
 }
 
-function csvResponse(text, status = 200) {
+function htmlResponse(text, status = 200) {
   return new Response(text, {
     status,
-    headers: { "content-type": "text/csv" }
+    headers: { "content-type": "text/html" }
   });
 }
 
-test("market provider router returns deterministic fallback when web and fmp are unavailable", async () => {
-  resetFmpProviderStateForTests();
+function buildYahooQuoteHtml({
+  ticker,
+  price,
+  previousClose,
+  changePercent,
+  high,
+  low,
+  volume,
+  marketTime = 1_742_141_100,
+  marketState = "REGULAR"
+}) {
+  return `<!doctype html>
+  <html>
+    <head><title>${ticker}</title></head>
+    <body>
+      <script>
+        root.App.main = ${JSON.stringify({
+          context: {
+            dispatcher: {
+              stores: {
+                QuoteSummaryStore: {
+                  price: {
+                    symbol: ticker,
+                    regularMarketPrice: { raw: price },
+                    regularMarketChangePercent: { raw: changePercent },
+                    regularMarketTime: { raw: marketTime },
+                    marketState
+                  },
+                  summaryDetail: {
+                    regularMarketPreviousClose: { raw: previousClose },
+                    regularMarketDayHigh: { raw: high },
+                    regularMarketDayLow: { raw: low },
+                    regularMarketVolume: { raw: volume }
+                  },
+                  quoteType: {
+                    symbol: ticker
+                  }
+                }
+              }
+            }
+          }
+        })};
+      </script>
+    </body>
+  </html>`;
+}
+
+test("market provider router returns deterministic fallback when twelve and yahoo are unavailable", async () => {
   apiQuotaTracker.reset({
     twelveDailyLimit: 800,
     twelveMinuteLimit: 8,
-    fmpDailyLimit: 250
+    yahooDailyLimit: 100
   });
 
-  const result = await fetchMarketQuotes({
-    provider: "web",
-    fallbackProvider: "fmp",
-    webSource: "unsupported-source",
-    fmpApiKey: "",
-    tickers: ["GD", "BA"],
-    timeoutMs: 500
-  });
+  const originalFetch = global.fetch;
+  global.fetch = async (url) => {
+    const value = String(url);
+    if (value.includes("finance.yahoo.com/quote/")) {
+      return htmlResponse("<html><body>No embedded quote</body></html>");
+    }
+    return jsonResponse({}, 404);
+  };
 
-  assert.equal(result.sourceMode, "fallback");
-  assert.equal(Object.keys(result.quotes).length, 2);
-  assert.ok(Object.values(result.quotes).every((quote) => quote.synthetic === true));
-  assert.ok(Object.values(result.quotes).every((quote) => quote.dataMode === "synthetic-fallback"));
-  assert.equal(result.sourceMeta.requestMode, "unavailable");
-  assert.equal(result.sourceMeta.configuredProvider, "web");
-  assert.equal(result.sourceMeta.configuredFallbackProvider, "fmp");
-  assert.equal(result.sourceMeta.effectiveProvider, null);
-  assert.deepEqual(result.sourceMeta.coverageByMode, {
-    live: 0,
-    webDelayed: 0,
-    historicalEod: 0,
-    routerStale: 0,
-    syntheticFallback: 2
-  });
-  assert.equal(result.sourceMeta.fallbackCount, 2);
-  assert.ok(Array.isArray(result.sourceMeta.providerErrors));
-  assert.equal(result.sourceMeta.providerDiagnostics.web.errorCode, "web-source-invalid");
-  assert.equal(result.sourceMeta.providerDiagnostics.fmp.errorCode, "api-key-missing");
+  try {
+    const result = await fetchMarketQuotes({
+      provider: "twelve",
+      fallbackProvider: "yahoo",
+      twelveApiKey: "",
+      yahooBaseUrl: "https://finance.yahoo.com",
+      yahooUserAgent: "ogid/1.0",
+      tickers: ["GD", "BA"],
+      timeoutMs: 500
+    });
+
+    assert.equal(result.provider, "twelve+yahoo");
+    assert.equal(result.sourceMode, "fallback");
+    assert.equal(result.sourceMeta.providerChain, "twelve+yahoo");
+    assert.equal(result.sourceMeta.effectiveProvider, null);
+    assert.equal(Object.keys(result.quotes).length, 2);
+    assert.ok(Object.values(result.quotes).every((quote) => quote.synthetic === true));
+    assert.equal(result.sourceMeta.providerSlots[0].provider, "twelve");
+    assert.equal(result.sourceMeta.providerSlots[0].errorCode, "api-key-missing");
+    assert.equal(result.sourceMeta.providerSlots[1].provider, "yahoo");
+    assert.equal(result.sourceMeta.providerSlots[1].errorCode, "yahoo-embedded-json-missing");
+    assert.deepEqual(result.sourceMeta.coverageByMode, {
+      live: 0,
+      webDelayed: 0,
+      historicalEod: 0,
+      routerStale: 0,
+      syntheticFallback: 2
+    });
+  } finally {
+    global.fetch = originalFetch;
+  }
 });
 
-test("market provider router prefers yahoo, dedupes duplicate tickers and ignores duplicate upstream symbols", async () => {
-  resetFmpProviderStateForTests();
+test("market provider router prefers twelve, dedupes duplicate tickers and leaves yahoo idle", async () => {
   apiQuotaTracker.reset({
-    yahooDailyLimit: 100,
     twelveDailyLimit: 800,
     twelveMinuteLimit: 8,
-    fmpDailyLimit: 250
+    yahooDailyLimit: 100
   });
 
   const originalFetch = global.fetch;
@@ -70,121 +125,6 @@ test("market provider router prefers yahoo, dedupes duplicate tickers and ignore
   global.fetch = async (url) => {
     const value = String(url);
     seenUrls.push(value);
-
-    if (value.includes("query1.finance.yahoo.com/v7/finance/quote")) {
-      return jsonResponse({
-        quoteResponse: {
-          result: [
-            {
-              symbol: "GD",
-              regularMarketPrice: 300.5,
-              regularMarketChangePercent: 0.25,
-              regularMarketPreviousClose: 299.75,
-              regularMarketDayHigh: 301.2,
-              regularMarketDayLow: 298.8,
-              regularMarketVolume: 1200,
-              regularMarketTime: 1_742_141_100,
-              marketState: "REGULAR"
-            },
-            {
-              symbol: "BA",
-              regularMarketPrice: 205.22,
-              regularMarketChangePercent: 0.8,
-              regularMarketPreviousClose: 203.6,
-              regularMarketDayHigh: 206.0,
-              regularMarketDayLow: 202.0,
-              regularMarketVolume: 1800,
-              regularMarketTime: 1_742_141_100,
-              marketState: "REGULAR"
-            },
-            {
-              symbol: "BA",
-              regularMarketPrice: 206.11,
-              regularMarketChangePercent: 1.1,
-              regularMarketPreviousClose: 203.6,
-              regularMarketDayHigh: 206.5,
-              regularMarketDayLow: 202.0,
-              regularMarketVolume: 1801,
-              regularMarketTime: 1_742_141_160,
-              marketState: "REGULAR"
-            }
-          ]
-        }
-      });
-    }
-
-    return jsonResponse({}, 404);
-  };
-
-  try {
-    const result = await fetchMarketQuotes({
-      provider: "web",
-      fallbackProvider: "fmp",
-      webSource: "yahoo",
-      webBaseUrl: "https://query1.finance.yahoo.com",
-      twelveApiKey: "demo",
-      tickers: ["GD", "GD", "BA"],
-      timeoutMs: 500
-    });
-
-    assert.equal(result.sourceMode, "live");
-    assert.deepEqual(Object.keys(result.quotes).sort(), ["BA", "GD"]);
-    assert.equal(result.quotes.GD.sourceDetail, "yahoo");
-    assert.equal(result.quotes.BA.sourceDetail, "yahoo");
-    assert.equal(result.quotes.BA.dataMode, "live");
-    assert.equal(result.sourceMeta.providerDiagnostics.web.effectiveSource, "yahoo");
-    assert.deepEqual(result.sourceMeta.providerDiagnostics.web.requestedTickers, ["GD", "BA"]);
-    assert.equal(result.sourceMeta.providerDiagnostics.web.requestUrls.length, 1);
-    assert.equal(result.sourceMeta.providerScore > 0, true);
-    assert.deepEqual(result.sourceMeta.coverageByMode, {
-      live: 2,
-      webDelayed: 0,
-      historicalEod: 0,
-      routerStale: 0,
-      syntheticFallback: 0
-    });
-  } finally {
-    global.fetch = originalFetch;
-  }
-});
-
-test("market provider router falls back from yahoo to twelve and records source attempts", async () => {
-  resetFmpProviderStateForTests();
-  apiQuotaTracker.reset({
-    yahooDailyLimit: 100,
-    twelveDailyLimit: 800,
-    twelveMinuteLimit: 8,
-    fmpDailyLimit: 250
-  });
-
-  const originalFetch = global.fetch;
-  const seenUrls = [];
-  global.fetch = async (url, options = {}) => {
-    const value = String(url);
-    seenUrls.push(value);
-
-    if (value.includes("query1.finance.yahoo.com/v7/finance/quote")) {
-      return new Promise((resolve, reject) => {
-        const signal = options.signal;
-        const abort = () => {
-          const error = new Error("Aborted");
-          error.name = "AbortError";
-          reject(error);
-        };
-
-        if (signal) {
-          if (signal.aborted) {
-            abort();
-            return;
-          }
-          signal.addEventListener("abort", abort, { once: true });
-        }
-
-        setTimeout(() => {
-          resolve(jsonResponse({ quoteResponse: { result: [] } }));
-        }, 50);
-      });
-    }
 
     if (value.includes("api.twelvedata.com/quote")) {
       return jsonResponse({
@@ -202,12 +142,23 @@ test("market provider router falls back from yahoo to twelve and records source 
           },
           {
             symbol: "BA",
-            close: "200.25",
+            close: "205.22",
             percent_change: "0.80",
-            previous_close: "198.66",
-            high: "201.00",
-            low: "199.00",
-            volume: "1100",
+            previous_close: "203.60",
+            high: "206.00",
+            low: "202.00",
+            volume: "1800",
+            datetime: "2026-03-16 18:45:00",
+            market_state: "REGULAR"
+          },
+          {
+            symbol: "BA",
+            close: "206.11",
+            percent_change: "1.10",
+            previous_close: "203.60",
+            high: "206.50",
+            low: "202.00",
+            volume: "1801",
             datetime: "2026-03-16 18:45:00",
             market_state: "REGULAR"
           }
@@ -220,31 +171,118 @@ test("market provider router falls back from yahoo to twelve and records source 
 
   try {
     const result = await fetchMarketQuotes({
-      provider: "web",
-      fallbackProvider: "fmp",
-      webSource: "yahoo",
-      webBaseUrl: "https://query1.finance.yahoo.com",
+      provider: "twelve",
+      fallbackProvider: "yahoo",
       twelveApiKey: "demo",
       twelveBaseUrl: "https://api.twelvedata.com",
-      webUserAgent: "ogid/1.0",
-      tickers: ["GD", "BA"],
-      timeoutMs: 15
+      yahooBaseUrl: "https://finance.yahoo.com",
+      yahooUserAgent: "ogid/1.0",
+      tickers: ["GD", "GD", "BA"],
+      timeoutMs: 500
     });
 
-    assert.ok(seenUrls.some((value) => value.includes("query1.finance.yahoo.com/v7/finance/quote")));
-    assert.ok(seenUrls.some((value) => value.includes("api.twelvedata.com/quote")));
     assert.equal(result.sourceMode, "live");
+    assert.deepEqual(Object.keys(result.quotes).sort(), ["BA", "GD"]);
     assert.equal(result.quotes.GD.sourceDetail, "twelve");
-    assert.equal(result.quotes.GD.dataMode, "live");
     assert.equal(result.quotes.BA.sourceDetail, "twelve");
-    assert.equal(result.sourceMeta.providerDiagnostics.web.effectiveSource, "twelve");
-    assert.equal(Array.isArray(result.sourceMeta.sourceAttempts), true);
-    assert.equal(result.sourceMeta.sourceAttempts.length >= 2, true);
-    assert.equal(result.sourceMeta.sourceAttempts[0].source, "yahoo");
-    assert.equal(result.sourceMeta.sourceAttempts[1].source, "twelve");
-    assert.equal(Number.isFinite(Number(result.sourceMeta.providerDiagnostics.web.providerLatencyMs)), true);
-    assert.equal(result.sourceMeta.providerDiagnostics.web.providerLatencyMs > 0, true);
-    assert.equal(result.sourceMeta.providerDiagnostics.web.providerScore >= 0, true);
+    assert.equal(result.sourceMeta.providerChain, "twelve+yahoo");
+    assert.equal(result.sourceMeta.effectiveProvider, "twelve");
+    assert.equal(result.sourceMeta.providerSlots[0].status, "ok");
+    assert.equal(result.sourceMeta.providerSlots[1].status, "idle");
+    assert.equal(result.sourceMeta.providerSlots[0].requestUrls.length, 1);
+    assert.ok(seenUrls.some((value) => value.includes("api.twelvedata.com/quote")));
+    assert.deepEqual(result.sourceMeta.coverageByMode, {
+      live: 2,
+      webDelayed: 0,
+      historicalEod: 0,
+      routerStale: 0,
+      syntheticFallback: 0
+    });
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("market provider router falls back from twelve to yahoo and records provider slots", async () => {
+  apiQuotaTracker.reset({
+    twelveDailyLimit: 800,
+    twelveMinuteLimit: 8,
+    yahooDailyLimit: 100
+  });
+
+  const originalFetch = global.fetch;
+  const seenUrls = [];
+  global.fetch = async (url) => {
+    const value = String(url);
+    seenUrls.push(value);
+
+    if (value.includes("api.twelvedata.com/quote")) {
+      return jsonResponse(
+        {
+          status: "error",
+          code: 401,
+          message: "apikey parameter is incorrect or not specified."
+        },
+        200
+      );
+    }
+
+    if (value.includes("finance.yahoo.com/quote/GD")) {
+      return htmlResponse(
+        buildYahooQuoteHtml({
+          ticker: "GD",
+          price: 300.5,
+          previousClose: 299.75,
+          changePercent: 0.25,
+          high: 301.2,
+          low: 298.8,
+          volume: 1200
+        })
+      );
+    }
+
+    if (value.includes("finance.yahoo.com/quote/BA")) {
+      return htmlResponse(
+        buildYahooQuoteHtml({
+          ticker: "BA",
+          price: 200.25,
+          previousClose: 198.66,
+          changePercent: 0.8,
+          high: 201,
+          low: 199,
+          volume: 1100
+        })
+      );
+    }
+
+    return jsonResponse({}, 404);
+  };
+
+  try {
+    const result = await fetchMarketQuotes({
+      provider: "twelve",
+      fallbackProvider: "yahoo",
+      twelveApiKey: "demo",
+      twelveBaseUrl: "https://api.twelvedata.com",
+      yahooBaseUrl: "https://finance.yahoo.com",
+      yahooUserAgent: "ogid/1.0",
+      tickers: ["GD", "BA"],
+      timeoutMs: 500
+    });
+
+    assert.ok(seenUrls.some((value) => value.includes("api.twelvedata.com/quote")));
+    assert.ok(seenUrls.some((value) => value.includes("finance.yahoo.com/quote/GD")));
+    assert.ok(seenUrls.some((value) => value.includes("finance.yahoo.com/quote/BA")));
+    assert.equal(result.sourceMode, "live");
+    assert.equal(result.quotes.GD.sourceDetail, "yahoo");
+    assert.equal(result.quotes.BA.sourceDetail, "yahoo");
+    assert.equal(result.sourceMeta.effectiveProvider, "yahoo");
+    assert.equal(result.sourceMeta.providerSlots[0].provider, "twelve");
+    assert.equal(result.sourceMeta.providerSlots[0].status, "error");
+    assert.equal(result.sourceMeta.providerSlots[1].provider, "yahoo");
+    assert.equal(result.sourceMeta.providerSlots[1].status, "ok");
+    assert.equal(result.sourceMeta.providerSlots[1].requestUrls.length, 2);
+    assert.equal(result.sourceMeta.providerSlots[1].transport, "web");
     assert.deepEqual(result.sourceMeta.coverageByMode, {
       live: 2,
       webDelayed: 0,
@@ -258,31 +296,32 @@ test("market provider router falls back from yahoo to twelve and records source 
 });
 
 test("market provider router uses stale quotes before deterministic fallback when providers are exhausted", async () => {
-  resetFmpProviderStateForTests();
   apiQuotaTracker.reset({
     twelveDailyLimit: 1,
     twelveMinuteLimit: 1,
-    fmpDailyLimit: 1
+    yahooDailyLimit: 2
   });
-  apiQuotaTracker.recordCall("twelve", { status: "success" });
-  apiQuotaTracker.recordCall("fmp", { status: "success" });
+  apiQuotaTracker.recordCall("twelve", { status: "success", units: 1 });
+  apiQuotaTracker.recordCall("yahoo", { status: "success", units: 2 });
 
   const result = await fetchMarketQuotes({
-    provider: "web",
-    fallbackProvider: "fmp",
-    webSource: "twelve",
+    provider: "twelve",
+    fallbackProvider: "yahoo",
+    twelveApiKey: "demo",
+    yahooBaseUrl: "https://finance.yahoo.com",
     tickers: ["GD", "BA"],
     timeoutMs: 500,
     staleTtlMs: 60_000,
+    requestReserve: 0,
     previousQuotes: {
       GD: {
         price: 299.5,
         changePct: 0.5,
         asOf: new Date().toISOString(),
-        source: "web",
+        source: "twelve",
         synthetic: false,
         dataMode: "live",
-        sourceDetail: "yahoo"
+        sourceDetail: "twelve"
       }
     }
   });
@@ -294,8 +333,10 @@ test("market provider router uses stale quotes before deterministic fallback whe
   assert.equal(result.quotes.BA.dataMode, "synthetic-fallback");
   assert.deepEqual(
     result.sourceMeta.providersSkipped.map((item) => item.provider).sort(),
-    ["fmp", "web"]
+    ["twelve", "yahoo"]
   );
+  assert.equal(result.sourceMeta.providerSlots[0].status, "skipped");
+  assert.equal(result.sourceMeta.providerSlots[1].status, "skipped");
   assert.deepEqual(result.sourceMeta.usedStaleQuotes, ["GD"]);
   assert.deepEqual(result.sourceMeta.coverageByMode, {
     live: 0,

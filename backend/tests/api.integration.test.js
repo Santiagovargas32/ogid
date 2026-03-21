@@ -98,17 +98,15 @@ test("REST API exposes health and snapshot payloads", async () => {
     disableBackgroundRefresh: true,
     refreshIntervalMs: 300_000,
     market: {
-      provider: "web",
-      fallbackProvider: "fmp",
-      webSource: "twelve",
-      webBaseUrl: "https://api.twelvedata.com",
-      webUserAgent: "ogid/1.0",
+      provider: "twelve",
+      fallbackProvider: "yahoo",
+      offHoursStrategy: "skip",
       twelveApiKey: "demo",
       twelveBaseUrl: "https://api.twelvedata.com",
+      yahooBaseUrl: "https://finance.yahoo.com",
+      yahooUserAgent: "ogid/1.0",
       tickers: ["GD", "BA", "NOC"],
       refreshIntervalMs: 300_000,
-      apiKey: "",
-      fmpApiKey: "",
       requestReserve: 0,
       historyPersist: false
     },
@@ -125,6 +123,7 @@ test("REST API exposes health and snapshot payloads", async () => {
       gnewsDailyLimit: 10,
       mediastackDailyLimit: 10,
       twelveDailyLimit: 800,
+      twelveDailyBudget: 600,
       twelveMinuteLimit: 8
     }
   });
@@ -145,10 +144,10 @@ test("REST API exposes health and snapshot payloads", async () => {
     assert.equal(healthPayload.data.websocketClients, 0);
     assert.equal(healthPayload.data.websocket.clientCount, 0);
     assert.equal(healthPayload.data.websocket.path, "/ws");
-    assert.equal(healthPayload.data.market.configuredProvider, "web");
-    assert.equal(healthPayload.data.market.configuredFallbackProvider, "fmp");
-    assert.equal(healthPayload.data.market.effectiveProvider, "web");
-    assert.equal(healthPayload.data.market.effectiveSource, "twelve");
+    assert.equal(healthPayload.data.market.configuredProvider, "twelve");
+    assert.equal(healthPayload.data.market.configuredFallbackProvider, "yahoo");
+    assert.equal(healthPayload.data.market.providerChain, "twelve+yahoo");
+    assert.equal(healthPayload.data.market.effectiveProvider, "twelve");
     assert.equal(typeof healthPayload.data.market.providerScore, "number");
     assert.ok(healthPayload.data.market.session);
     assert.equal(healthPayload.data.market.historicalPersistence.enabled, false);
@@ -291,6 +290,15 @@ test("REST API exposes health and snapshot payloads", async () => {
     assert.ok(limitsPayload.data.providers.some((provider) => provider.provider === "newsapi"));
     assert.ok(limitsPayload.data.providers.some((provider) => provider.provider === "twelve"));
     assert.ok(limitsPayload.data.providers.every((provider) => "quotaBand" in provider));
+    assert.ok(
+      limitsPayload.data.providers.some(
+        (provider) =>
+          provider.provider === "twelve" &&
+          provider.hardDailyLimit === 800 &&
+          provider.budgetDailyLimit === 600 &&
+          "operationalStatus" in provider
+      )
+    );
 
     const pipelineResponse = await fetch(`${baseUrl}/api/admin/pipeline-status`);
     const pipelinePayload = await pipelineResponse.json();
@@ -306,24 +314,21 @@ test("REST API exposes health and snapshot payloads", async () => {
     assert.ok(Array.isArray(pipelinePayload.data.market.providersUsed));
     assert.ok(Array.isArray(pipelinePayload.data.market.unresolvedTickers));
     assert.ok(Array.isArray(pipelinePayload.data.market.sampleQuotes));
-    assert.ok(pipelinePayload.data.market.webDiagnostics);
-    assert.equal(pipelinePayload.data.market.configuredProvider, "web");
-    assert.equal(pipelinePayload.data.market.configuredFallbackProvider, "fmp");
-    assert.equal(pipelinePayload.data.market.effectiveProvider, "web");
+    assert.equal(pipelinePayload.data.market.providerChain, "twelve+yahoo");
+    assert.equal(pipelinePayload.data.market.configuredProvider, "twelve");
+    assert.equal(pipelinePayload.data.market.configuredFallbackProvider, "yahoo");
+    assert.equal(pipelinePayload.data.market.offHoursStrategy, "skip");
+    assert.equal(pipelinePayload.data.market.effectiveProvider, "twelve");
     assert.equal(typeof pipelinePayload.data.market.providerScore, "number");
     assert.ok(pipelinePayload.data.market.session);
-    assert.ok(pipelinePayload.data.market.providerDiagnostics);
-    assert.ok(pipelinePayload.data.market.providerDiagnostics.web);
-    assert.ok(pipelinePayload.data.market.providerDiagnostics.fmp);
-    assert.equal(pipelinePayload.data.market.providerDiagnostics.web.status, "ok");
-    assert.equal(pipelinePayload.data.market.providerDiagnostics.fmp.status, "idle");
+    assert.ok(Array.isArray(pipelinePayload.data.market.providerSlots));
+    assert.equal(pipelinePayload.data.market.providerSlots.length, 2);
+    assert.equal(pipelinePayload.data.market.providerSlots[0].provider, "twelve");
+    assert.equal(pipelinePayload.data.market.providerSlots[0].status, "ok");
+    assert.equal(pipelinePayload.data.market.providerSlots[0].quotaSnapshot.budgetDailyLimit, 600);
+    assert.equal(pipelinePayload.data.market.providerSlots[1].provider, "yahoo");
+    assert.equal(pipelinePayload.data.market.providerSlots[1].status, "idle");
     assert.equal(pipelinePayload.data.market.historicalPersistence.enabled, false);
-    assert.equal(pipelinePayload.data.market.effectiveSource, "twelve");
-    assert.equal(pipelinePayload.data.market.webDiagnostics.configuredSource, "twelve");
-    assert.equal(pipelinePayload.data.market.webDiagnostics.status, "ok");
-    assert.ok(Array.isArray(pipelinePayload.data.market.webDiagnostics.returnedTickers));
-    assert.ok(Array.isArray(pipelinePayload.data.market.webDiagnostics.sourceAttempts));
-    assert.ok(Array.isArray(pipelinePayload.data.market.webDiagnostics.sampleQuotes));
     assert.ok(pipelinePayload.data.market.coverageByMode);
     assert.ok(Array.isArray(pipelinePayload.data.market.providerErrors));
     assert.ok(Array.isArray(pipelinePayload.data.news.selectionBySourceName));
@@ -414,8 +419,6 @@ test("pipeline status exposes provider and rss diagnostics for ok, error and ski
       provider: "",
       fallbackProvider: "",
       refreshIntervalMs: 300_000,
-      apiKey: "",
-      fmpApiKey: "",
       requestReserve: 0,
       historyPersist: false
     },
@@ -472,10 +475,7 @@ test("pipeline status exposes provider and rss diagnostics for ok, error and ski
     assert.deepEqual(market.providersUsed, []);
     assert.deepEqual(market.unresolvedTickers, []);
     assert.deepEqual(market.sampleQuotes, []);
-    assert.equal(market.webDiagnostics.status, "disabled");
-    assert.equal(market.webDiagnostics.configuredSource, "twelve");
-    assert.equal(market.providerDiagnostics.web.status, "disabled");
-    assert.equal(market.providerDiagnostics.fmp.status, "disabled");
+    assert.deepEqual(market.providerSlots, []);
     assert.ok(market.session);
     assert.equal(market.historicalPersistence.enabled, false);
     assert.equal(news.rawCountByProvider.newsapi, 1);
@@ -598,8 +598,8 @@ test("admin routes remain open without IP allowlisting", async () => {
 
 test("market disabled skips startup and manual refresh upstream market calls", async () => {
   const originalFetch = global.fetch;
-  let webCalls = 0;
-  let fmpCalls = 0;
+  let twelveCalls = 0;
+  let yahooCalls = 0;
 
   global.fetch = async (url, options) => {
     const value = String(url);
@@ -608,19 +608,19 @@ test("market disabled skips startup and manual refresh upstream market calls", a
       return originalFetch(url, options);
     }
 
-    if (value.includes("api.twelvedata.com") || value.includes("query1.finance.yahoo.com")) {
-      webCalls += 1;
+    if (value.includes("api.twelvedata.com")) {
+      twelveCalls += 1;
       return new Response("{}", {
         status: 500,
         headers: { "content-type": "text/plain" }
       });
     }
 
-    if (value.includes("financialmodelingprep.com")) {
-      fmpCalls += 1;
+    if (value.includes("finance.yahoo.com")) {
+      yahooCalls += 1;
       return new Response("{}", {
         status: 500,
-        headers: { "content-type": "application/json" }
+        headers: { "content-type": "text/plain" }
       });
     }
 
@@ -666,8 +666,6 @@ test("market disabled skips startup and manual refresh upstream market calls", a
       provider: "",
       fallbackProvider: "",
       refreshIntervalMs: 300_000,
-      apiKey: "",
-      fmpApiKey: "",
       requestReserve: 0,
       historyPersist: false
     },
@@ -682,16 +680,127 @@ test("market disabled skips startup and manual refresh upstream market calls", a
 
   try {
     await runtime.orchestrator.waitForIdle();
-    assert.equal(webCalls, 0);
-    assert.equal(fmpCalls, 0);
+    assert.equal(twelveCalls, 0);
+    assert.equal(yahooCalls, 0);
 
     await runtime.orchestrator.runManualRefresh({
       trigger: "disabled-market-test",
       countries: ["US", "IL", "IR"]
     });
 
-    assert.equal(webCalls, 0);
-    assert.equal(fmpCalls, 0);
+    assert.equal(twelveCalls, 0);
+    assert.equal(yahooCalls, 0);
+  } finally {
+    global.fetch = originalFetch;
+    await runtime.stop();
+  }
+});
+
+test("off-hours skip blocks only automated market cycles", async () => {
+  const originalFetch = global.fetch;
+  let twelveCalls = 0;
+  let yahooCalls = 0;
+
+  global.fetch = async (url, options) => {
+    const value = String(url);
+
+    if (value.includes("127.0.0.1") || value.includes("localhost")) {
+      return originalFetch(url, options);
+    }
+
+    if (value.includes("api.twelvedata.com/quote")) {
+      twelveCalls += 1;
+      return new Response(
+        JSON.stringify({
+          data: [
+            {
+              symbol: "GD",
+              close: "300.50",
+              percent_change: "0.25",
+              previous_close: "299.75",
+              datetime: "2026-03-16 18:45:00",
+              market_state: "CLOSED"
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        }
+      );
+    }
+
+    if (value.includes("finance.yahoo.com")) {
+      yahooCalls += 1;
+      return new Response("<html></html>", {
+        status: 200,
+        headers: { "content-type": "text/html" }
+      });
+    }
+
+    return new Response(
+      `<?xml version="1.0" encoding="UTF-8"?>
+      <rss version="2.0">
+        <channel>
+          <title>Off Hours Feed</title>
+          <item>
+            <title>Off hours cycle test</title>
+            <description>Automated market cycles should stay paused.</description>
+            <link>https://example.com/off-hours</link>
+            <pubDate>${new Date().toUTCString()}</pubDate>
+          </item>
+        </channel>
+      </rss>`,
+      {
+        status: 200,
+        headers: { "content-type": "application/xml" }
+      }
+    );
+  };
+
+  const runtime = createAppServer({
+    port: 0,
+    disableBackgroundRefresh: true,
+    market: {
+      provider: "twelve",
+      fallbackProvider: "yahoo",
+      offHoursStrategy: "skip",
+      twelveApiKey: "demo",
+      twelveBaseUrl: "https://api.twelvedata.com",
+      yahooBaseUrl: "https://finance.yahoo.com",
+      yahooUserAgent: "ogid/1.0",
+      tickers: ["GD"],
+      historyPersist: false
+    },
+    news: {
+      providers: ["rss"],
+      rssFeeds: [{ label: "Off Hours Feed", url: "https://example.com/rss.xml" }],
+      timeoutMs: 200
+    },
+    apiLimits: {
+      twelveDailyLimit: 800,
+      twelveDailyBudget: 600,
+      twelveMinuteLimit: 8
+    }
+  });
+
+  await runtime.start();
+
+  try {
+    await runtime.orchestrator.runMarketCycle("startup-market", {
+      now: "2026-03-21T15:00:00Z"
+    });
+    await runtime.orchestrator.runMarketCycle("interval-market", {
+      now: "2026-03-21T15:10:00Z"
+    });
+    assert.equal(twelveCalls, 0);
+    assert.equal(yahooCalls, 0);
+
+    await runtime.orchestrator.runMarketCycle("manual-market", {
+      now: "2026-03-21T15:20:00Z"
+    });
+    assert.equal(twelveCalls, 1);
+    assert.equal(yahooCalls, 0);
   } finally {
     global.fetch = originalFetch;
     await runtime.stop();

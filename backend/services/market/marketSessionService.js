@@ -53,8 +53,8 @@ export function isMarketOpenEt(date = new Date()) {
 
 export function resolveMarketIntervalMs({
   now = new Date(),
-  activeIntervalMs = 120_000,
-  offHoursIntervalMs = 600_000,
+  activeIntervalMs = null,
+  offHoursIntervalMs = null,
   quotaRemaining = null,
   quotaBand = "GREEN",
   bandIntervals = {}
@@ -71,19 +71,11 @@ export function resolveMarketIntervalMs({
     }
   }
 
-  if (Number.isFinite(quotaRemaining)) {
-    if (BAND_PRIORITY[normalizedBand] <= BAND_PRIORITY.GREEN && quotaRemaining <= 25) {
-      intervalMs = Math.max(intervalMs, 10 * 60_000);
-    } else if (BAND_PRIORITY[normalizedBand] <= BAND_PRIORITY.GREEN && quotaRemaining <= 75) {
-      intervalMs = Math.max(intervalMs, 5 * 60_000);
-    }
-  }
-
   log.debug("market_interval_resolved", {
     open,
     intervalMs,
     quotaRemaining: Number.isFinite(quotaRemaining) ? quotaRemaining : null
   });
 
-  return intervalMs;
+  return Number.isFinite(intervalMs) && intervalMs > 0 ? intervalMs : null;
 }

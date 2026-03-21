@@ -45,6 +45,25 @@ test("resolveBandByProviderSnapshots keeps worst band", () => {
   assert.equal(band, "CRITICAL");
 });
 
+test("resolveQuotaBandFromSnapshot prefers operational limits over hard caps", () => {
+  assert.equal(
+    resolveQuotaBandFromSnapshot({
+      effectiveRemainingDay: 300,
+      operationalDailyLimit: 600,
+      configuredDailyLimit: 800
+    }),
+    "GREEN"
+  );
+  assert.equal(
+    resolveQuotaBandFromSnapshot({
+      effectiveRemainingDay: 200,
+      operationalDailyLimit: 600,
+      configuredDailyLimit: 800
+    }),
+    "YELLOW"
+  );
+});
+
 test("resolveNewsPolicy returns interval and page size for worst provider band", () => {
   const policy = resolveNewsPolicy({
     providerSnapshots: [
@@ -69,4 +88,3 @@ test("resolveNewsPolicy returns interval and page size for worst provider band",
   assert.equal(policy.intervalMs, 2_700_000);
   assert.equal(policy.pageSize, 40);
 });
-

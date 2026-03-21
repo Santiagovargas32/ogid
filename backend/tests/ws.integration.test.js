@@ -71,7 +71,7 @@ test("WebSocket emits snapshot and update envelopes", async () => {
     disableBackgroundRefresh: true,
     refreshIntervalMs: 300_000,
     wsHeartbeatMs: 60_000,
-    market: { refreshIntervalMs: 300_000, apiKey: "", fmpApiKey: "", requestReserve: 0 },
+    market: { provider: "", fallbackProvider: "", refreshIntervalMs: 300_000, requestReserve: 0 },
     news: {
       providers: ["rss"],
       rssFeeds: [{ label: "WS Test Feed", url: "https://example.com/rss.xml" }],

@@ -31,6 +31,7 @@ function inferProviderFromLog(entry = {}) {
   if (entry.provider) {
     return entry.provider;
   }
+
   const scope = String(entry.scope || "").toLowerCase();
   const message = String(entry.message || entry.details || entry.reason || "").toLowerCase();
   if (scope.includes("twelve") || message.includes("twelve")) {
@@ -38,12 +39,6 @@ function inferProviderFromLog(entry = {}) {
   }
   if (scope.includes("yahoo") || message.includes("yahoo")) {
     return "yahoo";
-  }
-  if (scope.includes("fmp")) {
-    return "fmp";
-  }
-  if (scope.includes("webquoteprovider")) {
-    return "web";
   }
   if (scope.includes("gdelt")) {
     return "gdelt";
@@ -83,10 +78,6 @@ function buildRecentCycleErrors(limit = 12) {
     }));
 }
 
-function sumCountRecord(record = {}) {
-  return Object.values(record || {}).reduce((total, value) => total + (Number(value) || 0), 0);
-}
-
 function normalizeCoverageByMode(coverage = {}) {
   return {
     live: Number(coverage.live || 0),
@@ -97,20 +88,34 @@ function normalizeCoverageByMode(coverage = {}) {
   };
 }
 
+function paginateItems(items = [], page = 1, pageSize = 100) {
+  const totalItems = items.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const currentPage = Math.min(Math.max(1, page), totalPages);
+  const startIndex = (currentPage - 1) * pageSize;
+
+  return {
+    items: items.slice(startIndex, startIndex + pageSize),
+    pagination: {
+      page: currentPage,
+      pageSize,
+      totalItems,
+      totalPages
+    }
+  };
+}
+
 function buildMarketSampleQuotes(quotes = {}, orderedTickers = [], maxItems = 5) {
   const sourceQuotes = quotes && typeof quotes === "object" ? quotes : {};
-  const preferredTickers = [...new Set((orderedTickers || []).map((ticker) => String(ticker || "").toUpperCase()).filter(Boolean))];
-  const remainingTickers = Object.keys(sourceQuotes)
-    .map((ticker) => String(ticker || "").toUpperCase())
-    .filter((ticker) => !preferredTickers.includes(ticker));
-  const orderedUniverse = [...preferredTickers, ...remainingTickers];
-  const webTickers = orderedUniverse.filter((ticker) => {
-    const quote = sourceQuotes[ticker];
-    return quote?.source === "web" || quote?.dataMode === "web-delayed";
-  });
-  const nonWebTickers = orderedUniverse.filter((ticker) => !webTickers.includes(ticker));
+  const orderedUniverse = [
+    ...new Set(
+      [...(orderedTickers || []), ...Object.keys(sourceQuotes)]
+        .map((ticker) => String(ticker || "").toUpperCase())
+        .filter(Boolean)
+    )
+  ];
 
-  return [...webTickers, ...nonWebTickers]
+  return orderedUniverse
     .map((ticker) => {
       const quote = sourceQuotes[ticker];
       if (!quote) {
@@ -133,165 +138,95 @@ function buildMarketSampleQuotes(quotes = {}, orderedTickers = [], maxItems = 5)
     .slice(0, maxItems);
 }
 
-function resolveMarketProviderStatus({
-  marketEnabled,
-  diagnostic = {},
-  fallbackProviderUsed = false,
-  usedStaleQuotes = [],
-  syntheticFallbackCount = 0,
-  providerErrors = []
-}) {
-  if (!marketEnabled) {
-    return "disabled";
-  }
-
-  if (!diagnostic) {
-    return "idle";
-  }
-
-  if (diagnostic.providerDisabledReason) {
-    return "disabled";
-  }
-
-  const returnedCount = Number((diagnostic.returnedTickers || []).length || 0);
-  if (!diagnostic.lastAttemptAt && returnedCount <= 0) {
-    return "idle";
-  }
-
-  if (returnedCount <= 0) {
-    return "error";
-  }
-
-  if (
-    fallbackProviderUsed ||
-    Number((diagnostic.missingTickers || []).length || 0) > 0 ||
-    usedStaleQuotes.length > 0 ||
-    syntheticFallbackCount > 0 ||
-    (providerErrors || []).length > 0
-  ) {
-    return "partial";
-  }
-
-  return "ok";
-}
-
-function buildProviderSpecificSampleQuotes(quotes = {}, orderedTickers = [], provider = "web", maxItems = 5) {
-  const targetProvider = String(provider || "").toLowerCase();
+function buildProviderSpecificSampleQuotes(quotes = {}, orderedTickers = [], provider = "", maxItems = 5) {
+  const normalizedProvider = String(provider || "").toLowerCase();
   const filteredQuotes = Object.fromEntries(
-    Object.entries(quotes || {}).filter(([, quote]) => String(quote?.source || "").toLowerCase() === targetProvider)
+    Object.entries(quotes || {}).filter(([, quote]) => String(quote?.source || "").toLowerCase() === normalizedProvider)
   );
   return buildMarketSampleQuotes(filteredQuotes, orderedTickers, maxItems);
 }
 
-function resolveConfiguredMarketSource(providerKey = "", marketConfig = {}) {
-  const targetProvider = String(providerKey || "").toLowerCase();
-  if (targetProvider === "web") {
-    return marketConfig.webSource || "twelve";
-  }
-
-  if (targetProvider === "fmp") {
-    return marketConfig.fmpStableBaseUrl || marketConfig.fmpBaseUrl || "https://financialmodelingprep.com/stable";
-  }
-
-  return null;
+function buildProviderChain(provider = "", fallbackProvider = "") {
+  return [provider, fallbackProvider].filter(Boolean).join("+") || null;
 }
 
-function resolveWebSourceAttempts(sourceDiagnostic = {}, marketSnapshot = {}) {
-  if (Array.isArray(sourceDiagnostic?.sourceAttempts) && sourceDiagnostic.sourceAttempts.length) {
-    return sourceDiagnostic.sourceAttempts;
-  }
-
-  if (Array.isArray(marketSnapshot?.sourceMeta?.sourceAttempts) && marketSnapshot.sourceMeta.sourceAttempts.length) {
-    return marketSnapshot.sourceMeta.sourceAttempts;
-  }
-
-  return [];
+function buildFallbackSlot({ role, provider, marketConfig = {}, status = "idle", marketSnapshot = {}, quotaSnapshot = null } = {}) {
+  const configuredBaseUrl = provider === "twelve" ? marketConfig.twelveBaseUrl : marketConfig.yahooBaseUrl;
+  return {
+    role,
+    provider,
+    transport: provider === "twelve" ? "api" : "web",
+    configuredBaseUrl: configuredBaseUrl || null,
+    status,
+    requestMode: status === "disabled" ? "disabled" : status === "idle" ? "standby" : "unavailable",
+    returnedTickers: [],
+    missingTickers: [],
+    score: 0,
+    latencyMs: 0,
+    quotaSnapshot: quotaSnapshot || apiQuotaTracker.getProviderSnapshot(provider),
+    requestUrls: [],
+    httpStatus: null,
+    errorCode: null,
+    errorMessage: null,
+    responsePreview: null,
+    sampleQuotes: buildProviderSpecificSampleQuotes(marketSnapshot?.quotes || {}, marketConfig?.tickers || [], provider, 5),
+    lastAttemptAt: null,
+    lastSuccessAt: null
+  };
 }
 
-function resolveWebSourceSnapshots(sourceDiagnostic = {}, marketSnapshot = {}) {
-  if (sourceDiagnostic?.sourceSnapshots && typeof sourceDiagnostic.sourceSnapshots === "object") {
-    return sourceDiagnostic.sourceSnapshots;
-  }
-
-  if (marketSnapshot?.sourceMeta?.sourceSnapshots && typeof marketSnapshot.sourceMeta.sourceSnapshots === "object") {
-    return marketSnapshot.sourceMeta.sourceSnapshots;
-  }
-
-  return {};
-}
-
-function buildMarketProviderDiagnostics({
-  providerKey,
-  marketEnabled,
-  providerDiagnostics = {},
-  marketConfig = {},
-  marketSnapshot = {},
-  coverageByMode,
-  providerErrors = []
-}) {
-  const targetProvider = String(providerKey || "").toLowerCase();
-  const sourceDiagnostic = providerDiagnostics?.[targetProvider] || null;
-  const providersUsed = marketEnabled ? marketSnapshot?.sourceMeta?.providersUsed || [] : [];
-  const fallbackProviderUsed = providersUsed.some((provider) => String(provider || "").toLowerCase() !== targetProvider);
-  const providerSpecificErrors = (providerErrors || []).filter(
-    (error) => String(error?.provider || "").toLowerCase() === targetProvider
+function normalizeProviderSlots({ marketEnabled, marketSnapshot = {}, marketConfig = {} } = {}) {
+  const sourceMeta = marketSnapshot?.sourceMeta || {};
+  const configuredProvider = marketConfig?.provider || null;
+  const configuredFallbackProvider = marketConfig?.fallbackProvider || null;
+  const existingSlots = Array.isArray(sourceMeta.providerSlots) ? sourceMeta.providerSlots : [];
+  const slotByProvider = new Map(
+    existingSlots
+      .filter((slot) => slot?.provider)
+      .map((slot) => [
+        String(slot.provider).toLowerCase(),
+        {
+          ...slot,
+          sampleQuotes:
+            Array.isArray(slot.sampleQuotes) && slot.sampleQuotes.length
+              ? slot.sampleQuotes
+              : buildProviderSpecificSampleQuotes(
+                  marketSnapshot?.quotes || {},
+                  marketConfig?.tickers || [],
+                  slot.provider,
+                  5
+                )
+        }
+      ])
   );
-  const sampleQuotes = marketEnabled
-    ? buildProviderSpecificSampleQuotes(marketSnapshot?.quotes || {}, marketConfig?.tickers || [], targetProvider, 5)
-    : [];
-  const configuredSource = resolveConfiguredMarketSource(targetProvider, marketConfig);
-  const sourceAttempts = targetProvider === "web" ? resolveWebSourceAttempts(sourceDiagnostic, marketSnapshot) : [];
-  const sourceSnapshots = targetProvider === "web" ? resolveWebSourceSnapshots(sourceDiagnostic, marketSnapshot) : {};
 
-  const enrichedDiagnostic = {
-    configuredSource,
-    configuredProvider: marketConfig.provider || null,
-    configuredFallbackProvider: marketConfig.fallbackProvider || null,
-    primaryProvider: marketConfig.provider || null,
-    returnedCount: Number(sourceDiagnostic?.returnedTickers?.length || sourceDiagnostic?.returnedCount || 0),
-    returnedTickers: sourceDiagnostic?.returnedTickers || [],
-    coverageByMode,
-    providersUsed,
-    providersSkipped: marketSnapshot?.sourceMeta?.providersSkipped || [],
-    unresolvedTickers: marketSnapshot?.sourceMeta?.unresolvedTickers || [],
-    errors: providerSpecificErrors,
-    sampleQuotes,
-    effectiveSource:
-      sourceDiagnostic?.effectiveSource ||
-      (targetProvider === "web" ? marketSnapshot?.sourceMeta?.effectiveSource || null : null),
-    sourceAttempts,
-    sourceSnapshots,
-    ...sourceDiagnostic
-  };
+  const slots = [];
+  if (configuredProvider) {
+    slots.push(
+      slotByProvider.get(configuredProvider) ||
+        buildFallbackSlot({
+          role: "primary",
+          provider: configuredProvider,
+          marketConfig,
+          marketSnapshot,
+          status: marketEnabled ? "idle" : "disabled"
+        })
+    );
+  }
+  if (configuredFallbackProvider) {
+    slots.push(
+      slotByProvider.get(configuredFallbackProvider) ||
+        buildFallbackSlot({
+          role: "fallback",
+          provider: configuredFallbackProvider,
+          marketConfig,
+          marketSnapshot,
+          status: marketEnabled ? "idle" : "disabled"
+        })
+    );
+  }
 
-  return {
-    ...enrichedDiagnostic,
-    status: resolveMarketProviderStatus({
-      marketEnabled,
-      diagnostic: enrichedDiagnostic,
-      fallbackProviderUsed,
-      usedStaleQuotes: marketSnapshot?.sourceMeta?.usedStaleQuotes || [],
-      syntheticFallbackCount: Number(coverageByMode?.syntheticFallback || 0),
-      providerErrors: providerSpecificErrors
-    })
-  };
-}
-
-function paginateItems(items = [], page = 1, pageSize = 100) {
-  const totalItems = items.length;
-  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
-  const currentPage = Math.min(Math.max(1, page), totalPages);
-  const startIndex = (currentPage - 1) * pageSize;
-
-  return {
-    items: items.slice(startIndex, startIndex + pageSize),
-    pagination: {
-      page: currentPage,
-      pageSize,
-      totalItems,
-      totalPages
-    }
-  };
+  return slots;
 }
 
 export function getApiLimits(_req, res) {
@@ -333,64 +268,40 @@ export function getPipelineStatus(_req, res) {
       providerSnapshots: newsProviderSnapshots,
       intervalByBandMs: config.news?.intervalByBandMs || {},
       pageSizeByBand: config.news?.pageSizeByBand || {},
-      fallbackIntervalMs: config.news?.intervalMs || 30_000,
-      fallbackPageSize: config.news?.pageSize || 50
+      fallbackIntervalMs: config.news?.intervalMs,
+      fallbackPageSize: config.news?.pageSize
     });
-  const marketDelayMs = orchestrator?.resolveNextMarketDelayMs?.() || config.market?.activeIntervalMs || 180_000;
-  const newsDelayMs = orchestrator?.resolveNextNewsDelayMs?.() || config.news?.intervalMs || 30_000;
+  const marketDelayMs = orchestrator?.resolveNextMarketDelayMs?.() ?? config.market?.activeIntervalMs ?? null;
+  const newsDelayMs = orchestrator?.resolveNextNewsDelayMs?.() ?? config.news?.intervalMs ?? null;
   const marketQuotaBand = resolveBandByProviderSnapshots(marketProviderSnapshots);
   const marketEnabled = config.market?.enabled !== false;
   const marketDisabledReason = config.market?.disabledReason || "market-provider-empty";
   const marketSnapshot = intelSnapshot?.market || {};
   const marketSourceMeta = marketSnapshot?.sourceMeta || {};
   const marketCoverageByMode = marketEnabled
-    ? normalizeCoverageByMode(
-        marketSourceMeta?.coverageByMode ||
-          buildCoverageByMode(marketSnapshot?.quotes || {})
-      )
+    ? normalizeCoverageByMode(marketSourceMeta?.coverageByMode || buildCoverageByMode(marketSnapshot?.quotes || {}))
     : { ...EMPTY_MARKET_COVERAGE };
-  const marketProviderErrors = marketEnabled
-    ? marketSourceMeta?.providerErrors ||
-      marketSourceMeta?.errors ||
-      []
-    : [];
+  const marketProviderErrors = marketEnabled ? marketSourceMeta?.providerErrors || marketSourceMeta?.errors || [] : [];
   const marketProvidersUsed = marketEnabled ? marketSourceMeta?.providersUsed || [] : [];
   const marketUnresolvedTickers = marketEnabled ? marketSourceMeta?.unresolvedTickers || [] : [];
   const marketSampleQuotes = marketEnabled
     ? buildMarketSampleQuotes(marketSnapshot?.quotes || {}, config.market?.tickers || [], 5)
     : [];
-  const sourceDiagnostics = marketEnabled ? marketSourceMeta?.providerDiagnostics || {} : {};
-  const marketWebDiagnostics = buildMarketProviderDiagnostics({
-    providerKey: "web",
-    marketEnabled,
-    providerDiagnostics: sourceDiagnostics,
-    marketConfig: config.market || {},
-    marketSnapshot,
-    coverageByMode: marketCoverageByMode,
-    providerErrors: marketProviderErrors
-  });
-  const marketApiDiagnostics = buildMarketProviderDiagnostics({
-    providerKey: "fmp",
-    marketEnabled,
-    providerDiagnostics: sourceDiagnostics,
-    marketConfig: config.market || {},
-    marketSnapshot,
-    coverageByMode: marketCoverageByMode,
-    providerErrors: marketProviderErrors
-  });
   const historicalPersistence = orchestrator?.getMarketHistoryStatus?.() || {
     enabled: false,
     lastLoadedAt: null,
     lastSavedAt: null,
     snapshotPath: null
   };
-  const effectiveSource = marketEnabled
-    ? marketSourceMeta?.effectiveSource || marketWebDiagnostics.effectiveSource || null
+  const providerChain = marketEnabled
+    ? marketSourceMeta?.providerChain || config.market?.providerChain || buildProviderChain(config.market?.provider, config.market?.fallbackProvider)
     : null;
-  const sourceAttempts = marketEnabled ? marketSourceMeta?.sourceAttempts || marketWebDiagnostics.sourceAttempts || [] : [];
-  const sourceSnapshots = marketEnabled
-    ? marketSourceMeta?.sourceSnapshots || marketWebDiagnostics.sourceSnapshots || {}
-    : {};
+  const providerSlots = normalizeProviderSlots({
+    marketEnabled,
+    marketSnapshot,
+    marketConfig: config.market || {}
+  });
+  const effectiveProvider = marketEnabled ? marketSourceMeta?.effectiveProvider || null : null;
 
   res.json({
     ok: true,
@@ -400,24 +311,19 @@ export function getPipelineStatus(_req, res) {
         enabled: marketEnabled,
         disabledReason: marketEnabled ? null : marketDisabledReason,
         quotaBand: marketEnabled ? marketQuotaBand : null,
+        offHoursStrategy: marketEnabled ? config.market?.offHoursStrategy || "keep" : null,
         nextDelayMs: marketEnabled ? marketDelayMs : null,
-        nextRecommendedRunAt: marketEnabled && marketDelayMs ? new Date(Date.now() + marketDelayMs).toISOString() : null,
+        nextRecommendedRunAt:
+          marketEnabled && Number.isFinite(marketDelayMs) ? new Date(Date.now() + marketDelayMs).toISOString() : null,
         lastStartedAt: marketCycle.lastStartedAt || null,
         lastCompletedAt: marketCycle.lastCompletedAt || null,
         lastDurationMs: marketCycle.lastDurationMs ?? null,
         lastStatus: marketEnabled ? marketCycle.lastStatus || "idle" : marketCycle.lastStatus || "disabled",
-        provider: marketEnabled ? marketSourceMeta?.provider || marketSnapshot?.provider || "unknown" : "disabled",
+        provider: providerChain || (marketEnabled ? config.market?.provider || "unknown" : "disabled"),
+        providerChain,
         configuredProvider: marketEnabled ? config.market?.provider || null : null,
         configuredFallbackProvider: marketEnabled ? config.market?.fallbackProvider || null : null,
-        effectiveProvider:
-          marketEnabled
-            ? marketSourceMeta?.effectiveProvider ||
-              marketApiDiagnostics.effectiveProvider ||
-              marketWebDiagnostics.effectiveProvider ||
-              marketSnapshot?.provider ||
-              null
-            : null,
-        effectiveSource,
+        effectiveProvider,
         providerScore: marketEnabled ? marketSourceMeta?.providerScore ?? null : null,
         providerLatencyMs: marketEnabled ? marketSourceMeta?.providerLatencyMs ?? null : null,
         revision: marketEnabled ? marketSnapshot?.revision || null : null,
@@ -431,15 +337,9 @@ export function getPipelineStatus(_req, res) {
         coverageByMode: marketCoverageByMode,
         providerErrors: marketProviderErrors,
         sampleQuotes: marketSampleQuotes,
-        sourceAttempts,
-        sourceSnapshots,
         persistenceEligible: marketEnabled ? marketSourceMeta?.persistenceEligible === true : false,
         persistReason: marketEnabled ? marketSourceMeta?.persistReason || null : null,
-        webDiagnostics: marketWebDiagnostics,
-        providerDiagnostics: {
-          web: marketWebDiagnostics,
-          fmp: marketApiDiagnostics
-        },
+        providerSlots,
         routerDecision: marketEnabled
           ? marketSourceMeta?.routerDecision || {
               attemptedOrder: [],
@@ -454,16 +354,16 @@ export function getPipelineStatus(_req, res) {
               usedStaleQuotes: [],
               syntheticFallbackTickers: [],
               fallbackReason: "market-provider-empty"
-            },
+          },
         historicalPersistence,
-        batchSize: marketSourceMeta?.batchSize || config.market?.batchChunkSize || 25,
+        batchSize: marketSourceMeta?.batchSize ?? config.market?.batchChunkSize ?? null,
         lastUpstreamError: marketEnabled ? marketSourceMeta?.lastUpstreamError || null : null,
         snapshots: marketEnabled ? marketProviderSnapshots : []
       },
       news: {
         quotaBand: newsPolicy.band,
         nextDelayMs: newsDelayMs,
-        nextRecommendedRunAt: new Date(Date.now() + newsDelayMs).toISOString(),
+        nextRecommendedRunAt: Number.isFinite(newsDelayMs) ? new Date(Date.now() + newsDelayMs).toISOString() : null,
         lastStartedAt: newsCycle.lastStartedAt || null,
         lastCompletedAt: newsCycle.lastCompletedAt || null,
         lastDurationMs: newsCycle.lastDurationMs ?? null,
@@ -526,7 +426,7 @@ export async function getNewsRaw(req, res) {
   const aggregateSnapshot = aggregator
     ? await aggregator.getSnapshot({
         force: false,
-        limit: config.news?.rssAggregateMaxItems || 900
+        limit: config.news?.rssAggregateMaxItems
       })
     : { generatedAt: null, items: [] };
   const normalizedItems = normalizeAdminArticles(aggregateSnapshot.items || [], "rss-aggregate");

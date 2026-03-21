@@ -27,14 +27,20 @@ function toRatio(remaining, limit) {
 }
 
 function resolveSnapshotRatios(snapshot = {}) {
+  const dailyRemaining = toFinite(snapshot.effectiveRemainingDay) ?? toFinite(snapshot.effectiveRemaining);
+  const minuteRemaining = toFinite(snapshot.effectiveRemainingMinute);
   const dailyRatio = toRatio(
-    snapshot.effectiveRemainingDay,
-    toFinite(snapshot.configuredDailyLimit) ?? toFinite(snapshot.configuredLimit)
+    dailyRemaining,
+    toFinite(snapshot.operationalDailyLimit) ??
+      toFinite(snapshot.budgetDailyLimit) ??
+      toFinite(snapshot.configuredDailyLimit) ??
+      toFinite(snapshot.configuredLimit)
   );
-  const minuteRatio = toRatio(
-    snapshot.effectiveRemainingMinute,
-    toFinite(snapshot.configuredMinuteLimit) ?? toFinite(snapshot.headerLimit)
-  );
+  const minuteLimit =
+    toFinite(snapshot.operationalMinuteLimit) ??
+    toFinite(snapshot.budgetMinuteLimit) ??
+    toFinite(snapshot.configuredMinuteLimit);
+  const minuteRatio = Number.isFinite(minuteLimit) ? toRatio(minuteRemaining, minuteLimit) : null;
 
   return [dailyRatio, minuteRatio].filter(Number.isFinite);
 }
@@ -86,8 +92,8 @@ export function resolveNewsPolicy({
   providerSnapshots = [],
   intervalByBandMs = {},
   pageSizeByBand = {},
-  fallbackIntervalMs = 30_000,
-  fallbackPageSize = 50
+  fallbackIntervalMs = null,
+  fallbackPageSize = null
 } = {}) {
   const band = resolveBandByProviderSnapshots(providerSnapshots);
   const intervalMs = toFinite(intervalByBandMs[band]) ?? fallbackIntervalMs;
@@ -95,7 +101,7 @@ export function resolveNewsPolicy({
 
   return {
     band,
-    intervalMs: Math.max(5_000, Number(intervalMs)),
-    pageSize: Math.max(10, Number(pageSize))
+    intervalMs: Number.isFinite(Number(intervalMs)) && Number(intervalMs) > 0 ? Number(intervalMs) : null,
+    pageSize: Number.isFinite(Number(pageSize)) && Number(pageSize) > 0 ? Number(pageSize) : null
   };
 }
