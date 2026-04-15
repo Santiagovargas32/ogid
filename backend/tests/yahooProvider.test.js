@@ -56,6 +56,18 @@ function buildYahooQuoteHtml({
   </html>`;
 }
 
+function buildYahooFinStreamerHtml({ ticker, price, changePercent, marketTime = 1_742_141_100, marketState = "REGULAR" }) {
+  return `<!doctype html>
+  <html>
+    <body>
+      <fin-streamer data-symbol="${ticker}" data-field="regularMarketPrice" value="${price}">${price}</fin-streamer>
+      <fin-streamer data-symbol="${ticker}" data-field="regularMarketChangePercent" value="${changePercent}">${changePercent}%</fin-streamer>
+      <fin-streamer data-symbol="${ticker}" data-field="regularMarketTime" value="${marketTime}">${marketTime}</fin-streamer>
+      <fin-streamer data-symbol="${ticker}" data-field="marketState" value="${marketState}">${marketState}</fin-streamer>
+    </body>
+  </html>`;
+}
+
 test("yahoo provider parses embedded quote payloads from page HTML", async () => {
   apiQuotaTracker.reset({
     yahooDailyLimit: 10
@@ -103,7 +115,40 @@ test("yahoo provider parses embedded quote payloads from page HTML", async () =>
   }
 });
 
-test("yahoo provider reports markup failures as parse errors", async () => {
+test("yahoo provider falls back to fin-streamer HTML when embedded JSON is absent", async () => {
+  apiQuotaTracker.reset({
+    yahooDailyLimit: 10
+  });
+
+  const originalFetch = global.fetch;
+  global.fetch = async () =>
+    htmlResponse(
+      buildYahooFinStreamerHtml({
+        ticker: "GD",
+        price: 301.75,
+        changePercent: 0.42
+      })
+    );
+
+  try {
+    const result = await fetchYahooQuotes({
+      baseUrl: "https://finance.yahoo.com",
+      tickers: ["GD"],
+      timeoutMs: 500,
+      timestamp: "2026-03-16T18:45:00.000Z",
+      session: { open: true, state: "open", checkedAt: "2026-03-16T18:45:00.000Z" }
+    });
+
+    assert.deepEqual(Object.keys(result.quotes), ["GD"]);
+    assert.equal(result.quotes.GD.price, 301.75);
+    assert.equal(result.quotes.GD.changePct, 0.42);
+    assert.equal(result.errors.length, 0);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("yahoo provider reports markup failures as html parse errors", async () => {
   apiQuotaTracker.reset({
     yahooDailyLimit: 10
   });
@@ -120,7 +165,7 @@ test("yahoo provider reports markup failures as parse errors", async () => {
 
     assert.equal(result.returnedTickers.length, 0);
     assert.equal(result.missingTickers[0], "GD");
-    assert.equal(result.errors[0].code, "yahoo-embedded-json-missing");
+    assert.equal(result.errors[0].code, "yahoo-html-quote-missing");
   } finally {
     global.fetch = originalFetch;
   }
@@ -164,7 +209,7 @@ test("yahoo provider marks individual ticker failures while keeping successful p
     assert.deepEqual(Object.keys(result.quotes), ["GD"]);
     assert.deepEqual(result.missingTickers, ["BA"]);
     assert.equal(result.errors.length, 1);
-    assert.equal(result.errors[0].code, "yahoo-embedded-json-missing");
+    assert.equal(result.errors[0].code, "yahoo-html-quote-missing");
   } finally {
     global.fetch = originalFetch;
   }

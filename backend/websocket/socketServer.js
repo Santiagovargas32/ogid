@@ -93,7 +93,9 @@ function buildMarketBootstrapPayload(snapshot = {}) {
         effectiveProvider: market.sourceMeta?.effectiveProvider || market.provider || null,
         providerScore: market.sourceMeta?.providerScore ?? null,
         providerLatencyMs: market.sourceMeta?.providerLatencyMs ?? null,
-        marketSession: market.sourceMeta?.marketSession || market.session || null
+        marketSession: market.sourceMeta?.marketSession || market.session || null,
+        upstreamPaused: market.sourceMeta?.upstreamPaused === true,
+        pauseReason: market.sourceMeta?.pauseReason || null
       },
       coverageByMode: market.sourceMeta?.coverageByMode || null,
       quotes: Object.fromEntries(orderedTickers.map((ticker) => [ticker, quotes[ticker]]))

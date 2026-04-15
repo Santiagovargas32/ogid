@@ -124,6 +124,46 @@ function seedHistoricalSeries(existingSeries = [], seededSeries = []) {
     }));
 }
 
+function markProviderSlotsPaused(providerSlots = [], upstreamPaused = false) {
+  return (Array.isArray(providerSlots) ? providerSlots : []).map((slot) => ({
+    ...slot,
+    upstreamPaused
+  }));
+}
+
+export function refreshMarketSessionMetadata(
+  previousMarketState = {},
+  { timestamp = new Date().toISOString(), pauseReason = "offhours-skip", upstreamPaused = true } = {}
+) {
+  const nextSession = buildMarketSession(timestamp);
+  const previousSourceMeta = previousMarketState.sourceMeta || {};
+  const nextSourceMeta = {
+    ...previousSourceMeta,
+    session: nextSession,
+    marketSession: nextSession,
+    upstreamPaused,
+    pauseReason,
+    providerSlots: markProviderSlotsPaused(previousSourceMeta.providerSlots || [], upstreamPaused),
+    routerDecision: {
+      ...(previousSourceMeta.routerDecision || {}),
+      upstreamPaused,
+      pauseReason
+    }
+  };
+
+  return {
+    ...previousMarketState,
+    sourceMeta: nextSourceMeta,
+    revision: computeMarketRevision(
+      previousMarketState.quotes || {},
+      nextSession,
+      previousMarketState.provider || "market-router",
+      previousMarketState.sourceMode || "fallback"
+    ),
+    session: nextSession
+  };
+}
+
 export function mergeMarketState(previousMarketState = {}, marketResult = {}) {
   const nextQuotes = {
     ...(previousMarketState.quotes || {}),

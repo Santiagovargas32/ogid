@@ -64,6 +64,18 @@ function buildYahooQuoteHtml({
   </html>`;
 }
 
+function buildYahooPriceOnlyHtml({ ticker, price, changePercent = 0.15, marketTime = 1_742_141_100, marketState = "REGULAR" }) {
+  return `<!doctype html>
+  <html>
+    <body>
+      <fin-streamer data-symbol="${ticker}" data-field="regularMarketPrice" value="${price}">${price}</fin-streamer>
+      <fin-streamer data-symbol="${ticker}" data-field="regularMarketChangePercent" value="${changePercent}">${changePercent}%</fin-streamer>
+      <fin-streamer data-symbol="${ticker}" data-field="regularMarketTime" value="${marketTime}">${marketTime}</fin-streamer>
+      <fin-streamer data-symbol="${ticker}" data-field="marketState" value="${marketState}">${marketState}</fin-streamer>
+    </body>
+  </html>`;
+}
+
 test("market provider router returns deterministic fallback when twelve and yahoo are unavailable", async () => {
   apiQuotaTracker.reset({
     twelveDailyLimit: 800,
@@ -100,7 +112,7 @@ test("market provider router returns deterministic fallback when twelve and yaho
     assert.equal(result.sourceMeta.providerSlots[0].provider, "twelve");
     assert.equal(result.sourceMeta.providerSlots[0].errorCode, "api-key-missing");
     assert.equal(result.sourceMeta.providerSlots[1].provider, "yahoo");
-    assert.equal(result.sourceMeta.providerSlots[1].errorCode, "yahoo-embedded-json-missing");
+    assert.equal(result.sourceMeta.providerSlots[1].errorCode, "yahoo-html-quote-missing");
     assert.deepEqual(result.sourceMeta.coverageByMode, {
       live: 0,
       webDelayed: 0,
@@ -290,6 +302,77 @@ test("market provider router falls back from twelve to yahoo and records provide
       routerStale: 0,
       syntheticFallback: 0
     });
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("market provider router skips twelve when minute credits cannot cover the whole lot and falls back to yahoo", async () => {
+  apiQuotaTracker.reset({
+    twelveDailyLimit: 800,
+    twelveDailyBudget: 600,
+    twelveMinuteLimit: 8
+  });
+  apiQuotaTracker.recordCall("twelve", {
+    status: "success",
+    headers: {
+      "api-credits-used": "7",
+      "api-credits-left": "1"
+    },
+    units: 7
+  });
+
+  const tickers = ["GD", "BA", "NOC", "LMT", "RTX", "XOM", "CVX"];
+  const originalFetch = global.fetch;
+  let twelveCalls = 0;
+  const seenYahooUrls = [];
+  global.fetch = async (url) => {
+    const value = String(url);
+    if (value.includes("api.twelvedata.com/quote")) {
+      twelveCalls += 1;
+      return jsonResponse({}, 404);
+    }
+    if (value.includes("finance.yahoo.com/quote/")) {
+      seenYahooUrls.push(value);
+      const ticker = value.split("/quote/")[1]?.split(/[/?#]/)[0] || "GD";
+      return htmlResponse(
+        buildYahooPriceOnlyHtml({
+          ticker,
+          price: 200 + seenYahooUrls.length
+        })
+      );
+    }
+    return jsonResponse({}, 404);
+  };
+
+  try {
+    const result = await fetchMarketQuotes({
+      provider: "twelve",
+      fallbackProvider: "yahoo",
+      twelveApiKey: "demo",
+      twelveBaseUrl: "https://api.twelvedata.com",
+      yahooBaseUrl: "https://finance.yahoo.com",
+      yahooUserAgent: "ogid/1.0",
+      tickers,
+      timeoutMs: 500,
+      requestReserve: 1
+    });
+
+    assert.equal(twelveCalls, 0);
+    assert.equal(seenYahooUrls.length, tickers.length);
+    assert.equal(result.sourceMode, "live");
+    assert.equal(result.sourceMeta.effectiveProvider, "yahoo");
+    assert.equal(result.sourceMeta.providersSkipped[0].provider, "twelve");
+    assert.equal(result.sourceMeta.providersSkipped[0].reason, "insufficient-minute-credits");
+    assert.equal(result.sourceMeta.providersSkipped[0].skipWindow, "minute");
+    assert.equal(result.sourceMeta.providersSkipped[0].estimatedUnits, tickers.length);
+    assert.equal(result.sourceMeta.providersSkipped[0].remainingMinute, 1);
+    assert.equal(result.sourceMeta.providerSlots[0].status, "skipped");
+    assert.equal(result.sourceMeta.providerSlots[0].errorCode, "insufficient-minute-credits");
+    assert.equal(result.sourceMeta.providerSlots[0].skipWindow, "minute");
+    assert.equal(result.sourceMeta.providerSlots[0].estimatedUnits, tickers.length);
+    assert.equal(result.sourceMeta.providerSlots[1].status, "ok");
+    assert.deepEqual(result.sourceMeta.providerSlots[1].returnedTickers.sort(), [...tickers].sort());
   } finally {
     global.fetch = originalFetch;
   }

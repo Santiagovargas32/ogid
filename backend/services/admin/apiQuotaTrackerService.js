@@ -305,14 +305,15 @@ class ApiQuotaTrackerService {
     const fallbackMinute = countEventsSince(providerState.events.fallback, minuteMinTs);
     const units24h = sumUnitsSince(providerState.events.calls, nowMs - WINDOW_MS);
     const unitsMinute = sumUnitsSince(providerState.events.calls, minuteMinTs);
+    const hasMinuteQuota =
+      Number.isFinite(providerState.hardMinuteLimit) || Number.isFinite(providerState.budgetMinuteLimit);
     const dailyRemaining = deriveRemainingState({
       hardLimit: providerState.hardDailyLimit,
       budgetLimit: providerState.budgetDailyLimit,
       usedUnits: units24h,
-      headerRemaining: providerState.headerRemaining
+      // For providers with explicit minute quotas, the upstream remaining header is minute-scoped.
+      headerRemaining: hasMinuteQuota ? null : providerState.headerRemaining
     });
-    const hasMinuteQuota =
-      Number.isFinite(providerState.hardMinuteLimit) || Number.isFinite(providerState.budgetMinuteLimit);
     const minuteRemaining = hasMinuteQuota
       ? deriveRemainingState({
           hardLimit: providerState.hardMinuteLimit,
@@ -330,7 +331,9 @@ class ApiQuotaTrackerService {
     const effectiveRemainingMinute = minuteRemaining.effectiveRemaining;
     const remainingCandidates = [effectiveRemainingDay, effectiveRemainingMinute].filter(Number.isFinite);
     const effectiveRemaining = remainingCandidates.length ? Math.min(...remainingCandidates) : null;
-    const operationalDailyLimit = minFinite(providerState.hardDailyLimit, providerState.budgetDailyLimit, providerState.headerLimit);
+    const operationalDailyLimit = hasMinuteQuota
+      ? minFinite(providerState.hardDailyLimit, providerState.budgetDailyLimit)
+      : minFinite(providerState.hardDailyLimit, providerState.budgetDailyLimit, providerState.headerLimit);
     const operationalMinuteLimit = hasMinuteQuota
       ? minFinite(providerState.hardMinuteLimit, providerState.budgetMinuteLimit, providerState.headerLimit)
       : null;

@@ -34,24 +34,22 @@ test("api quota tracker computes effective remaining using env + headers", () =>
   assert.equal(snapshot.exhausted, false);
 });
 
-test("api quota tracker tracks twelve minute/day quotas and yahoo unit usage", () => {
+test("api quota tracker tracks twelve batch units per symbol and keeps daily and minute remaining separate", () => {
   apiQuotaTracker.reset({
-    twelveDailyLimit: 2,
-    twelveDailyBudget: 1,
-    twelveMinuteLimit: 2,
-    twelveMinuteBudget: 1,
+    twelveDailyLimit: 800,
+    twelveDailyBudget: 600,
+    twelveMinuteLimit: 8,
     yahooDailyLimit: 4,
     yahooDailyBudget: 3
   });
 
   apiQuotaTracker.recordCall("twelve", {
-    status: "error",
-    fallback: true,
+    status: "success",
     headers: {
-      "api-credits-used": "1",
+      "api-credits-used": "7",
       "api-credits-left": "1"
     },
-    units: 1
+    units: 7
   });
   apiQuotaTracker.recordCall("yahoo", { status: "success", units: 2 });
 
@@ -59,18 +57,19 @@ test("api quota tracker tracks twelve minute/day quotas and yahoo unit usage", (
   const yahooSnapshot = apiQuotaTracker.getProviderSnapshot("yahoo");
   assert.equal(twelveSnapshot.calls24h, 1);
   assert.equal(twelveSnapshot.callsMinute, 1);
-  assert.equal(twelveSnapshot.errors24h, 1);
-  assert.equal(twelveSnapshot.fallback24h, 1);
-  assert.equal(twelveSnapshot.configuredMinuteLimit, 2);
-  assert.equal(twelveSnapshot.hardDailyLimit, 2);
-  assert.equal(twelveSnapshot.budgetDailyLimit, 1);
-  assert.equal(twelveSnapshot.hardMinuteLimit, 2);
-  assert.equal(twelveSnapshot.budgetMinuteLimit, 1);
+  assert.equal(twelveSnapshot.success24h, 1);
+  assert.equal(twelveSnapshot.units24h, 7);
+  assert.equal(twelveSnapshot.unitsMinute, 7);
+  assert.equal(twelveSnapshot.configuredMinuteLimit, 8);
+  assert.equal(twelveSnapshot.hardDailyLimit, 800);
+  assert.equal(twelveSnapshot.budgetDailyLimit, 600);
+  assert.equal(twelveSnapshot.hardMinuteLimit, 8);
+  assert.equal(twelveSnapshot.budgetMinuteLimit, null);
   assert.equal(twelveSnapshot.apiCreditsLeft, 1);
-  assert.equal(twelveSnapshot.effectiveRemainingMinute, 0);
-  assert.equal(twelveSnapshot.effectiveRemainingDay, 0);
-  assert.equal(twelveSnapshot.effectiveRemaining, 0);
-  assert.equal(twelveSnapshot.operationalStatus, "budget-exhausted");
+  assert.equal(twelveSnapshot.effectiveRemainingMinute, 1);
+  assert.equal(twelveSnapshot.effectiveRemainingDay, 593);
+  assert.equal(twelveSnapshot.effectiveRemaining, 1);
+  assert.equal(twelveSnapshot.operationalStatus, "budget-near-limit");
   assert.equal(yahooSnapshot.calls24h, 1);
   assert.equal(yahooSnapshot.success24h, 1);
   assert.equal(yahooSnapshot.units24h, 2);

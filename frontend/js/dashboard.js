@@ -706,10 +706,13 @@ function renderMeta(meta, market) {
   elements.sourceModeBadge.textContent = `Source: ${meta.sourceMode}`;
 
   elements.marketModeBadge.className = `badge ${sourceBadgeClass(market.sourceMode)}`;
-  const sessionOpen = market.session?.open ? "open" : market.session?.state || "closed";
-  elements.marketModeBadge.textContent = `Market: ${sessionOpen} / ${market.sourceMode || "fallback"}`;
+  const sessionLabel = market.session?.open ? "open" : market.session?.state || "closed";
+  const dataLabel = market.sourceMode || "fallback";
+  elements.marketModeBadge.textContent = `Market: session ${sessionLabel} | data ${dataLabel}`;
   elements.marketModeBadge.title = [
     `session: ${market.session?.state || "--"}`,
+    `data: ${dataLabel}`,
+    `upstreamPaused: ${market.sourceMeta?.upstreamPaused === true ? "yes" : "no"}`,
     `providerScore: ${Number.isFinite(Number(market.sourceMeta?.providerScore)) ? Number(market.sourceMeta.providerScore) : "--"}`,
     `latency: ${Number.isFinite(Number(market.sourceMeta?.providerLatencyMs)) ? `${Number(market.sourceMeta.providerLatencyMs)}ms` : "--"}`,
     `revision: ${market.revision || "--"}`
@@ -722,11 +725,15 @@ function renderMeta(meta, market) {
       : `Quotes: ${formatDate(market.updatedAt)}${market.revision ? ` | rev ${String(market.revision).slice(0, 8)}` : ""}`;
   if (elements.marketCoverageText) {
     const coverage = market.coverageByMode || market.sourceMeta?.coverageByMode || {};
-      elements.marketCoverageText.textContent =
-        market.sourceMode === "disabled"
-          ? "Coverage: market disabled"
-          : `Coverage: ${coverage.live || 0} live / ${coverage.webDelayed || 0} web delayed / ${coverage.historicalEod || 0} EOD / ${coverage.routerStale || 0} stale cache / ${coverage.syntheticFallback || 0} sim`;
-    }
+    const pausedSuffix =
+      market.sourceMeta?.upstreamPaused === true
+        ? ` | upstream paused${market.sourceMeta?.pauseReason ? ` (${String(market.sourceMeta.pauseReason)})` : ""}`
+        : "";
+    elements.marketCoverageText.textContent =
+      market.sourceMode === "disabled"
+        ? "Coverage: market disabled"
+        : `Coverage: ${coverage.live || 0} live / ${coverage.webDelayed || 0} web delayed / ${coverage.historicalEod || 0} EOD / ${coverage.routerStale || 0} stale cache / ${coverage.syntheticFallback || 0} sim${pausedSuffix}`;
+  }
 
   const dq = meta.dataQuality || {};
   setQualityBadge(elements.qualityHotspotsBadge, "Hotspots", dq.news || {});

@@ -467,10 +467,10 @@ function renderMarketProviderDiagnostics(target, market = {}, slot = {}, emptyLa
         <div class="diagnostic-item-meta">configured base: ${escapeHtml(slot.configuredBaseUrl || "--")}</div>
         <div class="diagnostic-item-meta">policy: off-hours ${escapeHtml(offHoursStrategy)} | ${escapeHtml(formatBudgetPolicy(quotaSnapshot))} | ${escapeHtml(quotaSnapshot.operationalStatus || "--")}</div>
         <div class="diagnostic-item-meta">score: ${escapeHtml(String(slot.score ?? "--"))} | latency: ${escapeHtml(formatDurationMs(slot.latencyMs || 0))} | revision: ${escapeHtml((market.revision || "--").toString())}</div>
-        <div class="diagnostic-item-meta">mode: ${escapeHtml(slot.requestMode || "--")} | returned: ${Number((slot.returnedTickers || []).length || 0)} | missing: ${Number((slot.missingTickers || []).length || 0)}</div>
+        <div class="diagnostic-item-meta">mode: ${escapeHtml(slot.requestMode || "--")} | est units: ${escapeHtml(String(slot.estimatedUnits ?? "--"))} | returned: ${Number((slot.returnedTickers || []).length || 0)} | missing: ${Number((slot.missingTickers || []).length || 0)}</div>
         <div class="diagnostic-item-meta">returned tickers: ${escapeHtml(formatInlineList(slot.returnedTickers || []))}</div>
         <div class="diagnostic-item-meta">quota: ${escapeHtml(formatQuotaSnapshotSummary(quotaSnapshot))}</div>
-        <div class="diagnostic-item-meta">reset: ${escapeHtml(formatQuotaReset(quotaSnapshot))}</div>
+        <div class="diagnostic-item-meta">remaining: 1m ${escapeHtml(formatRemainingValue(slot.remainingMinute))} | 24h ${escapeHtml(formatRemainingValue(slot.remainingDay))} | reset: ${escapeHtml(formatQuotaReset(quotaSnapshot))}</div>
       </article>
     `,
     `
@@ -491,7 +491,8 @@ function renderMarketProviderDiagnostics(target, market = {}, slot = {}, emptyLa
         </div>
         <div class="diagnostic-item-meta">last attempt: ${escapeHtml(formatDate(slot.lastAttemptAt))}</div>
         <div class="diagnostic-item-meta">last success: ${escapeHtml(formatDate(slot.lastSuccessAt))}</div>
-        <div class="diagnostic-item-meta">http: ${escapeHtml(String(slot.httpStatus ?? "--"))} | market: ${escapeHtml(market.session?.state || "--")}</div>
+        <div class="diagnostic-item-meta">http: ${escapeHtml(String(slot.httpStatus ?? "--"))} | session: ${escapeHtml(market.session?.state || "--")} | data: ${escapeHtml(market.sourceMode || "--")}</div>
+        <div class="diagnostic-item-meta">skip: ${escapeHtml(slot.skipReason || "--")}${slot.skipWindow ? ` | window: ${escapeHtml(slot.skipWindow)}` : ""} | upstream paused: ${escapeHtml(slot.upstreamPaused === true ? "yes" : "no")}</div>
         <div class="diagnostic-item-meta">urls: ${escapeHtml(formatRequestUrls(slot.requestUrls || []))}</div>
       </article>
     `
@@ -548,7 +549,8 @@ function renderMarketRouterDiagnostics(market = {}) {
         </div>
         <div class="diagnostic-item-meta">configured: ${escapeHtml(market.configuredProvider || "--")} -> ${escapeHtml(market.configuredFallbackProvider || "--")}</div>
         <div class="diagnostic-item-meta">chain: ${escapeHtml(market.providerChain || market.provider || "--")}</div>
-        <div class="diagnostic-item-meta">session: ${escapeHtml(market.session?.state || "--")} | score: ${escapeHtml(String(market.providerScore ?? "--"))} | latency: ${escapeHtml(formatDurationMs(market.providerLatencyMs || 0))}</div>
+        <div class="diagnostic-item-meta">session: ${escapeHtml(market.session?.state || "--")} | data: ${escapeHtml(market.sourceMode || "--")} | upstream paused: ${escapeHtml(market.upstreamPaused === true ? "yes" : "no")}</div>
+        <div class="diagnostic-item-meta">score: ${escapeHtml(String(market.providerScore ?? "--"))} | latency: ${escapeHtml(formatDurationMs(market.providerLatencyMs || 0))} | pause reason: ${escapeHtml(market.pauseReason || "--")}</div>
         <div class="diagnostic-item-meta">attempted: ${escapeHtml(formatInlineList(router.attemptedOrder || []))}</div>
         <div class="diagnostic-item-meta">reason: ${escapeHtml(router.fallbackReason || "--")}</div>
       </article>

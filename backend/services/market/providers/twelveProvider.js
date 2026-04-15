@@ -109,14 +109,14 @@ function parseTwelveQuote(item = {}, timestamp = new Date().toISOString(), marke
 function buildUnavailableResult(requestedTickers = [], timestamp = new Date().toISOString(), options = {}) {
   const error = options.code
     ? [
-        buildProviderError({
-          provider: "twelve",
-          scope: "provider",
-          code: options.code,
-          message: options.message,
-          tickers: requestedTickers
-        })
-      ]
+      buildProviderError({
+        provider: "twelve",
+        scope: "provider",
+        code: options.code,
+        message: options.message,
+        tickers: requestedTickers
+      })
+    ]
     : [];
 
   return {
@@ -175,6 +175,7 @@ export async function fetchTwelveQuotes({
     apiKey,
     enablePrepost
   });
+  const requestUnits = requestedTickers.length;
   const startedAt = Date.now();
 
   try {
@@ -263,7 +264,7 @@ export async function fetchTwelveQuotes({
       fallback: missingTickers.length > 0,
       headers: response.headers,
       timestamp,
-      units: 1
+      units: requestUnits
     });
     const score = computeProviderScore({
       returnedCount: Object.keys(quotes).length,
@@ -289,6 +290,7 @@ export async function fetchTwelveQuotes({
       requestedTickers,
       returnedTickers: Object.keys(quotes),
       missingTickers,
+      estimatedUnits: requestUnits,
       httpStatus: response.status,
       lastAttemptAt: timestamp,
       lastSuccessAt: Object.keys(quotes).length ? timestamp : null,
@@ -304,7 +306,7 @@ export async function fetchTwelveQuotes({
       status: "error",
       fallback: true,
       timestamp,
-      units: 1
+      units: requestUnits
     });
     const requestError = buildProviderError({
       provider: "twelve",
@@ -336,6 +338,7 @@ export async function fetchTwelveQuotes({
       requestedTickers,
       returnedTickers: [],
       missingTickers: requestedTickers,
+      estimatedUnits: requestUnits,
       httpStatus: null,
       lastAttemptAt: timestamp,
       lastSuccessAt: null,

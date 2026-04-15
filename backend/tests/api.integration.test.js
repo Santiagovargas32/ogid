@@ -787,19 +787,38 @@ test("off-hours skip blocks only automated market cycles", async () => {
   await runtime.start();
 
   try {
-    await runtime.orchestrator.runMarketCycle("startup-market", {
-      now: "2026-03-21T15:00:00Z"
+    const address = runtime.server.address();
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+
+    await runtime.orchestrator.runMarketCycle("manual-market", {
+      now: "2026-03-20T15:20:00Z"
     });
+    assert.equal(twelveCalls, 1);
+    assert.equal(yahooCalls, 0);
+
+    const openQuotesResponse = await fetch(`${baseUrl}/api/market/quotes?tickers=GD`);
+    const openQuotesPayload = await openQuotesResponse.json();
+    assert.equal(openQuotesResponse.status, 200);
+    assert.equal(openQuotesPayload.data.market.session.state, "open");
+    assert.equal(openQuotesPayload.data.market.sourceMeta.upstreamPaused, false);
+
     await runtime.orchestrator.runMarketCycle("interval-market", {
       now: "2026-03-21T15:10:00Z"
     });
-    assert.equal(twelveCalls, 0);
+    assert.equal(twelveCalls, 1);
     assert.equal(yahooCalls, 0);
+
+    const skippedQuotesResponse = await fetch(`${baseUrl}/api/market/quotes?tickers=GD`);
+    const skippedQuotesPayload = await skippedQuotesResponse.json();
+    assert.equal(skippedQuotesResponse.status, 200);
+    assert.equal(skippedQuotesPayload.data.market.session.state, "closed");
+    assert.equal(skippedQuotesPayload.data.market.sourceMeta.upstreamPaused, true);
+    assert.equal(skippedQuotesPayload.data.market.sourceMeta.pauseReason, "offhours-skip");
 
     await runtime.orchestrator.runMarketCycle("manual-market", {
       now: "2026-03-21T15:20:00Z"
     });
-    assert.equal(twelveCalls, 1);
+    assert.equal(twelveCalls, 2);
     assert.equal(yahooCalls, 0);
   } finally {
     global.fetch = originalFetch;

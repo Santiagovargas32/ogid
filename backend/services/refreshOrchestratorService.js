@@ -4,7 +4,7 @@ import { fetchRawNews } from "./newsService.js";
 import { normalizeAdminArticles, normalizeArticles } from "./normalizeService.js";
 import { computeCountryRisk } from "./riskEngineService.js";
 import { generateInsights } from "./insightService.js";
-import { mergeMarketState } from "./market/marketStateService.js";
+import { mergeMarketState, refreshMarketSessionMetadata } from "./market/marketStateService.js";
 import { computeMarketImpact } from "./market/impactEngineService.js";
 import { generatePredictions } from "./market/predictionEngineService.js";
 import { fetchMarketQuotes } from "./market/marketProviderRouter.js";
@@ -508,6 +508,16 @@ class RefreshOrchestratorService {
 
     try {
       if (this.shouldSkipAutomatedOffHoursMarketCycle(trigger, options)) {
+        const previousSnapshot = this.stateManager.getSnapshot();
+        const cycleDate = this.resolveMarketCycleDate(options.now);
+        const pausedMarketState = refreshMarketSessionMetadata(previousSnapshot.market, {
+          timestamp: cycleDate.toISOString(),
+          pauseReason: "offhours-skip",
+          upstreamPaused: true
+        });
+        const snapshot = this.stateManager.hydrateMarketState(pausedMarketState);
+        this.socketServer.broadcast("update", this.buildUpdatePayload(snapshot), snapshot.meta);
+
         log.info("market_cycle_skipped", {
           trigger,
           reason: "offhours-skip",

@@ -13,12 +13,12 @@ const PROVIDERS = Object.freeze({
   twelve: {
     fetcher: fetchTwelveQuotes,
     transport: "api",
-    estimateUnits: () => 1
+    estimateUnits: (tickers = []) => Math.max(0, Array.isArray(tickers) ? tickers.length : 0)
   },
   yahoo: {
     fetcher: fetchYahooQuotes,
     transport: "web",
-    estimateUnits: (tickers = []) => Math.max(1, Array.isArray(tickers) ? tickers.length : 0)
+    estimateUnits: (tickers = []) => Math.max(0, Array.isArray(tickers) ? tickers.length : 0)
   }
 });
 
@@ -73,44 +73,85 @@ function buildProviderConfig(provider, config = {}, session = null) {
   };
 }
 
+function buildAvailabilityFailure(reason = "unavailable", snapshot = null, estimatedUnits = 0, skipWindow = null) {
+  return {
+    available: false,
+    snapshot,
+    estimatedUnits,
+    reason,
+    skipReason: reason,
+    skipWindow: skipWindow || null,
+    remainingDay: snapshot?.effectiveRemainingDay ?? null,
+    remainingMinute: snapshot?.effectiveRemainingMinute ?? null
+  };
+}
+
+function describeAvailabilityFailure(provider, availability = {}) {
+  const reason = availability?.reason || "unavailable";
+  const estimatedUnits = Number(availability?.estimatedUnits || 0);
+  const skipWindow = availability?.skipWindow || null;
+  const scopeLabel = skipWindow === "minute" ? "minute" : skipWindow === "day" ? "daily" : "available";
+
+  if (reason === "insufficient-minute-credits" || reason === "insufficient-daily-credits") {
+    return `${provider} was skipped because remaining ${scopeLabel} credits cannot cover ${estimatedUnits} requested units.`;
+  }
+  if (reason === "reserve-floor-minute" || reason === "reserve-floor-day") {
+    return `${provider} was skipped because the request would cross the ${scopeLabel} reserve floor.`;
+  }
+  if (reason === "exhausted") {
+    return `${provider} was skipped because ${scopeLabel} quota is exhausted.`;
+  }
+  return `${provider} was skipped because quota is unavailable.`;
+}
+
 function resolveProviderAvailability(provider, config = {}, { reserve = 0, allowExhaustedProviders = false, tickers = [] } = {}) {
   const snapshot = apiQuotaTracker.getProviderSnapshot(provider);
-  const remaining = snapshot?.effectiveRemaining;
   const normalizedReserve = Math.max(0, Number.parseInt(String(reserve ?? 0), 10) || 0);
-  const estimatedUnits = PROVIDERS[provider]?.estimateUnits?.(tickers) ?? 1;
+  const estimatedUnits = PROVIDERS[provider]?.estimateUnits?.(tickers) ?? 0;
+  const remainingDay = snapshot?.effectiveRemainingDay;
+  const remainingMinute = snapshot?.effectiveRemainingMinute;
 
   if (allowExhaustedProviders) {
     return {
       available: true,
       snapshot,
       estimatedUnits,
-      reason: null
+      reason: null,
+      skipReason: null,
+      skipWindow: null,
+      remainingDay,
+      remainingMinute
     };
   }
 
-  if (snapshot?.exhausted) {
-    return {
-      available: false,
-      snapshot,
-      estimatedUnits,
-      reason: "exhausted"
-    };
+  if (snapshot?.exhaustedMinute || (Number.isFinite(remainingMinute) && remainingMinute <= 0)) {
+    return buildAvailabilityFailure("exhausted", snapshot, estimatedUnits, "minute");
   }
-
-  if (Number.isFinite(remaining) && remaining - estimatedUnits < normalizedReserve) {
-    return {
-      available: false,
-      snapshot,
-      estimatedUnits,
-      reason: "reserve-floor"
-    };
+  if (snapshot?.exhaustedDay || (Number.isFinite(remainingDay) && remainingDay <= 0)) {
+    return buildAvailabilityFailure("exhausted", snapshot, estimatedUnits, "day");
+  }
+  if (Number.isFinite(remainingMinute) && remainingMinute < estimatedUnits) {
+    return buildAvailabilityFailure("insufficient-minute-credits", snapshot, estimatedUnits, "minute");
+  }
+  if (Number.isFinite(remainingDay) && remainingDay < estimatedUnits) {
+    return buildAvailabilityFailure("insufficient-daily-credits", snapshot, estimatedUnits, "day");
+  }
+  if (Number.isFinite(remainingMinute) && remainingMinute - estimatedUnits < normalizedReserve) {
+    return buildAvailabilityFailure("reserve-floor-minute", snapshot, estimatedUnits, "minute");
+  }
+  if (Number.isFinite(remainingDay) && remainingDay - estimatedUnits < normalizedReserve) {
+    return buildAvailabilityFailure("reserve-floor-day", snapshot, estimatedUnits, "day");
   }
 
   return {
     available: true,
     snapshot,
     estimatedUnits,
-    reason: null
+    reason: null,
+    skipReason: null,
+    skipWindow: null,
+    remainingDay,
+    remainingMinute
   };
 }
 
@@ -208,6 +249,7 @@ function buildProviderSlot({
   const result = requestResult || {};
   const errors = Array.isArray(result.errors) ? result.errors : [];
   const sampleQuotes = buildSampleQuotes(result.quotes || {}, requestedTickers, 5);
+  const resolvedQuotaSnapshot = quotaSnapshot || result.quotaSnapshot || apiQuotaTracker.getProviderSnapshot(provider);
 
   return {
     role,
@@ -220,7 +262,22 @@ function buildProviderSlot({
     missingTickers: result.missingTickers || [],
     score: Number.isFinite(Number(result.score)) ? Number(result.score) : 0,
     latencyMs: Number.isFinite(Number(result.durationMs)) ? Number(result.durationMs) : 0,
-    quotaSnapshot: quotaSnapshot || result.quotaSnapshot || apiQuotaTracker.getProviderSnapshot(provider),
+    quotaSnapshot: resolvedQuotaSnapshot,
+    estimatedUnits:
+      Number.isFinite(Number(result.estimatedUnits))
+        ? Number(result.estimatedUnits)
+        : PROVIDERS[provider]?.estimateUnits?.(requestedTickers) ?? null,
+    remainingDay:
+      Number.isFinite(Number(result.remainingDay)) || Number(result.remainingDay) === 0
+        ? Number(result.remainingDay)
+        : resolvedQuotaSnapshot?.effectiveRemainingDay ?? null,
+    remainingMinute:
+      Number.isFinite(Number(result.remainingMinute)) || Number(result.remainingMinute) === 0
+        ? Number(result.remainingMinute)
+        : resolvedQuotaSnapshot?.effectiveRemainingMinute ?? null,
+    skipReason: result.skipReason || errors.at(-1)?.code || errors.at(-1)?.reason || null,
+    skipWindow: result.skipWindow || null,
+    upstreamPaused: result.upstreamPaused === true,
     requestUrls: result.requestUrls || [],
     httpStatus: Number.isFinite(Number(result.httpStatus)) ? Number(result.httpStatus) : null,
     errorCode: errors.at(-1)?.code || errors.at(-1)?.reason || null,
@@ -240,10 +297,7 @@ function buildSkippedSlot({
   configuredBaseUrl = null
 } = {}) {
   const reason = availability?.reason || "unavailable";
-  const message =
-    reason === "reserve-floor"
-      ? `${provider} was skipped because the request would cross the reserve floor.`
-      : `${provider} was skipped because quota is exhausted.`;
+  const message = describeAvailabilityFailure(provider, availability);
 
   return buildProviderSlot({
     role,
@@ -262,6 +316,11 @@ function buildSkippedSlot({
       httpStatus: null,
       lastAttemptAt: new Date().toISOString(),
       lastSuccessAt: null,
+      estimatedUnits: availability?.estimatedUnits ?? null,
+      remainingDay: availability?.remainingDay ?? null,
+      remainingMinute: availability?.remainingMinute ?? null,
+      skipReason: reason,
+      skipWindow: availability?.skipWindow || null,
       errors: [
         {
           provider,
@@ -445,7 +504,11 @@ export async function fetchMarketQuotes(config = {}) {
       providersSkipped.push({
         provider,
         reason: availability.reason,
+        skipReason: availability.skipReason || availability.reason || null,
+        skipWindow: availability.skipWindow || null,
         remaining: availability.snapshot?.effectiveRemaining ?? null,
+        remainingDay: availability.remainingDay ?? null,
+        remainingMinute: availability.remainingMinute ?? null,
         estimatedUnits: availability.estimatedUnits,
         transport: PROVIDERS[provider]?.transport || null
       });
@@ -611,6 +674,8 @@ export async function fetchMarketQuotes(config = {}) {
       coverageByMode,
       quotaBand,
       requestMode,
+      upstreamPaused: false,
+      pauseReason: null,
       batchSize: Number.parseInt(String(config.batchChunkSize ?? 25), 10) || 25,
       lastUpstreamError,
       errors: providerErrors,

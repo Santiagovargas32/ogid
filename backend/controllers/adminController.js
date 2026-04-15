@@ -152,6 +152,7 @@ function buildProviderChain(provider = "", fallbackProvider = "") {
 
 function buildFallbackSlot({ role, provider, marketConfig = {}, status = "idle", marketSnapshot = {}, quotaSnapshot = null } = {}) {
   const configuredBaseUrl = provider === "twelve" ? marketConfig.twelveBaseUrl : marketConfig.yahooBaseUrl;
+  const resolvedQuotaSnapshot = quotaSnapshot || apiQuotaTracker.getProviderSnapshot(provider);
   return {
     role,
     provider,
@@ -163,7 +164,13 @@ function buildFallbackSlot({ role, provider, marketConfig = {}, status = "idle",
     missingTickers: [],
     score: 0,
     latencyMs: 0,
-    quotaSnapshot: quotaSnapshot || apiQuotaTracker.getProviderSnapshot(provider),
+    quotaSnapshot: resolvedQuotaSnapshot,
+    estimatedUnits: Array.isArray(marketConfig?.tickers) ? marketConfig.tickers.length : null,
+    remainingDay: resolvedQuotaSnapshot?.effectiveRemainingDay ?? null,
+    remainingMinute: resolvedQuotaSnapshot?.effectiveRemainingMinute ?? null,
+    skipReason: null,
+    skipWindow: null,
+    upstreamPaused: marketSnapshot?.sourceMeta?.upstreamPaused === true,
     requestUrls: [],
     httpStatus: null,
     errorCode: null,
@@ -330,6 +337,8 @@ export function getPipelineStatus(_req, res) {
         session: marketSnapshot?.session || marketSourceMeta?.marketSession || null,
         sourceMode: marketEnabled ? marketSnapshot?.sourceMode || "fallback" : "disabled",
         requestMode: marketEnabled ? marketSourceMeta?.requestMode || "unavailable" : "disabled",
+        upstreamPaused: marketEnabled ? marketSourceMeta?.upstreamPaused === true : false,
+        pauseReason: marketEnabled ? marketSourceMeta?.pauseReason || null : null,
         providersUsed: marketProvidersUsed,
         providersSkipped: marketEnabled ? marketSourceMeta?.providersSkipped || [] : [],
         unresolvedTickers: marketUnresolvedTickers,

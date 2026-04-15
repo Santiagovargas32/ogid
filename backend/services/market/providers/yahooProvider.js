@@ -289,6 +289,83 @@ function extractEmbeddedPayloads(html = "") {
   return payloads;
 }
 
+function decodeHtmlEntities(value = "") {
+  return String(value || "")
+    .replaceAll("&nbsp;", " ")
+    .replaceAll("&amp;", "&")
+    .replaceAll("&quot;", "\"")
+    .replaceAll("&#39;", "'")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .trim();
+}
+
+function parseHtmlAttributes(raw = "") {
+  const attributes = {};
+  const pattern = /([A-Za-z_:][-A-Za-z0-9_:.]*)(?:=(["'])([\s\S]*?)\2|=([^\s>]+))?/g;
+  let match = pattern.exec(String(raw || ""));
+  while (match) {
+    const [, key, , quotedValue, bareValue] = match;
+    attributes[String(key || "").toLowerCase()] = decodeHtmlEntities(quotedValue ?? bareValue ?? "");
+    match = pattern.exec(String(raw || ""));
+  }
+  return attributes;
+}
+
+function extractFinStreamerCandidate(html = "", ticker = "") {
+  const normalizedTicker = String(ticker || "").trim().toUpperCase();
+  const matches = [...String(html || "").matchAll(/<fin-streamer\b([^>]*)>([\s\S]*?)<\/fin-streamer>/gi)];
+  if (!matches.length) {
+    return null;
+  }
+
+  const candidate = {
+    symbol: normalizedTicker
+  };
+
+  for (const [, rawAttributes = "", rawInnerText = ""] of matches) {
+    const attributes = parseHtmlAttributes(rawAttributes);
+    const symbol = String(
+      attributes["data-symbol"] ||
+        attributes.symbol ||
+        attributes["data-ticker"] ||
+        normalizedTicker
+    )
+      .trim()
+      .toUpperCase();
+    if (normalizedTicker && symbol && symbol !== normalizedTicker) {
+      continue;
+    }
+
+    const field = String(attributes["data-field"] || attributes.field || "").trim();
+    const value = attributes.value || attributes["data-value"] || decodeHtmlEntities(rawInnerText);
+    if (!field || !value) {
+      continue;
+    }
+
+    candidate.symbol = symbol || candidate.symbol;
+    if (field === "regularMarketPrice") {
+      candidate.regularMarketPrice = value;
+    } else if (field === "regularMarketChangePercent") {
+      candidate.regularMarketChangePercent = value;
+    } else if (field === "regularMarketPreviousClose") {
+      candidate.regularMarketPreviousClose = value;
+    } else if (field === "regularMarketDayHigh") {
+      candidate.regularMarketDayHigh = value;
+    } else if (field === "regularMarketDayLow") {
+      candidate.regularMarketDayLow = value;
+    } else if (field === "regularMarketVolume") {
+      candidate.regularMarketVolume = value;
+    } else if (field === "regularMarketTime") {
+      candidate.regularMarketTime = value;
+    } else if (field === "marketState") {
+      candidate.marketState = value;
+    }
+  }
+
+  return scoreCandidate(candidate, normalizedTicker) >= 0 ? candidate : null;
+}
+
 function parseYahooScrapedQuote(candidate = {}, ticker = "", timestamp = new Date().toISOString(), marketSession = {}, providerLatencyMs = null, providerScore = null) {
   const symbol = String(candidate?.symbol || ticker || "").trim().toUpperCase();
   const price =
@@ -460,11 +537,15 @@ export async function fetchYahooQuotes({
       }
 
       if (!candidate) {
+        candidate = extractFinStreamerCandidate(text, ticker);
+      }
+
+      if (!candidate) {
         const error = buildProviderError({
           provider: "yahoo",
           scope: "page",
-          code: "yahoo-embedded-json-missing",
-          message: "Yahoo Finance page did not expose a parseable embedded quote payload.",
+          code: "yahoo-html-quote-missing",
+          message: "Yahoo Finance page did not expose a usable embedded or HTML quote payload.",
           ticker,
           requestUrl: requestUrl.toString(),
           responsePreview: text
@@ -494,7 +575,7 @@ export async function fetchYahooQuotes({
           provider: "yahoo",
           scope: "page",
           code: "yahoo-quote-missing",
-          message: "Yahoo Finance embedded payload did not contain a usable quote.",
+          message: "Yahoo Finance page payload did not contain a usable quote.",
           ticker,
           requestUrl: requestUrl.toString(),
           responsePreview: text
