@@ -11,3 +11,9 @@ test("detectCountryMentions finds countries from aliases and names", () => {
   assert.ok(mentions.includes("US"));
   assert.ok(mentions.includes("IR"));
 });
+
+test("detectCountryMentions supports Colombia", () => {
+  const mentions = detectCountryMentions("Security officials in Bogota reviewed Colombia border operations.");
+
+  assert.ok(mentions.includes("CO"));
+});

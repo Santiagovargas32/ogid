@@ -19,7 +19,6 @@ const LEVEL_RANK = {
   Critical: 4
 };
 
-const DEFAULT_WATCHLIST = ["US", "IL", "IR"];
 const ANALYTICS_WINDOW_OPTIONS = [
   { label: "2h", minutes: 120 },
   { label: "6h", minutes: 360 },
@@ -59,8 +58,9 @@ let impactTimelineChart;
 let sectorBreakdownChart;
 let impactScatterChart;
 let socket;
-let selectedCountries = new Set(DEFAULT_WATCHLIST);
-let currentWatchlist = [...DEFAULT_WATCHLIST];
+let selectedCountries = new Set();
+let currentWatchlist = [];
+let watchlistInitialized = false;
 let apiLimitsPoller = null;
 let analyticsRefreshTimer = null;
 let latestAnalytics = null;
@@ -753,13 +753,49 @@ function renderMeta(meta, market) {
 }
 
 function renderCountryFilters() {
-  const options = ["ALL", ...currentWatchlist];
-  elements.countryFilterBar.innerHTML = options
-    .map((iso2) => {
-      const active = selectedCountries.has(iso2) ? "active" : "";
-      return `<button class="filter-chip ${active}" data-country="${iso2}" type="button">${iso2}</button>`;
-    })
-    .join("");
+  if (!currentWatchlist.length) {
+    elements.countryFilterBar.innerHTML =
+      '<span class="small text-light-emphasis">Countries loading...</span>';
+    return;
+  }
+
+  const selectedList = activeCountryList().filter((iso2) => currentWatchlist.includes(iso2));
+  const allSelected = selectedIncludesAll();
+  const summaryLabel = allSelected ? "Countries: ALL" : `Countries: ${selectedList.length}/${currentWatchlist.length}`;
+  const selectedChipHtml = allSelected
+    ? '<button class="filter-chip active" data-country="ALL" type="button">ALL</button>'
+    : selectedList
+        .map(
+          (iso2) =>
+            `<button class="filter-chip active" data-country="${escapeHtml(iso2)}" type="button">${escapeHtml(iso2)}</button>`
+        )
+        .join("");
+
+  elements.countryFilterBar.innerHTML = `
+    <details class="country-picker">
+      <summary class="country-picker-summary">${escapeHtml(summaryLabel)}</summary>
+      <div class="country-picker-menu">
+        <label class="country-picker-option">
+          <input type="checkbox" data-country-toggle="ALL" ${allSelected ? "checked" : ""} />
+          <span>ALL countries</span>
+        </label>
+        ${currentWatchlist
+          .map((iso2) => {
+            const checked = !allSelected && selectedCountries.has(iso2) ? "checked" : "";
+            return `
+              <label class="country-picker-option">
+                <input type="checkbox" data-country-toggle="${escapeHtml(iso2)}" ${checked} />
+                <span>${escapeHtml(iso2)}</span>
+              </label>
+            `;
+          })
+          .join("")}
+      </div>
+    </details>
+    <div class="country-selected-chips">
+      ${selectedChipHtml || '<span class="small text-light-emphasis">No countries selected</span>'}
+    </div>
+  `;
 }
 
 function handleFilterClick(event) {
@@ -784,6 +820,38 @@ function handleFilterClick(event) {
     selectedCountries.delete(country);
   } else {
     selectedCountries.add(country);
+  }
+
+  if (!selectedCountries.size) {
+    selectedCountries = new Set(currentWatchlist);
+  }
+
+  renderCountryFilters();
+  requestFilteredSnapshot();
+}
+
+function handleCountryPickerChange(event) {
+  const input = event.target.closest("[data-country-toggle]");
+  if (!input) {
+    return;
+  }
+
+  const country = input.dataset.countryToggle;
+  if (country === "ALL") {
+    selectedCountries = new Set(["ALL"]);
+    renderCountryFilters();
+    requestFilteredSnapshot();
+    return;
+  }
+
+  if (selectedCountries.has("ALL")) {
+    selectedCountries = new Set();
+  }
+
+  if (input.checked) {
+    selectedCountries.add(country);
+  } else {
+    selectedCountries.delete(country);
   }
 
   if (!selectedCountries.size) {
@@ -1905,9 +1973,29 @@ function mountWebSocket() {
 }
 
 function syncWatchlistFromState(state) {
-  const watchlist = state.meta?.watchlistCountries || DEFAULT_WATCHLIST;
-  currentWatchlist = watchlist.length ? [...watchlist] : [...DEFAULT_WATCHLIST];
-  if (!selectedCountries.size) {
+  const watchlist = Array.isArray(state.meta?.watchlistCountries)
+    ? [...new Set(state.meta.watchlistCountries.map((iso2) => String(iso2 || "").toUpperCase()).filter(Boolean))]
+    : [];
+
+  if (!watchlist.length) {
+    return;
+  }
+
+  const previousWatchlist = currentWatchlist.join(",");
+  currentWatchlist = watchlist;
+
+  if (!watchlistInitialized || !selectedCountries.size) {
+    selectedCountries = new Set(currentWatchlist);
+    watchlistInitialized = true;
+    return;
+  }
+
+  if (selectedIncludesAll()) {
+    return;
+  }
+
+  selectedCountries = new Set([...selectedCountries].filter((iso2) => currentWatchlist.includes(iso2)));
+  if (!selectedCountries.size || previousWatchlist !== currentWatchlist.join(",")) {
     selectedCountries = new Set(currentWatchlist);
   }
 }
@@ -2200,6 +2288,7 @@ async function bootstrap() {
   initImpactScatterChart();
 
   elements.countryFilterBar.addEventListener("click", handleFilterClick);
+  elements.countryFilterBar.addEventListener("change", handleCountryPickerChange);
   document.body.addEventListener("click", handleActionClick);
   elements.refreshNewsBtn.addEventListener("click", handleManualRefreshClick);
 

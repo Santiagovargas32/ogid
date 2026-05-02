@@ -133,6 +133,13 @@ const COUNTRY_ROWS = [
     aliases: ["venezuelan", "caracas"]
   },
   {
+    iso2: "CO",
+    name: "Colombia",
+    lat: 4.711,
+    lng: -74.0721,
+    aliases: ["colombian", "bogota"]
+  },
+  {
     iso2: "MM",
     name: "Myanmar",
     lat: 19.7633,
