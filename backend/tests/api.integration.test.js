@@ -244,6 +244,12 @@ test("REST API exposes health and snapshot payloads", async () => {
     assert.ok(newsPayload.data.news.every((article) => typeof article.fullText === "string"));
     assert.ok(newsPayload.data.news.every((article) => !article.description.includes("<")));
 
+    const rejectedNewsQueryResponse = await fetch(`${baseUrl}/api/intel/news?query=colombia&fresh=true&limit=24`);
+    const rejectedNewsQueryPayload = await rejectedNewsQueryResponse.json();
+    assert.equal(rejectedNewsQueryResponse.status, 404);
+    assert.equal(rejectedNewsQueryPayload.ok, false);
+    assert.equal(rejectedNewsQueryPayload.error.code, "NOT_FOUND");
+
     const aggregateNewsResponse = await fetch(`${baseUrl}/api/news/aggregate?limit=10`);
     const aggregateNewsPayload = await aggregateNewsResponse.json();
     assert.equal(aggregateNewsResponse.status, 200);

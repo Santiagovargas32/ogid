@@ -18,6 +18,7 @@ import MediaStreamService from "./services/media/mediaStreamService.js";
 import { createSocketServer } from "./websocket/socketServer.js";
 import { errorHandler, notFoundHandler } from "./utils/error.js";
 import { createLogger, requestLogger } from "./utils/logger.js";
+import { queryParamAllowlist } from "./utils/queryParamAllowlist.js";
 
 const log = createLogger("backend/server");
 
@@ -535,7 +536,7 @@ export function createAppServer(overrides = {}) {
   app.use(requestLogger);
 
   app.use(express.static(frontendPath, { index: "index.html" }));
-  app.use("/api", routes);
+  app.use("/api", queryParamAllowlist, routes);
   app.get(["/admin", "/admin/"], (_req, res) => {
     res.sendFile(path.join(frontendPath, "admin.html"));
   });
