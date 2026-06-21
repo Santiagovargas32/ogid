@@ -329,12 +329,14 @@ function renderServerSummary(health = {}, pipeline = {}) {
   elements.serverSummaryUpdated.textContent = `Updated: ${formatDate(new Date().toISOString())}`;
 }
 
-function renderMediaSummary(media = {}) {
+function renderMediaSummary(media = {}, health = {}) {
   const summary = media.summary || {};
+  const youtube = health.youtube || {};
   elements.mediaStreamSummaryBody.innerHTML = renderSummaryCard([
     {
       label: "Total streams",
-      value: String(summary.total ?? 0)
+      value: String(summary.total ?? 0),
+      meta: `Enabled ${String(summary.enabled ?? 0)}`
     },
     {
       label: "Live",
@@ -350,6 +352,18 @@ function renderMediaSummary(media = {}) {
       label: "Error",
       value: String(summary.error ?? 0),
       meta: `Unverified ${String(summary.unverified ?? 0)}`
+    },
+    {
+      label: "YouTube API",
+      value: youtube.hasApiKey ? "configured" : "missing",
+      meta:
+        `search ${String(youtube.searchCallsUsedToday ?? 0)}/${String(youtube.effectiveSearchLimit ?? youtube.searchDailyBudget ?? "--")} | ` +
+        `validation ${String(youtube.validationCallsUsedToday ?? 0)} | handles ${String(youtube.channelLookupCallsUsedToday ?? 0)}`
+    },
+    {
+      label: "Resolver cache",
+      value: String(youtube.cacheSize ?? 0),
+      meta: `in-flight ${String(youtube.inFlightCount ?? 0)} | hit ratio ${youtube.cacheHitRatio ?? "--"}`
     }
   ]);
 }
@@ -806,7 +820,7 @@ function renderMediaStreams(payload = {}) {
     .concat((payload?.sections?.webcams || []).map((item) => ({ ...item, section: "webcams" })));
 
   if (!rows.length) {
-    elements.mediaStreamsBody.innerHTML = renderEmptyRow(6, "No media stream data available.");
+    elements.mediaStreamsBody.innerHTML = renderEmptyRow(11, "No media stream data available.");
     return;
   }
 
@@ -816,9 +830,15 @@ function renderMediaStreams(payload = {}) {
         <tr>
           <td>${escapeHtml(item.section)}</td>
           <td>${escapeHtml(item.name || "--")}</td>
-          <td>${escapeHtml(item.kind || "--")}</td>
+          <td>${escapeHtml(item.provider || item.kind || "--")}</td>
+          <td>${escapeHtml(item.channelId || item.handle || "--")}</td>
+          <td>${escapeHtml(item.priority || "--")}</td>
           <td>${escapeHtml(item.availability || "--")}</td>
           <td>${escapeHtml(item.mode || "--")}</td>
+          <td>${escapeHtml(item.videoId || "--")}</td>
+          <td>${escapeHtml(formatShortTime(item.resolvedAt))}</td>
+          <td>${escapeHtml(Number.isFinite(Number(item.cacheAgeSec)) ? `${Number(item.cacheAgeSec)}s` : "--")}</td>
+          <td>${escapeHtml(item.errorReason || "--")}</td>
           <td>
             ${item.fallbackUrl ? `<a class="btn btn-sm btn-outline-info" href="${escapeHtml(item.fallbackUrl)}" target="_blank" rel="noopener noreferrer">Open</a>` : "--"}
           </td>
@@ -829,7 +849,17 @@ function renderMediaStreams(payload = {}) {
 }
 
 async function refreshAll({ forceMedia = false } = {}) {
-  const [healthResult, limitsResult, pipelineResult, intelNewsResult, aggregateNewsResult, intelRawResult, aggregateRawResult, mediaResult] =
+  const [
+    healthResult,
+    limitsResult,
+    pipelineResult,
+    intelNewsResult,
+    aggregateNewsResult,
+    intelRawResult,
+    aggregateRawResult,
+    mediaResult,
+    mediaHealthResult
+  ] =
     await Promise.allSettled([
       api.getHealth(),
       api.getApiLimits(),
@@ -838,7 +868,8 @@ async function refreshAll({ forceMedia = false } = {}) {
       api.getAggregateNews({ limit: 40 }),
       api.getAdminNewsRaw({ dataset: "intel", page: rawPaginationState.intel, pageSize: RAW_PAGE_SIZE }),
       api.getAdminNewsRaw({ dataset: "rss-aggregate", page: rawPaginationState.rssAggregate, pageSize: RAW_PAGE_SIZE }),
-      api.getMediaStreams(forceMedia ? { force: 1 } : {})
+      api.getMediaStreams(forceMedia ? { resolve: "all", force: 1 } : { resolve: "none" }),
+      api.getMediaStreamsHealth()
     ]);
 
   const health = healthResult.status === "fulfilled" ? healthResult.value : {};
@@ -850,9 +881,10 @@ async function refreshAll({ forceMedia = false } = {}) {
   const intelRaw = intelRawResult.status === "fulfilled" ? intelRawResult.value : null;
   const aggregateRaw = aggregateRawResult.status === "fulfilled" ? aggregateRawResult.value : null;
   const media = mediaResult.status === "fulfilled" ? mediaResult.value : {};
+  const mediaHealth = mediaHealthResult.status === "fulfilled" ? mediaHealthResult.value : {};
 
   renderServerSummary(health, pipeline);
-  renderMediaSummary(media);
+  renderMediaSummary(media, mediaHealth);
   renderPipelineStatus(pipeline);
   renderApiLimits(limits);
   renderNewsTable(intelNews, elements.intelNewsBody, elements.intelNewsCount);

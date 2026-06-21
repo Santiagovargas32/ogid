@@ -25,7 +25,10 @@ const ROUTE_QUERY_PARAMS = new Map(
     "GET /api/market/impact": ["tickers", "countries", "windowMin"],
     "GET /api/market/analytics": ["tickers", "countries", "windowMin"],
 
-    "GET /api/media/streams": ["force"],
+    "GET /api/media/streams": ["force", "resolve", "ids"],
+    "GET /api/media/streams/health": [],
+    "GET /api/media/streams/:id": ["force", "resolve"],
+    "POST /api/media/streams/refresh": [],
     "GET /api/news/aggregate": ["countries", "force", "topic", "threat", "limit"]
   }).map(([route, params]) => [route, new Set(params)])
 );
@@ -38,9 +41,18 @@ function normalizeApiPath(originalUrl = "") {
   return pathname;
 }
 
+function normalizeRouteKey(method, originalUrl = "") {
+  const path = normalizeApiPath(originalUrl);
+  const mediaStreamItemMatch = path.match(/^\/api\/media\/streams\/[^/]+$/);
+  if (method === "GET" && mediaStreamItemMatch && path !== "/api/media/streams/health") {
+    return `${method} /api/media/streams/:id`;
+  }
+  return `${method} ${path}`;
+}
+
 export function queryParamAllowlist(req, res, next) {
   const method = req.method === "HEAD" ? "GET" : req.method;
-  const routeKey = `${method} ${normalizeApiPath(req.originalUrl)}`;
+  const routeKey = normalizeRouteKey(method, req.originalUrl);
   const allowedParams = ROUTE_QUERY_PARAMS.get(routeKey);
 
   if (!allowedParams) {

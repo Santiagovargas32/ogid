@@ -69,5 +69,8 @@ export const api = {
   getMarketAnalytics: (params = {}) => request("/api/market/analytics", params),
   getApiLimits: () => request("/api/admin/api-limits"),
   getPipelineStatus: () => request("/api/admin/pipeline-status"),
-  getAdminNewsRaw: (params = {}) => request("/api/admin/news-raw", params)
+  getAdminNewsRaw: (params = {}) => request("/api/admin/news-raw", params),
+  getMediaStream: (id, params = {}) => request(`/api/media/streams/${encodeURIComponent(id)}`, params),
+  refreshMediaStreams: (payload = {}) => request("/api/media/streams/refresh", {}, { method: "POST", body: payload }),
+  getMediaStreamsHealth: () => request("/api/media/streams/health")
 };

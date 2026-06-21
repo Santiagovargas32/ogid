@@ -1964,6 +1964,10 @@ function mountWebSocket() {
         scheduleAnalyticsRefresh();
         return;
       }
+      if (message.type === "media:streams:updated") {
+        window.dispatchEvent(new CustomEvent("media:streams:updated", { detail: message.data || {} }));
+        return;
+      }
       if (message.type === "error") {
         console.error("Realtime update error:", message.data);
       }

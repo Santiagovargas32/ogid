@@ -393,7 +393,17 @@ function readConfig(overrides = {}) {
     },
     media: {
       refreshIntervalMs: toInt(process.env.MEDIA_STREAM_REFRESH_INTERVAL_MS, 300_000),
-      timeoutMs: toInt(process.env.MEDIA_STREAM_TIMEOUT_MS, 8_000)
+      timeoutMs: toInt(process.env.MEDIA_STREAM_TIMEOUT_MS, 8_000),
+      youtube: {
+        apiKey: process.env.YOUTUBE_API_KEY || "",
+        searchDailyBudget: toPositiveInt(process.env.YOUTUBE_SEARCH_DAILY_BUDGET, 80),
+        searchReserve: toNonNegativeInt(process.env.YOUTUBE_SEARCH_RESERVE, 20),
+        resolveConcurrency: toPositiveInt(process.env.YOUTUBE_RESOLVE_CONCURRENCY, 2),
+        streamResolvePolicy: process.env.YOUTUBE_STREAM_RESOLVE_POLICY || "lazy",
+        criticalRefreshHours: toPositiveInt(process.env.YOUTUBE_CRITICAL_STREAM_REFRESH_HOURS, 6),
+        normalRefreshHours: toPositiveInt(process.env.YOUTUBE_NORMAL_STREAM_REFRESH_HOURS, 12),
+        lazyRefreshHours: toPositiveInt(process.env.YOUTUBE_LAZY_STREAM_REFRESH_HOURS, 24)
+      }
     },
     security: {}
   };
@@ -457,7 +467,11 @@ function readConfig(overrides = {}) {
     },
     media: {
       ...config.media,
-      ...(overrides.media || {})
+      ...(overrides.media || {}),
+      youtube: {
+        ...config.media.youtube,
+        ...(overrides.media?.youtube || {})
+      }
     },
     security: {
       ...config.security,
@@ -582,7 +596,10 @@ export function createAppServer(overrides = {}) {
   });
   const mediaStreamService = new MediaStreamService({
     refreshIntervalMs: config.media?.refreshIntervalMs,
-    timeoutMs: config.media?.timeoutMs
+    timeoutMs: config.media?.timeoutMs,
+    youtubeApiKey: config.media?.youtube?.apiKey,
+    youtube: config.media?.youtube,
+    resolveConcurrency: config.media?.youtube?.resolveConcurrency
   });
 
   const server = http.createServer(app);
@@ -592,6 +609,7 @@ export function createAppServer(overrides = {}) {
     heartbeatMs: config.wsHeartbeatMs,
     stateManager
   });
+  mediaStreamService.setSocketServer(socketServer);
   const orchestrator = new RefreshOrchestratorService({
     stateManager,
     socketServer,
@@ -659,7 +677,11 @@ export function createAppServer(overrides = {}) {
         marketOffHoursIntervalMs: config.market.offHoursIntervalMs,
         manualRefresh: config.manualRefresh,
         mediaRefreshIntervalMs: config.media?.refreshIntervalMs,
-        mediaTimeoutMs: config.media?.timeoutMs
+        mediaTimeoutMs: config.media?.timeoutMs,
+        youtubeApiKeyConfigured: isRealKey(config.media?.youtube?.apiKey),
+        youtubeSearchDailyBudget: config.media?.youtube?.searchDailyBudget,
+        youtubeSearchReserve: config.media?.youtube?.searchReserve,
+        youtubeResolveConcurrency: config.media?.youtube?.resolveConcurrency
       });
       await marketHistoryStore.hydrateState(stateManager);
       if (!config.runtime.disableBackgroundRefresh) {

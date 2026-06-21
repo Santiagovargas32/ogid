@@ -1,3 +1,4 @@
+import { SmartPollLoop } from "../smartPollLoop.js";
 import { mountVideoStreams, VIDEO_STREAMS } from "./videoStreams.js";
 import { mountWebcamStreams, WEBCAM_STREAMS } from "./webcamStreams.js";
 
@@ -7,7 +8,8 @@ const VIEW_LABELS = {
 };
 
 const TRANSITION_MS = 190;
-const REFRESH_INTERVAL_MS = 60_000;
+const FOREGROUND_REFRESH_MS = 10 * 60_000;
+const HIDDEN_REFRESH_MS = 45 * 60_000;
 
 function normalizeMediaPayload(payload = {}) {
   const situational = Array.isArray(payload?.sections?.situational) && payload.sections.situational.length
@@ -25,6 +27,15 @@ function normalizeMediaPayload(payload = {}) {
       webcams
     }
   };
+}
+
+function mergeSituationalStreams(current = [], changed = []) {
+  if (!Array.isArray(changed) || !changed.length) {
+    return current;
+  }
+
+  const changedById = new Map(changed.map((item) => [String(item.id || ""), item]).filter(([id]) => id));
+  return current.map((item) => changedById.get(item.id) || item);
 }
 
 function renderToggleMarkup(activeView = "situational") {
@@ -67,7 +78,8 @@ export function mountSituationalWorkspace({
   let activeView = "situational";
   let transitioning = false;
   let currentController = null;
-  let refreshInterval = null;
+  let mediaPoller = null;
+  const visibleResolveInFlight = new Set();
   const viewState = {
     situational: {
       selectedRegion: "",
@@ -79,6 +91,84 @@ export function mountSituationalWorkspace({
     viewState.situational = currentController?.getSelection?.() || viewState.situational;
     currentController?.destroy?.();
     currentController = null;
+  }
+
+  function updateCurrentView() {
+    if (!currentController) {
+      mountCurrentView();
+      return;
+    }
+
+    if (activeView === "webcams") {
+      currentController.update?.(mediaPayload.sections.webcams);
+      return;
+    }
+
+    currentController.update?.(mediaPayload.sections.situational, viewState.situational);
+  }
+
+  async function loadMediaStreams({ resolve = "critical", ids = [], force = false } = {}) {
+    if (!api?.getMediaStreams) {
+      mediaPayload = normalizeMediaPayload({});
+      return mediaPayload;
+    }
+
+    const params = {
+      resolve,
+      ids: Array.isArray(ids) ? ids : [ids],
+      force: force ? 1 : undefined
+    };
+    const payload = await api.getMediaStreams(params);
+    mediaPayload = normalizeMediaPayload(payload);
+    return mediaPayload;
+  }
+
+  async function refreshAndRender(options = {}) {
+    try {
+      await loadMediaStreams(options);
+      if (!transitioning) {
+        updateCurrentView();
+      }
+    } catch {
+      mediaPayload = normalizeMediaPayload(mediaPayload);
+    }
+    return mediaPayload;
+  }
+
+  async function resolveVisibleStream(streamId = "") {
+    const id = String(streamId || "").trim();
+    if (!id || visibleResolveInFlight.has(id) || activeView !== "situational") {
+      return;
+    }
+
+    visibleResolveInFlight.add(id);
+    try {
+      await refreshAndRender({
+        resolve: "visible",
+        ids: [id],
+        force: false
+      });
+    } finally {
+      visibleResolveInFlight.delete(id);
+    }
+  }
+
+  async function refreshStream(streamId = "") {
+    const id = String(streamId || "").trim();
+    if (!id || !api?.refreshMediaStreams) {
+      return;
+    }
+
+    try {
+      const payload = await api.refreshMediaStreams({
+        ids: [id],
+        force: true
+      });
+      mediaPayload = normalizeMediaPayload(payload);
+      updateCurrentView();
+    } catch {
+      await resolveVisibleStream(id);
+    }
   }
 
   function mountCurrentView() {
@@ -98,22 +188,14 @@ export function mountSituationalWorkspace({
       selectedId: viewState.situational.selectedId,
       onSelectionChange(selection) {
         viewState.situational = selection;
+      },
+      onVisibleStream(streamId) {
+        resolveVisibleStream(streamId);
+      },
+      onRefreshStream(streamId) {
+        refreshStream(streamId);
       }
     });
-  }
-
-  function updateCurrentView() {
-    if (!currentController) {
-      mountCurrentView();
-      return;
-    }
-
-    if (activeView === "webcams") {
-      currentController.update?.(mediaPayload.sections.webcams);
-      return;
-    }
-
-    currentController.update?.(mediaPayload.sections.situational, viewState.situational);
   }
 
   function bindToggleEvents() {
@@ -140,6 +222,9 @@ export function mountSituationalWorkspace({
           window.requestAnimationFrame(() => {
             workspace.classList.remove("situational-view-transition-in");
             transitioning = false;
+            if (activeView === "situational" && viewState.situational.selectedId) {
+              resolveVisibleStream(viewState.situational.selectedId);
+            }
           });
           toggleRoot.innerHTML = renderToggleMarkup(activeView);
           bindToggleEvents();
@@ -148,40 +233,72 @@ export function mountSituationalWorkspace({
     });
   }
 
-  async function refreshMediaStreams(force = false) {
-    if (!api?.getMediaStreams) {
-      mediaPayload = normalizeMediaPayload({});
-      return;
+  function buildPollOptions() {
+    if (activeView === "situational" && viewState.situational.selectedId) {
+      return {
+        resolve: "visible",
+        ids: [viewState.situational.selectedId]
+      };
     }
 
-    try {
-      const payload = await api.getMediaStreams(force ? { force: 1 } : {});
-      mediaPayload = normalizeMediaPayload(payload);
-    } catch {
-      mediaPayload = normalizeMediaPayload(mediaPayload);
+    return {
+      resolve: "critical"
+    };
+  }
+
+  function startMediaPoller() {
+    mediaPoller?.stop?.();
+    mediaPoller = new SmartPollLoop({
+      immediate: false,
+      intervalMs: FOREGROUND_REFRESH_MS,
+      hiddenIntervalMs: HIDDEN_REFRESH_MS,
+      task: () => refreshAndRender(buildPollOptions()),
+      onError(error) {
+        console.error("media stream refresh failed", error);
+      }
+    });
+    mediaPoller.start();
+  }
+
+  function handleMediaStreamUpdate(event) {
+    const changedStreams = event?.detail?.changedStreams || [];
+    if (!Array.isArray(changedStreams) || !changedStreams.length) {
+      return;
+    }
+    mediaPayload = {
+      ...mediaPayload,
+      generatedAt: event?.detail?.updatedAt || mediaPayload.generatedAt,
+      sections: {
+        ...mediaPayload.sections,
+        situational: mergeSituationalStreams(mediaPayload.sections.situational, changedStreams)
+      }
+    };
+    if (!transitioning && activeView === "situational") {
+      updateCurrentView();
     }
   }
 
   async function initialize() {
-    await refreshMediaStreams(false);
+    try {
+      await loadMediaStreams({ resolve: "critical" });
+    } catch {
+      mediaPayload = normalizeMediaPayload(mediaPayload);
+    }
     toggleRoot?.replaceChildren();
     if (toggleRoot) {
       toggleRoot.innerHTML = renderToggleMarkup(activeView);
       bindToggleEvents();
     }
     mountCurrentView();
-    refreshInterval = window.setInterval(async () => {
-      await refreshMediaStreams(false);
-      if (!transitioning) {
-        updateCurrentView();
-      }
-    }, REFRESH_INTERVAL_MS);
+    startMediaPoller();
+    window.addEventListener("media:streams:updated", handleMediaStreamUpdate);
   }
 
   initialize();
 
   return () => {
-    window.clearInterval(refreshInterval);
+    mediaPoller?.stop?.();
+    window.removeEventListener("media:streams:updated", handleMediaStreamUpdate);
     destroyCurrentView();
     root.innerHTML = "";
     if (toggleRoot) {

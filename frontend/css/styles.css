@@ -1715,6 +1715,20 @@ body {
   text-align: left;
 }
 
+.situational-stream-chip-head,
+.situational-player-actions,
+.situational-player-footer,
+.situational-stream-status {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.situational-stream-chip-head {
+  justify-content: space-between;
+}
+
 .situational-stream-chip small,
 .situational-stream-chip span:last-child {
   color: #98aec7;
@@ -1733,6 +1747,11 @@ body {
   margin-bottom: 0.7rem;
 }
 
+.situational-player-footer {
+  justify-content: space-between;
+  margin-top: 0.62rem;
+}
+
 .situational-player-frame {
   position: relative;
   border-radius: 0.75rem;
@@ -1746,6 +1765,44 @@ body {
   width: 100%;
   height: 100%;
   border: 0;
+}
+
+.situational-player-placeholder {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 1px solid rgba(80, 101, 124, 0.42);
+  border-radius: 0.75rem;
+  background: #09111a;
+}
+
+.situational-player-placeholder img,
+.situational-player-placeholder-empty {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.situational-player-placeholder-empty {
+  background:
+    radial-gradient(circle at 25% 20%, rgba(44, 205, 122, 0.16), transparent 32%),
+    linear-gradient(135deg, rgba(9, 17, 26, 0.98), rgba(16, 27, 39, 0.98));
+}
+
+.situational-player-placeholder-overlay {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  padding: 1rem;
+  text-align: center;
+  background: linear-gradient(180deg, rgba(5, 8, 11, 0.24), rgba(5, 8, 11, 0.78));
 }
 
 .situational-placeholder {
