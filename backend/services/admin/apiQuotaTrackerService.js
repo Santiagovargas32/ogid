@@ -1,4 +1,9 @@
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { getProviderPolicy } from "../providers/providerPolicies.js";
+
 const WINDOW_MS = 24 * 60 * 60 * 1_000;
+const RETENTION_MS = 32 * WINDOW_MS;
 const MINUTE_WINDOW_MS = 60 * 1_000;
 const PROVIDERS = ["newsapi", "gnews", "mediastack", "rss", "gdelt", "twelve", "yahoo"];
 const PROVIDER_LIMIT_FIELDS = Object.freeze({
@@ -11,8 +16,8 @@ const PROVIDER_LIMIT_FIELDS = Object.freeze({
     budgetDaily: "gnewsDailyBudget"
   },
   mediastack: {
-    hardDaily: "mediastackDailyLimit",
-    budgetDaily: "mediastackDailyBudget"
+    hardMonthly: "mediastackMonthlyLimit",
+    budgetMonthly: "mediastackMonthlyBudget"
   },
   rss: {
     hardDaily: "rssDailyLimit",
@@ -50,14 +55,18 @@ function createEventBucket() {
 
 function createProviderState({
   hardDailyLimit = null,
+  hardMonthlyLimit = null,
   hardMinuteLimit = null,
   budgetDailyLimit = null,
+  budgetMonthlyLimit = null,
   budgetMinuteLimit = null
 } = {}) {
   return {
     hardDailyLimit,
+    hardMonthlyLimit,
     hardMinuteLimit,
     budgetDailyLimit,
+    budgetMonthlyLimit,
     budgetMinuteLimit,
     headerLimit: null,
     headerRemaining: null,
@@ -162,8 +171,10 @@ function resolveConfiguredProviderLimits(config = {}) {
         provider,
         {
           hardDailyLimit: toPositiveInt(config[fieldMap.hardDaily]),
+          hardMonthlyLimit: toPositiveInt(config[fieldMap.hardMonthly]),
           hardMinuteLimit: toPositiveInt(config[fieldMap.hardMinute]),
           budgetDailyLimit: toPositiveInt(config[fieldMap.budgetDaily]),
+          budgetMonthlyLimit: toPositiveInt(config[fieldMap.budgetMonthly]),
           budgetMinuteLimit: toPositiveInt(config[fieldMap.budgetMinute])
         }
       ];
@@ -208,15 +219,54 @@ function resolveOperationalStatus({
 }
 
 class ApiQuotaTrackerService {
-  constructor() {
+  constructor({ now = Date.now, persistencePath = null } = {}) {
+    this.now = now;
+    this.persistencePath = persistencePath;
     this.providers = Object.fromEntries(PROVIDERS.map((provider) => [provider, createProviderState()]));
   }
 
-  reset(config = {}) {
+  reset(config = {}, { hydrate = false } = {}) {
     const resolved = resolveConfiguredProviderLimits(config);
     this.providers = Object.fromEntries(
       PROVIDERS.map((provider) => [provider, createProviderState(resolved[provider])])
     );
+    if (hydrate) this.hydrate();
+  }
+
+  configurePersistence(persistencePath, { hydrate = true } = {}) {
+    this.persistencePath = persistencePath || null;
+    if (hydrate) this.hydrate();
+  }
+
+  hydrate() {
+    if (!this.persistencePath) return false;
+    try {
+      const payload = JSON.parse(readFileSync(this.persistencePath, "utf8"));
+      for (const [provider, saved] of Object.entries(payload.providers || {})) {
+        const state = this.providers[this.ensureProvider(provider)];
+        state.events = saved.events || state.events;
+        for (const field of ["headerLimit", "headerRemaining", "apiCreditsUsed", "apiCreditsLeft", "lastCallAt", "lastStatus"]) {
+          if (saved[field] !== undefined) state[field] = saved[field];
+        }
+      }
+      return true;
+    } catch (error) {
+      if (error?.code === "ENOENT") return false;
+      throw error;
+    }
+  }
+
+  persist() {
+    if (!this.persistencePath) return;
+    mkdirSync(dirname(this.persistencePath), { recursive: true });
+    const temporaryPath = `${this.persistencePath}.${process.pid}.tmp`;
+    const providers = Object.fromEntries(Object.entries(this.providers).map(([provider, state]) => [provider, {
+      events: state.events, headerLimit: state.headerLimit, headerRemaining: state.headerRemaining,
+      apiCreditsUsed: state.apiCreditsUsed, apiCreditsLeft: state.apiCreditsLeft,
+      lastCallAt: state.lastCallAt, lastStatus: state.lastStatus
+    }]));
+    writeFileSync(temporaryPath, JSON.stringify({ version: 1, savedAt: new Date(this.now()).toISOString(), providers }), { mode: 0o600 });
+    renameSync(temporaryPath, this.persistencePath);
   }
 
   ensureProvider(provider) {
@@ -227,10 +277,10 @@ class ApiQuotaTrackerService {
     return normalized;
   }
 
-  purge(provider, nowMs = Date.now()) {
+  purge(provider, nowMs = this.now()) {
     const normalized = this.ensureProvider(provider);
     const providerState = this.providers[normalized];
-    const minTs = nowMs - WINDOW_MS;
+    const minTs = nowMs - RETENTION_MS;
 
     purgeBucket(providerState.events.calls, minTs);
     purgeBucket(providerState.events.success, minTs);
@@ -239,7 +289,7 @@ class ApiQuotaTrackerService {
     return providerState;
   }
 
-  recordCall(provider, { status = "success", fallback = false, headers = null, timestamp = Date.now(), units = 1 } = {}) {
+  recordCall(provider, { status = "success", fallback = false, headers = null, timestamp = this.now(), units = 1 } = {}) {
     const normalized = this.ensureProvider(provider);
     const nowMs = new Date(timestamp).getTime();
     const providerState = this.purge(normalized, Number.isFinite(nowMs) ? nowMs : Date.now());
@@ -274,10 +324,12 @@ class ApiQuotaTrackerService {
       providerState.apiCreditsLeft = rateLimit.apiCreditsLeft;
     }
 
-    return this.getProviderSnapshot(normalized, timestampMs);
+    const snapshot = this.getProviderSnapshot(normalized, timestampMs);
+    this.persist();
+    return snapshot;
   }
 
-  markFallback(provider, timestamp = Date.now()) {
+  markFallback(provider, timestamp = this.now()) {
     const normalized = this.ensureProvider(provider);
     const nowMs = new Date(timestamp).getTime();
     const providerState = this.purge(normalized, Number.isFinite(nowMs) ? nowMs : Date.now());
@@ -288,23 +340,29 @@ class ApiQuotaTrackerService {
     if (!providerState.lastCallAt) {
       providerState.lastCallAt = new Date(timestampMs).toISOString();
     }
-    return this.getProviderSnapshot(normalized, timestampMs);
+    const snapshot = this.getProviderSnapshot(normalized, timestampMs);
+    this.persist();
+    return snapshot;
   }
 
-  getProviderSnapshot(provider, nowMs = Date.now()) {
+  getProviderSnapshot(provider, nowMs = this.now()) {
     const normalized = this.ensureProvider(provider);
     const providerState = this.purge(normalized, nowMs);
     const minuteMinTs = nowMs - MINUTE_WINDOW_MS;
-    const calls24h = providerState.events.calls.length;
-    const success24h = providerState.events.success.length;
-    const errors24h = providerState.events.errors.length;
-    const fallback24h = providerState.events.fallback.length;
+    const nowDate = new Date(nowMs);
+    const monthMinTs = Date.UTC(nowDate.getUTCFullYear(), nowDate.getUTCMonth(), 1);
+    const dayMinTs = nowMs - WINDOW_MS;
+    const calls24h = countEventsSince(providerState.events.calls, dayMinTs);
+    const success24h = countEventsSince(providerState.events.success, dayMinTs);
+    const errors24h = countEventsSince(providerState.events.errors, dayMinTs);
+    const fallback24h = countEventsSince(providerState.events.fallback, dayMinTs);
     const callsMinute = countEventsSince(providerState.events.calls, minuteMinTs);
     const successMinute = countEventsSince(providerState.events.success, minuteMinTs);
     const errorsMinute = countEventsSince(providerState.events.errors, minuteMinTs);
     const fallbackMinute = countEventsSince(providerState.events.fallback, minuteMinTs);
     const units24h = sumUnitsSince(providerState.events.calls, nowMs - WINDOW_MS);
     const unitsMinute = sumUnitsSince(providerState.events.calls, minuteMinTs);
+    const unitsMonth = sumUnitsSince(providerState.events.calls, monthMinTs);
     const hasMinuteQuota =
       Number.isFinite(providerState.hardMinuteLimit) || Number.isFinite(providerState.budgetMinuteLimit);
     const dailyRemaining = deriveRemainingState({
@@ -328,8 +386,10 @@ class ApiQuotaTrackerService {
           operationalLimit: null
         };
     const effectiveRemainingDay = dailyRemaining.effectiveRemaining;
+    const monthlyRemaining = deriveRemainingState({ hardLimit: providerState.hardMonthlyLimit, budgetLimit: providerState.budgetMonthlyLimit, usedUnits: unitsMonth });
     const effectiveRemainingMinute = minuteRemaining.effectiveRemaining;
-    const remainingCandidates = [effectiveRemainingDay, effectiveRemainingMinute].filter(Number.isFinite);
+    const effectiveRemainingMonth = monthlyRemaining.effectiveRemaining;
+    const remainingCandidates = [effectiveRemainingDay, effectiveRemainingMinute, effectiveRemainingMonth].filter(Number.isFinite);
     const effectiveRemaining = remainingCandidates.length ? Math.min(...remainingCandidates) : null;
     const operationalDailyLimit = hasMinuteQuota
       ? minFinite(providerState.hardDailyLimit, providerState.budgetDailyLimit)
@@ -338,6 +398,7 @@ class ApiQuotaTrackerService {
       ? minFinite(providerState.hardMinuteLimit, providerState.budgetMinuteLimit, providerState.headerLimit)
       : null;
 
+    const policy = getProviderPolicy(normalized);
     return {
       provider: normalized,
       calls24h,
@@ -350,13 +411,16 @@ class ApiQuotaTrackerService {
       fallbackMinute,
       units24h,
       unitsMinute,
+      unitsMonth,
       configuredLimit: providerState.hardDailyLimit,
       configuredDailyLimit: providerState.hardDailyLimit,
       configuredMinuteLimit: providerState.hardMinuteLimit,
       hardDailyLimit: providerState.hardDailyLimit,
       hardMinuteLimit: providerState.hardMinuteLimit,
+      hardMonthlyLimit: providerState.hardMonthlyLimit,
       budgetDailyLimit: providerState.budgetDailyLimit,
       budgetMinuteLimit: providerState.budgetMinuteLimit,
+      budgetMonthlyLimit: providerState.budgetMonthlyLimit,
       hardRemainingDay: dailyRemaining.hardRemaining,
       hardRemainingMinute: minuteRemaining.hardRemaining,
       budgetRemainingDay: dailyRemaining.budgetRemaining,
@@ -370,6 +434,7 @@ class ApiQuotaTrackerService {
       effectiveRemaining,
       effectiveRemainingDay,
       effectiveRemainingMinute,
+      effectiveRemainingMonth,
       operationalStatus: resolveOperationalStatus({
         effectiveRemainingDay,
         effectiveRemainingMinute,
@@ -378,16 +443,19 @@ class ApiQuotaTrackerService {
       }),
       exhaustedDay: Number.isFinite(effectiveRemainingDay) ? effectiveRemainingDay <= 0 : false,
       exhaustedMinute: Number.isFinite(effectiveRemainingMinute) ? effectiveRemainingMinute <= 0 : false,
+      exhaustedMonth: Number.isFinite(effectiveRemainingMonth) ? effectiveRemainingMonth <= 0 : false,
       exhausted: remainingCandidates.length ? Math.min(...remainingCandidates) <= 0 : false,
       lastCallAt: providerState.lastCallAt,
       lastStatus: providerState.lastStatus,
       nextDailyResetAt: resolveUtcMidnightResetAt(nowMs),
-      nextMinuteResetAt: resolveMinuteResetAt(nowMs)
+      nextMinuteResetAt: resolveMinuteResetAt(nowMs),
+      policy,
+      observedConsumption: { minute: unitsMinute, dayRolling: units24h, headers: { limit: providerState.headerLimit, remaining: providerState.headerRemaining } }
     };
   }
 
   getSnapshot() {
-    const nowMs = Date.now();
+    const nowMs = this.now();
     return PROVIDERS.map((provider) => this.getProviderSnapshot(provider, nowMs));
   }
 }
@@ -395,5 +463,5 @@ class ApiQuotaTrackerService {
 const apiQuotaTracker = new ApiQuotaTrackerService();
 apiQuotaTracker.reset();
 
-export { WINDOW_MS, MINUTE_WINDOW_MS, parseRateLimitHeaders };
+export { ApiQuotaTrackerService, WINDOW_MS, MINUTE_WINDOW_MS, parseRateLimitHeaders };
 export default apiQuotaTracker;

@@ -1,4 +1,5 @@
 import apiQuotaTracker, { MINUTE_WINDOW_MS, WINDOW_MS } from "../services/admin/apiQuotaTrackerService.js";
+import { providerRuntime } from "../services/providers/providerRuntime.js";
 import { buildCoverageByMode } from "../services/market/quoteMetadata.js";
 import { normalizeAdminArticles } from "../services/normalizeService.js";
 import { resolveBandByProviderSnapshots, resolveNewsPolicy, resolveQuotaBandFromSnapshot } from "../services/refreshPolicyService.js";
@@ -254,6 +255,7 @@ export function getApiLimits(_req, res) {
       },
       providers: apiQuotaTracker.getSnapshot().map((provider) => ({
         ...provider,
+        metrics: providerRuntime.getMetrics(provider.provider),
         quotaBand: resolveQuotaBandFromSnapshot(provider)
       })),
       generatedAt: new Date().toISOString()
@@ -309,6 +311,7 @@ export function getPipelineStatus(_req, res) {
     marketConfig: config.market || {}
   });
   const effectiveProvider = marketEnabled ? marketSourceMeta?.effectiveProvider || null : null;
+  const marketTransport = marketEnabled ? res.app.locals.marketDataService?.getDiagnostics?.() || null : null;
 
   res.json({
     ok: true,
@@ -349,6 +352,7 @@ export function getPipelineStatus(_req, res) {
         persistenceEligible: marketEnabled ? marketSourceMeta?.persistenceEligible === true : false,
         persistReason: marketEnabled ? marketSourceMeta?.persistReason || null : null,
         providerSlots,
+        transportDiagnostics: marketTransport,
         routerDecision: marketEnabled
           ? marketSourceMeta?.routerDecision || {
               attemptedOrder: [],

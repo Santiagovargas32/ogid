@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { resolveClientIp } from "./clientIp.js";
+import { sanitizeSensitiveData, sanitizeUrl } from "./sanitize.js";
 
 const LEVEL_PRIORITY = {
   error: 0,
@@ -29,7 +30,7 @@ function emit(level, message, context = {}, scope = DEFAULT_SCOPE) {
     level,
     scope: scope || DEFAULT_SCOPE,
     message,
-    ...context
+    ...sanitizeSensitiveData(context)
   };
 
   if (level === "warn" || level === "error") {
@@ -95,7 +96,7 @@ export function requestLogger(req, res, next) {
     requestLog.info("http_request", {
       requestId,
       method: req.method,
-      path: req.originalUrl,
+      path: sanitizeUrl(req.originalUrl),
       statusCode: res.statusCode,
       durationMs: Number(durationMs.toFixed(2)),
       ip: clientIpInfo.clientIp || req.ip || null,
@@ -103,7 +104,7 @@ export function requestLogger(req, res, next) {
       remoteAddress: clientIpInfo.remoteAddress,
       userAgent: req.headers["user-agent"] || null,
       origin: req.headers.origin || null,
-      referer: req.headers.referer || req.headers.referrer || null
+      referer: sanitizeUrl(req.headers.referer || req.headers.referrer || "") || null
     });
   });
 

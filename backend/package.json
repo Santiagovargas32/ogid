@@ -8,15 +8,18 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "node --test"
+    "check": "node scripts/check-source.js",
+    "test": "node --require ./tests/testSetup.cjs --test",
+    "build": "npm run check"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.0.0 <27"
   },
   "dependencies": {
     "dotenv": "^16.6.1",
     "express": "^5.1.0",
     "helmet": "^8.1.0",
-    "ws": "^8.18.3"
+    "ws": "^8.21.0",
+    "yahoo-finance2": "4.0.0"
   }
 }
