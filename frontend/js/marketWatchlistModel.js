@@ -106,7 +106,3 @@ export function marketSelectionIds(selection = []) {
 export function marketSelectionSymbols(selection = []) {
   return normalizeMarketInstruments(selection).map((instrument) => instrument.symbol);
 }
-
-export function resolveMaxSelected(value) {
-  return normalizedMaxSelected(value);
-}

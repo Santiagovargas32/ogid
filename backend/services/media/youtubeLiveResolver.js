@@ -853,13 +853,6 @@ export async function resolveYoutubeLiveStream(streamConfig = {}, options = {}) 
   });
 }
 
-export function buildYoutubeFallbackStream(streamConfig = {}, options = {}) {
-  return buildFallbackResult(streamConfig, options.availability || "channel_fallback", {
-    nowMs: options.nowMs || Date.now(),
-    errorReason: options.errorReason
-  });
-}
-
 export function buildYoutubeConfigStream(streamConfig = {}, options = {}) {
   const cache = options.cache || defaultYoutubeLiveCache;
   const nowMs = options.nowMs || Date.now();

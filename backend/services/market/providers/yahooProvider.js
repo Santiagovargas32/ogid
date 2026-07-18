@@ -3,9 +3,6 @@ import { MarketDataService } from "../../marketData/marketDataService.js";
 import { computeProviderScore, normalizeRequestedTickers, summarizeAttempt } from "./providerUtils.js";
 import { sanitizeSensitiveData } from "../../../utils/sanitize.js";
 
-export const DEFAULT_YAHOO_BASE_URL = "https://finance.yahoo.com";
-export const DEFAULT_YAHOO_USER_AGENT = "ogid/1.0";
-
 let defaultMarketDataService = null;
 
 function publicErrorCode(value) {

@@ -198,18 +198,3 @@ export function detectCountryMentions(text = "") {
 
   return [...matches];
 }
-
-export function isWatchlistCountry(iso2, watchlist = []) {
-  const normalizedIso2 = String(iso2 || "").toUpperCase();
-  if (!ISO2_SET.has(normalizedIso2)) {
-    return false;
-  }
-  if (!watchlist.length) {
-    return true;
-  }
-  return watchlist.includes(normalizedIso2);
-}
-
-export function getSupportedCountryIso2() {
-  return [...ISO2_SET];
-}

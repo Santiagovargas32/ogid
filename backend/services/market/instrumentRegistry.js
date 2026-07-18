@@ -114,22 +114,6 @@ export function registerInstruments(values = []) {
   return values.map((instrument) => registerInstrument(instrument));
 }
 
-export function registerYahooInstrument(metadata = {}) {
-  const quoteType = String(metadata.quoteType || metadata.assetType || "instrument").toLowerCase();
-  return registerInstrument({
-    ...metadata,
-    canonicalSymbol: metadata.symbol || metadata.canonicalSymbol,
-    displayName: metadata.displayName || metadata.longName || metadata.shortName,
-    assetType: normalizeAssetType(quoteType),
-    exchange: metadata.fullExchangeName || metadata.exchange,
-    timezone: metadata.exchangeTimezoneName || metadata.timezone,
-    providerSymbols: { ...(metadata.providerSymbols || {}), yahoo: metadata.providerSymbol || metadata.symbol || metadata.canonicalSymbol },
-    metadataSource: metadata.metadataSource || { provider: "yahoo-finance2", verifiedAt: new Date().toISOString() },
-    dynamic: true,
-    verificationStatus: "verified"
-  });
-}
-
 if (process.env.NODE_ENV === "test" && Array.isArray(globalThis.__OGID_TEST_MARKET_INSTRUMENTS__)) {
   registerInstruments(globalThis.__OGID_TEST_MARKET_INSTRUMENTS__);
 }
@@ -142,7 +126,6 @@ export function getProviderSymbol(instrumentId, providerId) { return getInstrume
 export function getInstrumentByProviderSymbol(providerId, symbol) { const provider = String(providerId || "").toLowerCase(); const normalized = String(symbol || "").toUpperCase(); return instruments.find((instrument) => String(instrument.providerSymbols?.[provider] || "").toUpperCase() === normalized) || null; }
 export function listVerifiedInstruments() { return instruments.filter((instrument) => instrument.verificationStatus === "verified"); }
 export function listEnabledInstruments(rolloutBatch = resolveRolloutBatch()) { return listVerifiedInstruments().filter((instrument) => instrument.enabled && instrument.rolloutBatch <= rolloutBatch); }
-export function listEnabledCanonicalSymbols(rolloutBatch = resolveRolloutBatch()) { return listEnabledInstruments(rolloutBatch).map((instrument) => instrument.canonicalSymbol); }
 export function applyHotInstrumentSelection(values = [], selectedInstrumentIds = []) {
   const selected = new Set(selectedInstrumentIds.map((value) => String(value).toLowerCase()));
   return values.map((instrument) => selected.has(instrument.instrumentId.toLowerCase())

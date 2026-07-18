@@ -49,19 +49,12 @@ async function request(path, params = {}, options = {}) {
 
 export const api = {
   getHealth: () => request("/api/health"),
-  getMapConfig: () => request("/api/map/config"),
-  getMapLayers: (params = {}) => request("/api/map/layers", params),
-  getMapPresets: () => request("/api/map/presets"),
-  getMapThemes: () => request("/api/map/themes"),
   getSnapshot: (params = {}) => request("/api/intel/snapshot", params),
   refreshIntel: (payload = {}) => request("/api/intel/refresh", {}, { method: "POST", body: payload }),
-  getHotspots: (params = {}) => request("/api/intel/hotspots", params),
   getHotspotsV2: (params = {}) => request("/api/intel/hotspots-v2", params),
-  getRisks: (params = {}) => request("/api/intel/risks", params),
   getNews: (params = {}) => request("/api/intel/news", params),
   getAggregateNews: (params = {}) => request("/api/news/aggregate", params),
   getMediaStreams: (params = {}) => request("/api/media/streams", params),
-  getInsights: (params = {}) => request("/api/intel/insights", params),
   getCountryInstability: (params = {}) => request("/api/country-instability", params),
   getIntelAnomalies: (params = {}) => request("/api/intel/anomalies", params),
   getMarketQuotes: (params = {}) => request("/api/market/quotes", params),
@@ -70,12 +63,10 @@ export const api = {
   getMarketWatchlist: () => request("/api/market/watchlist"),
   updateMarketWatchlist: (instrumentIds) => request("/api/market/watchlist", {}, { method: "PUT", body: { instrumentIds } }),
   getMarketCandles: (params = {}) => request("/api/market/candles", params),
-  getMarketImpact: (params = {}) => request("/api/market/impact", params),
   getMarketAnalytics: (params = {}) => request("/api/market/analytics", params),
   getApiLimits: () => request("/api/admin/api-limits"),
   getPipelineStatus: () => request("/api/admin/pipeline-status"),
   getAdminNewsRaw: (params = {}) => request("/api/admin/news-raw", params),
-  getMediaStream: (id, params = {}) => request(`/api/media/streams/${encodeURIComponent(id)}`, params),
   refreshMediaStreams: (payload = {}) => request("/api/media/streams/refresh", {}, { method: "POST", body: payload }),
   getMediaStreamsHealth: () => request("/api/media/streams/health")
 };

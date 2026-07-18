@@ -43,8 +43,4 @@ export function getProviderPolicy(provider) {
   return policy ? structuredClone(policy) : null;
 }
 
-export function listProviderPolicies() {
-  return Object.values(policies).map((policy) => structuredClone(policy));
-}
-
 export { VERIFIED_AT };

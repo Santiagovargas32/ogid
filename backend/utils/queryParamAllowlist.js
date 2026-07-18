@@ -80,9 +80,3 @@ export function queryParamAllowlist(req, res, next) {
 
   next();
 }
-
-export function listAllowedQueryParams() {
-  return Object.fromEntries(
-    [...ROUTE_QUERY_PARAMS.entries()].map(([route, params]) => [route, [...params].sort()])
-  );
-}

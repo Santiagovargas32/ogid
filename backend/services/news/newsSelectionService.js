@@ -302,27 +302,3 @@ export function buildIntelNewsSelection({
     }
   };
 }
-
-export function selectNewsForIntel({
-  articles = [],
-  previousArticles = [],
-  watchlistCountries = [],
-  now = new Date(),
-  analyzeLimit = 80,
-  candidateWindowHours = 36,
-  noveltyWindowHours = 12,
-  maxPerSource = 3,
-  maxSimilarHeadline = 2
-} = {}) {
-  return buildIntelNewsSelection({
-    articles,
-    previousArticles,
-    watchlistCountries,
-    now,
-    analyzeLimit,
-    candidateWindowHours,
-    noveltyWindowHours,
-    maxPerSource,
-    maxSimilarHeadline
-  }).displaySelection;
-}

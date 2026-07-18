@@ -286,10 +286,6 @@ export function projectLegacyGeneratedSearches(catalog = NEWS_SOURCE_CATALOG) {
   return catalog.entries.filter((entry) => entry.type === "generated_search").map(legacyFeed);
 }
 
-export function projectLegacyExtendedCatalog(catalog = NEWS_SOURCE_CATALOG) {
-  return [...projectLegacyRssFeeds(catalog), ...projectLegacyGeneratedSearches(catalog)];
-}
-
 export function summarizeNewsSourceCatalog(catalog = NEWS_SOURCE_CATALOG) {
   validateNewsSourceCatalog(catalog);
   const byType = { rss: 0, generated_search: 0, discovery: 0 };
