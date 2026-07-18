@@ -12,7 +12,7 @@ import {
 import { parseFeedArticles } from "../services/news/providers/rssProvider.js";
 import { RssAggregatorService } from "../services/news/rssAggregator.js";
 
-const LEGACY_RSS_PROJECTION_SHA256 = "f53bce9d8ef205d728345a30165fcdf446f811a65a14592f3252ec0d9eb4c5c0";
+const LEGACY_RSS_PROJECTION_SHA256 = "6a510ef55f64c288a0993a9619b1c70d368ea25410b4d7be5ac7ff4149a5c37c";
 const LEGACY_GENERATED_PROJECTION_SHA256 = "9f3ecc31d3735f7d5c7be4dae62ab34112968159b72aba63275ef83c43ea8cb9";
 
 function digest(value) {
@@ -25,11 +25,11 @@ function cloneEntries() {
 
 test("canonical source catalog has the exact inventory split", () => {
   const summary = summarizeNewsSourceCatalog();
-  assert.equal(summary.total, 503);
-  assert.deepEqual(summary.byType, { rss: 68, generated_search: 435, discovery: 0 });
-  assert.equal(summary.enabledRss, 67);
-  assert.equal(summary.disabledRss, 1);
-  assert.equal(new Set(NEWS_SOURCE_CATALOG.entries.map((entry) => entry.sourceId)).size, 503);
+  assert.equal(summary.total, 501);
+  assert.deepEqual(summary.byType, { rss: 66, generated_search: 435, discovery: 0 });
+  assert.equal(summary.enabledRss, 66);
+  assert.equal(summary.disabledRss, 0);
+  assert.equal(new Set(NEWS_SOURCE_CATALOG.entries.map((entry) => entry.sourceId)).size, 501);
   assert.equal(NEWS_SOURCE_CATALOG.entries.every((entry) => entry.instrumentIds.length === 0), true);
 });
 
@@ -37,21 +37,27 @@ test("legacy RSS projection preserves order, URLs and enabled state", () => {
   const projection = projectLegacyRssFeeds();
   const stableProjection = projection.map(({ label, url, disabled, reason }) => ({ label, url, disabled, reason }));
   assert.equal(digest(stableProjection), LEGACY_RSS_PROJECTION_SHA256);
-  assert.equal(projection.length, 68);
+  assert.equal(projection.length, 66);
   assert.deepEqual(projection.slice(0, 3).map(({ label }) => label), [
-    "Bellingcat",
-    "GlobalSecurity",
-    "ACLED Conflict Data"
+    "U.S. Defense Releases",
+    "U.S. Defense Contracts",
+    "EIA Today in Energy"
   ]);
 });
 
-test("disabled ZeroHedge source is retained with its legacy reason", () => {
-  const disabled = projectLegacyRssFeeds().filter((feed) => feed.disabled);
-  assert.equal(disabled.length, 1);
-  assert.equal(disabled[0].sourceId, "rss-zerohedge-disabled");
-  assert.equal(disabled[0].label, "ZeroHedge");
-  assert.equal(disabled[0].url, "https://www.zerohedge.com/");
-  assert.equal(disabled[0].reason, "disabled-until-valid-xml-feed");
+test("official sources lead the catalog and retired invalid feeds stay removed", () => {
+  const rssEntries = NEWS_SOURCE_CATALOG.entries.filter((entry) => entry.type === "rss");
+  assert.equal(rssEntries.slice(0, 16).every((entry) => entry.role === "official"), true);
+  const ids = new Set(rssEntries.map((entry) => entry.sourceId));
+  for (const retiredId of [
+    "rss-globalsecurity",
+    "rss-zerohedge-disabled",
+    "rss-reliefweb-global-crisis",
+    "rss-reuters-world",
+    "rss-yahoo-world"
+  ]) {
+    assert.equal(ids.has(retiredId), false);
+  }
 });
 
 test("generated searches retain their legacy projection without becoming RSS sources", () => {
@@ -86,7 +92,7 @@ test("catalog validation detects duplicate canonical URLs and query definitions"
   duplicateUrl.push({
     ...structuredClone(duplicateUrl[0]),
     sourceId: "rss-duplicate-url",
-    url: "HTTPS://WWW.BELLINGCAT.COM:443/feed/#fragment"
+    url: `${duplicateUrl[0].url}#fragment`
   });
   assert.throws(() => createNewsSourceCatalog(duplicateUrl), /duplicate-news-source-identity/);
 
@@ -143,6 +149,21 @@ test("legacy batch projection keeps the first visible selection unchanged", () =
   );
   assert.equal(service.feedCatalogStats.typeCounts.generated_search, 435);
   assert.equal(service.feedCatalogStats.catalogVersion, NEWS_SOURCE_CATALOG.catalogVersion);
+});
+
+test("legacy batches rotate through every configured RSS without exceeding the per-cycle cap", () => {
+  const rssFeeds = projectLegacyRssFeeds().filter((feed) => !feed.disabled);
+  const service = new RssAggregatorService({
+    rssFeeds,
+    refreshIntervalMs: 900_000,
+    maxFeedsPerRun: 18,
+    maxCorpusItems: 900,
+    pipelineMode: "legacy"
+  });
+  const batches = Array.from({ length: Math.ceil(rssFeeds.length / 18) }, () => service.nextFeedBatch());
+  assert.equal(batches.every((batch) => batch.length <= 18), true);
+  const configuredIds = new Set(batches.flat().filter((feed) => !feed.generated).map((feed) => feed.sourceId));
+  assert.equal(configuredIds.size, rssFeeds.length);
 });
 
 test("catalog and projections perform zero HTTP calls", () => {

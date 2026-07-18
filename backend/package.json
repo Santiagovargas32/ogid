@@ -8,6 +8,9 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
+    "dev:rss-lab": "node --watch --import ./scripts/rss-lab-setup.js server.js",
+    "rss:probe": "node scripts/probe-rss.js",
+    "rss:audit": "node scripts/audit-rss-catalog.js",
     "check": "node scripts/check-source.js",
     "test": "node --require ./tests/testSetup.cjs --test",
     "build": "npm run check"

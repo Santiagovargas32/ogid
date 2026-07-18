@@ -1,0 +1,4415 @@
+{
+  "schemaVersion": 1,
+  "mode": "rss-catalog-live-audit",
+  "generatedAt": "2026-07-18T22:55:32.840Z",
+  "requestPolicy": {
+    "feedCount": 66,
+    "concurrency": 1,
+    "retries": 0,
+    "timeoutMs": 8000,
+    "delayMs": 350,
+    "backgroundRefresh": false,
+    "credentialsRequired": false
+  },
+  "summary": {
+    "catalogFeeds": 66,
+    "attemptedFeeds": 66,
+    "validFeeds": 66,
+    "sourcesReturningNews": 66,
+    "sourcesWithFreshNews7d": 62,
+    "degradedSources": 4,
+    "emptySources": 0,
+    "failedSources": 0,
+    "totalArticlesObserved": 2896,
+    "categoryCounts": {
+      "healthy": 62,
+      "degraded": 4
+    },
+    "httpStatusCounts": {
+      "200": 66
+    },
+    "errorCounts": {}
+  },
+  "feeds": [
+    {
+      "sourceId": "rss-us-defense-releases",
+      "label": "U.S. Defense Releases",
+      "role": "official",
+      "url": "https://www.war.gov/DesktopModules/ArticleCS/RSS.ashx?ContentType=9&Site=945&max=10",
+      "hostname": "www.war.gov",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "text/xml; charset=utf-8",
+      "responseUrl": "https://www.war.gov/DesktopModules/ArticleCS/RSS.ashx?ContentType=9&Site=945&max=10",
+      "redirected": false,
+      "payloadBytes": 8755,
+      "articles": 10,
+      "latencyMs": 125,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 10,
+        "uniqueArticles": 10,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 20,
+          "freshWithin7d": 100,
+          "freshWithin30d": 100,
+          "substantialSummary": 100,
+          "image": 0,
+          "countryMentions": 30,
+          "topicTags": 0
+        },
+        "newestPublishedAt": "2026-07-18T01:10:50.000Z",
+        "oldestPublishedAt": "2026-07-14T14:00:22.000Z",
+        "latestAgeHours": 21.7,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "US": 3,
+          "IQ": 1
+        },
+        "topTopics": {},
+        "threatLevels": {
+          "low": 10
+        }
+      }
+    },
+    {
+      "sourceId": "rss-us-defense-contracts",
+      "label": "U.S. Defense Contracts",
+      "role": "official",
+      "url": "https://www.war.gov/DesktopModules/ArticleCS/RSS.ashx?ContentType=400&Site=945&max=10",
+      "hostname": "www.war.gov",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "text/xml; charset=utf-8",
+      "responseUrl": "https://www.war.gov/DesktopModules/ArticleCS/RSS.ashx?ContentType=400&Site=945&max=10",
+      "redirected": false,
+      "payloadBytes": 6205,
+      "articles": 10,
+      "latencyMs": 34,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 10,
+        "uniqueArticles": 10,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 10,
+          "freshWithin7d": 50,
+          "freshWithin30d": 100,
+          "substantialSummary": 100,
+          "image": 0,
+          "countryMentions": 0,
+          "topicTags": 0
+        },
+        "newestPublishedAt": "2026-07-17T21:00:17.000Z",
+        "oldestPublishedAt": "2026-07-06T21:00:00.000Z",
+        "latestAgeHours": 25.9,
+        "futureDatedArticles": 0,
+        "topCountries": {},
+        "topTopics": {},
+        "threatLevels": {
+          "low": 10
+        }
+      }
+    },
+    {
+      "sourceId": "rss-eia-today-in-energy",
+      "label": "EIA Today in Energy",
+      "role": "official",
+      "url": "https://www.eia.gov/rss/todayinenergy.xml",
+      "hostname": "www.eia.gov",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "text/xml",
+      "responseUrl": "https://www.eia.gov/rss/todayinenergy.xml",
+      "redirected": false,
+      "payloadBytes": 12660,
+      "articles": 18,
+      "latencyMs": 285,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 18,
+        "uniqueArticles": 18,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 0,
+          "freshWithin7d": 16.7,
+          "freshWithin30d": 55.6,
+          "substantialSummary": 100,
+          "image": 0,
+          "countryMentions": 72.2,
+          "topicTags": 83.3
+        },
+        "newestPublishedAt": "2026-07-16T14:00:00.000Z",
+        "oldestPublishedAt": "2026-06-02T14:00:00.000Z",
+        "latestAgeHours": 56.9,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "US": 11,
+          "CN": 1,
+          "IQ": 1,
+          "IR": 1,
+          "RU": 1,
+          "VE": 1
+        },
+        "topTopics": {
+          "energy": 14,
+          "shipping": 3,
+          "economics": 2
+        },
+        "threatLevels": {
+          "low": 18
+        }
+      }
+    },
+    {
+      "sourceId": "rss-eia-press-releases",
+      "label": "EIA Press Releases",
+      "role": "official",
+      "url": "https://www.eia.gov/rss/press_rss.xml",
+      "hostname": "www.eia.gov",
+      "enabled": true,
+      "status": "ok",
+      "category": "degraded",
+      "reason": "low-cadence-or-aging-news",
+      "recommendedAction": "review-cadence",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "text/xml",
+      "responseUrl": "https://www.eia.gov/rss/press_rss.xml",
+      "redirected": false,
+      "payloadBytes": 6364,
+      "articles": 9,
+      "latencyMs": 150,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 9,
+        "uniqueArticles": 9,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 0,
+          "validPublishedAt": 100,
+          "freshWithin48h": 0,
+          "freshWithin7d": 0,
+          "freshWithin30d": 11.1,
+          "substantialSummary": 100,
+          "image": 0,
+          "countryMentions": 77.8,
+          "topicTags": 66.7
+        },
+        "newestPublishedAt": "2026-07-07T17:00:00.000Z",
+        "oldestPublishedAt": "2026-01-13T17:00:00.000Z",
+        "latestAgeHours": 269.9,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "US": 7
+        },
+        "topTopics": {
+          "energy": 5,
+          "shipping": 4,
+          "conflict": 1,
+          "environment": 1
+        },
+        "threatLevels": {
+          "low": 8,
+          "monitoring": 1
+        }
+      }
+    },
+    {
+      "sourceId": "rss-sec-press-releases",
+      "label": "SEC Press Releases",
+      "role": "official",
+      "url": "https://www.sec.gov/news/pressreleases.rss",
+      "hostname": "www.sec.gov",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/rss+xml; charset=utf-8",
+      "responseUrl": "https://www.sec.gov/news/pressreleases.rss",
+      "redirected": false,
+      "payloadBytes": 18033,
+      "articles": 25,
+      "latencyMs": 53,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 25,
+        "uniqueArticles": 25,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 0,
+          "freshWithin7d": 4,
+          "freshWithin30d": 40,
+          "substantialSummary": 100,
+          "image": 0,
+          "countryMentions": 12,
+          "topicTags": 12
+        },
+        "newestPublishedAt": "2026-07-16T12:57:00.000Z",
+        "oldestPublishedAt": "2026-05-05T20:23:55.000Z",
+        "latestAgeHours": 58,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "US": 3
+        },
+        "topTopics": {
+          "economics": 2,
+          "sanctions": 1
+        },
+        "threatLevels": {
+          "low": 24,
+          "monitoring": 1
+        }
+      }
+    },
+    {
+      "sourceId": "rss-federal-reserve-press-releases",
+      "label": "Federal Reserve Press Releases",
+      "role": "official",
+      "url": "https://www.federalreserve.gov/feeds/press_all.xml",
+      "hostname": "www.federalreserve.gov",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "text/xml",
+      "responseUrl": "https://www.federalreserve.gov/feeds/press_all.xml",
+      "redirected": false,
+      "payloadBytes": 14408,
+      "articles": 20,
+      "latencyMs": 162,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 20,
+        "uniqueArticles": 20,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 0,
+          "freshWithin7d": 15,
+          "freshWithin30d": 70,
+          "substantialSummary": 75,
+          "image": 0,
+          "countryMentions": 5,
+          "topicTags": 10
+        },
+        "newestPublishedAt": "2026-07-16T18:00:00.000Z",
+        "oldestPublishedAt": "2026-06-11T15:00:00.000Z",
+        "latestAgeHours": 52.9,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "US": 1
+        },
+        "topTopics": {
+          "economics": 2
+        },
+        "threatLevels": {
+          "low": 20
+        }
+      }
+    },
+    {
+      "sourceId": "rss-eu-sanctions-guidance",
+      "label": "European Commission Sanctions Guidance",
+      "role": "official",
+      "url": "https://finance.ec.europa.eu/node/1296/rss_en",
+      "hostname": "finance.ec.europa.eu",
+      "enabled": true,
+      "status": "ok",
+      "category": "degraded",
+      "reason": "stale-news-over-30d",
+      "recommendedAction": "replace-or-remove",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/rss+xml; charset=utf-8",
+      "responseUrl": "https://finance.ec.europa.eu/node/1296/rss_en",
+      "redirected": false,
+      "payloadBytes": 25323,
+      "articles": 19,
+      "latencyMs": 165,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 19,
+        "uniqueArticles": 19,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 0,
+          "freshWithin7d": 0,
+          "freshWithin30d": 0,
+          "substantialSummary": 100,
+          "image": 0,
+          "countryMentions": 52.6,
+          "topicTags": 10.5
+        },
+        "newestPublishedAt": "2026-01-15T11:33:16.000Z",
+        "oldestPublishedAt": "2023-09-20T09:37:34.000Z",
+        "latestAgeHours": 4427.4,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "RU": 5,
+          "UA": 5
+        },
+        "topTopics": {
+          "energy": 1,
+          "sanctions": 1,
+          "shipping": 1
+        },
+        "threatLevels": {
+          "low": 18,
+          "monitoring": 1
+        }
+      }
+    },
+    {
+      "sourceId": "rss-cisa-advisories",
+      "label": "CISA Cybersecurity Advisories",
+      "role": "official",
+      "url": "https://www.cisa.gov/cybersecurity-advisories/all.xml",
+      "hostname": "www.cisa.gov",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/rss+xml; charset=utf-8",
+      "responseUrl": "https://www.cisa.gov/cybersecurity-advisories/all.xml",
+      "redirected": false,
+      "payloadBytes": 414903,
+      "articles": 30,
+      "latencyMs": 137,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 30,
+        "uniqueArticles": 30,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 0,
+          "freshWithin7d": 66.7,
+          "freshWithin30d": 100,
+          "substantialSummary": 100,
+          "image": 3.3,
+          "countryMentions": 33.3,
+          "topicTags": 96.7
+        },
+        "newestPublishedAt": "2026-07-16T12:00:00.000Z",
+        "oldestPublishedAt": "2026-07-07T12:00:00.000Z",
+        "latestAgeHours": 58.9,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "US": 10,
+          "RU": 1
+        },
+        "topTopics": {
+          "cyber": 29,
+          "economics": 5,
+          "energy": 3,
+          "shipping": 3
+        },
+        "threatLevels": {
+          "monitoring": 29,
+          "low": 1
+        }
+      }
+    },
+    {
+      "sourceId": "rss-cisa-news",
+      "label": "CISA News",
+      "role": "official",
+      "url": "https://www.cisa.gov/news.xml",
+      "hostname": "www.cisa.gov",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/rss+xml; charset=utf-8",
+      "responseUrl": "https://www.cisa.gov/news.xml",
+      "redirected": false,
+      "payloadBytes": 4585,
+      "articles": 10,
+      "latencyMs": 18,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 10,
+        "uniqueArticles": 10,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 0,
+          "freshWithin7d": 20,
+          "freshWithin30d": 40,
+          "substantialSummary": 70,
+          "image": 0,
+          "countryMentions": 10,
+          "topicTags": 30
+        },
+        "newestPublishedAt": "2026-07-15T12:00:00.000Z",
+        "oldestPublishedAt": "2026-05-05T12:00:00.000Z",
+        "latestAgeHours": 82.9,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "US": 1
+        },
+        "topTopics": {
+          "cyber": 3
+        },
+        "threatLevels": {
+          "low": 7,
+          "monitoring": 3
+        }
+      }
+    },
+    {
+      "sourceId": "rss-bis-federal-register",
+      "label": "BIS Federal Register",
+      "role": "official",
+      "url": "https://www.federalregister.gov/api/v1/documents.rss?conditions%5Bagencies%5D%5B%5D=industry-and-security-bureau",
+      "hostname": "www.federalregister.gov",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/rss+xml; charset=utf-8",
+      "responseUrl": "https://www.federalregister.gov/api/v1/documents.rss?conditions%5Bagencies%5D%5B%5D=industry-and-security-bureau",
+      "redirected": false,
+      "payloadBytes": 7542,
+      "articles": 6,
+      "latencyMs": 342,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 6,
+        "uniqueArticles": 6,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 0,
+          "freshWithin7d": 16.7,
+          "freshWithin30d": 100,
+          "substantialSummary": 100,
+          "image": 0,
+          "countryMentions": 16.7,
+          "topicTags": 16.7
+        },
+        "newestPublishedAt": "2026-07-14T04:00:00.000Z",
+        "oldestPublishedAt": "2026-06-24T04:00:00.000Z",
+        "latestAgeHours": 114.9,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "US": 1
+        },
+        "topTopics": {
+          "energy": 1
+        },
+        "threatLevels": {
+          "low": 6
+        }
+      }
+    },
+    {
+      "sourceId": "rss-cftc-press-releases",
+      "label": "CFTC Press Releases",
+      "role": "official",
+      "url": "https://www.cftc.gov/RSS/RSSGP/rssgp.xml",
+      "hostname": "www.cftc.gov",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/rss+xml; charset=utf-8",
+      "responseUrl": "https://www.cftc.gov/RSS/RSSGP/rssgp.xml",
+      "redirected": false,
+      "payloadBytes": 4703,
+      "articles": 10,
+      "latencyMs": 119,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 10,
+        "uniqueArticles": 10,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 10,
+          "freshWithin7d": 40,
+          "freshWithin30d": 90,
+          "substantialSummary": 70,
+          "image": 0,
+          "countryMentions": 10,
+          "topicTags": 10
+        },
+        "newestPublishedAt": "2026-07-17T14:38:56.000Z",
+        "oldestPublishedAt": "2026-06-18T19:59:43.000Z",
+        "latestAgeHours": 32.3,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "US": 1
+        },
+        "topTopics": {
+          "energy": 1
+        },
+        "threatLevels": {
+          "low": 10
+        }
+      }
+    },
+    {
+      "sourceId": "rss-eu-council-press-releases",
+      "label": "EU Council Press Releases",
+      "role": "official",
+      "url": "https://www.consilium.europa.eu/en/rss/pressreleases.ashx",
+      "hostname": "www.consilium.europa.eu",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "text/xml; charset=utf-8",
+      "responseUrl": "https://www.consilium.europa.eu/en/rss/pressreleases.ashx",
+      "redirected": false,
+      "payloadBytes": 13754,
+      "articles": 20,
+      "latencyMs": 100,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 20,
+        "uniqueArticles": 20,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 100,
+          "freshWithin7d": 100,
+          "freshWithin30d": 100,
+          "substantialSummary": 100,
+          "image": 0,
+          "countryMentions": 40,
+          "topicTags": 10
+        },
+        "newestPublishedAt": "2026-07-18T22:55:38.465Z",
+        "oldestPublishedAt": "2026-07-18T22:36:38.466Z",
+        "latestAgeHours": 0,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "UA": 6,
+          "RU": 1,
+          "SY": 1
+        },
+        "topTopics": {
+          "conflict": 1,
+          "cyber": 1
+        },
+        "threatLevels": {
+          "low": 18,
+          "monitoring": 2
+        }
+      }
+    },
+    {
+      "sourceId": "rss-uk-ministry-of-defence",
+      "label": "UK Ministry of Defence",
+      "role": "official",
+      "url": "https://www.gov.uk/search/news-and-communications.atom?organisations%5B%5D=ministry-of-defence",
+      "hostname": "www.gov.uk",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/atom+xml; charset=utf-8",
+      "responseUrl": "https://www.gov.uk/search/news-and-communications.atom?organisations%5B%5D=ministry-of-defence",
+      "redirected": false,
+      "payloadBytes": 13943,
+      "articles": 20,
+      "latencyMs": 206,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 20,
+        "uniqueArticles": 20,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 0,
+          "freshWithin7d": 50,
+          "freshWithin30d": 100,
+          "substantialSummary": 100,
+          "image": 0,
+          "countryMentions": 20,
+          "topicTags": 15
+        },
+        "newestPublishedAt": "2026-07-16T15:58:00.000Z",
+        "oldestPublishedAt": "2026-07-02T13:18:42.000Z",
+        "latestAgeHours": 55,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "UA": 4,
+          "RU": 1
+        },
+        "topTopics": {
+          "conflict": 3,
+          "civil_unrest": 1
+        },
+        "threatLevels": {
+          "low": 17,
+          "monitoring": 2,
+          "elevated": 1
+        }
+      }
+    },
+    {
+      "sourceId": "rss-un-press",
+      "label": "UN Press",
+      "role": "official",
+      "url": "https://press.un.org/en/rss.xml",
+      "hostname": "press.un.org",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/rss+xml; charset=utf-8",
+      "responseUrl": "https://press.un.org/en/rss.xml",
+      "redirected": false,
+      "payloadBytes": 7344,
+      "articles": 10,
+      "latencyMs": 132,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 10,
+        "uniqueArticles": 10,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 40,
+          "freshWithin7d": 100,
+          "freshWithin30d": 100,
+          "substantialSummary": 100,
+          "image": 0,
+          "countryMentions": 20,
+          "topicTags": 10
+        },
+        "newestPublishedAt": "2026-07-17T20:44:24.000Z",
+        "oldestPublishedAt": "2026-07-15T22:56:03.000Z",
+        "latestAgeHours": 26.2,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "AF": 1,
+          "VE": 1
+        },
+        "topTopics": {
+          "humanitarian": 1
+        },
+        "threatLevels": {
+          "low": 10
+        }
+      }
+    },
+    {
+      "sourceId": "rss-un-news-global",
+      "label": "UN News Global",
+      "role": "official",
+      "url": "https://news.un.org/feed/subscribe/en/news/all/rss.xml",
+      "hostname": "news.un.org",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/rss+xml; charset=utf-8",
+      "responseUrl": "https://news.un.org/feed/subscribe/en/news/all/rss.xml",
+      "redirected": false,
+      "payloadBytes": 33624,
+      "articles": 30,
+      "latencyMs": 120,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 30,
+        "uniqueArticles": 30,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 20,
+          "freshWithin7d": 100,
+          "freshWithin30d": 100,
+          "substantialSummary": 100,
+          "image": 100,
+          "countryMentions": 43.3,
+          "topicTags": 36.7
+        },
+        "newestPublishedAt": "2026-07-17T12:00:00.000Z",
+        "oldestPublishedAt": "2026-07-14T12:00:00.000Z",
+        "latestAgeHours": 34.9,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "SD": 4,
+          "IR": 3,
+          "US": 2,
+          "CO": 1,
+          "IL": 1,
+          "MM": 1,
+          "PK": 1,
+          "UA": 1,
+          "VE": 1
+        },
+        "topTopics": {
+          "humanitarian": 5,
+          "conflict": 3,
+          "shipping": 2,
+          "economics": 1,
+          "environment": 1
+        },
+        "threatLevels": {
+          "low": 27,
+          "monitoring": 3
+        }
+      }
+    },
+    {
+      "sourceId": "rss-iaea-top-news",
+      "label": "IAEA Top News",
+      "role": "official",
+      "url": "https://www.iaea.org/feeds/topnews",
+      "hostname": "www.iaea.org",
+      "enabled": true,
+      "status": "ok",
+      "category": "degraded",
+      "reason": "articles-without-usable-date",
+      "recommendedAction": "review-metadata",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/rss+xml; charset=utf-8",
+      "responseUrl": "https://www.iaea.org/feeds/topnews",
+      "redirected": false,
+      "payloadBytes": 9969,
+      "articles": 15,
+      "latencyMs": 55,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 15,
+        "uniqueArticles": 15,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 0,
+          "freshWithin48h": 0,
+          "freshWithin7d": 0,
+          "freshWithin30d": 0,
+          "substantialSummary": 26.7,
+          "image": 93.3,
+          "countryMentions": 33.3,
+          "topicTags": 0
+        },
+        "newestPublishedAt": null,
+        "oldestPublishedAt": null,
+        "latestAgeHours": null,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "UA": 3,
+          "CN": 1,
+          "US": 1
+        },
+        "topTopics": {},
+        "threatLevels": {
+          "low": 15
+        }
+      }
+    },
+    {
+      "sourceId": "rss-bellingcat",
+      "label": "Bellingcat",
+      "role": "primary",
+      "url": "https://www.bellingcat.com/feed/",
+      "hostname": "www.bellingcat.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/rss+xml; charset=UTF-8",
+      "responseUrl": "https://www.bellingcat.com/feed/",
+      "redirected": false,
+      "payloadBytes": 366995,
+      "articles": 10,
+      "latencyMs": 129,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 10,
+        "uniqueArticles": 10,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 0,
+          "freshWithin7d": 10,
+          "freshWithin30d": 70,
+          "substantialSummary": 100,
+          "image": 100,
+          "countryMentions": 80,
+          "topicTags": 100
+        },
+        "newestPublishedAt": "2026-07-16T16:00:01.000Z",
+        "oldestPublishedAt": "2026-06-04T12:27:02.000Z",
+        "latestAgeHours": 54.9,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "CN": 3,
+          "RU": 3,
+          "UA": 3,
+          "IR": 2,
+          "VE": 2,
+          "CO": 1,
+          "ET": 1,
+          "IN": 1,
+          "MM": 1,
+          "SD": 1
+        },
+        "topTopics": {
+          "economics": 5,
+          "space": 5,
+          "shipping": 4,
+          "conflict": 3,
+          "environment": 3,
+          "cyber": 2,
+          "energy": 2,
+          "sanctions": 1
+        },
+        "threatLevels": {
+          "low": 5,
+          "monitoring": 4,
+          "elevated": 1
+        }
+      }
+    },
+    {
+      "sourceId": "rss-defense-news",
+      "label": "Defense News",
+      "role": "primary",
+      "url": "https://www.defensenews.com/arc/outboundfeeds/rss/",
+      "hostname": "www.defensenews.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/xml; charset=utf-8",
+      "responseUrl": "https://www.defensenews.com/arc/outboundfeeds/rss/",
+      "redirected": false,
+      "payloadBytes": 148077,
+      "articles": 25,
+      "latencyMs": 165,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 25,
+        "uniqueArticles": 25,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 20,
+          "freshWithin7d": 100,
+          "freshWithin30d": 100,
+          "substantialSummary": 96,
+          "image": 100,
+          "countryMentions": 96,
+          "topicTags": 96
+        },
+        "newestPublishedAt": "2026-07-18T18:00:58.000Z",
+        "oldestPublishedAt": "2026-07-13T18:38:09.000Z",
+        "latestAgeHours": 4.9,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "US": 20,
+          "UA": 11,
+          "IR": 8,
+          "RU": 6,
+          "CN": 4,
+          "IL": 3,
+          "TR": 2,
+          "YE": 2,
+          "IQ": 1,
+          "KR": 1
+        },
+        "topTopics": {
+          "conflict": 19,
+          "shipping": 7,
+          "civil_unrest": 6,
+          "energy": 4,
+          "economics": 3,
+          "space": 3,
+          "environment": 2
+        },
+        "threatLevels": {
+          "monitoring": 9,
+          "elevated": 8,
+          "low": 6,
+          "critical": 2
+        }
+      }
+    },
+    {
+      "sourceId": "rss-war-on-the-rocks",
+      "label": "War on the Rocks",
+      "role": "primary",
+      "url": "https://warontherocks.com/feed/",
+      "hostname": "warontherocks.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/rss+xml; charset=UTF-8",
+      "responseUrl": "https://warontherocks.com/feed/",
+      "redirected": false,
+      "payloadBytes": 158509,
+      "articles": 100,
+      "latencyMs": 625,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 100,
+        "uniqueArticles": 100,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 5,
+          "freshWithin7d": 17,
+          "freshWithin30d": 60,
+          "substantialSummary": 100,
+          "image": 0,
+          "countryMentions": 82,
+          "topicTags": 35
+        },
+        "newestPublishedAt": "2026-07-17T17:30:33.000Z",
+        "oldestPublishedAt": "2026-05-29T07:15:07.000Z",
+        "latestAgeHours": 29.4,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "US": 48,
+          "CN": 19,
+          "UA": 17,
+          "IR": 16,
+          "RU": 11,
+          "IL": 9,
+          "TW": 5,
+          "IN": 4,
+          "KP": 4,
+          "TR": 3
+        },
+        "topTopics": {
+          "conflict": 14,
+          "shipping": 11,
+          "civil_unrest": 6,
+          "cyber": 4,
+          "energy": 4,
+          "environment": 3,
+          "economics": 2,
+          "humanitarian": 1
+        },
+        "threatLevels": {
+          "low": 79,
+          "monitoring": 19,
+          "critical": 1,
+          "elevated": 1
+        }
+      }
+    },
+    {
+      "sourceId": "rss-the-diplomat",
+      "label": "The Diplomat",
+      "role": "primary",
+      "url": "https://thediplomat.com/feed/",
+      "hostname": "thediplomat.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/rss+xml; charset=utf-8",
+      "responseUrl": "https://thediplomat.com/feed/",
+      "redirected": false,
+      "payloadBytes": 74525,
+      "articles": 96,
+      "latencyMs": 98,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 96,
+        "uniqueArticles": 96,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 15.6,
+          "freshWithin7d": 61.5,
+          "freshWithin30d": 100,
+          "substantialSummary": 87.5,
+          "image": 100,
+          "countryMentions": 65.6,
+          "topicTags": 17.7
+        },
+        "newestPublishedAt": "2026-07-17T16:09:00.000Z",
+        "oldestPublishedAt": "2026-07-08T09:26:00.000Z",
+        "latestAgeHours": 30.8,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "IN": 23,
+          "CN": 19,
+          "MM": 9,
+          "PK": 8,
+          "TW": 6,
+          "US": 5,
+          "RU": 4,
+          "KR": 3,
+          "AF": 2,
+          "KP": 2
+        },
+        "topTopics": {
+          "conflict": 6,
+          "civil_unrest": 4,
+          "economics": 3,
+          "energy": 1,
+          "environment": 1,
+          "humanitarian": 1,
+          "sanctions": 1,
+          "shipping": 1,
+          "space": 1
+        },
+        "threatLevels": {
+          "low": 85,
+          "monitoring": 11
+        }
+      }
+    },
+    {
+      "sourceId": "rss-foreign-policy",
+      "label": "Foreign Policy",
+      "role": "primary",
+      "url": "https://foreignpolicy.com/feed/",
+      "hostname": "foreignpolicy.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/rss+xml; charset=UTF-8",
+      "responseUrl": "https://foreignpolicy.com/feed/",
+      "redirected": false,
+      "payloadBytes": 40264,
+      "articles": 25,
+      "latencyMs": 111,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 25,
+        "uniqueArticles": 25,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 60,
+          "freshWithin7d": 100,
+          "freshWithin30d": 100,
+          "substantialSummary": 60,
+          "image": 100,
+          "countryMentions": 80,
+          "topicTags": 12
+        },
+        "newestPublishedAt": "2026-07-17T21:24:51.000Z",
+        "oldestPublishedAt": "2026-07-15T19:46:20.000Z",
+        "latestAgeHours": 25.5,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "US": 7,
+          "IR": 6,
+          "UA": 5,
+          "CN": 4,
+          "RU": 2,
+          "IN": 1,
+          "KP": 1,
+          "SD": 1,
+          "SY": 1,
+          "TR": 1
+        },
+        "topTopics": {
+          "conflict": 1,
+          "energy": 1,
+          "sanctions": 1
+        },
+        "threatLevels": {
+          "low": 23,
+          "monitoring": 2
+        }
+      }
+    },
+    {
+      "sourceId": "rss-atlantic-council",
+      "label": "Atlantic Council",
+      "role": "primary",
+      "url": "https://www.atlanticcouncil.org/feed/",
+      "hostname": "www.atlanticcouncil.org",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/rss+xml; charset=UTF-8",
+      "responseUrl": "https://www.atlanticcouncil.org/feed/",
+      "redirected": false,
+      "payloadBytes": 175476,
+      "articles": 100,
+      "latencyMs": 160,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 100,
+        "uniqueArticles": 100,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 5,
+          "freshWithin7d": 26,
+          "freshWithin30d": 100,
+          "substantialSummary": 100,
+          "image": 0,
+          "countryMentions": 60,
+          "topicTags": 20
+        },
+        "newestPublishedAt": "2026-07-18T15:40:34.000Z",
+        "oldestPublishedAt": "2026-06-30T20:29:03.000Z",
+        "latestAgeHours": 7.2,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "TR": 18,
+          "UA": 17,
+          "US": 11,
+          "IR": 9,
+          "RU": 7,
+          "IL": 5,
+          "VE": 4,
+          "CN": 3,
+          "IN": 2,
+          "IQ": 1
+        },
+        "topTopics": {
+          "conflict": 8,
+          "economics": 5,
+          "shipping": 4,
+          "energy": 3,
+          "cyber": 1,
+          "environment": 1,
+          "humanitarian": 1
+        },
+        "threatLevels": {
+          "low": 91,
+          "monitoring": 8,
+          "elevated": 1
+        }
+      }
+    },
+    {
+      "sourceId": "rss-chatham-house",
+      "label": "Chatham House",
+      "role": "primary",
+      "url": "https://www.chathamhouse.org/path/whatsnew.xml",
+      "hostname": "www.chathamhouse.org",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/rss+xml; charset=utf-8",
+      "responseUrl": "https://www.chathamhouse.org/path/whatsnew.xml",
+      "redirected": false,
+      "payloadBytes": 500830,
+      "articles": 50,
+      "latencyMs": 384,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 50,
+        "uniqueArticles": 50,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 2,
+          "freshWithin7d": 22,
+          "freshWithin30d": 88,
+          "substantialSummary": 100,
+          "image": 70,
+          "countryMentions": 82,
+          "topicTags": 68
+        },
+        "newestPublishedAt": "2026-07-17T09:02:47.000Z",
+        "oldestPublishedAt": "2026-06-17T11:22:05.000Z",
+        "latestAgeHours": 37.9,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "US": 23,
+          "IR": 19,
+          "CN": 15,
+          "RU": 15,
+          "IL": 14,
+          "UA": 13,
+          "TR": 8,
+          "IN": 5,
+          "CO": 2,
+          "IQ": 2
+        },
+        "topTopics": {
+          "conflict": 18,
+          "economics": 13,
+          "energy": 12,
+          "shipping": 12,
+          "humanitarian": 4,
+          "cyber": 3,
+          "civil_unrest": 2,
+          "sanctions": 2,
+          "environment": 1,
+          "space": 1
+        },
+        "threatLevels": {
+          "low": 28,
+          "monitoring": 21,
+          "elevated": 1
+        }
+      }
+    },
+    {
+      "sourceId": "rss-modern-war-institute",
+      "label": "Modern War Institute",
+      "role": "primary",
+      "url": "https://mwi.westpoint.edu/feed/",
+      "hostname": "mwi.westpoint.edu",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/rss+xml; charset=UTF-8",
+      "responseUrl": "https://mwi.westpoint.edu/feed/",
+      "redirected": false,
+      "payloadBytes": 5827,
+      "articles": 5,
+      "latencyMs": 74,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 5,
+        "uniqueArticles": 5,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 20,
+          "freshWithin7d": 80,
+          "freshWithin30d": 100,
+          "substantialSummary": 100,
+          "image": 0,
+          "countryMentions": 60,
+          "topicTags": 0
+        },
+        "newestPublishedAt": "2026-07-17T08:19:56.000Z",
+        "oldestPublishedAt": "2026-07-10T07:45:06.000Z",
+        "latestAgeHours": 38.6,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "TR": 1,
+          "UA": 1,
+          "US": 1
+        },
+        "topTopics": {},
+        "threatLevels": {
+          "low": 5
+        }
+      }
+    },
+    {
+      "sourceId": "rss-small-wars-journal",
+      "label": "Small Wars Journal",
+      "role": "primary",
+      "url": "https://smallwarsjournal.com/rss",
+      "hostname": "smallwarsjournal.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/rss+xml; charset=UTF-8",
+      "responseUrl": "https://smallwarsjournal.com/feed/",
+      "redirected": true,
+      "payloadBytes": 231618,
+      "articles": 10,
+      "latencyMs": 765,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 10,
+        "uniqueArticles": 10,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 100,
+          "freshWithin7d": 100,
+          "freshWithin30d": 100,
+          "substantialSummary": 100,
+          "image": 10,
+          "countryMentions": 100,
+          "topicTags": 100
+        },
+        "newestPublishedAt": "2026-07-18T18:45:39.000Z",
+        "oldestPublishedAt": "2026-07-17T00:00:36.000Z",
+        "latestAgeHours": 4.2,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "US": 8,
+          "RU": 6,
+          "CN": 5,
+          "UA": 5,
+          "IR": 4,
+          "TW": 3,
+          "KP": 2,
+          "KR": 2,
+          "PK": 2,
+          "AF": 1
+        },
+        "topTopics": {
+          "conflict": 10,
+          "shipping": 4,
+          "cyber": 3,
+          "economics": 3,
+          "energy": 3,
+          "space": 2,
+          "sanctions": 1
+        },
+        "threatLevels": {
+          "monitoring": 6,
+          "elevated": 4
+        }
+      }
+    },
+    {
+      "sourceId": "rss-defense-one",
+      "label": "Defense One",
+      "role": "primary",
+      "url": "https://www.defenseone.com/rss/all/",
+      "hostname": "www.defenseone.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/xml",
+      "responseUrl": "https://www.defenseone.com/rss/all/",
+      "redirected": false,
+      "payloadBytes": 187728,
+      "articles": 21,
+      "latencyMs": 674,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 21,
+        "uniqueArticles": 21,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 14.3,
+          "freshWithin7d": 95.2,
+          "freshWithin30d": 100,
+          "substantialSummary": 90.5,
+          "image": 100,
+          "countryMentions": 85.7,
+          "topicTags": 90.5
+        },
+        "newestPublishedAt": "2026-07-17T17:37:07.000Z",
+        "oldestPublishedAt": "2026-07-09T20:18:08.000Z",
+        "latestAgeHours": 29.3,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "US": 17,
+          "IR": 7,
+          "CN": 5,
+          "UA": 4,
+          "VE": 3,
+          "RU": 2,
+          "TR": 2,
+          "IL": 1,
+          "IQ": 1
+        },
+        "topTopics": {
+          "conflict": 10,
+          "cyber": 6,
+          "space": 6,
+          "shipping": 3,
+          "civil_unrest": 2,
+          "humanitarian": 2,
+          "economics": 1,
+          "energy": 1
+        },
+        "threatLevels": {
+          "monitoring": 14,
+          "low": 5,
+          "elevated": 2
+        }
+      }
+    },
+    {
+      "sourceId": "rss-military-times",
+      "label": "Military Times",
+      "role": "primary",
+      "url": "https://www.militarytimes.com/arc/outboundfeeds/rss/",
+      "hostname": "www.militarytimes.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/xml; charset=utf-8",
+      "responseUrl": "https://www.militarytimes.com/arc/outboundfeeds/rss/",
+      "redirected": false,
+      "payloadBytes": 170859,
+      "articles": 25,
+      "latencyMs": 596,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 25,
+        "uniqueArticles": 25,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 60,
+          "freshWithin7d": 100,
+          "freshWithin30d": 100,
+          "substantialSummary": 100,
+          "image": 100,
+          "countryMentions": 84,
+          "topicTags": 64
+        },
+        "newestPublishedAt": "2026-07-18T18:00:58.000Z",
+        "oldestPublishedAt": "2026-07-16T13:30:26.000Z",
+        "latestAgeHours": 4.9,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "US": 19,
+          "IQ": 3,
+          "IR": 3,
+          "AF": 2,
+          "CN": 2,
+          "RU": 2,
+          "UA": 1,
+          "VE": 1
+        },
+        "topTopics": {
+          "conflict": 10,
+          "civil_unrest": 4,
+          "energy": 4,
+          "shipping": 3,
+          "cyber": 1,
+          "economics": 1,
+          "humanitarian": 1,
+          "space": 1
+        },
+        "threatLevels": {
+          "low": 13,
+          "monitoring": 7,
+          "elevated": 4,
+          "critical": 1
+        }
+      }
+    },
+    {
+      "sourceId": "rss-breaking-defense",
+      "label": "Breaking Defense",
+      "role": "primary",
+      "url": "https://breakingdefense.com/feed/",
+      "hostname": "breakingdefense.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/rss+xml; charset=UTF-8",
+      "responseUrl": "https://breakingdefense.com/feed/",
+      "redirected": false,
+      "payloadBytes": 34990,
+      "articles": 15,
+      "latencyMs": 94,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 15,
+        "uniqueArticles": 15,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 53.3,
+          "freshWithin7d": 100,
+          "freshWithin30d": 100,
+          "substantialSummary": 93.3,
+          "image": 100,
+          "countryMentions": 6.7,
+          "topicTags": 46.7
+        },
+        "newestPublishedAt": "2026-07-17T21:10:00.000Z",
+        "oldestPublishedAt": "2026-07-16T15:36:18.000Z",
+        "latestAgeHours": 25.8,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "UA": 1
+        },
+        "topTopics": {
+          "conflict": 4,
+          "shipping": 2,
+          "cyber": 1,
+          "environment": 1,
+          "space": 1
+        },
+        "threatLevels": {
+          "low": 10,
+          "monitoring": 5
+        }
+      }
+    },
+    {
+      "sourceId": "rss-arms-control-association",
+      "label": "Arms Control Association",
+      "role": "primary",
+      "url": "https://www.armscontrol.org/rss.xml",
+      "hostname": "www.armscontrol.org",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "text/html; charset=UTF-8",
+      "responseUrl": "https://www.armscontrol.org/rss.xml",
+      "redirected": false,
+      "payloadBytes": 14968,
+      "articles": 10,
+      "latencyMs": 446,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 10,
+        "uniqueArticles": 10,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 10,
+          "freshWithin7d": 30,
+          "freshWithin30d": 100,
+          "substantialSummary": 100,
+          "image": 0,
+          "countryMentions": 60,
+          "topicTags": 30
+        },
+        "newestPublishedAt": "2026-07-17T16:02:28.000Z",
+        "oldestPublishedAt": "2026-07-07T02:34:42.000Z",
+        "latestAgeHours": 30.9,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "US": 4,
+          "IR": 2,
+          "CN": 1,
+          "IL": 1,
+          "IN": 1
+        },
+        "topTopics": {
+          "conflict": 1,
+          "economics": 1,
+          "energy": 1
+        },
+        "threatLevels": {
+          "low": 9,
+          "elevated": 1
+        }
+      }
+    },
+    {
+      "sourceId": "rss-international-crisis-group",
+      "label": "International Crisis Group",
+      "role": "primary",
+      "url": "https://www.crisisgroup.org/rss.xml",
+      "hostname": "www.crisisgroup.org",
+      "enabled": true,
+      "status": "ok",
+      "category": "degraded",
+      "reason": "low-cadence-or-aging-news",
+      "recommendedAction": "review-cadence",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/rss+xml; charset=utf-8",
+      "responseUrl": "https://www.crisisgroup.org/rss.xml",
+      "redirected": false,
+      "payloadBytes": 142213,
+      "articles": 10,
+      "latencyMs": 363,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 10,
+        "uniqueArticles": 10,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 0,
+          "freshWithin7d": 0,
+          "freshWithin30d": 100,
+          "substantialSummary": 100,
+          "image": 10,
+          "countryMentions": 90,
+          "topicTags": 80
+        },
+        "newestPublishedAt": "2026-07-03T17:07:09.000Z",
+        "oldestPublishedAt": "2026-07-03T14:34:06.000Z",
+        "latestAgeHours": 365.8,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "IR": 8,
+          "US": 8,
+          "IL": 4,
+          "AF": 1,
+          "CN": 1,
+          "CO": 1,
+          "ET": 1,
+          "IN": 1,
+          "IQ": 1,
+          "KP": 1
+        },
+        "topTopics": {
+          "shipping": 8,
+          "conflict": 1,
+          "economics": 1,
+          "energy": 1
+        },
+        "threatLevels": {
+          "low": 9,
+          "elevated": 1
+        }
+      }
+    },
+    {
+      "sourceId": "rss-usni-news",
+      "label": "USNI News",
+      "role": "editorial",
+      "url": "https://news.usni.org/feed",
+      "hostname": "news.usni.org",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/rss+xml; charset=UTF-8",
+      "responseUrl": "https://news.usni.org/feed",
+      "redirected": false,
+      "payloadBytes": 317744,
+      "articles": 30,
+      "latencyMs": 160,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 30,
+        "uniqueArticles": 30,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 16.7,
+          "freshWithin7d": 76.7,
+          "freshWithin30d": 100,
+          "substantialSummary": 100,
+          "image": 83.3,
+          "countryMentions": 100,
+          "topicTags": 83.3
+        },
+        "newestPublishedAt": "2026-07-17T20:41:34.000Z",
+        "oldestPublishedAt": "2026-07-09T14:26:18.000Z",
+        "latestAgeHours": 26.2,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "US": 28,
+          "IR": 9,
+          "CN": 8,
+          "IN": 4,
+          "RU": 4,
+          "TW": 3,
+          "KP": 2,
+          "VE": 2,
+          "YE": 2,
+          "IL": 1
+        },
+        "topTopics": {
+          "shipping": 21,
+          "conflict": 15,
+          "civil_unrest": 12,
+          "humanitarian": 4,
+          "space": 4,
+          "energy": 3,
+          "cyber": 1,
+          "sanctions": 1
+        },
+        "threatLevels": {
+          "low": 13,
+          "elevated": 10,
+          "monitoring": 6,
+          "critical": 1
+        }
+      }
+    },
+    {
+      "sourceId": "rss-google-geopolitics",
+      "label": "Google News Geopolitics",
+      "role": "discovery",
+      "url": "https://news.google.com/rss/search?q=geopolitics",
+      "hostname": "news.google.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/xml; charset=utf-8",
+      "responseUrl": "https://news.google.com/rss/search?q=geopolitics&hl=en-US&gl=US&ceid=US:en",
+      "redirected": true,
+      "payloadBytes": 132934,
+      "articles": 100,
+      "latencyMs": 612,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 100,
+        "uniqueArticles": 100,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 37,
+          "freshWithin7d": 81,
+          "freshWithin30d": 96,
+          "substantialSummary": 60,
+          "image": 0,
+          "countryMentions": 28,
+          "topicTags": 16
+        },
+        "newestPublishedAt": "2026-07-18T21:24:47.000Z",
+        "oldestPublishedAt": "2026-04-02T07:00:00.000Z",
+        "latestAgeHours": 1.5,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "CN": 9,
+          "IR": 7,
+          "US": 5,
+          "IN": 4,
+          "PK": 3,
+          "RU": 2,
+          "UA": 2,
+          "AF": 1,
+          "CO": 1,
+          "SD": 1
+        },
+        "topTopics": {
+          "economics": 6,
+          "conflict": 3,
+          "energy": 3,
+          "shipping": 3,
+          "cyber": 1
+        },
+        "threatLevels": {
+          "low": 96,
+          "monitoring": 4
+        }
+      }
+    },
+    {
+      "sourceId": "rss-google-war",
+      "label": "Google News War",
+      "role": "discovery",
+      "url": "https://news.google.com/rss/search?q=war+conflict",
+      "hostname": "news.google.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/xml; charset=utf-8",
+      "responseUrl": "https://news.google.com/rss/search?q=war+conflict&hl=en-US&gl=US&ceid=US:en",
+      "redirected": true,
+      "payloadBytes": 138327,
+      "articles": 100,
+      "latencyMs": 712,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 100,
+        "uniqueArticles": 100,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 40,
+          "freshWithin7d": 52,
+          "freshWithin30d": 59,
+          "substantialSummary": 61,
+          "image": 0,
+          "countryMentions": 59,
+          "topicTags": 71
+        },
+        "newestPublishedAt": "2026-07-18T22:51:02.000Z",
+        "oldestPublishedAt": "2026-02-26T20:51:40.000Z",
+        "latestAgeHours": 0.1,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "IR": 44,
+          "US": 9,
+          "UA": 7,
+          "IL": 6,
+          "SD": 4,
+          "CN": 3,
+          "IN": 2,
+          "PK": 2,
+          "YE": 2,
+          "IQ": 1
+        },
+        "topTopics": {
+          "conflict": 70,
+          "civil_unrest": 2,
+          "energy": 2,
+          "shipping": 2,
+          "environment": 1,
+          "humanitarian": 1
+        },
+        "threatLevels": {
+          "monitoring": 70,
+          "low": 29,
+          "elevated": 1
+        }
+      }
+    },
+    {
+      "sourceId": "rss-google-nato",
+      "label": "Google News NATO",
+      "role": "discovery",
+      "url": "https://news.google.com/rss/search?q=nato",
+      "hostname": "news.google.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/xml; charset=utf-8",
+      "responseUrl": "https://news.google.com/rss/search?q=nato&hl=en-US&gl=US&ceid=US:en",
+      "redirected": true,
+      "payloadBytes": 132842,
+      "articles": 100,
+      "latencyMs": 478,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 100,
+        "uniqueArticles": 100,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 23,
+          "freshWithin7d": 50,
+          "freshWithin30d": 100,
+          "substantialSummary": 50,
+          "image": 0,
+          "countryMentions": 42,
+          "topicTags": 2
+        },
+        "newestPublishedAt": "2026-07-18T21:56:50.000Z",
+        "oldestPublishedAt": "2026-06-25T07:00:00.000Z",
+        "latestAgeHours": 1,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "TR": 18,
+          "US": 11,
+          "UA": 7,
+          "IR": 5,
+          "CN": 2,
+          "RU": 2,
+          "KP": 1
+        },
+        "topTopics": {
+          "conflict": 1,
+          "cyber": 1
+        },
+        "threatLevels": {
+          "low": 98,
+          "monitoring": 2
+        }
+      }
+    },
+    {
+      "sourceId": "rss-google-china-military",
+      "label": "Google News China Military",
+      "role": "discovery",
+      "url": "https://news.google.com/rss/search?q=china+military",
+      "hostname": "news.google.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/xml; charset=utf-8",
+      "responseUrl": "https://news.google.com/rss/search?q=china+military&hl=en-US&gl=US&ceid=US:en",
+      "redirected": true,
+      "payloadBytes": 137952,
+      "articles": 100,
+      "latencyMs": 500,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 100,
+        "uniqueArticles": 100,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 19,
+          "freshWithin7d": 57,
+          "freshWithin30d": 85,
+          "substantialSummary": 63,
+          "image": 0,
+          "countryMentions": 96,
+          "topicTags": 12
+        },
+        "newestPublishedAt": "2026-07-18T13:07:53.000Z",
+        "oldestPublishedAt": "2026-04-28T07:00:00.000Z",
+        "latestAgeHours": 9.8,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "CN": 96,
+          "US": 10,
+          "TW": 6,
+          "RU": 5,
+          "IR": 4,
+          "IN": 2,
+          "KP": 1,
+          "PK": 1,
+          "UA": 1
+        },
+        "topTopics": {
+          "conflict": 9,
+          "space": 2,
+          "civil_unrest": 1,
+          "economics": 1,
+          "environment": 1
+        },
+        "threatLevels": {
+          "low": 91,
+          "monitoring": 8,
+          "elevated": 1
+        }
+      }
+    },
+    {
+      "sourceId": "rss-google-russia-war",
+      "label": "Google News Russia War",
+      "role": "discovery",
+      "url": "https://news.google.com/rss/search?q=russia+war",
+      "hostname": "news.google.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/xml; charset=utf-8",
+      "responseUrl": "https://news.google.com/rss/search?q=russia+war&hl=en-US&gl=US&ceid=US:en",
+      "redirected": true,
+      "payloadBytes": 138759,
+      "articles": 102,
+      "latencyMs": 683,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 102,
+        "uniqueArticles": 102,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 50,
+          "freshWithin7d": 78.4,
+          "freshWithin30d": 100,
+          "substantialSummary": 66.7,
+          "image": 0,
+          "countryMentions": 82.4,
+          "topicTags": 13.7
+        },
+        "newestPublishedAt": "2026-07-18T22:44:23.000Z",
+        "oldestPublishedAt": "2026-06-23T07:00:00.000Z",
+        "latestAgeHours": 0.2,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "UA": 65,
+          "RU": 62,
+          "IN": 1
+        },
+        "topTopics": {
+          "conflict": 7,
+          "energy": 4,
+          "civil_unrest": 3,
+          "shipping": 2
+        },
+        "threatLevels": {
+          "low": 93,
+          "monitoring": 8,
+          "elevated": 1
+        }
+      }
+    },
+    {
+      "sourceId": "rss-google-middle-east-conflict",
+      "label": "Google News Middle East Conflict",
+      "role": "discovery",
+      "url": "https://news.google.com/rss/search?q=middle+east+conflict",
+      "hostname": "news.google.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/xml; charset=utf-8",
+      "responseUrl": "https://news.google.com/rss/search?q=middle+east+conflict&hl=en-US&gl=US&ceid=US:en",
+      "redirected": true,
+      "payloadBytes": 139377,
+      "articles": 102,
+      "latencyMs": 603,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 102,
+        "uniqueArticles": 102,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 56.9,
+          "freshWithin7d": 72.5,
+          "freshWithin30d": 84.3,
+          "substantialSummary": 68.6,
+          "image": 0,
+          "countryMentions": 38.2,
+          "topicTags": 68.6
+        },
+        "newestPublishedAt": "2026-07-18T21:41:12.000Z",
+        "oldestPublishedAt": "2026-04-06T21:30:41.000Z",
+        "latestAgeHours": 1.2,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "IR": 32,
+          "US": 12,
+          "IL": 2,
+          "IN": 2,
+          "CN": 1,
+          "TR": 1
+        },
+        "topTopics": {
+          "conflict": 65,
+          "economics": 7,
+          "energy": 6,
+          "shipping": 3,
+          "civil_unrest": 1
+        },
+        "threatLevels": {
+          "monitoring": 64,
+          "low": 37,
+          "elevated": 1
+        }
+      }
+    },
+    {
+      "sourceId": "rss-google-taiwan-strait",
+      "label": "Google News Taiwan Strait",
+      "role": "discovery",
+      "url": "https://news.google.com/rss/search?q=taiwan+strait",
+      "hostname": "news.google.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/xml; charset=utf-8",
+      "responseUrl": "https://news.google.com/rss/search?q=taiwan+strait&hl=en-US&gl=US&ceid=US:en",
+      "redirected": true,
+      "payloadBytes": 137180,
+      "articles": 100,
+      "latencyMs": 535,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 100,
+        "uniqueArticles": 100,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 9,
+          "freshWithin7d": 29,
+          "freshWithin30d": 51,
+          "substantialSummary": 56,
+          "image": 0,
+          "countryMentions": 95,
+          "topicTags": 78
+        },
+        "newestPublishedAt": "2026-07-18T21:30:00.000Z",
+        "oldestPublishedAt": "2026-02-09T08:00:00.000Z",
+        "latestAgeHours": 1.4,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "TW": 92,
+          "CN": 50,
+          "IR": 5,
+          "US": 4,
+          "KR": 2,
+          "IL": 1,
+          "IN": 1
+        },
+        "topTopics": {
+          "shipping": 77,
+          "conflict": 2,
+          "energy": 1
+        },
+        "threatLevels": {
+          "low": 98,
+          "monitoring": 2
+        }
+      }
+    },
+    {
+      "sourceId": "rss-google-south-china-sea",
+      "label": "Google News South China Sea",
+      "role": "discovery",
+      "url": "https://news.google.com/rss/search?q=south+china+sea+military",
+      "hostname": "news.google.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/xml; charset=utf-8",
+      "responseUrl": "https://news.google.com/rss/search?q=south+china+sea+military&hl=en-US&gl=US&ceid=US:en",
+      "redirected": true,
+      "payloadBytes": 136011,
+      "articles": 100,
+      "latencyMs": 597,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 100,
+        "uniqueArticles": 100,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 4,
+          "freshWithin7d": 17,
+          "freshWithin30d": 28,
+          "substantialSummary": 63,
+          "image": 0,
+          "countryMentions": 99,
+          "topicTags": 9
+        },
+        "newestPublishedAt": "2026-07-17T13:28:07.000Z",
+        "oldestPublishedAt": "2026-01-27T08:00:00.000Z",
+        "latestAgeHours": 33.5,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "CN": 99,
+          "US": 8,
+          "TW": 7,
+          "IN": 1,
+          "IR": 1
+        },
+        "topTopics": {
+          "shipping": 5,
+          "conflict": 2,
+          "environment": 1,
+          "space": 1
+        },
+        "threatLevels": {
+          "low": 98,
+          "monitoring": 2
+        }
+      }
+    },
+    {
+      "sourceId": "rss-google-north-korea",
+      "label": "Google News North Korea",
+      "role": "discovery",
+      "url": "https://news.google.com/rss/search?q=north+korea+missile",
+      "hostname": "news.google.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/xml; charset=utf-8",
+      "responseUrl": "https://news.google.com/rss/search?q=north+korea+missile&hl=en-US&gl=US&ceid=US:en",
+      "redirected": true,
+      "payloadBytes": 136092,
+      "articles": 100,
+      "latencyMs": 592,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 100,
+        "uniqueArticles": 100,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 1,
+          "freshWithin7d": 6,
+          "freshWithin30d": 16,
+          "substantialSummary": 70,
+          "image": 0,
+          "countryMentions": 99,
+          "topicTags": 54
+        },
+        "newestPublishedAt": "2026-07-17T01:11:50.000Z",
+        "oldestPublishedAt": "2026-02-11T16:33:27.000Z",
+        "latestAgeHours": 45.7,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "KP": 98,
+          "KR": 18,
+          "US": 8,
+          "IR": 4,
+          "UA": 4,
+          "CN": 3,
+          "IL": 2,
+          "RU": 2
+        },
+        "topTopics": {
+          "conflict": 48,
+          "space": 4,
+          "civil_unrest": 3,
+          "cyber": 1
+        },
+        "threatLevels": {
+          "low": 50,
+          "monitoring": 38,
+          "elevated": 12
+        }
+      }
+    },
+    {
+      "sourceId": "rss-google-iran-nuclear",
+      "label": "Google News Iran Nuclear",
+      "role": "discovery",
+      "url": "https://news.google.com/rss/search?q=iran+nuclear",
+      "hostname": "news.google.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/xml; charset=utf-8",
+      "responseUrl": "https://news.google.com/rss/search?q=iran+nuclear&hl=en-US&gl=US&ceid=US:en",
+      "redirected": true,
+      "payloadBytes": 139969,
+      "articles": 100,
+      "latencyMs": 500,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 100,
+        "uniqueArticles": 100,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 31,
+          "freshWithin7d": 54,
+          "freshWithin30d": 79,
+          "substantialSummary": 64,
+          "image": 0,
+          "countryMentions": 98,
+          "topicTags": 18
+        },
+        "newestPublishedAt": "2026-07-18T21:06:11.000Z",
+        "oldestPublishedAt": "2026-03-03T08:00:00.000Z",
+        "latestAgeHours": 1.8,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "IR": 97,
+          "US": 15,
+          "IN": 8,
+          "IL": 7,
+          "IQ": 2,
+          "RU": 2,
+          "CN": 1,
+          "KP": 1,
+          "PK": 1,
+          "SY": 1
+        },
+        "topTopics": {
+          "conflict": 10,
+          "space": 4,
+          "shipping": 3,
+          "civil_unrest": 2,
+          "cyber": 1
+        },
+        "threatLevels": {
+          "low": 88,
+          "monitoring": 11,
+          "critical": 1
+        }
+      }
+    },
+    {
+      "sourceId": "rss-google-cyberwar",
+      "label": "Google News Cyberwar",
+      "role": "discovery",
+      "url": "https://news.google.com/rss/search?q=cyberwar",
+      "hostname": "news.google.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/xml; charset=utf-8",
+      "responseUrl": "https://news.google.com/rss/search?q=cyberwar&hl=en-US&gl=US&ceid=US:en",
+      "redirected": true,
+      "payloadBytes": 129725,
+      "articles": 100,
+      "latencyMs": 477,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 100,
+        "uniqueArticles": 100,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 0,
+          "freshWithin7d": 4,
+          "freshWithin30d": 15,
+          "substantialSummary": 44,
+          "image": 0,
+          "countryMentions": 48,
+          "topicTags": 68
+        },
+        "newestPublishedAt": "2026-07-16T13:00:00.000Z",
+        "oldestPublishedAt": "2025-08-06T07:00:00.000Z",
+        "latestAgeHours": 57.9,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "IR": 27,
+          "IL": 12,
+          "US": 8,
+          "CN": 4,
+          "RU": 4,
+          "UA": 3,
+          "IN": 1,
+          "TW": 1,
+          "VE": 1
+        },
+        "topTopics": {
+          "cyber": 65,
+          "conflict": 4,
+          "civil_unrest": 3,
+          "economics": 1
+        },
+        "threatLevels": {
+          "monitoring": 65,
+          "low": 32,
+          "elevated": 3
+        }
+      }
+    },
+    {
+      "sourceId": "rss-google-military-technology",
+      "label": "Google News Military Technology",
+      "role": "discovery",
+      "url": "https://news.google.com/rss/search?q=military+technology",
+      "hostname": "news.google.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/xml; charset=utf-8",
+      "responseUrl": "https://news.google.com/rss/search?q=military+technology&hl=en-US&gl=US&ceid=US:en",
+      "redirected": true,
+      "payloadBytes": 138512,
+      "articles": 100,
+      "latencyMs": 660,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 100,
+        "uniqueArticles": 100,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 10,
+          "freshWithin7d": 38,
+          "freshWithin30d": 60,
+          "substantialSummary": 67,
+          "image": 0,
+          "countryMentions": 41,
+          "topicTags": 2
+        },
+        "newestPublishedAt": "2026-07-18T17:33:04.000Z",
+        "oldestPublishedAt": "2026-02-25T08:00:00.000Z",
+        "latestAgeHours": 5.4,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "IR": 11,
+          "UA": 8,
+          "RU": 7,
+          "CN": 5,
+          "IL": 5,
+          "US": 5,
+          "AF": 2,
+          "IN": 2,
+          "YE": 2,
+          "KR": 1
+        },
+        "topTopics": {
+          "civil_unrest": 1,
+          "conflict": 1
+        },
+        "threatLevels": {
+          "low": 98,
+          "monitoring": 2
+        }
+      }
+    },
+    {
+      "sourceId": "rss-google-defense-industry",
+      "label": "Google News Defense Industry",
+      "role": "discovery",
+      "url": "https://news.google.com/rss/search?q=defense+industry",
+      "hostname": "news.google.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/xml; charset=utf-8",
+      "responseUrl": "https://news.google.com/rss/search?q=defense+industry&hl=en-US&gl=US&ceid=US:en",
+      "redirected": true,
+      "payloadBytes": 138162,
+      "articles": 100,
+      "latencyMs": 539,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 100,
+        "uniqueArticles": 100,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 31,
+          "freshWithin7d": 82,
+          "freshWithin30d": 100,
+          "substantialSummary": 79,
+          "image": 0,
+          "countryMentions": 34,
+          "topicTags": 13
+        },
+        "newestPublishedAt": "2026-07-18T21:54:04.000Z",
+        "oldestPublishedAt": "2026-06-25T20:29:18.000Z",
+        "latestAgeHours": 1,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "US": 15,
+          "TR": 7,
+          "UA": 6,
+          "IL": 4,
+          "IN": 1,
+          "IR": 1
+        },
+        "topTopics": {
+          "conflict": 9,
+          "civil_unrest": 1,
+          "cyber": 1,
+          "economics": 1,
+          "shipping": 1
+        },
+        "threatLevels": {
+          "low": 89,
+          "monitoring": 11
+        }
+      }
+    },
+    {
+      "sourceId": "rss-google-intelligence-agencies",
+      "label": "Google News Intelligence Agencies",
+      "role": "discovery",
+      "url": "https://news.google.com/rss/search?q=intelligence+agency",
+      "hostname": "news.google.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/xml; charset=utf-8",
+      "responseUrl": "https://news.google.com/rss/search?q=intelligence+agency&hl=en-US&gl=US&ceid=US:en",
+      "redirected": true,
+      "payloadBytes": 138611,
+      "articles": 100,
+      "latencyMs": 550,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 100,
+        "uniqueArticles": 100,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 38,
+          "freshWithin7d": 69,
+          "freshWithin30d": 92,
+          "substantialSummary": 67,
+          "image": 0,
+          "countryMentions": 30,
+          "topicTags": 1
+        },
+        "newestPublishedAt": "2026-07-18T20:56:34.000Z",
+        "oldestPublishedAt": "2026-02-22T08:00:00.000Z",
+        "latestAgeHours": 2,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "CN": 10,
+          "UA": 7,
+          "IL": 4,
+          "US": 4,
+          "IR": 3,
+          "RU": 3,
+          "TW": 1
+        },
+        "topTopics": {
+          "civil_unrest": 1
+        },
+        "threatLevels": {
+          "low": 99,
+          "monitoring": 1
+        }
+      }
+    },
+    {
+      "sourceId": "rss-google-strategic-weapons",
+      "label": "Google News Strategic Weapons",
+      "role": "discovery",
+      "url": "https://news.google.com/rss/search?q=strategic+weapons",
+      "hostname": "news.google.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/xml; charset=utf-8",
+      "responseUrl": "https://news.google.com/rss/search?q=strategic+weapons&hl=en-US&gl=US&ceid=US:en",
+      "redirected": true,
+      "payloadBytes": 134959,
+      "articles": 100,
+      "latencyMs": 573,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 100,
+        "uniqueArticles": 100,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 0,
+          "freshWithin7d": 3,
+          "freshWithin30d": 6,
+          "substantialSummary": 70,
+          "image": 0,
+          "countryMentions": 38,
+          "topicTags": 10
+        },
+        "newestPublishedAt": "2026-07-15T17:25:00.000Z",
+        "oldestPublishedAt": "2020-07-10T07:00:00.000Z",
+        "latestAgeHours": 77.5,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "RU": 18,
+          "US": 8,
+          "UA": 6,
+          "KP": 4,
+          "CN": 3,
+          "IL": 2,
+          "IR": 2,
+          "KR": 1,
+          "TW": 1
+        },
+        "topTopics": {
+          "conflict": 5,
+          "civil_unrest": 2,
+          "economics": 1,
+          "energy": 1,
+          "space": 1
+        },
+        "threatLevels": {
+          "low": 93,
+          "monitoring": 7
+        }
+      }
+    },
+    {
+      "sourceId": "rss-google-global-sanctions",
+      "label": "Google News Global Sanctions",
+      "role": "discovery",
+      "url": "https://news.google.com/rss/search?q=international+sanctions",
+      "hostname": "news.google.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/xml; charset=utf-8",
+      "responseUrl": "https://news.google.com/rss/search?q=international+sanctions&hl=en-US&gl=US&ceid=US:en",
+      "redirected": true,
+      "payloadBytes": 134105,
+      "articles": 100,
+      "latencyMs": 493,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 100,
+        "uniqueArticles": 100,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 11,
+          "freshWithin7d": 34,
+          "freshWithin30d": 39,
+          "substantialSummary": 62,
+          "image": 0,
+          "countryMentions": 45,
+          "topicTags": 12
+        },
+        "newestPublishedAt": "2026-07-18T22:00:49.000Z",
+        "oldestPublishedAt": "2025-09-19T07:00:00.000Z",
+        "latestAgeHours": 0.9,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "IR": 20,
+          "RU": 9,
+          "SD": 7,
+          "US": 6,
+          "SY": 3,
+          "UA": 3,
+          "AF": 2,
+          "CN": 1,
+          "CO": 1,
+          "IL": 1
+        },
+        "topTopics": {
+          "energy": 4,
+          "cyber": 3,
+          "shipping": 3,
+          "conflict": 1,
+          "economics": 1,
+          "sanctions": 1
+        },
+        "threatLevels": {
+          "low": 95,
+          "monitoring": 5
+        }
+      }
+    },
+    {
+      "sourceId": "rss-cnn-world",
+      "label": "CNN World",
+      "role": "primary",
+      "url": "http://rss.cnn.com/rss/edition_world.rss",
+      "hostname": "rss.cnn.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "text/xml; charset=utf-8",
+      "responseUrl": "http://rss.cnn.com/rss/edition_world.rss",
+      "redirected": false,
+      "payloadBytes": 67288,
+      "articles": 29,
+      "latencyMs": 276,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 29,
+        "uniqueArticles": 29,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 20.7,
+          "freshWithin7d": 20.7,
+          "freshWithin30d": 20.7,
+          "substantialSummary": 62.1,
+          "image": 86.2,
+          "countryMentions": 6.9,
+          "topicTags": 6.9
+        },
+        "newestPublishedAt": "2026-07-18T22:33:06.104Z",
+        "oldestPublishedAt": "2021-11-26T21:14:02.000Z",
+        "latestAgeHours": 0.4,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "CN": 1,
+          "US": 1
+        },
+        "topTopics": {
+          "energy": 1,
+          "environment": 1
+        },
+        "threatLevels": {
+          "low": 29
+        }
+      }
+    },
+    {
+      "sourceId": "rss-bbc-world",
+      "label": "BBC World",
+      "role": "primary",
+      "url": "https://feeds.bbci.co.uk/news/world/rss.xml",
+      "hostname": "feeds.bbci.co.uk",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "text/xml; charset=utf-8",
+      "responseUrl": "https://feeds.bbci.co.uk/news/world/rss.xml",
+      "redirected": false,
+      "payloadBytes": 23862,
+      "articles": 31,
+      "latencyMs": 69,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 31,
+        "uniqueArticles": 31,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 90.3,
+          "freshWithin7d": 100,
+          "freshWithin30d": 100,
+          "substantialSummary": 96.8,
+          "image": 0,
+          "countryMentions": 29,
+          "topicTags": 19.4
+        },
+        "newestPublishedAt": "2026-07-18T21:12:28.000Z",
+        "oldestPublishedAt": "2026-07-16T00:33:23.000Z",
+        "latestAgeHours": 1.7,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "CN": 2,
+          "IN": 2,
+          "RU": 2,
+          "UA": 2,
+          "IR": 1,
+          "YE": 1
+        },
+        "topTopics": {
+          "environment": 2,
+          "civil_unrest": 1,
+          "economics": 1,
+          "shipping": 1,
+          "space": 1
+        },
+        "threatLevels": {
+          "low": 30,
+          "monitoring": 1
+        }
+      }
+    },
+    {
+      "sourceId": "rss-guardian-world",
+      "label": "The Guardian World",
+      "role": "primary",
+      "url": "https://www.theguardian.com/world/rss",
+      "hostname": "www.theguardian.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "text/xml; charset=UTF-8",
+      "responseUrl": "https://www.theguardian.com/world/rss",
+      "redirected": false,
+      "payloadBytes": 147779,
+      "articles": 45,
+      "latencyMs": 64,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 45,
+        "uniqueArticles": 45,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 82.2,
+          "freshWithin7d": 91.1,
+          "freshWithin30d": 100,
+          "substantialSummary": 100,
+          "image": 100,
+          "countryMentions": 33.3,
+          "topicTags": 35.6
+        },
+        "newestPublishedAt": "2026-07-18T22:39:29.000Z",
+        "oldestPublishedAt": "2026-07-08T15:56:38.000Z",
+        "latestAgeHours": 0.3,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "CN": 4,
+          "IL": 3,
+          "IR": 3,
+          "IN": 2,
+          "MM": 1,
+          "PK": 1,
+          "RU": 1,
+          "UA": 1
+        },
+        "topTopics": {
+          "energy": 4,
+          "civil_unrest": 3,
+          "environment": 3,
+          "humanitarian": 3,
+          "shipping": 3,
+          "conflict": 2,
+          "economics": 1,
+          "space": 1
+        },
+        "threatLevels": {
+          "low": 40,
+          "monitoring": 5
+        }
+      }
+    },
+    {
+      "sourceId": "rss-new-york-times-world",
+      "label": "New York Times World",
+      "role": "primary",
+      "url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
+      "hostname": "rss.nytimes.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/xml",
+      "responseUrl": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
+      "redirected": false,
+      "payloadBytes": 114851,
+      "articles": 57,
+      "latencyMs": 37,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 57,
+        "uniqueArticles": 57,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 91.2,
+          "freshWithin7d": 100,
+          "freshWithin30d": 100,
+          "substantialSummary": 89.5,
+          "image": 89.5,
+          "countryMentions": 54.4,
+          "topicTags": 12.3
+        },
+        "newestPublishedAt": "2026-07-18T22:53:15.000Z",
+        "oldestPublishedAt": "2026-07-16T17:11:32.000Z",
+        "latestAgeHours": 0,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "US": 15,
+          "IR": 7,
+          "UA": 5,
+          "CN": 4,
+          "IL": 3,
+          "IN": 1,
+          "MM": 1,
+          "RU": 1,
+          "TR": 1,
+          "VE": 1
+        },
+        "topTopics": {
+          "civil_unrest": 3,
+          "environment": 2,
+          "conflict": 1,
+          "humanitarian": 1
+        },
+        "threatLevels": {
+          "low": 53,
+          "monitoring": 4
+        }
+      }
+    },
+    {
+      "sourceId": "rss-washington-post-world",
+      "label": "Washington Post World",
+      "role": "primary",
+      "url": "http://feeds.washingtonpost.com/rss/world",
+      "hostname": "feeds.washingtonpost.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "text/xml; charset=utf-8",
+      "responseUrl": "https://feeds.washingtonpost.com/rss/world",
+      "redirected": true,
+      "payloadBytes": 5976,
+      "articles": 8,
+      "latencyMs": 413,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 8,
+        "uniqueArticles": 8,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 100,
+          "freshWithin7d": 100,
+          "freshWithin30d": 100,
+          "substantialSummary": 100,
+          "image": 0,
+          "countryMentions": 75,
+          "topicTags": 62.5
+        },
+        "newestPublishedAt": "2026-07-18T21:47:57.000Z",
+        "oldestPublishedAt": "2026-07-16T23:27:07.000Z",
+        "latestAgeHours": 1.1,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "US": 6,
+          "IR": 4,
+          "IL": 1,
+          "UA": 1
+        },
+        "topTopics": {
+          "environment": 3,
+          "conflict": 2
+        },
+        "threatLevels": {
+          "low": 6,
+          "monitoring": 2
+        }
+      }
+    },
+    {
+      "sourceId": "rss-al-jazeera",
+      "label": "Al Jazeera",
+      "role": "primary",
+      "url": "https://www.aljazeera.com/xml/rss/all.xml",
+      "hostname": "www.aljazeera.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/rss+xml; charset=UTF-8",
+      "responseUrl": "https://www.aljazeera.com/xml/rss/all.xml",
+      "redirected": false,
+      "payloadBytes": 17445,
+      "articles": 25,
+      "latencyMs": 43,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 25,
+        "uniqueArticles": 25,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 100,
+          "freshWithin7d": 100,
+          "freshWithin30d": 100,
+          "substantialSummary": 96,
+          "image": 0,
+          "countryMentions": 64,
+          "topicTags": 28
+        },
+        "newestPublishedAt": "2026-07-18T21:03:34.000Z",
+        "oldestPublishedAt": "2026-07-18T13:07:39.000Z",
+        "latestAgeHours": 1.9,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "IL": 6,
+          "IR": 5,
+          "US": 3,
+          "CN": 1,
+          "IN": 1,
+          "IQ": 1,
+          "SY": 1,
+          "VE": 1
+        },
+        "topTopics": {
+          "civil_unrest": 2,
+          "environment": 2,
+          "conflict": 1,
+          "energy": 1,
+          "humanitarian": 1,
+          "sanctions": 1,
+          "shipping": 1
+        },
+        "threatLevels": {
+          "low": 21,
+          "monitoring": 4
+        }
+      }
+    },
+    {
+      "sourceId": "rss-france24-world",
+      "label": "France24 World",
+      "role": "primary",
+      "url": "https://www.france24.com/en/rss",
+      "hostname": "www.france24.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/rss+xml; charset=utf-8",
+      "responseUrl": "https://www.france24.com/en/rss",
+      "redirected": false,
+      "payloadBytes": 25672,
+      "articles": 23,
+      "latencyMs": 132,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 23,
+        "uniqueArticles": 21,
+        "duplicateArticles": 2,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 100,
+          "freshWithin7d": 100,
+          "freshWithin30d": 100,
+          "substantialSummary": 95.7,
+          "image": 87,
+          "countryMentions": 43.5,
+          "topicTags": 30.4
+        },
+        "newestPublishedAt": "2026-07-18T20:10:02.000Z",
+        "oldestPublishedAt": "2026-07-18T09:05:45.000Z",
+        "latestAgeHours": 2.8,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "IR": 5,
+          "US": 3,
+          "ET": 2,
+          "CO": 1,
+          "IL": 1,
+          "IN": 1
+        },
+        "topTopics": {
+          "humanitarian": 2,
+          "shipping": 2,
+          "civil_unrest": 1,
+          "conflict": 1,
+          "economics": 1
+        },
+        "threatLevels": {
+          "low": 21,
+          "monitoring": 2
+        }
+      }
+    },
+    {
+      "sourceId": "rss-dw-world",
+      "label": "DW World",
+      "role": "primary",
+      "url": "https://rss.dw.com/xml/rss-en-world",
+      "hostname": "rss.dw.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/xml; charset=UTF-8",
+      "responseUrl": "https://rss.dw.com/xml/rss-en-world",
+      "redirected": false,
+      "payloadBytes": 8615,
+      "articles": 13,
+      "latencyMs": 64,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 13,
+        "uniqueArticles": 13,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 100,
+          "freshWithin7d": 100,
+          "freshWithin30d": 100,
+          "substantialSummary": 100,
+          "image": 0,
+          "countryMentions": 38.5,
+          "topicTags": 15.4
+        },
+        "newestPublishedAt": "2026-07-18T19:57:00.000Z",
+        "oldestPublishedAt": "2026-07-17T11:39:00.000Z",
+        "latestAgeHours": 3,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "IL": 2,
+          "CN": 1,
+          "IN": 1,
+          "RU": 1
+        },
+        "topTopics": {
+          "civil_unrest": 1,
+          "economics": 1,
+          "space": 1
+        },
+        "threatLevels": {
+          "low": 12,
+          "monitoring": 1
+        }
+      }
+    },
+    {
+      "sourceId": "rss-euronews-world",
+      "label": "Euronews World",
+      "role": "primary",
+      "url": "https://www.euronews.com/rss?format=mrss&level=theme&name=news",
+      "hostname": "www.euronews.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "text/xml; charset=UTF-8",
+      "responseUrl": "https://www.euronews.com/rss?format=mrss&level=theme&name=news",
+      "redirected": false,
+      "payloadBytes": 41818,
+      "articles": 50,
+      "latencyMs": 39,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 50,
+        "uniqueArticles": 50,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 52,
+          "freshWithin7d": 100,
+          "freshWithin30d": 100,
+          "substantialSummary": 100,
+          "image": 100,
+          "countryMentions": 38,
+          "topicTags": 32
+        },
+        "newestPublishedAt": "2026-07-18T18:19:29.000Z",
+        "oldestPublishedAt": "2026-07-15T20:38:18.000Z",
+        "latestAgeHours": 4.6,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "IR": 7,
+          "CN": 6,
+          "RU": 2,
+          "UA": 2,
+          "VE": 2,
+          "IN": 1,
+          "KP": 1,
+          "YE": 1
+        },
+        "topTopics": {
+          "environment": 6,
+          "shipping": 5,
+          "civil_unrest": 4,
+          "conflict": 3,
+          "economics": 1,
+          "energy": 1
+        },
+        "threatLevels": {
+          "low": 43,
+          "monitoring": 6,
+          "elevated": 1
+        }
+      }
+    },
+    {
+      "sourceId": "rss-sky-news-world",
+      "label": "Sky News World",
+      "role": "primary",
+      "url": "https://feeds.skynews.com/feeds/rss/world.xml",
+      "hostname": "feeds.skynews.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "text/xml; charset=utf-8",
+      "responseUrl": "https://feeds.skynews.com/feeds/rss/world.xml",
+      "redirected": false,
+      "payloadBytes": 8191,
+      "articles": 6,
+      "latencyMs": 272,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 6,
+        "uniqueArticles": 6,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 100,
+          "freshWithin7d": 100,
+          "freshWithin30d": 100,
+          "substantialSummary": 100,
+          "image": 100,
+          "countryMentions": 33.3,
+          "topicTags": 33.3
+        },
+        "newestPublishedAt": "2026-07-18T14:41:00.000Z",
+        "oldestPublishedAt": "2026-07-17T08:45:00.000Z",
+        "latestAgeHours": 8.2,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "IN": 1,
+          "RU": 1,
+          "UA": 1
+        },
+        "topTopics": {
+          "civil_unrest": 1,
+          "environment": 1
+        },
+        "threatLevels": {
+          "low": 5,
+          "monitoring": 1
+        }
+      }
+    },
+    {
+      "sourceId": "rss-financial-times-world",
+      "label": "Financial Times World",
+      "role": "primary",
+      "url": "https://www.ft.com/world?format=rss",
+      "hostname": "www.ft.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "text/xml; charset=utf-8",
+      "responseUrl": "https://www.ft.com/world?format=rss",
+      "redirected": false,
+      "payloadBytes": 12010,
+      "articles": 25,
+      "latencyMs": 206,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 25,
+        "uniqueArticles": 25,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 100,
+          "freshWithin7d": 100,
+          "freshWithin30d": 100,
+          "substantialSummary": 76,
+          "image": 0,
+          "countryMentions": 24,
+          "topicTags": 12
+        },
+        "newestPublishedAt": "2026-07-18T22:54:39.000Z",
+        "oldestPublishedAt": "2026-07-18T04:00:11.000Z",
+        "latestAgeHours": 0,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "UA": 2,
+          "CN": 1,
+          "IR": 1,
+          "RU": 1,
+          "US": 1
+        },
+        "topTopics": {
+          "economics": 1,
+          "humanitarian": 1,
+          "shipping": 1
+        },
+        "threatLevels": {
+          "low": 25
+        }
+      }
+    },
+    {
+      "sourceId": "rss-politico-europe",
+      "label": "Politico Europe",
+      "role": "primary",
+      "url": "https://www.politico.eu/feed/",
+      "hostname": "www.politico.eu",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/rss+xml; charset=UTF-8",
+      "responseUrl": "https://www.politico.eu/feed/",
+      "redirected": false,
+      "payloadBytes": 105043,
+      "articles": 10,
+      "latencyMs": 63,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 10,
+        "uniqueArticles": 10,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 100,
+          "freshWithin7d": 100,
+          "freshWithin30d": 100,
+          "substantialSummary": 80,
+          "image": 10,
+          "countryMentions": 90,
+          "topicTags": 50
+        },
+        "newestPublishedAt": "2026-07-18T22:17:09.000Z",
+        "oldestPublishedAt": "2026-07-18T10:15:53.000Z",
+        "latestAgeHours": 0.6,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "US": 9,
+          "CN": 2,
+          "IR": 2,
+          "TR": 2,
+          "UA": 1
+        },
+        "topTopics": {
+          "conflict": 2,
+          "cyber": 2,
+          "shipping": 2,
+          "civil_unrest": 1,
+          "energy": 1,
+          "environment": 1,
+          "sanctions": 1
+        },
+        "threatLevels": {
+          "low": 5,
+          "monitoring": 3,
+          "elevated": 2
+        }
+      }
+    },
+    {
+      "sourceId": "rss-independent-world",
+      "label": "The Independent World",
+      "role": "primary",
+      "url": "https://www.independent.co.uk/news/world/rss",
+      "hostname": "www.independent.co.uk",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "text/xml; charset=utf-8",
+      "responseUrl": "https://www.independent.co.uk/news/world/rss",
+      "redirected": false,
+      "payloadBytes": 58414,
+      "articles": 47,
+      "latencyMs": 59,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 47,
+        "uniqueArticles": 47,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 100,
+          "freshWithin7d": 100,
+          "freshWithin30d": 100,
+          "substantialSummary": 80.9,
+          "image": 97.9,
+          "countryMentions": 34,
+          "topicTags": 23.4
+        },
+        "newestPublishedAt": "2026-07-18T22:38:56.000Z",
+        "oldestPublishedAt": "2026-07-17T13:46:00.000Z",
+        "latestAgeHours": 0.3,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "US": 8,
+          "IR": 6,
+          "UA": 3,
+          "CN": 2,
+          "RU": 2,
+          "IL": 1
+        },
+        "topTopics": {
+          "environment": 5,
+          "economics": 2,
+          "shipping": 2,
+          "civil_unrest": 1,
+          "conflict": 1,
+          "humanitarian": 1
+        },
+        "threatLevels": {
+          "low": 46,
+          "elevated": 1
+        }
+      }
+    },
+    {
+      "sourceId": "rss-abc-international",
+      "label": "ABC International",
+      "role": "primary",
+      "url": "https://abcnews.go.com/abcnews/internationalheadlines",
+      "hostname": "abcnews.go.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "text/xml;charset=UTF-8",
+      "responseUrl": "https://abcnews.com/abcnews/internationalheadlines",
+      "redirected": true,
+      "payloadBytes": 46218,
+      "articles": 25,
+      "latencyMs": 453,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 25,
+        "uniqueArticles": 25,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 100,
+          "freshWithin7d": 100,
+          "freshWithin30d": 100,
+          "substantialSummary": 88,
+          "image": 0,
+          "countryMentions": 36,
+          "topicTags": 12
+        },
+        "newestPublishedAt": "2026-07-18T21:30:02.000Z",
+        "oldestPublishedAt": "2026-07-17T05:29:55.000Z",
+        "latestAgeHours": 1.4,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "CN": 2,
+          "IR": 2,
+          "US": 2,
+          "IL": 1,
+          "IN": 1,
+          "UA": 1,
+          "VE": 1
+        },
+        "topTopics": {
+          "civil_unrest": 1,
+          "conflict": 1,
+          "environment": 1
+        },
+        "threatLevels": {
+          "low": 23,
+          "monitoring": 2
+        }
+      }
+    },
+    {
+      "sourceId": "rss-fox-world",
+      "label": "Fox World",
+      "role": "primary",
+      "url": "https://moxie.foxnews.com/google-publisher/world.xml",
+      "hostname": "moxie.foxnews.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "text/xml;charset=utf-8",
+      "responseUrl": "https://moxie.foxnews.com/google-publisher/world.xml",
+      "redirected": false,
+      "payloadBytes": 248076,
+      "articles": 25,
+      "latencyMs": 101,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 25,
+        "uniqueArticles": 25,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 16,
+          "freshWithin7d": 100,
+          "freshWithin30d": 100,
+          "substantialSummary": 100,
+          "image": 100,
+          "countryMentions": 88,
+          "topicTags": 64
+        },
+        "newestPublishedAt": "2026-07-18T18:31:11.000Z",
+        "oldestPublishedAt": "2026-07-12T01:15:04.000Z",
+        "latestAgeHours": 4.4,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "US": 18,
+          "IL": 9,
+          "IR": 8,
+          "RU": 6,
+          "CN": 5,
+          "UA": 4,
+          "YE": 3,
+          "ET": 1,
+          "PK": 1,
+          "SD": 1
+        },
+        "topTopics": {
+          "energy": 6,
+          "shipping": 6,
+          "civil_unrest": 5,
+          "conflict": 5,
+          "humanitarian": 5,
+          "environment": 3,
+          "economics": 1,
+          "sanctions": 1
+        },
+        "threatLevels": {
+          "low": 15,
+          "monitoring": 9,
+          "elevated": 1
+        }
+      }
+    },
+    {
+      "sourceId": "rss-nbc-world",
+      "label": "NBC World News",
+      "role": "primary",
+      "url": "http://feeds.nbcnews.com/feeds/worldnews",
+      "hostname": "feeds.nbcnews.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "text/xml; charset=UTF-8",
+      "responseUrl": "https://feeds.nbcnews.com/nbcnews/public/world",
+      "redirected": true,
+      "payloadBytes": 31842,
+      "articles": 14,
+      "latencyMs": 271,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 14,
+        "uniqueArticles": 14,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 42.9,
+          "freshWithin7d": 85.7,
+          "freshWithin30d": 92.9,
+          "substantialSummary": 100,
+          "image": 100,
+          "countryMentions": 57.1,
+          "topicTags": 35.7
+        },
+        "newestPublishedAt": "2026-07-18T17:38:35.000Z",
+        "oldestPublishedAt": "2026-04-08T17:52:34.000Z",
+        "latestAgeHours": 5.3,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "US": 7,
+          "IR": 6,
+          "RU": 1
+        },
+        "topTopics": {
+          "shipping": 3,
+          "energy": 2,
+          "conflict": 1
+        },
+        "threatLevels": {
+          "low": 13,
+          "elevated": 1
+        }
+      }
+    },
+    {
+      "sourceId": "rss-cbs-world",
+      "label": "CBS World News",
+      "role": "primary",
+      "url": "https://www.cbsnews.com/latest/rss/world",
+      "hostname": "www.cbsnews.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "text/xml; charset=UTF-8",
+      "responseUrl": "https://www.cbsnews.com/latest/rss/world",
+      "redirected": false,
+      "payloadBytes": 25032,
+      "articles": 30,
+      "latencyMs": 312,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 30,
+        "uniqueArticles": 30,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 66.7,
+          "freshWithin7d": 96.7,
+          "freshWithin30d": 100,
+          "substantialSummary": 100,
+          "image": 0,
+          "countryMentions": 60,
+          "topicTags": 26.7
+        },
+        "newestPublishedAt": "2026-07-18T22:35:04.000Z",
+        "oldestPublishedAt": "2026-07-08T07:35:00.000Z",
+        "latestAgeHours": 0.3,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "US": 13,
+          "IR": 5,
+          "CN": 2,
+          "UA": 2,
+          "IN": 1,
+          "RU": 1
+        },
+        "topTopics": {
+          "environment": 4,
+          "shipping": 2,
+          "civil_unrest": 1,
+          "conflict": 1
+        },
+        "threatLevels": {
+          "low": 28,
+          "monitoring": 2
+        }
+      }
+    },
+    {
+      "sourceId": "rss-npr-world",
+      "label": "NPR World",
+      "role": "primary",
+      "url": "https://feeds.npr.org/1004/rss.xml",
+      "hostname": "feeds.npr.org",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "text/xml;charset=UTF-8",
+      "responseUrl": "https://feeds.npr.org/1004/rss.xml",
+      "redirected": false,
+      "payloadBytes": 15752,
+      "articles": 10,
+      "latencyMs": 43,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 10,
+        "uniqueArticles": 10,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 100,
+          "freshWithin7d": 100,
+          "freshWithin30d": 100,
+          "substantialSummary": 100,
+          "image": 100,
+          "countryMentions": 90,
+          "topicTags": 50
+        },
+        "newestPublishedAt": "2026-07-18T20:06:35.000Z",
+        "oldestPublishedAt": "2026-07-17T07:17:04.000Z",
+        "latestAgeHours": 2.8,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "US": 6,
+          "IR": 5,
+          "AF": 2,
+          "CN": 2,
+          "IQ": 1,
+          "PK": 1,
+          "RU": 1,
+          "UA": 1
+        },
+        "topTopics": {
+          "shipping": 3,
+          "conflict": 2
+        },
+        "threatLevels": {
+          "low": 8,
+          "elevated": 1,
+          "monitoring": 1
+        }
+      }
+    },
+    {
+      "sourceId": "rss-coindesk",
+      "label": "CoinDesk",
+      "role": "editorial",
+      "url": "https://www.coindesk.com/arc/outboundfeeds/rss/",
+      "hostname": "www.coindesk.com",
+      "enabled": true,
+      "status": "ok",
+      "category": "healthy",
+      "reason": "fresh-news-within-7d",
+      "recommendedAction": "keep",
+      "error": null,
+      "httpStatus": 200,
+      "contentType": "application/xml",
+      "responseUrl": "https://www.coindesk.com/arc/outboundfeeds/rss",
+      "redirected": true,
+      "payloadBytes": 31140,
+      "articles": 25,
+      "latencyMs": 186,
+      "runtime": {
+        "calls": 1,
+        "attempts": 1,
+        "retries": 0,
+        "errors": 0
+      },
+      "quality": {
+        "rawArticles": 25,
+        "uniqueArticles": 25,
+        "duplicateArticles": 0,
+        "distinctSources": 1,
+        "coveragePct": {
+          "validTitle": 100,
+          "validUrl": 100,
+          "validPublishedAt": 100,
+          "freshWithin48h": 84,
+          "freshWithin7d": 100,
+          "freshWithin30d": 100,
+          "substantialSummary": 92,
+          "image": 100,
+          "countryMentions": 20,
+          "topicTags": 28
+        },
+        "newestPublishedAt": "2026-07-18T21:52:18.000Z",
+        "oldestPublishedAt": "2026-07-16T16:14:30.000Z",
+        "latestAgeHours": 1.1,
+        "futureDatedArticles": 0,
+        "topCountries": {
+          "US": 3,
+          "CN": 2,
+          "IR": 2,
+          "KR": 1
+        },
+        "topTopics": {
+          "economics": 5,
+          "civil_unrest": 1,
+          "cyber": 1
+        },
+        "threatLevels": {
+          "low": 23,
+          "monitoring": 2
+        }
+      }
+    }
+  ]
+}

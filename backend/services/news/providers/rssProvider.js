@@ -120,13 +120,14 @@ function markInvalidFeed(url) {
   invalidFeedCache.set(url, Date.now() + INVALID_FEED_CACHE_MS);
 }
 
-async function fetchWithTimeout(url, options, timeoutMs) {
-  return providerRuntime.fetch("rss", url, { ...options, timeoutMs });
+async function fetchWithTimeout(url, options, timeoutMs, retries) {
+  return providerRuntime.fetch("rss", url, { ...options, timeoutMs, retries });
 }
 
 export async function fetchRss({
   feeds = [],
-  timeoutMs = 9_000
+  timeoutMs = 9_000,
+  retries
 }) {
   const activeFeeds = Array.isArray(feeds) ? feeds.filter(Boolean) : [];
   if (!activeFeeds.length) {
@@ -184,13 +185,21 @@ export async function fetchRss({
         url,
         {
           headers: {
+            Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.1",
             "User-Agent": "ogid/1.0"
           }
         },
-        timeoutMs
+        timeoutMs,
+        retries
       );
       const rateLimit = parseRateLimitHeaders(response.headers);
       lastRateLimit = rateLimit || lastRateLimit;
+      const responseMeta = {
+        httpStatus: response.status,
+        contentType: response.headers.get("content-type") || null,
+        responseUrl: response.url || urlValue,
+        redirected: Boolean(response.redirected)
+      };
 
       if (!response.ok) {
         feedStatus.push({
@@ -198,12 +207,14 @@ export async function fetchRss({
           url: urlValue,
           status: "error",
           count: 0,
-          error: `rss-upstream-${response.status}`
+          error: `rss-upstream-${response.status}`,
+          ...responseMeta
         });
         continue;
       }
 
       const payload = await response.text();
+      const payloadBytes = Buffer.byteLength(payload, "utf8");
       if (!hasFeedEntries(payload)) {
         if (!hasFeedEnvelope(payload)) {
           markInvalidFeed(urlValue);
@@ -212,7 +223,9 @@ export async function fetchRss({
             url: urlValue,
             status: "invalid-feed",
             count: 0,
-            error: "missing-rss-or-atom-items"
+            error: "missing-rss-or-atom-items",
+            payloadBytes,
+            ...responseMeta
           });
           continue;
         }
@@ -222,7 +235,9 @@ export async function fetchRss({
           url: urlValue,
           status: "empty",
           count: 0,
-          error: "feed-without-items"
+          error: "feed-without-items",
+          payloadBytes,
+          ...responseMeta
         });
         continue;
       }
@@ -234,7 +249,9 @@ export async function fetchRss({
         url: urlValue,
         status: parsedArticles.length ? "ok" : "empty",
         count: parsedArticles.length,
-        error: null
+        error: null,
+        payloadBytes,
+        ...responseMeta
       });
     } catch (error) {
       feedStatus.push({

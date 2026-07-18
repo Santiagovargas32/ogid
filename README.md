@@ -12,7 +12,7 @@ OGID is a local web app for monitoring geopolitical OSINT signals and their pote
 
 - Multi-provider news ingestion with fallback chain:
   - Aggregated: NewsAPI + GNews + RSS + GDELT + optional Mediastack
-  - RSS diagnostics include disabled feeds such as `ZeroHedge` until a valid XML feed is available
+  - Canonical RSS catalog prioritizes validated official feeds, with bounded rotation and per-feed diagnostics
   - Final fallback: deterministic local feed
 - Adaptive quota-aware scheduling for news and market refresh intervals.
 - Manual user-triggered refresh (`POST /api/intel/refresh`) with cooldown and per-client limits.
@@ -121,6 +121,50 @@ News-to-Price Coupling v2 is calculated locally from normalized news and persist
 6. Open `http://localhost:8080`
 
 Administrative routes, mutations and `force=1` requests are allowed from loopback by default. For non-local access, configure `ADMIN_API_TOKEN` and send it as a Bearer token or `X-Admin-Token`. Set `ALLOW_LOCAL_ADMIN=0` to require the token on loopback too.
+
+## Controlled Local RSS Lab
+
+RSS has no single global quota: every publisher or feed host can still throttle or block repeated clients. Running production and a local server against the same feeds is technically valid, but it doubles upstream traffic. Use the bounded lab instead of copying the full production catalog.
+
+Do not use the normal `npm run dev` profile for isolated feed experiments. With the repository's current `.env`, the main news pipeline enables RSS every 60 seconds and passes the complete active catalog to the provider. The lab replaces that catalog with only the explicitly selected feeds and disables background refresh.
+
+For a local UI session, explicitly select between one and five feeds in PowerShell:
+
+```powershell
+cd backend
+$env:NEWS_RSS_FEEDS = 'BBC World|https://feeds.bbci.co.uk/news/world/rss.xml,UN News|https://news.un.org/feed/subscribe/en/news/all/rss.xml'
+npm run dev:rss-lab
+```
+
+Open `http://localhost:8081` and stop with `Ctrl+C`. The lab profile:
+
+- clears every configured API credential and disables market providers;
+- disables background refresh and persistence;
+- limits RSS aggregation to the explicitly supplied feeds, with a one-hour cache;
+- permits backend outbound HTTP only to those feed hosts and loopback;
+- blocks redirects to undeclared hosts and limits manual refreshes.
+
+Opening the dashboard performs one bounded RSS aggregate load. Other dashboard requests reuse the in-flight result or cache. Browser-side CDN, map-tile and media traffic is outside the backend guard.
+
+For diagnosing a feed without starting either server, run a single live probe. It performs one attempt per feed and never retries:
+
+```powershell
+npm run rss:probe -- 'BBC World|https://feeds.bbci.co.uk/news/world/rss.xml'
+```
+
+The JSON report contains feed status, error category, latency and quality coverage for titles, URLs, timestamps, 48-hour freshness, summaries, images, country mentions, topic tags and duplicates. It never returns article bodies. Feed failures are reported in the `status` field without failing the command; invalid lab configuration exits with code `1`.
+
+To audit every canonical RSS source with one request per feed, no retries and a short delay between requests:
+
+```powershell
+npm run rss:audit -- --output-prefix=rss-catalog-audit-latest
+```
+
+The command runs sequentially and writes sanitized JSON and Markdown reports under `backend/reports/`. It classifies fresh, degraded, empty, broken, blocked, rate-limited and transient feeds. This is an explicit live operation; unlike `npm test`, it contacts every enabled RSS host in the catalog.
+
+The dated remediation report in `backend/reports/rss-catalog-remediation-2026-07-19.md` records the baseline failures, repaired URLs, replacements and intentionally retired sources. Audit results are a point-in-time health check; rerun the command before promoting later catalog changes.
+
+Before promoting a new source into the canonical catalog, validate its HTTP/XML stability, publishing cadence, timestamp quality, topical relevance, duplicate rate, metadata coverage and publisher terms in small batches. Clear the local selection after the session with `Remove-Item Env:NEWS_RSS_FEEDS`.
 
 ## API Endpoints
 

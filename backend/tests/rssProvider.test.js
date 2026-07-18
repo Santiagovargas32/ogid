@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { fetchRss, resetRssFeedValidationCacheForTests } from "../services/news/providers/rssProvider.js";
+import { providerRuntime } from "../services/providers/providerRuntime.js";
 
 test("rss provider marks html pages as invalid feeds and caches the invalid result", async () => {
   resetRssFeedValidationCacheForTests();
@@ -65,6 +66,39 @@ test("rss provider surfaces disabled feeds as skipped without fetching them", as
     assert.equal(result.sourceMeta.feedStatus[0].count, 0);
   } finally {
     global.fetch = originalFetch;
+    resetRssFeedValidationCacheForTests();
+  }
+});
+
+test("rss provider can disable retries for a controlled live probe", async () => {
+  resetRssFeedValidationCacheForTests();
+  providerRuntime.reset();
+
+  const originalFetch = global.fetch;
+  let fetchCalls = 0;
+  let requestOptions;
+  global.fetch = async (_url, options) => {
+    fetchCalls += 1;
+    requestOptions = options;
+    return new Response("temporarily unavailable", { status: 503 });
+  };
+
+  try {
+    const result = await fetchRss({
+      feeds: [{ label: "Failing Feed", url: "https://probe.example.test/rss.xml" }],
+      timeoutMs: 1000,
+      retries: 0
+    });
+
+    assert.equal(fetchCalls, 1);
+    assert.equal(result.sourceMeta.feedStatus[0].status, "error");
+    assert.equal(result.sourceMeta.feedStatus[0].error, "rss-upstream-503");
+    assert.equal(providerRuntime.getMetrics("rss").retries, 0);
+    assert.match(requestOptions.headers.Accept, /application\/rss\+xml/);
+    assert.equal(requestOptions.headers["User-Agent"], "ogid/1.0");
+  } finally {
+    global.fetch = originalFetch;
+    providerRuntime.reset();
     resetRssFeedValidationCacheForTests();
   }
 });

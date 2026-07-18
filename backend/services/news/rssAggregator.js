@@ -26,7 +26,8 @@ export class RssAggregatorService {
       defaultTtlMs: this.refreshIntervalMs
     });
     this.inFlight = null;
-    this.cursor = 0;
+    this.configuredCursor = 0;
+    this.generatedCursor = 0;
     this.corpus = [];
     this.lastSnapshot = null;
     this.shadowComparisonStats = { cycles: 0, equivalentCycles: 0 };
@@ -74,18 +75,30 @@ export class RssAggregatorService {
 
     const activeConfigured = this.feedCatalog.filter((feed) => !feed.generated && !feed.disabled);
     const generated = this.feedCatalog.filter((feed) => feed.generated && !feed.disabled);
-    const batch = [...activeConfigured];
+    const batch = [];
+    const configuredSlots = activeConfigured.length
+      ? Math.min(this.maxFeedsPerRun, activeConfigured.length - this.configuredCursor)
+      : 0;
+
+    for (let index = 0; index < configuredSlots; index += 1) {
+      batch.push(activeConfigured[this.configuredCursor + index]);
+    }
+
+    if (activeConfigured.length) {
+      this.configuredCursor = (this.configuredCursor + configuredSlots) % activeConfigured.length;
+    }
+
     const rollingSlots = Math.max(0, this.maxFeedsPerRun - batch.length);
 
     for (let index = 0; index < rollingSlots && generated.length; index += 1) {
-      batch.push(generated[(this.cursor + index) % generated.length]);
+      batch.push(generated[(this.generatedCursor + index) % generated.length]);
     }
 
     if (generated.length) {
-      this.cursor = (this.cursor + rollingSlots) % generated.length;
+      this.generatedCursor = (this.generatedCursor + rollingSlots) % generated.length;
     }
 
-    return batch.slice(0, this.maxFeedsPerRun);
+    return batch;
   }
 
   async refresh({ force = false } = {}) {

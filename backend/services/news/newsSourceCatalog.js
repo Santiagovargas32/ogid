@@ -1,40 +1,41 @@
 import { createHash } from "node:crypto";
 
 export const NEWS_SOURCE_CATALOG_SCHEMA_VERSION = 1;
-export const NEWS_SOURCE_CATALOG_VERSION = "1.0.0";
+export const NEWS_SOURCE_CATALOG_VERSION = "1.1.0";
 export const NEWS_SOURCE_CATALOG_METHOD_VERSION = "news-source-catalog-v1";
 
 const RSS_SOURCE_ROWS = Object.freeze([
+  ["rss-us-defense-releases", "U.S. Defense Releases", "https://www.war.gov/DesktopModules/ArticleCS/RSS.ashx?ContentType=9&Site=945&max=10", "official"],
+  ["rss-us-defense-contracts", "U.S. Defense Contracts", "https://www.war.gov/DesktopModules/ArticleCS/RSS.ashx?ContentType=400&Site=945&max=10", "official"],
+  ["rss-eia-today-in-energy", "EIA Today in Energy", "https://www.eia.gov/rss/todayinenergy.xml", "official"],
+  ["rss-eia-press-releases", "EIA Press Releases", "https://www.eia.gov/rss/press_rss.xml", "official"],
+  ["rss-sec-press-releases", "SEC Press Releases", "https://www.sec.gov/news/pressreleases.rss", "official"],
+  ["rss-federal-reserve-press-releases", "Federal Reserve Press Releases", "https://www.federalreserve.gov/feeds/press_all.xml", "official"],
+  ["rss-eu-sanctions-guidance", "European Commission Sanctions Guidance", "https://finance.ec.europa.eu/node/1296/rss_en", "official"],
+  ["rss-cisa-advisories", "CISA Cybersecurity Advisories", "https://www.cisa.gov/cybersecurity-advisories/all.xml", "official"],
+  ["rss-cisa-news", "CISA News", "https://www.cisa.gov/news.xml", "official"],
+  ["rss-bis-federal-register", "BIS Federal Register", "https://www.federalregister.gov/api/v1/documents.rss?conditions%5Bagencies%5D%5B%5D=industry-and-security-bureau", "official"],
+  ["rss-cftc-press-releases", "CFTC Press Releases", "https://www.cftc.gov/RSS/RSSGP/rssgp.xml", "official"],
+  ["rss-eu-council-press-releases", "EU Council Press Releases", "https://www.consilium.europa.eu/en/rss/pressreleases.ashx", "official"],
+  ["rss-uk-ministry-of-defence", "UK Ministry of Defence", "https://www.gov.uk/search/news-and-communications.atom?organisations%5B%5D=ministry-of-defence", "official"],
+  ["rss-un-press", "UN Press", "https://press.un.org/en/rss.xml", "official"],
+  ["rss-un-news-global", "UN News Global", "https://news.un.org/feed/subscribe/en/news/all/rss.xml", "official"],
+  ["rss-iaea-top-news", "IAEA Top News", "https://www.iaea.org/feeds/topnews", "official"],
   ["rss-bellingcat", "Bellingcat", "https://www.bellingcat.com/feed/"],
-  ["rss-globalsecurity", "GlobalSecurity", "https://www.globalsecurity.org/wmd/library/news/rss.xml"],
-  ["rss-acled-conflict-data", "ACLED Conflict Data", "https://acleddata.com/feed/"],
-  ["rss-reliefweb-global-crisis", "ReliefWeb Global Crisis", "https://reliefweb.int/updates/rss.xml"],
   ["rss-defense-news", "Defense News", "https://www.defensenews.com/arc/outboundfeeds/rss/"],
   ["rss-war-on-the-rocks", "War on the Rocks", "https://warontherocks.com/feed/"],
   ["rss-the-diplomat", "The Diplomat", "https://thediplomat.com/feed/"],
   ["rss-foreign-policy", "Foreign Policy", "https://foreignpolicy.com/feed/"],
-  ["rss-csis", "Center for Strategic and International Studies", "https://www.csis.org/rss.xml"],
   ["rss-atlantic-council", "Atlantic Council", "https://www.atlanticcouncil.org/feed/"],
-  ["rss-council-on-foreign-relations", "Council on Foreign Relations", "https://www.cfr.org/rss"],
-  ["rss-carnegie-endowment", "Carnegie Endowment", "https://carnegieendowment.org/rss"],
-  ["rss-chatham-house", "Chatham House", "https://www.chathamhouse.org/rss.xml"],
-  ["rss-rand-national-security", "RAND Corporation", "https://www.rand.org/topics/national-security.rss"],
-  ["rss-isw", "ISW Institute for the Study of War", "https://www.understandingwar.org/rss.xml"],
-  ["rss-modern-war-institute", "Modern War Institute", "https://mwi.usma.edu/feed/"],
-  ["rss-small-wars-journal", "Small Wars Journal", "https://smallwarsjournal.com/rss.xml"],
-  ["rss-janes-defence", "Jane's Defence", "https://www.janes.com/feeds/rss"],
-  ["rss-defense-one", "Defense One", "https://www.defenseone.com/rss/"],
+  ["rss-chatham-house", "Chatham House", "https://www.chathamhouse.org/path/whatsnew.xml"],
+  ["rss-modern-war-institute", "Modern War Institute", "https://mwi.westpoint.edu/feed/"],
+  ["rss-small-wars-journal", "Small Wars Journal", "https://smallwarsjournal.com/rss"],
+  ["rss-defense-one", "Defense One", "https://www.defenseone.com/rss/all/"],
   ["rss-military-times", "Military Times", "https://www.militarytimes.com/arc/outboundfeeds/rss/"],
   ["rss-breaking-defense", "Breaking Defense", "https://breakingdefense.com/feed/"],
-  ["rss-arms-control-association", "Arms Control Association", "https://www.armscontrol.org/feeds/all"],
-  ["rss-global-conflict-tracker", "Global Conflict Tracker", "https://www.cfr.org/global-conflict-tracker/rss.xml"],
+  ["rss-arms-control-association", "Arms Control Association", "https://www.armscontrol.org/rss.xml"],
   ["rss-international-crisis-group", "International Crisis Group", "https://www.crisisgroup.org/rss.xml"],
-  ["rss-humanitarian-response", "Humanitarian Response", "https://www.humanitarianresponse.info/rss.xml"],
-  ["rss-un-news-global", "UN News Global", "https://news.un.org/feed/subscribe/en/news/all/rss.xml"],
-  ["rss-un-peacekeeping", "UN Peacekeeping", "https://peacekeeping.un.org/en/rss.xml"],
-  ["rss-nato-news", "NATO News", "https://www.nato.int/cps/en/natohq/rss.xml"],
-  ["rss-eu-external-action", "EU External Action", "https://eeas.europa.eu/rss_en.xml"],
-  ["rss-osce-news", "OSCE News", "https://www.osce.org/rss.xml"],
+  ["rss-usni-news", "USNI News", "https://news.usni.org/feed", "editorial"],
   ["rss-google-geopolitics", "Google News Geopolitics", "https://news.google.com/rss/search?q=geopolitics", "discovery"],
   ["rss-google-war", "Google News War", "https://news.google.com/rss/search?q=war+conflict", "discovery"],
   ["rss-google-nato", "Google News NATO", "https://news.google.com/rss/search?q=nato", "discovery"],
@@ -51,7 +52,6 @@ const RSS_SOURCE_ROWS = Object.freeze([
   ["rss-google-intelligence-agencies", "Google News Intelligence Agencies", "https://news.google.com/rss/search?q=intelligence+agency", "discovery"],
   ["rss-google-strategic-weapons", "Google News Strategic Weapons", "https://news.google.com/rss/search?q=strategic+weapons", "discovery"],
   ["rss-google-global-sanctions", "Google News Global Sanctions", "https://news.google.com/rss/search?q=international+sanctions", "discovery"],
-  ["rss-reuters-world", "Reuters World", "http://feeds.reuters.com/Reuters/worldNews"],
   ["rss-cnn-world", "CNN World", "http://rss.cnn.com/rss/edition_world.rss"],
   ["rss-bbc-world", "BBC World", "https://feeds.bbci.co.uk/news/world/rss.xml"],
   ["rss-guardian-world", "The Guardian World", "https://www.theguardian.com/world/rss"],
@@ -60,19 +60,17 @@ const RSS_SOURCE_ROWS = Object.freeze([
   ["rss-al-jazeera", "Al Jazeera", "https://www.aljazeera.com/xml/rss/all.xml"],
   ["rss-france24-world", "France24 World", "https://www.france24.com/en/rss"],
   ["rss-dw-world", "DW World", "https://rss.dw.com/xml/rss-en-world"],
-  ["rss-euronews-world", "Euronews World", "https://www.euronews.com/rss?level=theme&name=world"],
+  ["rss-euronews-world", "Euronews World", "https://www.euronews.com/rss?format=mrss&level=theme&name=news"],
   ["rss-sky-news-world", "Sky News World", "https://feeds.skynews.com/feeds/rss/world.xml"],
   ["rss-financial-times-world", "Financial Times World", "https://www.ft.com/world?format=rss"],
   ["rss-politico-europe", "Politico Europe", "https://www.politico.eu/feed/"],
-  ["rss-telegraph-world", "The Telegraph World", "https://www.telegraph.co.uk/news/world/rss.xml"],
   ["rss-independent-world", "The Independent World", "https://www.independent.co.uk/news/world/rss"],
   ["rss-abc-international", "ABC International", "https://abcnews.go.com/abcnews/internationalheadlines"],
   ["rss-fox-world", "Fox World", "https://moxie.foxnews.com/google-publisher/world.xml"],
   ["rss-nbc-world", "NBC World News", "http://feeds.nbcnews.com/feeds/worldnews"],
   ["rss-cbs-world", "CBS World News", "https://www.cbsnews.com/latest/rss/world"],
-  ["rss-yahoo-world", "Yahoo World News", "https://www.yahoo.com/news/rss/world"],
   ["rss-npr-world", "NPR World", "https://feeds.npr.org/1004/rss.xml"],
-  ["rss-zerohedge-disabled", "ZeroHedge", "https://www.zerohedge.com/", "editorial", false, "disabled-until-valid-xml-feed"]
+  ["rss-coindesk", "CoinDesk", "https://www.coindesk.com/arc/outboundfeeds/rss/", "editorial"]
 ]);
 
 const GENERATED_COUNTRY_TERMS = Object.freeze([
@@ -117,8 +115,8 @@ export function canonicalizeSourceUrl(value) {
 function stableQueryDefinition(value = {}) {
   const locale = value.locale && typeof value.locale === "object"
     ? Object.fromEntries(Object.entries(value.locale)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, entry]) => [key, String(entry || "").trim()]))
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => [key, String(entry || "").trim()]))
     : null;
   return JSON.stringify({
     provider: String(value.provider || "").trim().toLowerCase(),
