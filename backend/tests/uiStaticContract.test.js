@@ -12,18 +12,24 @@ async function frontendFile(relativePath) {
 }
 
 test("dashboard and admin share valid branding and primary navigation", async () => {
-  const [dashboard, admin] = await Promise.all([
+  const [dashboard, admin, brandMark] = await Promise.all([
     frontendFile("index.html"),
-    frontendFile("admin.html")
+    frontendFile("admin.html"),
+    frontendFile("assets/ogid-logo.svg")
   ]);
 
   for (const html of [dashboard, admin]) {
     assert.match(html, /class="ogid-brand"/);
-    assert.match(html, /class="ogid-brand-mark"/);
+    assert.match(html, /<img src="\/assets\/ogid-logo\.svg" alt="OGID" class="ogid-brand-mark" \/>/);
+    assert.match(html, /<link rel="icon" type="image\/svg\+xml" href="\/assets\/ogid-logo\.svg" \/>/);
     assert.match(html, /href="\/admin"/);
     assert.match(html, /href="\/"/);
     assert.doesNotMatch(html, /<img[^>]*>\s*<img/i);
   }
+
+  assert.match(brandMark, /^<svg\b/);
+  assert.match(brandMark, /viewBox="0 0 512 512"/);
+  assert.match(brandMark, /href="data:image\/png;base64,/);
 });
 
 test("dashboard keeps map and news contracts without retired admin selectors", async () => {
