@@ -66,6 +66,8 @@ export function generateInsights({ countries = {}, previousCountries = {}, input
         summary: "No elevated geopolitical signals detected in the current cycle.",
         drivers: ["news-volume:0", "conflict-weight:0"],
         confidence: 70,
+        signalStrength: 70,
+        dataMode: "derived",
         score: 0,
         inputMode
       }
@@ -90,6 +92,8 @@ export function generateInsights({ countries = {}, previousCountries = {}, input
       summary: buildSummary(country, trend),
       drivers: buildDrivers(country),
       confidence,
+      signalStrength: confidence,
+      dataMode: "derived",
       score: country.score,
       inputMode
     };

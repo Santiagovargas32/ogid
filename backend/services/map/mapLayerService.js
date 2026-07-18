@@ -204,14 +204,14 @@ const STATIC_POINTS = Object.freeze({
     }
   ],
   datacenters: [
-    { id: "dc-london", name: "London Exchange Cluster", lat: 51.5072, lng: -0.1276, country: "UA" },
-    { id: "dc-frankfurt", name: "Frankfurt IX Hub", lat: 50.1109, lng: 8.6821, country: "UA" },
+    { id: "dc-london", name: "London Exchange Cluster", lat: 51.5072, lng: -0.1276, country: "GB" },
+    { id: "dc-frankfurt", name: "Frankfurt IX Hub", lat: 50.1109, lng: 8.6821, country: "DE" },
     { id: "dc-ashburn", name: "Ashburn Data Valley", lat: 39.0438, lng: -77.4874, country: "US" },
-    { id: "dc-singapore", name: "Singapore Digital Hub", lat: 1.3521, lng: 103.8198, country: "CN" },
-    { id: "dc-dubai", name: "Dubai Cloud Corridor", lat: 25.2048, lng: 55.2708, country: "IR" }
+    { id: "dc-singapore", name: "Singapore Digital Hub", lat: 1.3521, lng: 103.8198, country: "SG" },
+    { id: "dc-dubai", name: "Dubai Cloud Corridor", lat: 25.2048, lng: 55.2708, country: "AE" }
   ],
   strategic_ports: [
-    { id: "port-singapore", name: "Port of Singapore", lat: 1.2644, lng: 103.8408, country: "CN" },
+    { id: "port-singapore", name: "Port of Singapore", lat: 1.2644, lng: 103.8408, country: "SG" },
     { id: "port-jebel-ali", name: "Jebel Ali", lat: 25.0113, lng: 55.0605, country: "IR" },
     { id: "port-rotterdam", name: "Port of Rotterdam", lat: 51.9475, lng: 4.1333, country: "UA" },
     { id: "port-houston", name: "Port Houston", lat: 29.7304, lng: -95.2629, country: "US" },
@@ -220,7 +220,7 @@ const STATIC_POINTS = Object.freeze({
   airports: [
     { id: "apt-heathrow", name: "Heathrow", lat: 51.47, lng: -0.4543, country: "UA" },
     { id: "apt-incheon", name: "Incheon", lat: 37.4602, lng: 126.4407, country: "KR" },
-    { id: "apt-dxb", name: "Dubai Intl", lat: 25.2532, lng: 55.3657, country: "IR" },
+    { id: "apt-dxb", name: "Dubai Intl", lat: 25.2532, lng: 55.3657, country: "AE" },
     { id: "apt-jfk", name: "JFK", lat: 40.6413, lng: -73.7781, country: "US" },
     { id: "apt-del", name: "Delhi", lat: 28.5562, lng: 77.1, country: "IN" }
   ],
@@ -263,7 +263,7 @@ const STATIC_POINTS = Object.freeze({
   ports_congestion: [
     { id: "pc-long-beach", name: "Long Beach Queue", lat: 33.7701, lng: -118.1937, country: "US" },
     { id: "pc-shanghai", name: "Shanghai Queue", lat: 31.2304, lng: 121.4737, country: "CN" },
-    { id: "pc-singapore", name: "Singapore Queue", lat: 1.2644, lng: 103.8408, country: "CN" }
+    { id: "pc-singapore", name: "Singapore Queue", lat: 1.2644, lng: 103.8408, country: "SG" }
   ],
   space_assets: [
     { id: "sa-baikonur", name: "Baikonur Launch Complex", lat: 45.965, lng: 63.305, country: "RU" },
@@ -1146,7 +1146,8 @@ function buildStaticPointFeatures(layerId, now) {
         approximate: item.approximate === true,
         severity: "monitoring",
         source: "seeded-map-catalog",
-        synthetic: true
+        synthetic: false,
+        dataMode: "seeded"
       },
       now
     )
@@ -1164,7 +1165,8 @@ function buildStaticLineFeatures(layerId, now) {
         countries: item.countries || [],
         severity: "monitoring",
         source: "seeded-map-catalog",
-        synthetic: true
+        synthetic: false,
+        dataMode: "seeded"
       },
       now
     )
@@ -1188,6 +1190,7 @@ function buildMovingFeatures(layerId, now) {
         severity: "elevated",
         source: "seeded-moving-layer",
         synthetic: true,
+        dataMode: "seeded",
         trackPhase: phase
       },
       now
@@ -1214,7 +1217,8 @@ function buildConflictFeatures(snapshot = {}, now) {
           metrics: hotspot.metrics || {},
           topTags: hotspot.topTags || [],
           source: "state-hotspots",
-          synthetic: false
+          synthetic: false,
+          dataMode: "derived"
         },
         hotspot.updatedAt || now
       )
@@ -1235,6 +1239,7 @@ function buildScaffoldFeatures(layerId, now) {
         severity: "monitoring",
         source: "registry-scaffold",
         synthetic: true,
+        dataMode: "synthetic",
         implementation: "scaffold"
       },
       now
@@ -1310,7 +1315,8 @@ function articleToFeatures(layerId, article = {}) {
           credibilityScore: Number(article.credibilityScore || 0.55),
           threatLevel: article.threatLevel || "low",
           topicTags: article.topicTags || [],
-          synthetic: Boolean(article.synthetic)
+          synthetic: Boolean(article.synthetic),
+          dataMode: article.synthetic ? "synthetic" : "derived"
         },
         timestamp
       )
@@ -1340,7 +1346,8 @@ function articleToFeatures(layerId, article = {}) {
           credibilityScore: Number(article.credibilityScore || 0.55),
           threatLevel: article.threatLevel || "low",
           topicTags: article.topicTags || [],
-          synthetic: Boolean(article.synthetic)
+          synthetic: Boolean(article.synthetic),
+          dataMode: article.synthetic ? "synthetic" : "derived"
         },
         timestamp
       )
@@ -1405,7 +1412,7 @@ function featureWithinTimeWindow(feature, thresholdMs) {
 function buildLayerPayload(layerId, snapshot = {}, rssSnapshot = {}, now = new Date().toISOString()) {
   if (layerId === "conflicts") {
     return {
-      implementation: "live",
+      implementation: "derived",
       features: buildConflictFeatures(snapshot, now)
     };
   }
@@ -1432,14 +1439,15 @@ function buildLayerPayload(layerId, snapshot = {}, rssSnapshot = {}, now = new D
   }
 
   if (ARTICLE_KEYWORDS[layerId]) {
+    const features = buildArticleLayerFeatures(layerId, snapshot, rssSnapshot, now);
     return {
-      implementation: "live",
-      features: buildArticleLayerFeatures(layerId, snapshot, rssSnapshot, now)
+      implementation: features.every((feature) => feature.properties?.dataMode === "synthetic") ? "synthetic" : "derived",
+      features
     };
   }
 
   return {
-    implementation: "scaffold",
+    implementation: "synthetic",
     features: buildScaffoldFeatures(layerId, now)
   };
 }

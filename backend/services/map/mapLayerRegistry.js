@@ -12,7 +12,8 @@ function defineLayer(id, label, category, options = {}) {
     label,
     category,
     ...DEFAULT_LAYER_OPTIONS,
-    ...options
+    ...options,
+    capability: options.capability === "live" ? "derived" : options.capability || DEFAULT_LAYER_OPTIONS.capability
   });
 }
 

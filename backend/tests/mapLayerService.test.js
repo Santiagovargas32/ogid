@@ -117,6 +117,25 @@ test("map layer service resolves live and seeded bundles without hitting the net
   assert.ok(bundle.layers.find((layer) => layer.id === "military_bases")?.featureCount > 0);
 });
 
+test("map seeds use confirmed country codes and never label synthetic scaffolds as live", async () => {
+  const service = new MapLayerService({
+    stateManager: { getSnapshot: () => ({ ...buildStateSnapshot(), signalCorpus: [], news: [] }) },
+    rssAggregator: { getSnapshot: async () => ({ items: [], meta: {} }) }
+  });
+  const bundle = await service.getLayerBundle({ layerIds: ["datacenters", "strategic_ports", "airports", "ports_congestion", "protests"], timeWindow: "24h" });
+  const datacenters = bundle.layers.find((layer) => layer.id === "datacenters");
+  const countriesByName = Object.fromEntries(datacenters.features.map((feature) => [feature.title, feature.properties.country]));
+  assert.equal(countriesByName["London Exchange Cluster"], "GB");
+  assert.equal(countriesByName["Frankfurt IX Hub"], "DE");
+  assert.equal(countriesByName["Singapore Digital Hub"], "SG");
+  assert.equal(countriesByName["Dubai Cloud Corridor"], "AE");
+  assert.equal(bundle.layers.find((layer) => layer.id === "strategic_ports").features.find((feature) => feature.title === "Port of Singapore").properties.country, "SG");
+  assert.equal(bundle.layers.find((layer) => layer.id === "airports").features.find((feature) => feature.title === "Dubai Intl").properties.country, "AE");
+  assert.equal(bundle.layers.find((layer) => layer.id === "ports_congestion").features.find((feature) => feature.title === "Singapore Queue").properties.country, "SG");
+  assert.ok(datacenters.features.every((feature) => feature.properties.dataMode === "seeded"));
+  assert.equal(bundle.layers.find((layer) => layer.id === "protests").implementation, "synthetic");
+});
+
 test("map layer service builds dashboard map assets with static and moving seeds", async () => {
   const snapshot = buildStateSnapshot();
   const service = new MapLayerService({
