@@ -1,9 +1,5 @@
 import { normalizeQuoteDataMode } from "./quoteMetadata.js";
 
-const DEFENSE_TICKERS = ["GD", "BA", "NOC", "LMT", "RTX", "ITA"];
-const ENERGY_TICKERS = ["XOM", "CVX", "COP", "XLE"];
-const BROAD_TICKERS = ["SPY"];
-
 const ENERGY_KEYWORDS = [
   "oil",
   "crude",
@@ -23,10 +19,11 @@ const LEVEL_WEIGHT = {
   Stable: 1
 };
 const MODE_CONFIDENCE_PENALTY = Object.freeze({
-  live: 0,
-  "historical-eod": 8,
-  "router-stale": 12,
-  "synthetic-fallback": 18
+  observed: 0,
+  derived: 4,
+  seeded: 10,
+  stale: 12,
+  synthetic: 18
 });
 
 function normalizeText(value = "") {
@@ -44,13 +41,24 @@ function scoreArticle(article, countries = {}) {
   return Number((sentimentWeight + conflictWeight + levelWeight).toFixed(2));
 }
 
-function sectorTickers(allowedTickers = []) {
-  const set = new Set(allowedTickers.map((ticker) => String(ticker).toUpperCase()));
-  return {
-    defense: DEFENSE_TICKERS.filter((ticker) => set.has(ticker)),
-    energy: ENERGY_TICKERS.filter((ticker) => set.has(ticker)),
-    broad: BROAD_TICKERS.filter((ticker) => set.has(ticker))
-  };
+function normalizeSector(instrument = {}) {
+  const metadata = normalizeText(`${instrument.sector || ""} ${instrument.industry || ""} ${instrument.displayName || ""}`);
+  if (["defense", "aerospace", "weapon", "military"].some((value) => metadata.includes(` ${value} `))) return "defense";
+  if (["energy", "oil", "gas", "petroleum"].some((value) => metadata.includes(` ${value} `))) return "energy";
+  if (["index", "fund", "etf"].includes(String(instrument.assetType || "").toLowerCase())) return "broad";
+  return String(instrument.sector || instrument.assetType || "broad").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "broad";
+}
+
+function sectorTickers(allowedTickers = [], instruments = [], marketQuotes = {}) {
+  const groups = {};
+  for (const ticker of allowedTickers.map((value) => String(value).toUpperCase())) {
+    const instrument = instruments.find((item) => String(item.canonicalSymbol || item.symbol || "").toUpperCase() === ticker) || marketQuotes[ticker] || { canonicalSymbol: ticker };
+    const sector = normalizeSector(instrument);
+    if (!groups[sector]) groups[sector] = { tickers: [], instruments: [] };
+    groups[sector].tickers.push(ticker);
+    groups[sector].instruments.push(instrument);
+  }
+  return groups;
 }
 
 function isDefenseArticle(article) {
@@ -60,6 +68,17 @@ function isDefenseArticle(article) {
 function isEnergyArticle(article) {
   const text = normalizeText(`${article.title || ""}. ${article.description || ""}. ${article.content || ""}`);
   return ENERGY_KEYWORDS.some((keyword) => text.includes(` ${keyword} `));
+}
+
+function isRelevantToGroup(article, sector, instruments = []) {
+  if (sector === "defense") return isDefenseArticle(article);
+  if (sector === "energy") return isEnergyArticle(article);
+  if (sector === "broad") return true;
+  const text = normalizeText(`${article.title || ""}. ${article.description || ""}. ${article.content || ""}`);
+  const terms = [sector.replaceAll("-", " "), ...instruments.flatMap((instrument) => [instrument.canonicalSymbol, instrument.symbol, instrument.displayName, instrument.sector, instrument.industry])]
+    .map((value) => normalizeText(value || "").trim())
+    .filter((value) => value.length >= 3);
+  return terms.some((term) => text.includes(` ${term} `));
 }
 
 function latestArticles(articles = [], predicate, maxItems) {
@@ -111,8 +130,8 @@ function classifyDirection(momentum, pressure) {
 }
 
 function quoteQualityPenalty(quote = {}) {
-  const normalizedMode = normalizeQuoteDataMode(quote?.dataMode || (quote?.synthetic ? "synthetic-fallback" : "live"));
-  const modePenalty = MODE_CONFIDENCE_PENALTY[normalizedMode] || MODE_CONFIDENCE_PENALTY["synthetic-fallback"];
+  const normalizedMode = normalizeQuoteDataMode(quote?.dataMode || (quote?.synthetic ? "synthetic" : "observed"));
+  const modePenalty = MODE_CONFIDENCE_PENALTY[normalizedMode] ?? MODE_CONFIDENCE_PENALTY.synthetic;
   const latencyPenalty = Number.isFinite(Number(quote?.providerLatencyMs))
     ? Math.min(8, Math.round(Number(quote.providerLatencyMs) / 250))
     : 0;
@@ -139,12 +158,14 @@ function buildSectorPrediction({ sector, articles, tickers, countries, marketQuo
     sector,
     direction,
     confidence,
+    signalStrength: confidence,
     horizonHours: 24,
     score: Number((sectorPressure + Math.abs(momentum)).toFixed(2)),
     drivers: summarizeDrivers(articles, tickers),
     basedOnArticles: articles.map((article) => article.id),
     tickers,
     inputMode,
+    dataMode: "derived",
     marketCoveragePenalty: averageMarketPenalty
   };
 }
@@ -155,7 +176,7 @@ function buildTickerPredictions(sectorPredictions = [], marketQuotes = {}) {
   for (const sectorPrediction of sectorPredictions) {
     for (const ticker of sectorPrediction.tickers) {
       const quote = marketQuotes[ticker] || {};
-      const dataMode = normalizeQuoteDataMode(quote?.dataMode || (quote?.synthetic ? "synthetic-fallback" : "live"));
+      const dataMode = normalizeQuoteDataMode(quote?.dataMode || (quote?.synthetic ? "synthetic" : "observed"));
       const changePct = Number(quote.changePct || 0);
       const confidenceBoost = Math.min(8, Math.round(Math.abs(changePct)));
       const confidence = Math.max(
@@ -169,11 +190,13 @@ function buildTickerPredictions(sectorPredictions = [], marketQuotes = {}) {
         direction: sectorPrediction.direction,
         confidence,
         predictedConfidence: confidence,
+        signalStrength: confidence,
         predictionScore,
         horizonHours: sectorPrediction.horizonHours,
         drivers: [...sectorPrediction.drivers].slice(0, 3),
         basedOnArticles: [...sectorPrediction.basedOnArticles].slice(0, 5),
-        marketDataMode: dataMode
+        marketDataMode: dataMode,
+        dataMode: "derived"
       });
     }
   }
@@ -190,25 +213,19 @@ export function generatePredictions({
   countries = {},
   marketQuotes = {},
   tickers = [],
+  instruments = [],
   inputMode = "live",
   maxNewsPerSector = 5
 }) {
   const normalizedArticles = [...articles].sort(
     (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
   );
-  const allowed = sectorTickers(tickers);
-
-  const bySector = {
-    defense: latestArticles(normalizedArticles, isDefenseArticle, maxNewsPerSector),
-    energy: latestArticles(normalizedArticles, isEnergyArticle, maxNewsPerSector),
-    broad: normalizedArticles.slice(0, maxNewsPerSector)
-  };
-
-  const sectorPredictions = ["defense", "energy", "broad"].map((sector) =>
+  const allowed = sectorTickers(tickers, instruments, marketQuotes);
+  const sectorPredictions = Object.entries(allowed).map(([sector, group]) =>
     buildSectorPrediction({
       sector,
-      articles: bySector[sector],
-      tickers: allowed[sector],
+      articles: latestArticles(normalizedArticles, (article) => isRelevantToGroup(article, sector, group.instruments), maxNewsPerSector),
+      tickers: group.tickers,
       countries,
       marketQuotes,
       inputMode
@@ -219,6 +236,7 @@ export function generatePredictions({
   return {
     updatedAt: new Date().toISOString(),
     inputMode,
+    dataMode: "derived",
     sectors: sectorPredictions,
     tickers: tickerPredictions,
     predictionScoreByTicker: toPredictionScoreByTicker(tickerPredictions)

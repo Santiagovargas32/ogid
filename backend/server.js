@@ -9,22 +9,34 @@ import stateManager from "./state/stateManager.js";
 import RefreshOrchestratorService from "./services/refreshOrchestratorService.js";
 import ManualRefreshService from "./services/manualRefreshService.js";
 import apiQuotaTracker from "./services/admin/apiQuotaTrackerService.js";
+import { providerRuntime } from "./services/providers/providerRuntime.js";
 import { normalizeNewsQueryPacks } from "./services/news/newsQueryPackService.js";
 import { RssAggregatorService } from "./services/news/rssAggregator.js";
+import { NEWS_SOURCE_CATALOG, projectLegacyRssFeeds, validateNewsSourceCatalog } from "./services/news/newsSourceCatalog.js";
 import { SignalCorrelatorService } from "./services/intel/signalCorrelator.js";
 import { MapLayerService } from "./services/map/mapLayerService.js";
 import { MarketHistoryStore } from "./services/market/marketHistoryStore.js";
+import { DailyCandleStore } from "./services/market/dailyCandleStore.js";
+import { DailyCandleService } from "./services/market/dailyCandleService.js";
+import { IntradayCandleService } from "./services/market/intradayCandleService.js";
+import { TechnicalIndicatorService } from "./services/market/technicalIndicatorService.js";
+import { NewsPriceCouplingService } from "./services/market/newsPriceCouplingService.js";
+import { MarketWatchlistService } from "./services/market/marketWatchlistService.js";
+import { MarketDataService, MarketDataStoreAdapter, YahooClient } from "./services/marketData/index.js";
+import { SlidingWindowRateLimiter } from "./services/marketData/rateLimit.js";
+import { resolveRolloutBatch, resolveVerifiedInstrumentReferences } from "./services/market/instrumentRegistry.js";
+import { calculateMinimumSafeIntervalMs, MarketCreditScheduler, TWELVE_BASIC_POLICY } from "./services/market/marketCreditScheduler.js";
 import MediaStreamService from "./services/media/mediaStreamService.js";
 import { createSocketServer } from "./websocket/socketServer.js";
 import { errorHandler, notFoundHandler } from "./utils/error.js";
 import { createLogger, requestLogger } from "./utils/logger.js";
 import { queryParamAllowlist } from "./utils/queryParamAllowlist.js";
+import { sensitiveRouteAuth } from "./middleware/sensitiveRouteAuth.js";
 
 const log = createLogger("backend/server");
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-dotenv.config({ path: path.resolve(__dirname, ".env") });
 const DEFAULT_NEWS_QUERY_PACKS = Object.freeze({
   defense: "missile OR defense contractor OR arms deal OR air defense",
   energy: "oil OR gas OR lng OR pipeline OR refinery",
@@ -33,18 +45,9 @@ const DEFAULT_NEWS_QUERY_PACKS = Object.freeze({
   macro: "central bank OR inflation OR tariffs OR sovereign risk",
   semiconductors: "semiconductor OR chip export OR foundry OR fab"
 });
-const DEFAULT_RSS_FEEDS = Object.freeze([
-  { label: "BBC World", url: "https://feeds.bbci.co.uk/news/world/rss.xml" },
-  { label: "ABC International", url: "https://abcnews.go.com/abcnews/internationalheadlines" },
-  { label: "Fox World", url: "https://moxie.foxnews.com/google-publisher/world.xml" }
-]);
-const DEFAULT_RSS_DISABLED_FEEDS = Object.freeze([
-  {
-    label: "ZeroHedge",
-    url: "https://www.zerohedge.com/",
-    reason: "disabled-until-valid-xml-feed"
-  }
-]);
+const DEFAULT_RSS_PROJECTION = projectLegacyRssFeeds(NEWS_SOURCE_CATALOG);
+const DEFAULT_RSS_FEEDS = Object.freeze(DEFAULT_RSS_PROJECTION.filter((feed) => !feed.disabled));
+const DEFAULT_RSS_DISABLED_FEEDS = Object.freeze(DEFAULT_RSS_PROJECTION.filter((feed) => feed.disabled));
 
 function toInt(value, fallback) {
   const parsed = Number.parseInt(String(value ?? ""), 10);
@@ -231,6 +234,7 @@ function normalizeMarketOffHoursStrategy(value = "") {
 }
 
 function readConfig(overrides = {}) {
+  validateNewsSourceCatalog(NEWS_SOURCE_CATALOG);
   const newsOverrides = overrides.news || {};
   const watchlistCountries = toList(process.env.WATCHLIST_COUNTRIES, ["US", "IL", "IR"]).map((value) =>
     value.toUpperCase()
@@ -260,11 +264,27 @@ function readConfig(overrides = {}) {
   );
   const envMarketProvider = toTrimmedString(process.env.MARKET_PROVIDER);
   const envMarketFallbackProvider = toTrimmedString(process.env.MARKET_PROVIDER_FALLBACK);
-  const marketTickers = toList(process.env.MARKET_TICKERS, ["GD", "BA", "NOC", "LMT", "RTX", "XOM", "CVX"]).map(
-    (ticker) => ticker.toUpperCase()
-  );
+  const marketWatchlistRollout = resolveRolloutBatch(process.env.MARKET_WATCHLIST_ROLLOUT);
+  const configuredMarketTickers = toList(process.env.MARKET_TICKERS, []).map((ticker) => ticker.toUpperCase());
+  const marketTickers = [...new Set(configuredMarketTickers)];
+  const enabledMarketInstruments = resolveVerifiedInstrumentReferences(marketTickers).instruments;
   const marketRefreshIntervalMs = toPositiveInt(process.env.MARKET_REFRESH_INTERVAL_MS, refreshIntervalMs);
-  const marketActiveIntervalMs = toPositiveInt(process.env.MARKET_ACTIVE_INTERVAL_MS, marketRefreshIntervalMs);
+  const marketCreditPolicy = {
+    declaredDailyLimit: toPositiveInt(process.env.MARKET_TWELVE_DECLARED_DAILY_LIMIT, 800),
+    declaredMinuteLimit: toPositiveInt(process.env.MARKET_TWELVE_DECLARED_MINUTE_LIMIT, 8),
+    normalSoftLimit: toPositiveInt(process.env.MARKET_TWELVE_NORMAL_SOFT_LIMIT, 600),
+    internalHardLimit: toPositiveInt(process.env.MARKET_TWELVE_INTERNAL_HARD_LIMIT, 700),
+    reservedCapacity: toPositiveInt(process.env.MARKET_TWELVE_RESERVED_CAPACITY, 100),
+    normalMinuteLimit: toPositiveInt(process.env.MARKET_TWELVE_NORMAL_MINUTE_LIMIT, 7),
+    absoluteMinuteLimit: toPositiveInt(process.env.MARKET_TWELVE_ABSOLUTE_MINUTE_LIMIT, 8),
+    costPerOperation: toNonNegativeInt(process.env.MARKET_TWELVE_COST_PER_OPERATION, 0),
+    costPerSymbol: toPositiveInt(process.env.MARKET_TWELVE_COST_PER_SYMBOL, 1)
+  };
+  const hotSymbolCount = enabledMarketInstruments.filter((instrument) => instrument.refreshTier === "hot").length;
+  const safeMarketActiveIntervalMs = normalizeMarketProvider(envMarketProvider) === "twelve"
+    ? calculateMinimumSafeIntervalMs({ symbolCount: Math.max(1, hotSymbolCount), dailyBudget: marketCreditPolicy.normalSoftLimit, policy: marketCreditPolicy })
+    : 0;
+  const marketActiveIntervalMs = Math.max(toPositiveInt(process.env.MARKET_ACTIVE_INTERVAL_MS, marketRefreshIntervalMs), safeMarketActiveIntervalMs);
   const marketOffHoursIntervalMs = toPositiveInt(process.env.MARKET_OFFHOURS_INTERVAL_MS, marketActiveIntervalMs);
   const newsBackoffMaxMs = toPositiveInt(process.env.NEWS_BACKOFF_MAX_MS, newsIntervalMs);
   const normalizedNewsQueryPacks = normalizeNewsQueryPacks(
@@ -293,10 +313,11 @@ function readConfig(overrides = {}) {
       gnewsApiKey: process.env.GNEWS_API_KEY || "",
       gnewsBaseUrl: process.env.GNEWS_BASE_URL || "https://gnews.io/api/v4",
       mediastackApiKey: process.env.MEDIASTACK_API_KEY || "",
-      mediastackBaseUrl: process.env.MEDIASTACK_BASE_URL || "http://api.mediastack.com/v1",
+      mediastackBaseUrl: process.env.MEDIASTACK_BASE_URL || "https://api.mediastack.com/v1",
       gdeltBaseUrl: process.env.GDELT_BASE_URL || "https://api.gdeltproject.org/api/v2/doc/doc",
       rssFeeds: mergeFeedLists(rssActiveFeeds, rssDisabledFeeds),
       rssDisabledFeeds,
+      sourceCatalog: NEWS_SOURCE_CATALOG,
       query: process.env.NEWS_QUERY || "geopolitics OR conflict OR sanctions OR military",
       queryPacks: normalizedNewsQueryPacks.flattened,
       queryPackGroups: normalizedNewsQueryPacks,
@@ -312,6 +333,11 @@ function readConfig(overrides = {}) {
       rssAggregateIntervalMs,
       rssAggregateFeedsPerRun,
       rssAggregateMaxItems,
+      rssPipelineMode: process.env.NEWS_RSS_PIPELINE_MODE || "legacy",
+      rssGlobalConcurrency: toPositiveInt(process.env.NEWS_RSS_GLOBAL_CONCURRENCY, 4),
+      rssHostConcurrency: toPositiveInt(process.env.NEWS_RSS_HOST_CONCURRENCY, 1),
+      rssCycleDeadlineMs: toPositiveInt(process.env.NEWS_RSS_CYCLE_DEADLINE_MS, 60_000),
+      rssCanonicalStateFile: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, process.env.NEWS_RSS_CANONICAL_STATE_FILE || "data/rss-canonical-state.json"),
       sourceAllowlist: newsSourceAllowlist,
       domainAllowlist: newsDomainAllowlist,
       intervalByBandMs: {
@@ -343,6 +369,8 @@ function readConfig(overrides = {}) {
       timeoutMs: toInt(process.env.MARKET_TIMEOUT_MS, 10_000),
       offHoursStrategy: normalizeMarketOffHoursStrategy(process.env.MARKET_OFFHOURS_STRATEGY),
       tickers: marketTickers,
+      initialTickers: configuredMarketTickers,
+      watchlistRollout: marketWatchlistRollout,
       refreshIntervalMs: marketRefreshIntervalMs,
       minTickerTtlMs: toInt(process.env.MARKET_MIN_TICKER_TTL_MS, 45_000),
       batchChunkSize: toPositiveInt(process.env.MARKET_BATCH_CHUNK_SIZE),
@@ -355,39 +383,56 @@ function readConfig(overrides = {}) {
       offHoursIntervalMs: marketOffHoursIntervalMs,
       intervalByBandMs: {
         GREEN: {
-          activeIntervalMs: toPositiveInt(process.env.MARKET_ACTIVE_INTERVAL_GREEN_MS, marketActiveIntervalMs),
+          activeIntervalMs: Math.max(toPositiveInt(process.env.MARKET_ACTIVE_INTERVAL_GREEN_MS, marketActiveIntervalMs), safeMarketActiveIntervalMs),
           offHoursIntervalMs: toPositiveInt(process.env.MARKET_OFFHOURS_INTERVAL_GREEN_MS, marketOffHoursIntervalMs)
         },
         YELLOW: {
-          activeIntervalMs: toPositiveInt(process.env.MARKET_ACTIVE_INTERVAL_YELLOW_MS, marketActiveIntervalMs),
+          activeIntervalMs: Math.max(toPositiveInt(process.env.MARKET_ACTIVE_INTERVAL_YELLOW_MS, marketActiveIntervalMs), safeMarketActiveIntervalMs),
           offHoursIntervalMs: toPositiveInt(process.env.MARKET_OFFHOURS_INTERVAL_YELLOW_MS, marketOffHoursIntervalMs)
         },
         RED: {
-          activeIntervalMs: toPositiveInt(process.env.MARKET_ACTIVE_INTERVAL_RED_MS, marketActiveIntervalMs),
+          activeIntervalMs: Math.max(toPositiveInt(process.env.MARKET_ACTIVE_INTERVAL_RED_MS, marketActiveIntervalMs), safeMarketActiveIntervalMs),
           offHoursIntervalMs: toPositiveInt(process.env.MARKET_OFFHOURS_INTERVAL_RED_MS, marketOffHoursIntervalMs)
         },
         CRITICAL: {
-          activeIntervalMs: toPositiveInt(process.env.MARKET_ACTIVE_INTERVAL_CRITICAL_MS, marketActiveIntervalMs),
+          activeIntervalMs: Math.max(toPositiveInt(process.env.MARKET_ACTIVE_INTERVAL_CRITICAL_MS, marketActiveIntervalMs), safeMarketActiveIntervalMs),
           offHoursIntervalMs: toPositiveInt(process.env.MARKET_OFFHOURS_INTERVAL_CRITICAL_MS, marketOffHoursIntervalMs)
         }
       },
-      impactWindowMin: toInt(process.env.IMPACT_WINDOW_MIN, 120)
+      impactWindowMin: toInt(process.env.IMPACT_WINDOW_MIN, 120),
+      creditPolicy: marketCreditPolicy,
+      creditStateFile: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, process.env.MARKET_CREDIT_STATE_FILE || "data/market-credit-state.json"),
+      minimumSafeActiveIntervalMs: safeMarketActiveIntervalMs,
+      dailyCandles: {
+        enabled: toBool(process.env.MARKET_DAILY_CANDLES_ENABLED, process.env.NODE_ENV !== "test"),
+        adjustmentMode: ["splits", "none"].includes(process.env.MARKET_DAILY_CANDLES_ADJUSTMENT) ? process.env.MARKET_DAILY_CANDLES_ADJUSTMENT : "splits",
+        retentionDays: toPositiveInt(process.env.MARKET_DAILY_CANDLES_RETENTION_DAYS, 3650),
+        backfillMaxDays: toPositiveInt(process.env.MARKET_DAILY_CANDLES_BACKFILL_MAX_DAYS, 30),
+        equityDelayMinutes: toNonNegativeInt(process.env.MARKET_DAILY_CANDLES_EQUITY_DELAY_MIN, 15),
+        cryptoCloseDelayMinutes: toNonNegativeInt(process.env.MARKET_DAILY_CANDLES_CRYPTO_DELAY_MIN, 5)
+      },
+      intradayCandles: {
+        enabled: toBool(process.env.MARKET_INTRADAY_CANDLES_ENABLED, false),
+        interval: ["5min", "15min", "30min", "1h"].includes(process.env.MARKET_INTRADAY_CANDLES_INTERVAL) ? process.env.MARKET_INTRADAY_CANDLES_INTERVAL : "15min",
+        pollIntervalMs: toPositiveInt(process.env.MARKET_INTRADAY_CANDLES_POLL_MS, 900_000),
+        adjustmentMode: ["splits", "none"].includes(process.env.MARKET_INTRADAY_CANDLES_ADJUSTMENT) ? process.env.MARKET_INTRADAY_CANDLES_ADJUSTMENT : "splits"
+      }
     },
     apiLimits: {
-      newsapiDailyLimit: toPositiveInt(process.env.NEWSAPI_DAILY_LIMIT),
-      newsapiDailyBudget: toPositiveInt(process.env.NEWSAPI_DAILY_BUDGET),
-      gnewsDailyLimit: toPositiveInt(process.env.GNEWS_DAILY_LIMIT),
-      gnewsDailyBudget: toPositiveInt(process.env.GNEWS_DAILY_BUDGET),
-      mediastackDailyLimit: toPositiveInt(process.env.MEDIASTACK_DAILY_LIMIT),
-      mediastackDailyBudget: toPositiveInt(process.env.MEDIASTACK_DAILY_BUDGET),
+      newsapiDailyLimit: toPositiveInt(process.env.NEWSAPI_DAILY_LIMIT, 100),
+      newsapiDailyBudget: toPositiveInt(process.env.NEWSAPI_DAILY_BUDGET, 90),
+      gnewsDailyLimit: toPositiveInt(process.env.GNEWS_DAILY_LIMIT, 100),
+      gnewsDailyBudget: toPositiveInt(process.env.GNEWS_DAILY_BUDGET, 90),
+      mediastackMonthlyLimit: toPositiveInt(process.env.MEDIASTACK_MONTHLY_LIMIT, 100),
+      mediastackMonthlyBudget: toPositiveInt(process.env.MEDIASTACK_MONTHLY_BUDGET, 80),
       rssDailyLimit: toPositiveInt(process.env.RSS_DAILY_LIMIT),
       rssDailyBudget: toPositiveInt(process.env.RSS_DAILY_BUDGET),
       gdeltDailyLimit: toPositiveInt(process.env.GDELT_DAILY_LIMIT),
       gdeltDailyBudget: toPositiveInt(process.env.GDELT_DAILY_BUDGET),
-      twelveDailyLimit: toPositiveInt(process.env.MARKET_TWELVE_DAILY_LIMIT),
-      twelveDailyBudget: toPositiveInt(process.env.MARKET_TWELVE_DAILY_BUDGET),
-      twelveMinuteLimit: toPositiveInt(process.env.MARKET_TWELVE_MINUTE_LIMIT),
-      twelveMinuteBudget: toPositiveInt(process.env.MARKET_TWELVE_MINUTE_BUDGET),
+      twelveDailyLimit: toPositiveInt(process.env.MARKET_TWELVE_DAILY_LIMIT, 800),
+      twelveDailyBudget: toPositiveInt(process.env.MARKET_TWELVE_DAILY_BUDGET, 700),
+      twelveMinuteLimit: toPositiveInt(process.env.MARKET_TWELVE_MINUTE_LIMIT, 8),
+      twelveMinuteBudget: toPositiveInt(process.env.MARKET_TWELVE_MINUTE_BUDGET, 8),
       yahooDailyLimit: toPositiveInt(process.env.MARKET_YAHOO_DAILY_LIMIT),
       yahooDailyBudget: toPositiveInt(process.env.MARKET_YAHOO_DAILY_BUDGET)
     },
@@ -396,8 +441,8 @@ function readConfig(overrides = {}) {
       timeoutMs: toInt(process.env.MEDIA_STREAM_TIMEOUT_MS, 8_000),
       youtube: {
         apiKey: process.env.YOUTUBE_API_KEY || "",
-        searchDailyBudget: toPositiveInt(process.env.YOUTUBE_SEARCH_DAILY_BUDGET, 80),
-        searchReserve: toNonNegativeInt(process.env.YOUTUBE_SEARCH_RESERVE, 20),
+        searchDailyBudget: toPositiveInt(process.env.YOUTUBE_SEARCH_DAILY_BUDGET, 100),
+        searchReserve: toNonNegativeInt(process.env.YOUTUBE_SEARCH_RESERVE, 40),
         resolveConcurrency: toPositiveInt(process.env.YOUTUBE_RESOLVE_CONCURRENCY, 2),
         streamResolvePolicy: process.env.YOUTUBE_STREAM_RESOLVE_POLICY || "lazy",
         criticalRefreshHours: toPositiveInt(process.env.YOUTUBE_CRITICAL_STREAM_REFRESH_HOURS, 6),
@@ -405,7 +450,10 @@ function readConfig(overrides = {}) {
         lazyRefreshHours: toPositiveInt(process.env.YOUTUBE_LAZY_STREAM_REFRESH_HOURS, 24)
       }
     },
-    security: {}
+    security: {
+      adminApiToken: process.env.ADMIN_API_TOKEN || "",
+      allowLocalAdmin: toBool(process.env.ALLOW_LOCAL_ADMIN, true)
+    }
   };
 
   const mergedConfig = {
@@ -486,6 +534,7 @@ function readConfig(overrides = {}) {
   };
 
   const resolvedMarketTickers = overrides.market?.tickers || config.market.tickers;
+  mergedConfig.market.initialTickers = overrides.market?.tickers || mergedConfig.market.initialTickers;
   const mergedQueryPackGroups = mergeNewsQueryPackGroups(
     config.news.queryPackGroups,
     newsOverrides,
@@ -543,11 +592,25 @@ export function createAppServer(overrides = {}) {
   app.disable("x-powered-by");
   app.use(
     helmet({
-      contentSecurityPolicy: false
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'", "https://cdn.jsdelivr.net", "https://unpkg.com"],
+          styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://unpkg.com"],
+          imgSrc: ["'self'", "data:", "blob:", "https:"],
+          connectSrc: ["'self'", "ws:", "wss:"],
+          frameSrc: ["'self'", "https://www.youtube.com", "https://www.youtube-nocookie.com"],
+          objectSrc: ["'none'"],
+          baseUri: ["'self'"],
+          frameAncestors: ["'self'"],
+          upgradeInsecureRequests: null
+        }
+      }
     })
   );
   app.use(express.json({ limit: "1mb" }));
   app.use(requestLogger);
+  app.use(sensitiveRouteAuth);
 
   app.use(express.static(frontendPath, { index: "index.html" }));
   app.use("/api", queryParamAllowlist, routes);
@@ -566,22 +629,63 @@ export function createAppServer(overrides = {}) {
   app.use(notFoundHandler);
   app.use(errorHandler);
 
+  config.market.creditScheduler = config.market.provider === "twelve" ? new MarketCreditScheduler({
+    policy: { ...TWELVE_BASIC_POLICY, ...(config.market.creditPolicy || {}) },
+    persistencePath: config.market.creditStateFile
+  }) : null;
+  const dailyCandleStore = new DailyCandleStore({
+    enabled: config.market?.dailyCandles?.enabled !== false || config.market?.intradayCandles?.enabled === true,
+    rootDir: config.market?.historyDir,
+    retentionDays: config.market?.dailyCandles?.retentionDays,
+    rolloutBatch: config.market?.watchlistRollout,
+    intervals: [config.market?.intradayCandles?.interval || "1h", "1h", "1wk", "1mo"]
+  });
+  const marketDataStore = new MarketDataStoreAdapter({ candleStore: dailyCandleStore });
+  const marketDataService = overrides.marketDataService || config.market.marketDataService || new MarketDataService({
+    yahooClient: new YahooClient({ timeoutMs: config.market.timeoutMs }),
+    store: marketDataStore
+  });
+  config.market.marketDataService = marketDataService;
+  const marketSearchRateLimiter = overrides.marketSearchRateLimiter || new SlidingWindowRateLimiter({ maxRequests: 30, windowMs: 60_000, maxKeys: 1_000 });
+  const marketWatchlistService = new MarketWatchlistService({
+    rolloutBatch: config.market.watchlistRollout,
+    initialReferences: config.market.initialTickers,
+    maxSelected: null,
+    persistencePath: process.env.NODE_ENV === "test" ? null : path.join(config.market.historyDir, "watchlist-selection.json"),
+    legacySnapshotPath: process.env.NODE_ENV === "test" ? null : path.join(config.market.historyDir, config.market.snapshotFile),
+    creditPolicy: config.market.creditScheduler?.policy || null,
+    instrumentResolver: (symbol) => marketDataService.resolveInstrument(symbol)
+  });
+  config.market.watchlistService = marketWatchlistService;
+  config.market.tickers = marketWatchlistService.selectedSymbols();
+  config.news.marketTickers = config.market.tickers;
+
   stateManager.reset({
     refreshIntervalMs: config.news.intervalMs,
     watchlistCountries: config.watchlistCountries,
     marketTickers: config.market.tickers,
+    marketWatchlistRollout: config.market.watchlistRollout,
     impactWindowMin: config.market.impactWindowMin,
     marketEnabled: config.market.enabled,
     marketDisabledReason: config.market.disabledReason
   });
   apiQuotaTracker.reset(config.apiLimits);
+  providerRuntime.reset();
+  if (process.env.NODE_ENV !== "test") {
+    apiQuotaTracker.configurePersistence(path.resolve(__dirname, process.env.PROVIDER_QUOTA_STATE_FILE || "data/provider-quota-state.json"));
+  }
   const rssAggregator = new RssAggregatorService({
     news: config.news,
     rssFeeds: config.news.rssFeeds,
     refreshIntervalMs: config.news.rssAggregateIntervalMs,
     maxFeedsPerRun: config.news.rssAggregateFeedsPerRun,
     maxCorpusItems: config.news.rssAggregateMaxItems,
-    timeoutMs: config.news.timeoutMs
+    timeoutMs: config.news.timeoutMs,
+    pipelineMode: config.news.rssPipelineMode,
+    globalConcurrency: config.news.rssGlobalConcurrency,
+    hostConcurrency: config.news.rssHostConcurrency,
+    cycleDeadlineMs: config.news.rssCycleDeadlineMs,
+    persistencePath: config.news.rssCanonicalStateFile
   });
   const signalCorrelator = new SignalCorrelatorService();
   const mapLayerService = new MapLayerService({
@@ -601,6 +705,10 @@ export function createAppServer(overrides = {}) {
     youtube: config.media?.youtube,
     resolveConcurrency: config.media?.youtube?.resolveConcurrency
   });
+  const dailyCandleService = new DailyCandleService({ store: dailyCandleStore, marketConfig: config.market });
+  const intradayCandleService = new IntradayCandleService({ store: dailyCandleStore, marketConfig: config.market });
+  const technicalIndicatorService = new TechnicalIndicatorService({ store: dailyCandleStore });
+  const newsPriceCouplingService = new NewsPriceCouplingService({ store: dailyCandleStore });
 
   const server = http.createServer(app);
   const socketServer = createSocketServer({
@@ -617,7 +725,9 @@ export function createAppServer(overrides = {}) {
     rssAggregator,
     signalCorrelator,
     mapLayerService,
-    marketHistoryStore
+    marketHistoryStore,
+    dailyCandleService,
+    intradayCandleService
   });
   const manualRefreshService = new ManualRefreshService({
     orchestrator,
@@ -635,6 +745,14 @@ export function createAppServer(overrides = {}) {
   app.locals.mapLayerService = mapLayerService;
   app.locals.mediaStreamService = mediaStreamService;
   app.locals.marketHistoryStore = marketHistoryStore;
+  app.locals.dailyCandleStore = dailyCandleStore;
+  app.locals.dailyCandleService = dailyCandleService;
+  app.locals.intradayCandleService = intradayCandleService;
+  app.locals.technicalIndicatorService = technicalIndicatorService;
+  app.locals.newsPriceCouplingService = newsPriceCouplingService;
+  app.locals.marketWatchlistService = marketWatchlistService;
+  app.locals.marketDataService = marketDataService;
+  app.locals.marketSearchRateLimiter = marketSearchRateLimiter;
 
   return {
     app,
@@ -645,6 +763,16 @@ export function createAppServer(overrides = {}) {
     mediaStreamService,
     config,
     async start() {
+      const hydratedWatchlist = await marketWatchlistService.hydrate();
+      config.market.tickers = hydratedWatchlist.selectedSymbols;
+      config.news.marketTickers = hydratedWatchlist.selectedSymbols;
+      const hydratedQueryPacks = normalizeNewsQueryPacks(config.news.queryPackGroups, { marketTickers: hydratedWatchlist.selectedSymbols });
+      config.news.queryPackGroups = { editorial: hydratedQueryPacks.editorial, marketSignals: hydratedQueryPacks.marketSignals };
+      config.news.queryPacks = hydratedQueryPacks.flattened;
+      stateManager.setMarketTickers(hydratedWatchlist.selectedSymbols);
+      await marketHistoryStore.hydrateState(stateManager);
+      stateManager.setMarketTickers(hydratedWatchlist.selectedSymbols);
+      await dailyCandleStore.hydrate();
       await new Promise((resolve, reject) => {
         server.once("error", reject);
         server.listen(config.port, () => {
@@ -683,7 +811,6 @@ export function createAppServer(overrides = {}) {
         youtubeSearchReserve: config.media?.youtube?.searchReserve,
         youtubeResolveConcurrency: config.media?.youtube?.resolveConcurrency
       });
-      await marketHistoryStore.hydrateState(stateManager);
       if (!config.runtime.disableBackgroundRefresh) {
         orchestrator.start();
         mediaStreamService.start();
@@ -709,6 +836,7 @@ export function createAppServer(overrides = {}) {
 }
 
 async function run() {
+  dotenv.config({ path: path.resolve(__dirname, ".env") });
   const runtime = createAppServer();
 
   const shutdown = async (signal) => {

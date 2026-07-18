@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { isMarketOpenEt } from "./marketSessionService.js";
+import { decorateCanonicalQuote, resolveInstrumentSession, resolveVerifiedInstrumentReferences } from "./instrumentRegistry.js";
 
 const MAX_MARKET_POINTS = 120;
 
@@ -47,8 +48,9 @@ function computeMarketRevision(quotes = {}, session = {}, provider = "market-rou
     .slice(0, 16);
 }
 
-export function buildInitialMarketState(tickers = [], { enabled = true, disabledReason = null } = {}) {
-  const normalizedTickers = Array.isArray(tickers) ? tickers : [];
+export function buildInitialMarketState(tickers = [], { enabled = true, disabledReason = null, watchlistRollout = undefined } = {}) {
+  const resolution = resolveVerifiedInstrumentReferences(Array.isArray(tickers) ? tickers : []);
+  const normalizedTickers = resolution.instruments.map((instrument) => instrument.canonicalSymbol);
   const marketDisabled = enabled === false;
   const now = new Date().toISOString();
   const session = buildMarketSession(now);
@@ -79,16 +81,20 @@ export function buildInitialMarketState(tickers = [], { enabled = true, disabled
     quotes: Object.fromEntries(
       normalizedTickers.map((ticker) => [
         ticker,
-        {
+        decorateCanonicalQuote({
           price: null,
           changePct: 0,
           asOf: null,
           source: marketDisabled ? "disabled" : "seed",
           synthetic: true,
-          dataMode: "synthetic-fallback",
+          dataMode: "synthetic",
+          providerDataMode: "synthetic-fallback",
           providerScore: 0,
           providerLatencyMs: null
-        }
+        }, resolution.instruments.find((instrument) => instrument.canonicalSymbol === ticker), {
+          fetchedAt: now,
+          session: resolveInstrumentSession(resolution.instruments.find((instrument) => instrument.canonicalSymbol === ticker), session)
+        })
       ])
     ),
     timeseries: Object.fromEntries(normalizedTickers.map((ticker) => [ticker, []]))
@@ -165,12 +171,20 @@ export function refreshMarketSessionMetadata(
 }
 
 export function mergeMarketState(previousMarketState = {}, marketResult = {}) {
+  const activeTickers = Array.isArray(marketResult.activeTickers)
+    ? new Set(marketResult.activeTickers.map((ticker) => String(ticker || "").trim().toUpperCase()).filter(Boolean))
+    : null;
+  const previousQuotes = activeTickers
+    ? Object.fromEntries(Object.entries(previousMarketState.quotes || {}).filter(([ticker]) => activeTickers.has(ticker)))
+    : previousMarketState.quotes || {};
   const nextQuotes = {
-    ...(previousMarketState.quotes || {}),
+    ...previousQuotes,
     ...(marketResult.quotes || {})
   };
 
-  const nextTimeseries = { ...(previousMarketState.timeseries || {}) };
+  const nextTimeseries = Object.fromEntries(
+    Object.entries(previousMarketState.timeseries || {}).filter(([ticker]) => !activeTickers || activeTickers.has(ticker))
+  );
   const timestamp = marketResult.updatedAt || new Date().toISOString();
   const nextSession = marketResult.session || previousMarketState.session || buildMarketSession(timestamp);
 

@@ -1,5 +1,7 @@
 import { buildResponsePreview, sanitizeRequestUrl, sanitizeRequestUrls } from "../providerDiagnostics.js";
 
+import { providerRuntime } from "../../providers/providerRuntime.js";
+
 const DEFAULT_TIMEOUT_MS = 10_000;
 
 export function ensureTrailingSlash(baseUrl = "") {
@@ -123,17 +125,9 @@ export function buildProviderError({
 }
 
 export async function fetchWithTimeout(url, options = {}, timeoutMs = DEFAULT_TIMEOUT_MS) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    return await fetch(url, {
-      ...options,
-      signal: controller.signal
-    });
-  } finally {
-    clearTimeout(timeout);
-  }
+  const host = new URL(url).host.toLowerCase();
+  const provider = host.includes("twelvedata") ? "twelve" : host.includes("yahoo") ? "yahoo" : host;
+  return providerRuntime.fetch(provider, url, { ...options, timeoutMs });
 }
 
 export function summarizeAttempt({

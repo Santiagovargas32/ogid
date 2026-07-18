@@ -10,6 +10,26 @@ function jsonResponse(payload, status = 200) {
   });
 }
 
+function yahooService(prices = {}) {
+  return {
+    fetchQuotes: async (symbols) => symbols.filter((symbol) => prices[symbol] != null).map((symbol) => ({
+      symbol,
+      source: "yahoo",
+      timestamp: "2026-07-16T18:45:00.000Z",
+      price: prices[symbol],
+      changePercent: 0.25,
+      previousClose: prices[symbol] - 1,
+      high: prices[symbol] + 1,
+      low: prices[symbol] - 2,
+      volume: 1_200,
+      currency: "USD",
+      exchange: "New York Stock Exchange",
+      timezone: "America/New_York",
+      marketState: "REGULAR"
+    }))
+  };
+}
+
 function htmlResponse(text, status = 200) {
   return new Response(text, {
     status,
@@ -100,6 +120,7 @@ test("market provider router returns deterministic fallback when twelve and yaho
       yahooBaseUrl: "https://finance.yahoo.com",
       yahooUserAgent: "ogid/1.0",
       tickers: ["GD", "BA"],
+      marketDataService: yahooService(),
       timeoutMs: 500
     });
 
@@ -112,7 +133,7 @@ test("market provider router returns deterministic fallback when twelve and yaho
     assert.equal(result.sourceMeta.providerSlots[0].provider, "twelve");
     assert.equal(result.sourceMeta.providerSlots[0].errorCode, "api-key-missing");
     assert.equal(result.sourceMeta.providerSlots[1].provider, "yahoo");
-    assert.equal(result.sourceMeta.providerSlots[1].errorCode, "yahoo-html-quote-missing");
+    assert.equal(result.sourceMeta.providerSlots[1].errorCode, "yahoo-quote-missing");
     assert.deepEqual(result.sourceMeta.coverageByMode, {
       live: 0,
       webDelayed: 0,
@@ -279,25 +300,24 @@ test("market provider router falls back from twelve to yahoo and records provide
       yahooBaseUrl: "https://finance.yahoo.com",
       yahooUserAgent: "ogid/1.0",
       tickers: ["GD", "BA"],
+      marketDataService: yahooService({ GD: 300.5, BA: 200.25 }),
       timeoutMs: 500
     });
 
     assert.ok(seenUrls.some((value) => value.includes("api.twelvedata.com/quote")));
-    assert.ok(seenUrls.some((value) => value.includes("finance.yahoo.com/quote/GD")));
-    assert.ok(seenUrls.some((value) => value.includes("finance.yahoo.com/quote/BA")));
     assert.equal(result.sourceMode, "live");
-    assert.equal(result.quotes.GD.sourceDetail, "yahoo");
-    assert.equal(result.quotes.BA.sourceDetail, "yahoo");
+    assert.equal(result.quotes.GD.sourceDetail, "yahoo-finance2");
+    assert.equal(result.quotes.BA.sourceDetail, "yahoo-finance2");
     assert.equal(result.sourceMeta.effectiveProvider, "yahoo");
     assert.equal(result.sourceMeta.providerSlots[0].provider, "twelve");
     assert.equal(result.sourceMeta.providerSlots[0].status, "error");
     assert.equal(result.sourceMeta.providerSlots[1].provider, "yahoo");
     assert.equal(result.sourceMeta.providerSlots[1].status, "ok");
-    assert.equal(result.sourceMeta.providerSlots[1].requestUrls.length, 2);
-    assert.equal(result.sourceMeta.providerSlots[1].transport, "web");
+    assert.equal(result.sourceMeta.providerSlots[1].requestUrls.length, 0);
+    assert.equal(result.sourceMeta.providerSlots[1].transport, "server-library");
     assert.deepEqual(result.sourceMeta.coverageByMode, {
-      live: 2,
-      webDelayed: 0,
+      live: 0,
+      webDelayed: 2,
       historicalEod: 0,
       routerStale: 0,
       syntheticFallback: 0
@@ -355,11 +375,12 @@ test("market provider router skips twelve when minute credits cannot cover the w
       yahooUserAgent: "ogid/1.0",
       tickers,
       timeoutMs: 500,
-      requestReserve: 1
+      requestReserve: 1,
+      marketDataService: yahooService(Object.fromEntries(tickers.map((ticker, index) => [ticker, 201 + index])))
     });
 
     assert.equal(twelveCalls, 0);
-    assert.equal(seenYahooUrls.length, tickers.length);
+    assert.equal(seenYahooUrls.length, 0);
     assert.equal(result.sourceMode, "live");
     assert.equal(result.sourceMeta.effectiveProvider, "yahoo");
     assert.equal(result.sourceMeta.providersSkipped[0].provider, "twelve");
@@ -403,23 +424,26 @@ test("market provider router uses stale quotes before deterministic fallback whe
         asOf: new Date().toISOString(),
         source: "twelve",
         synthetic: false,
-        dataMode: "live",
+        dataMode: "observed",
         sourceDetail: "twelve"
       }
-    }
+    },
+    marketDataService: { fetchQuotes: async () => { throw Object.assign(new Error("Yahoo unavailable"), { code: "YAHOO_REQUEST_FAILED" }); } }
   });
 
   assert.equal(result.sourceMode, "fallback");
-  assert.equal(result.quotes.GD.dataMode, "router-stale");
+  assert.equal(result.quotes.GD.dataMode, "stale");
+  assert.equal(result.quotes.GD.instrumentId, "us-equity-general-dynamics");
   assert.equal(result.quotes.GD.synthetic, false);
   assert.equal(result.quotes.BA.synthetic, true);
-  assert.equal(result.quotes.BA.dataMode, "synthetic-fallback");
+  assert.equal(result.quotes.BA.dataMode, "synthetic");
+  assert.equal(result.quotes.BA.instrumentId, "us-equity-boeing");
   assert.deepEqual(
     result.sourceMeta.providersSkipped.map((item) => item.provider).sort(),
-    ["twelve", "yahoo"]
+    ["twelve"]
   );
   assert.equal(result.sourceMeta.providerSlots[0].status, "skipped");
-  assert.equal(result.sourceMeta.providerSlots[1].status, "skipped");
+  assert.equal(result.sourceMeta.providerSlots[1].status, "error");
   assert.deepEqual(result.sourceMeta.usedStaleQuotes, ["GD"]);
   assert.deepEqual(result.sourceMeta.coverageByMode, {
     live: 0,

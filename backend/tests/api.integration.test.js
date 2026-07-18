@@ -137,6 +137,8 @@ test("REST API exposes health and snapshot payloads", async () => {
     const baseUrl = `http://127.0.0.1:${address.port}`;
 
     const healthResponse = await fetch(`${baseUrl}/api/health`);
+    assert.match(healthResponse.headers.get("content-security-policy") || "", /default-src 'self'/);
+    assert.doesNotMatch(healthResponse.headers.get("content-security-policy") || "", /script-src[^;]*'unsafe-inline'/);
     const healthPayload = await healthResponse.json();
     assert.equal(healthResponse.status, 200);
     assert.equal(healthPayload.ok, true);
@@ -221,6 +223,11 @@ test("REST API exposes health and snapshot payloads", async () => {
     const quotesPayload = await quotesResponse.json();
     assert.equal(quotesResponse.status, 200);
     assert.equal(quotesPayload.ok, true);
+    assert.equal(quotesPayload.data.quotes.GD.instrumentId, "us-equity-general-dynamics");
+    assert.equal(quotesPayload.data.quotes.GD.currency, "USD");
+    assert.equal(quotesPayload.data.quotes.GD.mic, "XNYS");
+    assert.ok("price" in quotesPayload.data.quotes.GD);
+    assert.ok("changePct" in quotesPayload.data.quotes.GD);
     assert.ok(quotesPayload.data.quotes.GD);
     assert.ok("quoteOriginStage" in quotesPayload.data.quotes.GD);
     assert.ok("quoteAgeMin" in quotesPayload.data.quotes.GD);
@@ -234,7 +241,7 @@ test("REST API exposes health and snapshot payloads", async () => {
     assert.equal(newsResponse.status, 200);
     assert.equal(newsPayload.ok, true);
     assert.ok(Array.isArray(newsPayload.data.news));
-    assert.ok(newsPayload.data.news.every((article) => article.dataMode === "fallback"));
+    assert.ok(newsPayload.data.news.every((article) => article.dataMode === "synthetic"));
     assert.ok(
       newsPayload.data.news.every((article) =>
         (article.countryMentions || []).some((iso2) => ["US", "IL", "IR"].includes(iso2))
@@ -566,7 +573,7 @@ test("pipeline status exposes provider and rss diagnostics for ok, error and ski
   }
 });
 
-test("admin routes remain open without IP allowlisting", async () => {
+test("admin routes remain available from loopback without a token", async () => {
   const runtime = createAppServer({
     port: 0,
     disableBackgroundRefresh: true,

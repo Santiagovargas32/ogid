@@ -1,11 +1,13 @@
 import apiQuotaTracker from "../admin/apiQuotaTrackerService.js";
 import { resolveBandByProviderSnapshots } from "../refreshPolicyService.js";
 import { createLogger } from "../../utils/logger.js";
-import { fetchTwelveQuotes } from "./providers/twelveProvider.js";
-import { fetchYahooQuotes } from "./providers/yahooProvider.js";
+import { fetchTwelveDailyCandles, fetchTwelveQuotes } from "./providers/twelveProvider.js";
+import { fetchYahooDailyCandles, fetchYahooQuotes } from "./providers/yahooProvider.js";
 import { buildFallbackQuote } from "./providers/quoteFallback.js";
 import { isMarketOpenEt } from "./marketSessionService.js";
 import { buildCoverageByMode } from "./quoteMetadata.js";
+import { decorateCanonicalQuote, findMetadataDiscrepancies, getInstrumentById, getProviderSymbol, resolveInstrument, resolveInstrumentSession, resolveVerifiedInstrumentReferences } from "./instrumentRegistry.js";
+import { normalizeCanonicalCandle } from "./canonicalCandle.js";
 
 const log = createLogger("backend/services/market/marketProviderRouter");
 
@@ -17,10 +19,12 @@ const PROVIDERS = Object.freeze({
   },
   yahoo: {
     fetcher: fetchYahooQuotes,
-    transport: "web",
-    estimateUnits: (tickers = []) => Math.max(0, Array.isArray(tickers) ? tickers.length : 0)
+    transport: "server-library",
+    estimateUnits: () => 0
   }
 });
+
+const DAILY_CANDLE_FETCHERS = Object.freeze({ twelve: fetchTwelveDailyCandles, yahoo: fetchYahooDailyCandles });
 
 function buildDisabledCoverageByMode() {
   return {
@@ -69,6 +73,7 @@ function buildProviderConfig(provider, config = {}, session = null) {
   return {
     baseUrl: config.yahooBaseUrl,
     userAgent: config.yahooUserAgent,
+    marketDataService: config.marketDataService,
     session
   };
 }
@@ -174,7 +179,8 @@ function buildStaleQuote(previousQuote, { timestamp, staleTtlMs }) {
   return {
     ...previousQuote,
     synthetic: false,
-    dataMode: "router-stale",
+    dataMode: "stale",
+    providerDataMode: "router-stale",
     staleAt: timestamp
   };
 }
@@ -387,7 +393,8 @@ function buildDisabledProviderSlots(config = {}) {
 }
 
 function buildDisabledMarketResult(config = {}, timestamp = new Date().toISOString()) {
-  const tickers = (config.tickers || []).map((ticker) => String(ticker).toUpperCase());
+  const resolution = resolveVerifiedInstrumentReferences(config.tickers || []);
+  const tickers = resolution.instruments.map((instrument) => instrument.canonicalSymbol);
   const batchSize = Number.parseInt(String(config.batchChunkSize ?? 25), 10) || 25;
   const session = buildMarketSession(timestamp);
   const providerChain = buildProviderChain(config.provider, config.fallbackProvider);
@@ -434,18 +441,20 @@ function buildDisabledMarketResult(config = {}, timestamp = new Date().toISOStri
     quotes: Object.fromEntries(
       tickers.map((ticker) => [
         ticker,
-        {
+        decorateCanonicalQuote({
           price: null,
           changePct: 0,
           asOf: null,
           source: "disabled",
           synthetic: true,
-          dataMode: "synthetic-fallback",
+          dataMode: "synthetic",
+          providerDataMode: "synthetic-fallback",
           providerScore: 0,
           providerLatencyMs: null
-        }
+        }, resolveInstrument(ticker), { fetchedAt: timestamp, session: resolveInstrumentSession(resolveInstrument(ticker), session) })
       ])
     ),
+    activeTickers: tickers,
     historicalSeries: {},
     updatedAt: timestamp
   };
@@ -456,7 +465,12 @@ export async function fetchMarketQuotes(config = {}) {
     return buildDisabledMarketResult(config);
   }
 
-  const tickers = [...new Set((config.tickers || []).map((ticker) => String(ticker).toUpperCase()).filter(Boolean))];
+  const instrumentResolution = resolveVerifiedInstrumentReferences(config.tickers || []);
+  const instruments = config.watchlistService?.applySelection?.(instrumentResolution.instruments) || instrumentResolution.instruments;
+  const tickers = instruments.map((instrument) => instrument.canonicalSymbol);
+  const creditScheduler = config.creditScheduler || null;
+  let creditProjection = creditScheduler?.plan?.({ instruments, trigger: config.trigger || "scheduled-market" }) || null;
+  const creditRejections = [];
   const timestampSource = config.timestamp || new Date().toISOString();
   const parsedTimestamp = new Date(timestampSource);
   const timestamp = Number.isFinite(parsedTimestamp.getTime()) ? parsedTimestamp.toISOString() : new Date().toISOString();
@@ -484,7 +498,7 @@ export async function fetchMarketQuotes(config = {}) {
   const providersSkipped = [];
   const providerErrors = [];
   const providerResults = {};
-  let unresolved = [...tickers];
+  let unresolved = instruments.map((instrument) => instrument.instrumentId);
   let lastUpstreamError = null;
 
   for (const provider of attemptedOrder) {
@@ -494,7 +508,21 @@ export async function fetchMarketQuotes(config = {}) {
 
     const role = provider === primaryProvider ? "primary" : "fallback";
     const configuredBaseUrl = provider === "twelve" ? config.twelveBaseUrl : config.yahooBaseUrl;
-    const availability = resolveProviderAvailability(provider, config, {
+    const availability = provider === "yahoo" ? {
+      available: true,
+      snapshot: null,
+      estimatedUnits: 0,
+      reason: null,
+      remainingDay: null,
+      remainingMinute: null
+    } : provider === "twelve" && creditScheduler ? {
+      available: true,
+      snapshot: apiQuotaTracker.getProviderSnapshot(provider),
+      estimatedUnits: creditProjection?.predictedCreditsMinute || 0,
+      reason: null,
+      remainingDay: creditScheduler.snapshot().policy.internalHardLimit - creditScheduler.snapshot().consumedDay,
+      remainingMinute: creditScheduler.snapshot().policy.absoluteMinuteLimit - creditScheduler.snapshot().consumedMinute
+    } : resolveProviderAvailability(provider, config, {
       reserve: requestReserve,
       allowExhaustedProviders: config.allowExhaustedProviders === true,
       tickers: unresolved
@@ -515,19 +543,121 @@ export async function fetchMarketQuotes(config = {}) {
       providerResults[provider] = buildSkippedSlot({
         role,
         provider,
-        requestedTickers: unresolved,
+        requestedTickers: unresolved.map((instrumentId) => getInstrumentById(instrumentId)?.canonicalSymbol).filter(Boolean),
         availability,
         configuredBaseUrl
       });
       continue;
     }
 
-    const providerResult = await PROVIDERS[provider].fetcher({
-      ...buildProviderConfig(provider, config, session),
-      tickers: unresolved,
-      timeoutMs: config.timeoutMs,
-      timestamp
+    const mappings = unresolved.map((instrumentId) => {
+      const instrument = getInstrumentById(instrumentId);
+      return { instrument, instrumentId, canonicalSymbol: instrument?.canonicalSymbol || null, providerSymbol: instrument ? getProviderSymbol(instrument.instrumentId, provider) : null };
     });
+    const mappedRequests = mappings.filter((mapping) => mapping.providerSymbol);
+    if (!mappedRequests.length) {
+      providersSkipped.push({ provider, reason: "provider-symbol-missing", estimatedUnits: 0, transport: PROVIDERS[provider]?.transport || null });
+      continue;
+    }
+
+    let rawProviderResult;
+    if (provider === "twelve" && creditScheduler) {
+      creditProjection = creditScheduler.plan({ instruments: mappedRequests.map((mapping) => mapping.instrument), trigger: config.trigger || "scheduled-market" });
+      const allowedIds = new Set(creditProjection.batches.flatMap((batch) => batch.instruments.map((instrument) => instrument.instrumentId)));
+      const scheduledMappings = mappedRequests.filter((mapping) => allowedIds.has(mapping.instrument.instrumentId));
+      const dedupeKey = `twelve:quote:${scheduledMappings.map((mapping) => mapping.providerSymbol).sort().join(",")}`;
+      const execution = await creditScheduler.deduplicate(dedupeKey, async () => {
+        const attempts = [];
+        const rejections = [];
+        for (const batch of creditProjection.batches) {
+          await creditScheduler.waitUntil(batch.scheduledAt);
+          const batchIds = new Set(batch.instruments.map((instrument) => instrument.instrumentId));
+          const batchMappings = scheduledMappings.filter((mapping) => batchIds.has(mapping.instrument.instrumentId));
+          const leaseResult = creditScheduler.acquireLease({
+            symbols: batchMappings.map((mapping) => mapping.providerSymbol),
+            instrumentIds: batchMappings.map((mapping) => mapping.instrumentId),
+            tier: batch.tier,
+            trigger: config.trigger || "scheduled-market"
+          });
+          if (!leaseResult.accepted) { rejections.push(leaseResult); continue; }
+          const result = await PROVIDERS[provider].fetcher({
+            ...buildProviderConfig(provider, config, session),
+            tickers: batchMappings.map((mapping) => mapping.providerSymbol),
+            timeoutMs: config.timeoutMs,
+            timestamp
+          });
+          creditScheduler.commitLease(leaseResult.lease.leaseId, {
+            status: result.errors?.length ? "error" : "success",
+            headers: {
+              "api-credits-used": result.quotaSnapshot?.apiCreditsUsed,
+              "api-credits-left": result.quotaSnapshot?.apiCreditsLeft,
+              "retry-after": result.retryAfterMs ? new Date(creditScheduler.now() + result.retryAfterMs).toUTCString() : null
+            }
+          });
+          attempts.push(result);
+        }
+        if (!attempts.length) return { result: null, rejections };
+        const quotes = Object.assign({}, ...attempts.map((attempt) => attempt.quotes || {}));
+        const requestedTickers = scheduledMappings.map((mapping) => mapping.providerSymbol);
+        return {
+          rejections,
+          result: {
+            ...attempts.at(-1),
+            quotes,
+            requestedTickers,
+            returnedTickers: Object.keys(quotes),
+            missingTickers: requestedTickers.filter((ticker) => !quotes[ticker]),
+            requestUrls: attempts.flatMap((attempt) => attempt.requestUrls || []),
+            errors: attempts.flatMap((attempt) => attempt.errors || []),
+            durationMs: attempts.reduce((total, attempt) => total + (attempt.durationMs || 0), 0)
+          }
+        };
+      });
+      creditRejections.push(...execution.rejections);
+      if (!execution.result) {
+        const rejection = execution.rejections.at(-1) || { reason: "credit-plan-empty", cost: 0, nextEligibleAt: creditProjection.nextValidExecutionAt };
+        providersSkipped.push({ provider, reason: rejection.reason, nextEligibleAt: rejection.nextEligibleAt, estimatedUnits: rejection.cost, transport: "api" });
+        providerResults[provider] = buildSkippedSlot({ role, provider, requestedTickers: scheduledMappings.map((mapping) => mapping.canonicalSymbol), availability: { ...rejection, available: false, estimatedUnits: rejection.cost }, configuredBaseUrl });
+        continue;
+      }
+      rawProviderResult = execution.result;
+    } else {
+      rawProviderResult = await PROVIDERS[provider].fetcher({
+        ...buildProviderConfig(provider, config, session),
+        tickers: mappedRequests.map((mapping) => mapping.providerSymbol),
+        timeoutMs: config.timeoutMs,
+        timestamp
+      });
+    }
+    const mappedQuotes = {};
+    const metadataDiscrepancies = [];
+    for (const mapping of mappedRequests) {
+      const quote = rawProviderResult.quotes?.[mapping.providerSymbol];
+      if (!quote) continue;
+      metadataDiscrepancies.push(...findMetadataDiscrepancies(mapping.instrument, quote.providerMetadata).map((item) => ({
+        code: "provider-metadata-mismatch", instrumentId: mapping.instrument.instrumentId, provider, ...item
+      })));
+      mappedQuotes[mapping.canonicalSymbol] = decorateCanonicalQuote(quote, mapping.instrument, {
+        providerId: provider,
+        providerSymbol: mapping.providerSymbol,
+        fetchedAt: timestamp,
+        session: resolveInstrumentSession(mapping.instrument, session)
+      });
+    }
+    const unexpectedProviderSymbols = Object.keys(rawProviderResult.quotes || {}).filter(
+      (providerSymbol) => !mappedRequests.some((mapping) => mapping.providerSymbol === providerSymbol)
+    );
+    const providerResult = {
+      ...rawProviderResult,
+      quotes: mappedQuotes,
+      returnedTickers: Object.keys(mappedQuotes),
+      missingTickers: mappings.filter((mapping) => !mappedQuotes[mapping.canonicalSymbol]).map((mapping) => mapping.canonicalSymbol),
+      errors: [
+        ...(rawProviderResult.errors || []),
+        ...metadataDiscrepancies,
+        ...unexpectedProviderSymbols.map((providerSymbol) => ({ code: "unexpected-provider-symbol", providerSymbol }))
+      ]
+    };
 
     providersUsed.push(provider);
     providerResults[provider] = buildProviderSlot({
@@ -536,7 +666,7 @@ export async function fetchMarketQuotes(config = {}) {
       requestResult: providerResult,
       configuredBaseUrl,
       quotaSnapshot: providerResult.quotaSnapshot,
-      requestedTickers: unresolved
+      requestedTickers: mappings.map((mapping) => mapping.canonicalSymbol)
     });
     Object.assign(mergedQuotes, providerResult.quotes || {});
     Object.assign(historicalSeries, providerResult.historicalSeries || {});
@@ -552,7 +682,10 @@ export async function fetchMarketQuotes(config = {}) {
     if (providerErrorCode) {
       lastUpstreamError = providerErrorCode;
     }
-    unresolved = unresolved.filter((ticker) => !providerResult.quotes?.[ticker]);
+    unresolved = unresolved.filter((instrumentId) => {
+      const instrument = getInstrumentById(instrumentId);
+      return !instrument || !providerResult.quotes?.[instrument.canonicalSymbol];
+    });
   }
 
   for (const provider of attemptedOrder) {
@@ -571,7 +704,10 @@ export async function fetchMarketQuotes(config = {}) {
 
   const staleQuotes = {};
   if (unresolved.length && staleTtlMs > 0) {
-    for (const ticker of unresolved) {
+    for (const instrumentId of unresolved) {
+      const instrument = getInstrumentById(instrumentId);
+      const ticker = instrument?.canonicalSymbol;
+      if (!ticker) continue;
       const staleQuote = buildStaleQuote(previousQuotes[ticker], {
         timestamp,
         staleTtlMs
@@ -580,14 +716,28 @@ export async function fetchMarketQuotes(config = {}) {
         continue;
       }
       staleQuotes[ticker] = staleQuote;
-      mergedQuotes[ticker] = staleQuote;
+      mergedQuotes[ticker] = decorateCanonicalQuote(staleQuote, instrument, {
+        providerId: staleQuote.sourceDetail || staleQuote.source,
+        providerSymbol: staleQuote.providerSymbol || ticker,
+        fetchedAt: timestamp,
+        session: resolveInstrumentSession(instrument, session)
+      });
     }
-    unresolved = unresolved.filter((ticker) => !staleQuotes[ticker]);
+    unresolved = unresolved.filter((instrumentId) => !staleQuotes[getInstrumentById(instrumentId)?.canonicalSymbol]);
   }
 
-  const syntheticFallbackTickers = [...unresolved];
+  const syntheticFallbackTickers = unresolved.map((instrumentId) => getInstrumentById(instrumentId)?.canonicalSymbol).filter(Boolean);
   if (syntheticFallbackTickers.length) {
-    Object.assign(mergedQuotes, buildFallbackSet(syntheticFallbackTickers, timestamp));
+    const fallbackSet = buildFallbackSet(syntheticFallbackTickers, timestamp);
+    for (const ticker of syntheticFallbackTickers) {
+      const instrument = resolveInstrument(ticker);
+      mergedQuotes[ticker] = decorateCanonicalQuote(fallbackSet[ticker], instrument, {
+        providerId: "fallback",
+        providerSymbol: null,
+        fetchedAt: timestamp,
+        session: resolveInstrumentSession(instrument, session)
+      });
+    }
   }
 
   const coverageByMode = buildCoverageByMode(mergedQuotes);
@@ -680,13 +830,121 @@ export async function fetchMarketQuotes(config = {}) {
       lastUpstreamError,
       errors: providerErrors,
       providerErrors,
+      rejectedInstrumentReferences: instrumentResolution.rejected,
+      creditProjection,
+      creditMetrics: creditScheduler?.snapshot?.() || null,
+      creditRejections,
       providerSlots,
       routerDecision
     },
     quotes: mergedQuotes,
+    activeTickers: tickers,
     historicalSeries,
     updatedAt: timestamp,
     session,
     revision: null
   };
 }
+
+export async function fetchDailyCandles(config = {}) {
+  const timestamp = new Date(config.timestamp || Date.now()).toISOString(); const scheduler = config.creditScheduler;
+  const interval = config.interval || "1day";
+  const references = Array.isArray(config.instrumentIds) ? config.instrumentIds : [];
+  const resolution = resolveVerifiedInstrumentReferences(references); const instruments = resolution.instruments;
+  const provider = normalizeProvider(config.provider || "twelve");
+  if (provider === "yahoo") {
+    const symbols = instruments.map((instrument) => getProviderSymbol(instrument.instrumentId, provider));
+    const result = await DAILY_CANDLE_FETCHERS.yahoo({
+      symbols,
+      outputsize: config.outputsize,
+      period: config.period,
+      adjustmentMode: config.adjustmentMode || "splits",
+      interval,
+      timeoutMs: config.timeoutMs,
+      timestamp,
+      marketDataService: config.marketDataService,
+      force: config.force === true
+    });
+    const candles = [];
+    const errors = [...(result.errors || [])];
+    const durationMs = interval === "5min" ? 300_000 : interval === "15min" ? 900_000 : interval === "30min" ? 1_800_000 : interval === "1h" ? 3_600_000 : interval === "1day" ? 86_400_000 : null;
+    for (const instrument of instruments) {
+      const providerSymbol = getProviderSymbol(instrument.instrumentId, provider);
+      const series = result.candlesBySymbol?.[providerSymbol];
+      if (!series) {
+        errors.push({ code: "daily-symbol-missing", instrumentId: instrument.instrumentId, providerSymbol });
+        continue;
+      }
+      for (const value of series.values || []) {
+        const openTime = new Date(value.datetime);
+        const closeTime = durationMs && Number.isFinite(openTime.getTime())
+          ? new Date(openTime.getTime() + durationMs).toISOString()
+          : null;
+        const timeFields = interval === "1day"
+          ? { date: String(value.datetime || "").slice(0, 10), datetime: value.datetime }
+          : {
+              openTime: Number.isFinite(openTime.getTime()) ? openTime.toISOString() : null,
+              closeTime
+            };
+        const normalized = normalizeCanonicalCandle({
+          instrumentId: instrument.instrumentId,
+          interval,
+          ...timeFields,
+          open: value.open,
+          high: value.high,
+          low: value.low,
+          close: value.close,
+          volume: value.volume,
+          currency: instrument.currency,
+          source: provider,
+          providerSymbol,
+          dataMode: series.meta?.stale ? "stale" : "observed",
+          session: instrument.sessionPolicy
+        }, { instrument, fetchedAt: result.fetchedAt || timestamp, source: provider, providerSymbol, adjustmentMode: config.adjustmentMode || "splits" });
+        if (normalized.valid) candles.push(normalized.candle);
+        else errors.push({ code: "daily-candle-invalid", instrumentId: instrument.instrumentId, providerSymbol, details: normalized.errors });
+      }
+    }
+    return {
+      candles,
+      errors,
+      rejectedInstrumentReferences: resolution.rejected,
+      creditRejections: [],
+      persistedByProvider: true,
+      persistence: result.persistence,
+      fetchedAt: result.fetchedAt || timestamp,
+      source: provider,
+      methodVersion: interval === "1day" ? "daily-candle-v1" : "intraday-candle-v1"
+    };
+  }
+  if (provider !== "twelve") return { candles: [], errors: [{ code: "daily-provider-unsupported", provider }], rejectedInstrumentReferences: resolution.rejected, creditRejections: [], fetchedAt: timestamp };
+  if (!scheduler) return { candles: [], errors: [{ code: "credit-authority-missing" }], rejectedInstrumentReferences: resolution.rejected, creditRejections: [], fetchedAt: timestamp };
+  const maxBatchSymbols = Math.max(1, Math.floor((scheduler.policy.normalMinuteLimit - scheduler.policy.costPerOperation) / scheduler.policy.costPerSymbol)); const batches = [];
+  for (let index = 0; index < instruments.length; index += maxBatchSymbols) batches.push(instruments.slice(index, index + maxBatchSymbols));
+  const candles = []; const errors = []; const creditRejections = [];
+  for (let index = 0; index < batches.length; index += 1) {
+    if (index > 0) await scheduler.waitUntil(new Date((Math.floor(scheduler.now() / 60_000) + 1) * 60_000).toISOString());
+    const batch = batches[index]; const symbols = batch.map((instrument) => getProviderSymbol(instrument.instrumentId, provider));
+    const key = `${provider}:time_series:${interval}:${config.adjustmentMode || "splits"}:${symbols.slice().sort().join(",")}:${config.outputsize || 5}`;
+    const execution = await scheduler.deduplicate(key, async () => {
+      const lease = scheduler.acquireLease({ symbols, instrumentIds: batch.map((instrument) => instrument.instrumentId), tier: "normal", trigger: config.trigger || "scheduled-daily-candles", operation: "time_series" });
+      if (!lease.accepted) return { lease, result: null };
+      const result = await DAILY_CANDLE_FETCHERS[provider]({ baseUrl: config.twelveBaseUrl, apiKey: config.twelveApiKey, symbols, outputsize: config.outputsize, adjustmentMode: config.adjustmentMode || "splits", interval, timeoutMs: config.timeoutMs, timestamp });
+      scheduler.commitLease(lease.lease.leaseId, { status: result.errors?.length ? "error" : "success", headers: { "api-credits-used": result.quotaSnapshot?.apiCreditsUsed, "api-credits-left": result.quotaSnapshot?.apiCreditsLeft, "retry-after": result.retryAfterMs ? new Date(scheduler.now() + result.retryAfterMs).toUTCString() : null } });
+      return { lease, result };
+    });
+    if (!execution.lease.accepted) { creditRejections.push(execution.lease); continue; }
+    errors.push(...(execution.result.errors || []));
+    for (const instrument of batch) {
+      const providerSymbol = getProviderSymbol(instrument.instrumentId, provider); const series = execution.result.candlesBySymbol?.[providerSymbol];
+      if (!series) { errors.push({ code: "daily-symbol-missing", instrumentId: instrument.instrumentId, providerSymbol }); continue; }
+      for (const value of series.values || []) {
+        const normalized = normalizeCanonicalCandle({ instrumentId: instrument.instrumentId, interval, datetime: value.datetime, date: String(value.datetime || "").slice(0, 10), open: value.open, high: value.high, low: value.low, close: value.close, volume: value.volume, currency: series.meta?.currency || instrument.currency, source: provider, providerSymbol, dataMode: "observed" }, { instrument, fetchedAt: timestamp, source: provider, providerSymbol, adjustmentMode: config.adjustmentMode || "splits" });
+        if (normalized.valid) candles.push(normalized.candle); else errors.push({ code: "daily-candle-invalid", instrumentId: instrument.instrumentId, providerSymbol, details: normalized.errors });
+      }
+    }
+  }
+  return { candles, errors, rejectedInstrumentReferences: resolution.rejected, creditRejections, fetchedAt: timestamp, source: provider, methodVersion: interval === "1day" ? "daily-candle-v1" : "intraday-candle-v1" };
+}
+
+export async function fetchIntradayCandles(config = {}) { return fetchDailyCandles({ ...config, interval: config.interval || "15min", trigger: config.trigger || "scheduled-intraday-candles" }); }

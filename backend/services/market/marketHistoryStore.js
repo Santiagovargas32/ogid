@@ -1,10 +1,12 @@
 import path from "node:path";
 import { mkdir, readFile, rename, writeFile, appendFile } from "node:fs/promises";
+import { sanitizeSensitiveData } from "../../utils/sanitize.js";
+import { normalizeDataMode } from "../../utils/dataMode.js";
+import { MARKET_PROVIDER_SCHEMA_VERSION, migrateMarketSnapshot } from "./marketSnapshotMigration.js";
 
 const MAX_MARKET_POINTS = 120;
-const PROVIDER_BACKED_MODES = new Set(["live", "web-delayed"]);
+const PROVIDER_BACKED_MODES = new Set(["observed"]);
 const ANOMALOUS_MOVE_THRESHOLD_PCT = 3.5;
-const PROVIDER_SCHEMA_VERSION = 2;
 
 function ensureTickerList(tickers = []) {
   return [...new Set((Array.isArray(tickers) ? tickers : []).map((ticker) => String(ticker || "").toUpperCase()).filter(Boolean))];
@@ -20,17 +22,6 @@ function parseJson(value, fallback = null) {
 
 function isFinitePrice(value) {
   return Number.isFinite(Number(value));
-}
-
-function normalizeDataMode(mode = "") {
-  const normalized = String(mode || "").toLowerCase();
-  if (normalized === "fallback") {
-    return "synthetic-fallback";
-  }
-  if (normalized === "stale") {
-    return "router-stale";
-  }
-  return normalized;
 }
 
 function isProviderBackedQuote(quote = {}) {
@@ -125,7 +116,7 @@ function filterPersistedQuotes(quotes = {}, providerBacked = []) {
     Object.entries(quotes || {}).filter(([ticker, quote]) => {
       const normalizedTicker = String(ticker || "").toUpperCase();
       return allowed.has(normalizedTicker) && isProviderBackedQuote(quote);
-    })
+    }).map(([ticker, quote]) => [ticker, { ...quote, dataMode: normalizeDataMode(quote.dataMode) }])
   );
 }
 
@@ -169,13 +160,24 @@ export class MarketHistoryStore {
   }
 
   historyPath(ticker) {
-    return path.join(this.historyDir, `${String(ticker || "").toUpperCase()}.jsonl`);
+    const normalized = String(ticker || "").trim().toUpperCase();
+    return path.join(this.historyDir, `${encodeURIComponent(normalized)}.jsonl`);
   }
 
   async loadSnapshot() {
     try {
       const content = await readFile(this.snapshotPath(), "utf8");
-      return parseJson(content, null);
+      const parsed = parseJson(content, null);
+      if (!parsed) return null;
+      const sanitized = sanitizeSensitiveData(parsed);
+      const sanitizedContent = JSON.stringify(sanitized, null, 2);
+      if (JSON.stringify(parsed) !== JSON.stringify(sanitized)) {
+        const target = this.snapshotPath();
+        const temporary = `${target}.${process.pid}.${Date.now()}.tmp`;
+        await writeFile(temporary, sanitizedContent, "utf8");
+        await rename(temporary, target);
+      }
+      return sanitized;
     } catch {
       return null;
     }
@@ -203,14 +205,10 @@ export class MarketHistoryStore {
     }
 
     await this.ensureDirectories();
-    const snapshot = await this.loadSnapshot();
-    if (!snapshot || typeof snapshot !== "object") {
-      return null;
-    }
-    if (Number(snapshot.providerSchemaVersion) !== PROVIDER_SCHEMA_VERSION) {
-      return null;
-    }
-    if (String(snapshot.provider || "").includes("web+fmp") || String(snapshot.sourceMeta?.provider || "").includes("web+fmp")) {
+    const loadedSnapshot = await this.loadSnapshot();
+    const migration = migrateMarketSnapshot(loadedSnapshot);
+    const snapshot = migration.snapshot;
+    if (!snapshot) {
       return null;
     }
 
@@ -340,8 +338,8 @@ export class MarketHistoryStore {
     const persistedQuotes = filterPersistedQuotes(marketState.quotes || {}, persistenceDecision.providerBacked || []);
 
     const payload = JSON.stringify(
-      {
-        providerSchemaVersion: PROVIDER_SCHEMA_VERSION,
+      sanitizeSensitiveData({
+        providerSchemaVersion: MARKET_PROVIDER_SCHEMA_VERSION,
         provider: marketState.provider || "market-router",
         sourceMode: marketState.sourceMode || "fallback",
         sourceMeta: marketState.sourceMeta || { provider: "unknown" },
@@ -350,7 +348,7 @@ export class MarketHistoryStore {
         updatedAt: marketState.updatedAt || null,
         tickers: ensureTickerList([...Object.keys(marketState.quotes || {}), ...this.tickers]),
         quotes: persistedQuotes
-      },
+      }),
       null,
       2
     );
@@ -392,14 +390,14 @@ export class MarketHistoryStore {
         continue;
       }
 
-      const record = JSON.stringify({
+      const record = JSON.stringify(sanitizeSensitiveData({
         timestamp: nextQuote.asOf,
         price: Number(nextQuote.price),
         changePct: Number.isFinite(Number(nextQuote.changePct)) ? Number(nextQuote.changePct) : 0,
         dataMode: nextQuote.dataMode || null,
         source: nextQuote.source || null,
         sourceDetail: nextQuote.sourceDetail || null
-      });
+      }));
       await appendFile(this.historyPath(ticker), `${record}\n`, "utf8");
     }
   }

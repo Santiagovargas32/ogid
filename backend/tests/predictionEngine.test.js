@@ -37,6 +37,12 @@ test("generatePredictions builds deterministic sector and ticker outputs", () =>
       SPY: { changePct: 0.1 }
     },
     tickers: ["GD", "BA", "XOM", "SPY"],
+    instruments: [
+      { canonicalSymbol: "GD", displayName: "General Dynamics", sector: "Aerospace & Defense", assetType: "equity" },
+      { canonicalSymbol: "BA", displayName: "Boeing", sector: "Aerospace & Defense", assetType: "equity" },
+      { canonicalSymbol: "XOM", displayName: "Exxon Mobil", sector: "Energy", assetType: "equity" },
+      { canonicalSymbol: "SPY", displayName: "S&P 500 ETF", assetType: "etf" }
+    ],
     inputMode: "mixed"
   });
 

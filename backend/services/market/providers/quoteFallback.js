@@ -1,19 +1,5 @@
 import { createHash } from "node:crypto";
 
-const BASE_PRICES = {
-  GD: 285,
-  BA: 205,
-  NOC: 465,
-  LMT: 470,
-  RTX: 96,
-  XOM: 105,
-  CVX: 150,
-  COP: 110,
-  SPY: 515,
-  XLE: 94,
-  ITA: 125
-};
-
 function hashToFloat(seed, min, max) {
   const digest = createHash("sha256").update(seed).digest("hex").slice(0, 8);
   const numeric = Number.parseInt(digest, 16);
@@ -23,7 +9,7 @@ function hashToFloat(seed, min, max) {
 
 export function buildFallbackQuote(ticker, timestamp) {
   const normalizedTicker = String(ticker || "").toUpperCase();
-  const basePrice = BASE_PRICES[normalizedTicker] ?? 100;
+  const basePrice = hashToFloat(`${normalizedTicker}:synthetic-base`, 20, 500);
   const changePct = hashToFloat(`${normalizedTicker}-${timestamp.slice(0, 16)}`, -2.8, 2.8);
   const price = basePrice * (1 + changePct / 100);
 
@@ -34,7 +20,8 @@ export function buildFallbackQuote(ticker, timestamp) {
     source: "fallback",
     sourceDetail: "synthetic",
     synthetic: true,
-    dataMode: "synthetic-fallback",
+    dataMode: "synthetic",
+    providerDataMode: "synthetic-fallback",
     providerScore: 0,
     providerLatencyMs: null,
     marketState: "SYNTHETIC"

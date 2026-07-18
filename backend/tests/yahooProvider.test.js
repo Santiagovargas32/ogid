@@ -1,253 +1,100 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import apiQuotaTracker from "../services/admin/apiQuotaTrackerService.js";
-import { fetchYahooQuotes } from "../services/market/providers/yahooProvider.js";
+import { fetchYahooDailyCandles, fetchYahooQuotes } from "../services/market/providers/yahooProvider.js";
 
-function htmlResponse(text, status = 200) {
-  return new Response(text, {
-    status,
-    headers: { "content-type": "text/html" }
-  });
-}
-
-function buildYahooQuoteHtml({
-  ticker,
-  price,
-  previousClose,
-  changePercent,
-  high,
-  low,
-  volume,
-  marketTime = 1_742_141_100,
-  marketState = "REGULAR"
-}) {
-  return `<!doctype html>
-  <html>
-    <body>
-      <script>
-        root.App.main = ${JSON.stringify({
-          context: {
-            dispatcher: {
-              stores: {
-                QuoteSummaryStore: {
-                  price: {
-                    symbol: ticker,
-                    regularMarketPrice: { raw: price },
-                    regularMarketChangePercent: { raw: changePercent },
-                    regularMarketTime: { raw: marketTime },
-                    marketState
-                  },
-                  summaryDetail: {
-                    regularMarketPreviousClose: { raw: previousClose },
-                    regularMarketDayHigh: { raw: high },
-                    regularMarketDayLow: { raw: low },
-                    regularMarketVolume: { raw: volume }
-                  },
-                  quoteType: {
-                    symbol: ticker
-                  }
-                }
-              }
-            }
-          }
-        })};
-      </script>
-    </body>
-  </html>`;
-}
-
-function buildYahooFinStreamerHtml({ ticker, price, changePercent, marketTime = 1_742_141_100, marketState = "REGULAR" }) {
-  return `<!doctype html>
-  <html>
-    <body>
-      <fin-streamer data-symbol="${ticker}" data-field="regularMarketPrice" value="${price}">${price}</fin-streamer>
-      <fin-streamer data-symbol="${ticker}" data-field="regularMarketChangePercent" value="${changePercent}">${changePercent}%</fin-streamer>
-      <fin-streamer data-symbol="${ticker}" data-field="regularMarketTime" value="${marketTime}">${marketTime}</fin-streamer>
-      <fin-streamer data-symbol="${ticker}" data-field="marketState" value="${marketState}">${marketState}</fin-streamer>
-    </body>
-  </html>`;
-}
-
-test("yahoo provider parses embedded quote payloads from page HTML", async () => {
-  apiQuotaTracker.reset({
-    yahooDailyLimit: 10
-  });
-
-  const originalFetch = global.fetch;
-  global.fetch = async (url) => {
-    const value = String(url);
-    if (value.includes("finance.yahoo.com/quote/GD")) {
-      return htmlResponse(
-        buildYahooQuoteHtml({
-          ticker: "GD",
-          price: 300.5,
-          previousClose: 299.75,
-          changePercent: 0.25,
-          high: 301.2,
-          low: 298.8,
-          volume: 1200
-        })
-      );
-    }
-
-    return htmlResponse("<html></html>", 404);
+function quote(symbol, overrides = {}) {
+  return {
+    symbol,
+    source: "yahoo",
+    timestamp: "2026-07-16T18:45:00.000Z",
+    price: 300.5,
+    changePercent: 0.25,
+    previousClose: 299.75,
+    high: 301.2,
+    low: 298.8,
+    volume: 1_200,
+    currency: "USD",
+    exchange: "Nasdaq",
+    timezone: "America/New_York",
+    marketState: "REGULAR",
+    ...overrides,
   };
+}
 
-  try {
-    const result = await fetchYahooQuotes({
-      baseUrl: "https://finance.yahoo.com",
-      userAgent: "ogid/1.0",
-      tickers: ["GD"],
-      timeoutMs: 500,
-      timestamp: "2026-03-16T18:45:00.000Z",
-      session: { open: true, state: "open", checkedAt: "2026-03-16T18:45:00.000Z" }
-    });
-
-    assert.deepEqual(Object.keys(result.quotes), ["GD"]);
-    assert.equal(result.quotes.GD.source, "yahoo");
-    assert.equal(result.quotes.GD.price, 300.5);
-    assert.equal(result.quotes.GD.previousClose, 299.75);
-    assert.equal(result.returnedTickers[0], "GD");
-    assert.equal(result.errors.length, 0);
-    assert.equal(result.requestUrls.length, 1);
-  } finally {
-    global.fetch = originalFetch;
-  }
+test("Yahoo provider preserves the legacy quote envelope while using MarketDataService", async () => {
+  apiQuotaTracker.reset({ yahooDailyLimit: 10 });
+  const result = await fetchYahooQuotes({
+    tickers: ["gd", "GD"],
+    timestamp: "2026-07-16T18:45:00.000Z",
+    session: { open: true, state: "open" },
+    marketDataService: { fetchQuotes: async (symbols) => symbols.map((symbol) => quote(symbol)) },
+  });
+  assert.deepEqual(result.requestedTickers, ["GD"]);
+  assert.deepEqual(result.returnedTickers, ["GD"]);
+  assert.equal(result.requestMode, "yahoo-finance2-quote");
+  assert.equal(result.transport, "server-library");
+  assert.equal(result.quotes.GD.price, 300.5);
+  assert.equal(result.quotes.GD.changePct, 0.25);
+  assert.equal(result.quotes.GD.sourceDetail, "yahoo-finance2");
+  assert.equal(result.requestUrls.length, 0);
+  assert.equal(result.errors.length, 0);
 });
 
-test("yahoo provider falls back to fin-streamer HTML when embedded JSON is absent", async () => {
-  apiQuotaTracker.reset({
-    yahooDailyLimit: 10
+test("Yahoo provider reports missing symbols without discarding successful quotes", async () => {
+  const result = await fetchYahooQuotes({
+    tickers: ["GD", "BA"],
+    marketDataService: { fetchQuotes: async () => [quote("GD")] },
   });
-
-  const originalFetch = global.fetch;
-  global.fetch = async () =>
-    htmlResponse(
-      buildYahooFinStreamerHtml({
-        ticker: "GD",
-        price: 301.75,
-        changePercent: 0.42
-      })
-    );
-
-  try {
-    const result = await fetchYahooQuotes({
-      baseUrl: "https://finance.yahoo.com",
-      tickers: ["GD"],
-      timeoutMs: 500,
-      timestamp: "2026-03-16T18:45:00.000Z",
-      session: { open: true, state: "open", checkedAt: "2026-03-16T18:45:00.000Z" }
-    });
-
-    assert.deepEqual(Object.keys(result.quotes), ["GD"]);
-    assert.equal(result.quotes.GD.price, 301.75);
-    assert.equal(result.quotes.GD.changePct, 0.42);
-    assert.equal(result.errors.length, 0);
-  } finally {
-    global.fetch = originalFetch;
-  }
+  assert.deepEqual(Object.keys(result.quotes), ["GD"]);
+  assert.deepEqual(result.missingTickers, ["BA"]);
+  assert.equal(result.errors[0].code, "yahoo-quote-missing");
+  assert.equal(result.errors[0].ticker, "BA");
 });
 
-test("yahoo provider reports markup failures as html parse errors", async () => {
-  apiQuotaTracker.reset({
-    yahooDailyLimit: 10
+test("Yahoo provider exposes a sanitized service failure through the existing envelope", async () => {
+  const failure = Object.assign(new Error("Yahoo request timed out"), { code: "YAHOO_TIMEOUT" });
+  const result = await fetchYahooQuotes({
+    tickers: ["GD"],
+    marketDataService: { fetchQuotes: async () => { throw failure; } },
   });
-
-  const originalFetch = global.fetch;
-  global.fetch = async () => htmlResponse("<html><body>missing payload</body></html>");
-
-  try {
-    const result = await fetchYahooQuotes({
-      baseUrl: "https://finance.yahoo.com",
-      tickers: ["GD"],
-      timeoutMs: 500
-    });
-
-    assert.equal(result.returnedTickers.length, 0);
-    assert.equal(result.missingTickers[0], "GD");
-    assert.equal(result.errors[0].code, "yahoo-html-quote-missing");
-  } finally {
-    global.fetch = originalFetch;
-  }
+  assert.deepEqual(result.returnedTickers, []);
+  assert.equal(result.errors[0].code, "YAHOO_TIMEOUT");
+  assert.equal(result.errors[0].message, "Yahoo request timed out");
 });
 
-test("yahoo provider marks individual ticker failures while keeping successful pages", async () => {
-  apiQuotaTracker.reset({
-    yahooDailyLimit: 10
+test("Yahoo provider rejects malformed public codes and redacts secret-bearing messages", async () => {
+  const failure = Object.assign(new Error("failed https://query2.finance.yahoo.com/quote?crumb=message-secret"), {
+    code: "https://example.test/error?token=code-secret",
   });
+  const result = await fetchYahooQuotes({
+    tickers: ["GD"],
+    marketDataService: { fetchQuotes: async () => { throw failure; } },
+  });
+  const serialized = JSON.stringify(result.errors);
+  assert.equal(result.errors[0].code, "yahoo-request-failed");
+  assert.equal(serialized.includes("message-secret"), false);
+  assert.equal(serialized.includes("code-secret"), false);
+});
 
-  const originalFetch = global.fetch;
-  global.fetch = async (url) => {
-    const value = String(url);
-    if (value.includes("finance.yahoo.com/quote/GD")) {
-      return htmlResponse(
-        buildYahooQuoteHtml({
-          ticker: "GD",
-          price: 300.5,
-          previousClose: 299.75,
-          changePercent: 0.25,
-          high: 301.2,
-          low: 298.8,
-          volume: 1200
-        })
-      );
-    }
-    if (value.includes("finance.yahoo.com/quote/BA")) {
-      return htmlResponse("<html><body>broken</body></html>");
-    }
-    return htmlResponse("<html></html>", 404);
+test("Yahoo candle adapter maps normalized bars into the legacy candle contract", async () => {
+  const marketDataService = {
+    ensureMarketData: async () => ({
+      data: {
+        GD: {
+          symbol: "GD",
+          stale: false,
+          cached: false,
+          bars: [{ symbol: "GD", source: "yahoo", timestamp: "2026-07-15T00:00:00.000Z", open: 10, high: 12, low: 9, close: 11, volume: 100 }],
+          persistence: { inserted: 1, updated: 0, duplicates: 0, rejectedOpen: 0 },
+        },
+      },
+      errors: [],
+    }),
   };
-
-  try {
-    const result = await fetchYahooQuotes({
-      baseUrl: "https://finance.yahoo.com",
-      userAgent: "ogid/1.0",
-      tickers: ["GD", "BA"],
-      timeoutMs: 500
-    });
-
-    assert.deepEqual(Object.keys(result.quotes), ["GD"]);
-    assert.deepEqual(result.missingTickers, ["BA"]);
-    assert.equal(result.errors.length, 1);
-    assert.equal(result.errors[0].code, "yahoo-html-quote-missing");
-  } finally {
-    global.fetch = originalFetch;
-  }
-});
-
-test("yahoo provider reports timeouts as request failures", async () => {
-  apiQuotaTracker.reset({
-    yahooDailyLimit: 10
-  });
-
-  const originalFetch = global.fetch;
-  global.fetch = async (_url, options = {}) =>
-    new Promise((resolve, reject) => {
-      const abort = () => {
-        const error = new Error("Aborted");
-        error.name = "AbortError";
-        reject(error);
-      };
-
-      if (options.signal?.aborted) {
-        abort();
-        return;
-      }
-
-      options.signal?.addEventListener("abort", abort, { once: true });
-      setTimeout(() => resolve(htmlResponse("<html></html>")), 100);
-    });
-
-  try {
-    const result = await fetchYahooQuotes({
-      baseUrl: "https://finance.yahoo.com",
-      tickers: ["GD"],
-      timeoutMs: 10
-    });
-
-    assert.equal(result.errors[0].code, "yahoo-timeout");
-    assert.equal(result.returnedTickers.length, 0);
-  } finally {
-    global.fetch = originalFetch;
-  }
+  const result = await fetchYahooDailyCandles({ symbols: ["GD"], interval: "1day", outputsize: 5, marketDataService });
+  assert.deepEqual(result.returnedSymbols, ["GD"]);
+  assert.equal(result.candlesBySymbol.GD.values[0].close, 11);
+  assert.equal(result.persistence.inserted, 1);
+  assert.equal(result.errors.length, 0);
 });

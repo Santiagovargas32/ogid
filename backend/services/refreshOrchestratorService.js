@@ -9,6 +9,7 @@ import { computeMarketImpact } from "./market/impactEngineService.js";
 import { generatePredictions } from "./market/predictionEngineService.js";
 import { fetchMarketQuotes } from "./market/marketProviderRouter.js";
 import { isMarketOpenEt, resolveMarketIntervalMs } from "./market/marketSessionService.js";
+import { resolveVerifiedInstrumentReferences } from "./market/instrumentRegistry.js";
 import { resolveBandByProviderSnapshots, resolveNewsPolicy } from "./refreshPolicyService.js";
 import { buildIntelNewsSelection } from "./news/newsSelectionService.js";
 
@@ -72,7 +73,9 @@ class RefreshOrchestratorService {
     rssAggregator = null,
     signalCorrelator = null,
     mapLayerService = null,
-    marketHistoryStore = null
+    marketHistoryStore = null,
+    dailyCandleService = null,
+    intradayCandleService = null
   }) {
     this.stateManager = stateManager;
     this.socketServer = socketServer;
@@ -81,6 +84,8 @@ class RefreshOrchestratorService {
     this.signalCorrelator = signalCorrelator;
     this.mapLayerService = mapLayerService;
     this.marketHistoryStore = marketHistoryStore;
+    this.dailyCandleService = dailyCandleService;
+    this.intradayCandleService = intradayCandleService;
     this.newsInFlight = false;
     this.marketInFlight = false;
     this.manualRefreshInFlight = false;
@@ -272,7 +277,9 @@ class RefreshOrchestratorService {
       return false;
     }
 
-    return !isMarketOpenEt(this.resolveMarketCycleDate(options.now));
+    const hasAlwaysOpenInstrument = resolveVerifiedInstrumentReferences(this.config.market?.tickers || [])
+      .instruments.some((instrument) => instrument.sessionPolicy === "24x7");
+    return !hasAlwaysOpenInstrument && !isMarketOpenEt(this.resolveMarketCycleDate(options.now));
   }
 
   getNewsCycleTelemetry() {
@@ -387,11 +394,13 @@ class RefreshOrchestratorService {
       });
 
       const inputMode = resolveInputMode(newsResult.sourceMode, previousSnapshot.market?.sourceMode);
+      const selectedMarketInstruments = this.config.market.watchlistService?.selectedInstruments?.() || [];
       const impact = computeMarketImpact({
         articles: signalCorpus,
         countries: riskResult.countries,
         marketQuotes: previousSnapshot.market?.quotes || {},
         tickers: this.config.market.tickers,
+        instruments: selectedMarketInstruments,
         countryFilter,
         windowMin: this.config.market.impactWindowMin,
         inputMode,
@@ -403,6 +412,7 @@ class RefreshOrchestratorService {
         countries: riskResult.countries,
         marketQuotes: previousSnapshot.market?.quotes || {},
         tickers: this.config.market.tickers,
+        instruments: selectedMarketInstruments,
         inputMode
       });
       const insights = generateInsights({
@@ -508,6 +518,8 @@ class RefreshOrchestratorService {
 
     try {
       if (this.shouldSkipAutomatedOffHoursMarketCycle(trigger, options)) {
+        try { await this.dailyCandleService?.runScheduled?.(); } catch (error) { log.warn("daily_candle_cycle_failed", { message: error.message }); }
+        void this.intradayCandleService?.runScheduled?.().catch((error) => log.warn("intraday_candle_cycle_failed", { message: error.message }));
         const previousSnapshot = this.stateManager.getSnapshot();
         const cycleDate = this.resolveMarketCycleDate(options.now);
         const pausedMarketState = refreshMarketSessionMetadata(previousSnapshot.market, {
@@ -557,6 +569,7 @@ class RefreshOrchestratorService {
       const cycleDate = this.resolveMarketCycleDate(options.now);
       const marketResult = await fetchMarketQuotes({
         ...this.config.market,
+        trigger,
         previousQuotes: previousSnapshot.market?.quotes || {},
         previousTimeseries: previousSnapshot.market?.timeseries || {},
         allowExhaustedProviders: options.allowExhaustedProviders === true,
@@ -565,12 +578,14 @@ class RefreshOrchestratorService {
       const marketState = mergeMarketState(previousSnapshot.market, marketResult);
       const inputMode = resolveInputMode(previousSnapshot.meta?.sourceMode, marketState.sourceMode);
       const countryFilter = options.countries?.length ? options.countries : this.config.watchlistCountries;
+      const selectedMarketInstruments = this.config.market.watchlistService?.selectedInstruments?.() || [];
 
       const predictions = generatePredictions({
         articles: this.stateManager.getSignalCorpus(),
         countries: previousSnapshot.countries,
         marketQuotes: marketState.quotes,
         tickers: this.config.market.tickers,
+        instruments: selectedMarketInstruments,
         inputMode
       });
       const impact = computeMarketImpact({
@@ -578,6 +593,7 @@ class RefreshOrchestratorService {
         countries: previousSnapshot.countries,
         marketQuotes: marketState.quotes,
         tickers: this.config.market.tickers,
+        instruments: selectedMarketInstruments,
         countryFilter,
         windowMin: this.config.market.impactWindowMin,
         inputMode,
@@ -609,6 +625,10 @@ class RefreshOrchestratorService {
         log.warn("market_history_persist_failed", {
           message: error.message
         });
+      }
+      if (isAutomatedMarketTrigger(trigger)) {
+        try { await this.dailyCandleService?.runScheduled?.(); } catch (error) { log.warn("daily_candle_cycle_failed", { message: error.message }); }
+        void this.intradayCandleService?.runScheduled?.().catch((error) => log.warn("intraday_candle_cycle_failed", { message: error.message }));
       }
       this.socketServer.broadcast("update", this.buildUpdatePayload(snapshot), snapshot.meta);
       const coverage = marketState.sourceMeta?.coverageByMode || {};

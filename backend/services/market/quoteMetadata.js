@@ -1,26 +1,14 @@
-const DATA_MODE_STAGE = Object.freeze({
-  live: "provider-live",
-  "web-delayed": "provider-web-delayed",
-  "historical-eod": "provider-historical-eod",
-  "router-stale": "router-stale-cache",
-  "synthetic-fallback": "router-deterministic-fallback",
-  stale: "router-stale-cache",
-  fallback: "router-deterministic-fallback"
-});
+import { DATA_MODES, normalizeDataMode } from "../../utils/dataMode.js";
 
-const MODE_ALIAS = Object.freeze({
-  stale: "router-stale",
-  fallback: "synthetic-fallback"
-});
+const DATA_MODE_STAGE = Object.freeze({ observed: "provider-observed", derived: "analysis-derived", seeded: "catalog-seeded", stale: "router-stale-cache", synthetic: "router-deterministic-fallback" });
 
-export function normalizeQuoteDataMode(mode = "synthetic-fallback") {
-  const normalized = String(mode || "").trim().toLowerCase();
-  return MODE_ALIAS[normalized] || normalized || "synthetic-fallback";
+export function normalizeQuoteDataMode(mode = DATA_MODES.SYNTHETIC) {
+  return normalizeDataMode(mode, DATA_MODES.SYNTHETIC);
 }
 
 export function resolveQuoteOriginStage(quote = {}) {
-  const normalizedMode = normalizeQuoteDataMode(quote?.dataMode || (quote?.synthetic ? "synthetic-fallback" : "live"));
-  return DATA_MODE_STAGE[normalizedMode] || "unknown";
+  const mode = normalizeQuoteDataMode(quote?.dataMode || (quote?.synthetic ? DATA_MODES.SYNTHETIC : DATA_MODES.OBSERVED));
+  return DATA_MODE_STAGE[mode] || "unknown";
 }
 
 export function getQuoteTimestamp(quote = {}) {
@@ -29,54 +17,24 @@ export function getQuoteTimestamp(quote = {}) {
 
 export function computeQuoteAgeMin(quote = {}, referenceNow = Date.now()) {
   const asOfTime = new Date(getQuoteTimestamp(quote) || 0).getTime();
-  if (!Number.isFinite(asOfTime) || asOfTime <= 0) {
-    return null;
-  }
-
+  if (!Number.isFinite(asOfTime) || asOfTime <= 0) return null;
   const referenceMs = Number.isFinite(referenceNow) ? referenceNow : Date.now();
-  const ageMs = Math.max(0, referenceMs - asOfTime);
-  return Math.round(ageMs / 60_000);
+  return Math.round(Math.max(0, referenceMs - asOfTime) / 60_000);
 }
 
 export function decorateQuote(quote = {}, referenceNow = Date.now()) {
-  const dataMode = normalizeQuoteDataMode(quote?.dataMode || (quote?.synthetic ? "synthetic-fallback" : "live"));
-  return {
-    ...quote,
-    dataMode,
-    quoteOriginStage: resolveQuoteOriginStage({ ...quote, dataMode }),
-    quoteAgeMin: computeQuoteAgeMin({ ...quote, dataMode }, referenceNow)
-  };
+  const dataMode = normalizeQuoteDataMode(quote?.dataMode || (quote?.synthetic ? DATA_MODES.SYNTHETIC : DATA_MODES.OBSERVED));
+  return { ...quote, dataMode, quoteOriginStage: resolveQuoteOriginStage({ ...quote, dataMode }), quoteAgeMin: computeQuoteAgeMin(quote, referenceNow) };
 }
 
 export function buildCoverageByMode(quotes = {}) {
-  const coverage = {
-    live: 0,
-    webDelayed: 0,
-    historicalEod: 0,
-    routerStale: 0,
-    syntheticFallback: 0
-  };
-
+  const coverage = { live: 0, webDelayed: 0, historicalEod: 0, routerStale: 0, syntheticFallback: 0 };
   for (const quote of Object.values(quotes || {})) {
-    const mode = normalizeQuoteDataMode(quote?.dataMode || (quote?.synthetic ? "synthetic-fallback" : "live"));
-    if (mode === "live") {
-      coverage.live += 1;
-      continue;
-    }
-    if (mode === "web-delayed") {
-      coverage.webDelayed += 1;
-      continue;
-    }
-    if (mode === "historical-eod") {
-      coverage.historicalEod += 1;
-      continue;
-    }
-    if (mode === "router-stale") {
-      coverage.routerStale += 1;
-      continue;
-    }
-    coverage.syntheticFallback += 1;
+    const mode = normalizeQuoteDataMode(quote?.dataMode || (quote?.synthetic ? DATA_MODES.SYNTHETIC : DATA_MODES.OBSERVED));
+    if (mode === DATA_MODES.OBSERVED && quote?.providerDataMode === "web-delayed") coverage.webDelayed += 1;
+    else if (mode === DATA_MODES.OBSERVED) coverage.live += 1;
+    else if (mode === DATA_MODES.STALE) coverage.routerStale += 1;
+    else coverage.syntheticFallback += 1;
   }
-
   return coverage;
 }

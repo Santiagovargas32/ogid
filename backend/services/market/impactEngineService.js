@@ -5,10 +5,6 @@ const LEVEL_WEIGHT = {
   Stable: 1
 };
 
-const DEFENSE_TICKERS = ["GD", "BA", "NOC", "LMT", "RTX", "ITA"];
-const ENERGY_TICKERS = ["XOM", "CVX", "COP", "XLE"];
-const INDEX_TICKERS = ["SPY"];
-
 const ENERGY_KEYWORDS = [
   "oil",
   "crude",
@@ -66,33 +62,36 @@ function getConflictWeightNorm(article) {
   return Math.min(5, Number((raw / 4).toFixed(2)));
 }
 
-function inferTickersForArticle(article, allowedTickersSet) {
+function normalizeSector(instrument = {}) {
+  const metadata = normalizeText(`${instrument.sector || ""} ${instrument.industry || ""} ${instrument.displayName || ""}`);
+  if (["defense", "aerospace", "weapon", "military"].some((value) => metadata.includes(` ${value} `))) return "defense";
+  if (["energy", "oil", "gas", "petroleum"].some((value) => metadata.includes(` ${value} `))) return "energy";
+  if (["index", "fund", "etf"].includes(String(instrument.assetType || "").toLowerCase())) return "broad";
+  const sector = String(instrument.sector || instrument.assetType || "broad").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return sector || "broad";
+}
+
+function instrumentMatchesArticle(instrument, text) {
+  const symbol = normalizeText(instrument.canonicalSymbol || instrument.symbol || "").trim();
+  const displayName = normalizeText(instrument.displayName || "").trim();
+  const sector = normalizeText(instrument.sector || "").trim();
+  const industry = normalizeText(instrument.industry || "").trim();
+  return [symbol, displayName, sector, industry].filter((value) => value.length >= 3).some((value) => text.includes(` ${value} `));
+}
+
+function inferTickersForArticle(article, instrumentsByTicker) {
   const tickers = new Set();
   const conflictWeight = article.conflict?.totalWeight ?? 0;
   const negative = article.sentiment?.label === "negative";
   const text = normalizeText(`${article.title || ""}. ${article.description || ""}. ${article.content || ""}`);
   const hasEnergySignal = ENERGY_KEYWORDS.some((keyword) => text.includes(` ${keyword} `));
 
-  if (conflictWeight > 0 || negative) {
-    for (const ticker of DEFENSE_TICKERS) {
-      if (allowedTickersSet.has(ticker)) {
-        tickers.add(ticker);
-      }
-    }
-  }
-
-  if (hasEnergySignal) {
-    for (const ticker of ENERGY_TICKERS) {
-      if (allowedTickersSet.has(ticker)) {
-        tickers.add(ticker);
-      }
-    }
-  }
-
-  for (const ticker of INDEX_TICKERS) {
-    if (allowedTickersSet.has(ticker)) {
-      tickers.add(ticker);
-    }
+  for (const [ticker, instrument] of instrumentsByTicker) {
+    const sector = normalizeSector(instrument);
+    if (instrumentMatchesArticle(instrument, text)
+      || (sector === "defense" && (conflictWeight > 0 || negative))
+      || (sector === "energy" && hasEnergySignal)
+      || sector === "broad") tickers.add(ticker);
   }
 
   return [...tickers];
@@ -115,33 +114,20 @@ function inEventWindow(article, thresholdMs) {
   return Number.isFinite(timestamp) && timestamp >= thresholdMs;
 }
 
-function tickerSector(ticker) {
-  if (DEFENSE_TICKERS.includes(ticker)) {
-    return "defense";
-  }
-  if (ENERGY_TICKERS.includes(ticker)) {
-    return "energy";
-  }
-  return "broad";
-}
-
 function buildSectorBreakdown(items = []) {
-  const sectorMap = {
-    defense: { sector: "defense", eventScore: 0, impactScore: 0, tickers: new Set(), itemCount: 0 },
-    energy: { sector: "energy", eventScore: 0, impactScore: 0, tickers: new Set(), itemCount: 0 },
-    broad: { sector: "broad", eventScore: 0, impactScore: 0, tickers: new Set(), itemCount: 0 }
-  };
+  const sectorMap = new Map();
 
   for (const item of items) {
-    const sector = tickerSector(item.ticker);
-    const accumulator = sectorMap[sector];
+    const sector = item.sector || "broad";
+    if (!sectorMap.has(sector)) sectorMap.set(sector, { sector, eventScore: 0, impactScore: 0, tickers: new Set(), itemCount: 0 });
+    const accumulator = sectorMap.get(sector);
     accumulator.eventScore = Number((accumulator.eventScore + item.eventScore).toFixed(2));
     accumulator.impactScore = Number((accumulator.impactScore + item.impactScore).toFixed(2));
     accumulator.itemCount += 1;
     accumulator.tickers.add(item.ticker);
   }
 
-  return Object.values(sectorMap)
+  return [...sectorMap.values()]
     .map((entry) => ({
       sector: entry.sector,
       eventScore: entry.eventScore,
@@ -155,7 +141,7 @@ function buildSectorBreakdown(items = []) {
 function buildScatterPoints(items = []) {
   return items.map((item) => ({
     ticker: item.ticker,
-    sector: tickerSector(item.ticker),
+    sector: item.sector || "broad",
     eventScore: item.eventScore,
     priceReaction: item.priceReaction,
     impactScore: item.impactScore,
@@ -190,9 +176,12 @@ function buildCouplingSeries({ impactHistory = [], tickers = [], predictionScore
   }));
 }
 
-export function computeMarketImpact({ articles = [], countries = {}, marketQuotes = {}, tickers = [], countryFilter = [], windowMin = 120, inputMode = "live", impactHistory = [], predictionScores = {} }) {
+export function computeMarketImpact({ articles = [], countries = {}, marketQuotes = {}, tickers = [], instruments = [], countryFilter = [], windowMin = 120, inputMode = "live", impactHistory = [], predictionScores = {} }) {
   const normalizedTickers = tickers.map((ticker) => String(ticker).toUpperCase());
-  const tickerSet = new Set(normalizedTickers);
+  const instrumentsByTicker = new Map(normalizedTickers.map((ticker) => {
+    const instrument = instruments.find((item) => String(item.canonicalSymbol || item.symbol || "").toUpperCase() === ticker) || marketQuotes[ticker] || { canonicalSymbol: ticker };
+    return [ticker, instrument];
+  }));
   const countryFilterSet = new Set(countryFilter);
   const minTimestamp = Date.now() - windowMin * 60_000;
   const accumulators = Object.fromEntries(
@@ -220,7 +209,7 @@ export function computeMarketImpact({ articles = [], countries = {}, marketQuote
     const sentimentWeight = getSentimentWeight(article);
     const conflictWeightNorm = getConflictWeightNorm(article);
     const articleWeight = Number((levelWeight + sentimentWeight + conflictWeightNorm).toFixed(2));
-    const matchedTickers = inferTickersForArticle(article, tickerSet);
+    const matchedTickers = inferTickersForArticle(article, instrumentsByTicker);
 
     for (const ticker of matchedTickers) {
       const accumulator = accumulators[ticker];
@@ -250,6 +239,8 @@ export function computeMarketImpact({ articles = [], countries = {}, marketQuote
 
     return {
       ticker,
+      sector: normalizeSector(instrumentsByTicker.get(ticker)),
+      methodVersion: "news-price-coupling-v1",
       impactScore,
       eventScore: accumulator.eventScore,
       priceReaction,
@@ -265,7 +256,7 @@ export function computeMarketImpact({ articles = [], countries = {}, marketQuote
         source: quote.source,
         sourceDetail: quote.sourceDetail || null,
         synthetic: Boolean(quote.synthetic),
-        dataMode: quote.dataMode || (quote.synthetic ? "synthetic-fallback" : "live"),
+        dataMode: quote.dataMode || (quote.synthetic ? "synthetic" : "observed"),
         providerScore: Number.isFinite(Number(quote.providerScore)) ? Number(quote.providerScore) : null,
         providerLatencyMs: Number.isFinite(Number(quote.providerLatencyMs)) ? Number(quote.providerLatencyMs) : null,
         marketState: quote.marketState || null
@@ -275,6 +266,8 @@ export function computeMarketImpact({ articles = [], countries = {}, marketQuote
 
   const orderedItems = items.sort((a, b) => b.impactScore - a.impactScore);
   return {
+    methodVersion: "news-price-coupling-v1",
+    methodLabel: "Heuristic temporal association; correlation, not causality.",
     updatedAt: new Date().toISOString(),
     windowMin,
     inputMode,

@@ -160,7 +160,7 @@ class StateManager {
     this.state = this.createInitialState({
       refreshIntervalMs: 30_000,
       watchlistCountries: ["US", "IL", "IR"],
-      marketTickers: ["GD", "BA", "NOC"],
+      marketTickers: [],
       impactWindowMin: 120,
       marketEnabled: true,
       marketDisabledReason: null
@@ -172,6 +172,7 @@ class StateManager {
     watchlistCountries,
     marketTickers,
     impactWindowMin,
+    marketWatchlistRollout,
     marketEnabled = true,
     marketDisabledReason = null
   }) {
@@ -179,7 +180,8 @@ class StateManager {
     const countries = createCountryState(now);
     const market = buildInitialMarketState(marketTickers, {
       enabled: marketEnabled,
-      disabledReason: marketDisabledReason
+      disabledReason: marketDisabledReason,
+      watchlistRollout: marketWatchlistRollout
     });
     const dataQuality = buildDataQuality({
       newsMode: "fallback",
@@ -194,6 +196,7 @@ class StateManager {
         lastRefreshAt: null,
         refreshIntervalMs,
         watchlistCountries,
+        marketTickers: [...marketTickers],
         sourceMode: "fallback",
         sourceMeta: { provider: "seed", reason: "initial-state" },
         dataQuality,
@@ -244,7 +247,8 @@ class StateManager {
   reset({
     refreshIntervalMs = 30_000,
     watchlistCountries = ["US", "IL", "IR"],
-    marketTickers = ["GD", "BA", "NOC"],
+    marketTickers = [],
+    marketWatchlistRollout = undefined,
     impactWindowMin = 120,
     marketEnabled = true,
     marketDisabledReason = null
@@ -253,6 +257,7 @@ class StateManager {
       refreshIntervalMs,
       watchlistCountries,
       marketTickers,
+      marketWatchlistRollout,
       impactWindowMin,
       marketEnabled,
       marketDisabledReason
@@ -267,6 +272,83 @@ class StateManager {
 
   getMeta() {
     return this.state.meta;
+  }
+
+  setMarketTickers(tickers = []) {
+    const active = new Set((Array.isArray(tickers) ? tickers : []).map((ticker) => String(ticker || "").trim().toUpperCase()).filter(Boolean));
+    const previousActive = new Set((this.state.meta?.marketTickers || []).map((ticker) => String(ticker || "").trim().toUpperCase()).filter(Boolean));
+    const selectionChanged = active.size !== previousActive.size || [...active].some((ticker) => !previousActive.has(ticker));
+    const filterByTicker = (values = {}) => Object.fromEntries(Object.entries(values)
+      .map(([ticker, value]) => [String(ticker || "").trim().toUpperCase(), value])
+      .filter(([ticker]) => active.has(ticker)));
+    const hasActiveTicker = (item) => active.has(String(item?.ticker || "").trim().toUpperCase());
+    const predictionTickers = (this.state.predictions?.tickers || []).filter(hasActiveTicker);
+    const predictionScores = filterByTicker(this.state.predictions?.predictionScoreByTicker);
+    const predictionSectors = (this.state.predictions?.sectors || [])
+      .map((sector) => ({
+        ...sector,
+        tickers: (sector?.tickers || []).filter((ticker) => active.has(String(ticker || "").trim().toUpperCase()))
+      }))
+      .filter((sector) => sector.tickers.length > 0);
+    const impactItems = (this.state.impact?.items || []).filter(hasActiveTicker);
+    const sectorBreakdown = [...impactItems.reduce((sectors, item) => {
+      const sector = item?.sector || "broad";
+      const entry = sectors.get(sector) || { sector, eventScore: 0, impactScore: 0, itemCount: 0, tickers: new Set() };
+      entry.eventScore = Number((entry.eventScore + Number(item?.eventScore || 0)).toFixed(2));
+      entry.impactScore = Number((entry.impactScore + Number(item?.impactScore || 0)).toFixed(2));
+      entry.itemCount += 1;
+      entry.tickers.add(String(item?.ticker || "").trim().toUpperCase());
+      sectors.set(sector, entry);
+      return sectors;
+    }, new Map()).values()]
+      .map((entry) => ({ ...entry, tickers: [...entry.tickers].sort() }))
+      .sort((left, right) => right.impactScore - left.impactScore);
+    const impactHistory = (this.state.impactHistory || [])
+      .map((entry) => ({ ...entry, items: (entry?.items || []).filter(hasActiveTicker) }))
+      .filter((entry) => entry.items.length > 0);
+    const marketQuotes = filterByTicker(this.state.market?.quotes);
+    const marketTimeseries = filterByTicker(this.state.market?.timeseries);
+    const marketSourceMeta = selectionChanged
+      ? {
+          provider: this.state.market?.sourceMeta?.provider || this.state.market?.provider || "market-router",
+          reason: "watchlist-selection-changed",
+          requestMode: "watchlist-pending-refresh",
+          enabled: this.state.market?.sourceMeta?.enabled !== false,
+          requestedTickers: [...active],
+          returnedTickers: Object.keys(marketQuotes),
+          missingTickers: [...active].filter((ticker) => !marketQuotes[ticker]),
+          marketSession: this.state.market?.session || null
+        }
+      : this.state.market?.sourceMeta;
+    this.state = {
+      ...this.state,
+      meta: { ...this.state.meta, marketTickers: [...active] },
+      market: {
+        ...this.state.market,
+        revision: selectionChanged ? null : this.state.market?.revision,
+        updatedAt: selectionChanged ? null : this.state.market?.updatedAt,
+        sourceMeta: marketSourceMeta,
+        quotes: marketQuotes,
+        timeseries: marketTimeseries
+      },
+      predictions: {
+        ...this.state.predictions,
+        updatedAt: selectionChanged ? null : this.state.predictions?.updatedAt,
+        sectors: selectionChanged ? [] : predictionSectors,
+        tickers: selectionChanged ? [] : predictionTickers,
+        predictionScoreByTicker: selectionChanged ? {} : predictionScores
+      },
+      impact: {
+        ...this.state.impact,
+        updatedAt: selectionChanged ? null : this.state.impact?.updatedAt,
+        items: selectionChanged ? [] : impactItems,
+        sectorBreakdown: selectionChanged ? [] : sectorBreakdown,
+        scatterPoints: selectionChanged ? [] : (this.state.impact?.scatterPoints || []).filter(hasActiveTicker),
+        couplingSeries: selectionChanged ? [] : (this.state.impact?.couplingSeries || []).filter(hasActiveTicker)
+      },
+      impactHistory
+    };
+    return this.getSnapshot();
   }
 
   getSignalCorpus() {

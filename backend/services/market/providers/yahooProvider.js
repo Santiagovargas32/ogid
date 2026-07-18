@@ -1,714 +1,248 @@
 import apiQuotaTracker from "../../admin/apiQuotaTrackerService.js";
-import {
-  buildProviderError,
-  computeChangePct,
-  computeProviderScore,
-  ensureTrailingSlash,
-  fetchWithTimeout,
-  normalizeRequestedTickers,
-  parseInteger,
-  parsePercent,
-  parsePrice,
-  summarizeAttempt,
-  toIsoTimestamp
-} from "./providerUtils.js";
+import { MarketDataService } from "../../marketData/marketDataService.js";
+import { computeProviderScore, normalizeRequestedTickers, summarizeAttempt } from "./providerUtils.js";
+import { sanitizeSensitiveData } from "../../../utils/sanitize.js";
 
 export const DEFAULT_YAHOO_BASE_URL = "https://finance.yahoo.com";
 export const DEFAULT_YAHOO_USER_AGENT = "ogid/1.0";
 
-function buildYahooQuotePageUrl({ baseUrl = DEFAULT_YAHOO_BASE_URL, ticker }) {
-  return new URL(`quote/${String(ticker || "").trim().toUpperCase()}`, ensureTrailingSlash(baseUrl));
+let defaultMarketDataService = null;
+
+function publicErrorCode(value) {
+  const code = String(value || "");
+  return /^(?:[A-Z][A-Z0-9_]{1,63}|[1-5][0-9]{2})$/.test(code) ? code : "yahoo-request-failed";
 }
 
-function extractBalancedJson(text = "", startIndex = -1) {
-  if (startIndex < 0 || startIndex >= text.length || text[startIndex] !== "{") {
-    return null;
-  }
-
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-
-  for (let index = startIndex; index < text.length; index += 1) {
-    const char = text[index];
-
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-
-    if (char === "\\") {
-      escaped = true;
-      continue;
-    }
-
-    if (char === "\"") {
-      inString = !inString;
-      continue;
-    }
-
-    if (inString) {
-      continue;
-    }
-
-    if (char === "{") {
-      depth += 1;
-      continue;
-    }
-    if (char === "}") {
-      depth -= 1;
-      if (depth === 0) {
-        return text.slice(startIndex, index + 1);
-      }
-    }
-  }
-
-  return null;
+function getMarketDataService(service) {
+  if (service) return service;
+  if (!defaultMarketDataService) defaultMarketDataService = new MarketDataService();
+  return defaultMarketDataService;
 }
 
-function extractJsonByMarker(html = "", marker = "") {
-  const markerIndex = html.indexOf(marker);
-  if (markerIndex < 0) {
-    return null;
-  }
-
-  const jsonStart = html.indexOf("{", markerIndex + marker.length);
-  if (jsonStart < 0) {
-    return null;
-  }
-
-  const raw = extractBalancedJson(html, jsonStart);
-  if (!raw) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
-
-function extractScriptPayload(html = "", scriptId = "") {
-  const pattern = new RegExp(`<script[^>]*id=["']${scriptId}["'][^>]*>([\\s\\S]*?)<\\/script>`, "i");
-  const match = html.match(pattern);
-  if (!match?.[1]) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(match[1]);
-  } catch {
-    return null;
-  }
-}
-
-function readRawValue(value) {
-  if (value && typeof value === "object" && "raw" in value) {
-    return value.raw;
-  }
-  return value;
-}
-
-function buildCandidateFromQuoteSummaryStore(store = {}, ticker = "") {
-  const price = store?.price || {};
-  const summary = store?.summaryDetail || {};
-  const quoteType = store?.quoteType || {};
-  const symbol = String(price?.symbol || quoteType?.symbol || store?.symbol || ticker || "")
-    .trim()
-    .toUpperCase();
-
+function publicProviderError(error, { ticker = null, scope = "provider" } = {}) {
+  const code = publicErrorCode(error?.code);
   return {
-    symbol,
-    regularMarketPrice: readRawValue(price?.regularMarketPrice ?? store?.regularMarketPrice),
-    regularMarketChangePercent: readRawValue(
-      price?.regularMarketChangePercent ?? store?.regularMarketChangePercent ?? summary?.regularMarketChangePercent
-    ),
-    regularMarketPreviousClose: readRawValue(
-      summary?.regularMarketPreviousClose ?? price?.regularMarketPreviousClose ?? store?.regularMarketPreviousClose
-    ),
-    regularMarketDayHigh: readRawValue(summary?.regularMarketDayHigh ?? store?.regularMarketDayHigh),
-    regularMarketDayLow: readRawValue(summary?.regularMarketDayLow ?? store?.regularMarketDayLow),
-    regularMarketVolume: readRawValue(
-      summary?.regularMarketVolume ?? price?.regularMarketVolume ?? store?.regularMarketVolume
-    ),
-    regularMarketTime: readRawValue(price?.regularMarketTime ?? store?.regularMarketTime),
-    marketState: price?.marketState || store?.marketState || summary?.marketState || null
+    provider: "yahoo",
+    scope,
+    code,
+    reason: code,
+    message: sanitizeSensitiveData(String(error?.message || "Yahoo Finance request failed.")),
+    ticker: ticker || undefined,
+    retryable: error?.details?.retryable ?? null,
   };
 }
 
-function buildCandidateFromGenericObject(candidate = {}, ticker = "") {
-  if (!candidate || typeof candidate !== "object") {
-    return null;
-  }
-
-  const nestedPrice = candidate?.price && typeof candidate.price === "object" ? candidate.price : {};
-  const nestedSummary = candidate?.summaryDetail && typeof candidate.summaryDetail === "object" ? candidate.summaryDetail : {};
-  const symbol = String(
-    candidate?.symbol ||
-      candidate?.ticker ||
-      nestedPrice?.symbol ||
-      candidate?.quoteType?.symbol ||
-      ticker ||
-      ""
-  )
-    .trim()
-    .toUpperCase();
-
+function mapQuote(quote, { durationMs, score, timestamp, session }) {
+  const previousClose = Number.isFinite(quote.previousClose) ? quote.previousClose : null;
+  const changePct = Number.isFinite(quote.changePercent)
+    ? Number(quote.changePercent.toFixed(2))
+    : previousClose > 0
+      ? Number((((quote.price - previousClose) / previousClose) * 100).toFixed(2))
+      : 0;
   return {
-    symbol,
-    regularMarketPrice: readRawValue(
-      candidate?.regularMarketPrice ??
-        nestedPrice?.regularMarketPrice ??
-        candidate?.price ??
-        candidate?.close ??
-        candidate?.lastPrice
-    ),
-    regularMarketChangePercent: readRawValue(
-      candidate?.regularMarketChangePercent ??
-        nestedPrice?.regularMarketChangePercent ??
-        candidate?.changePercent ??
-        candidate?.percent_change
-    ),
-    regularMarketPreviousClose: readRawValue(
-      candidate?.regularMarketPreviousClose ??
-        nestedSummary?.regularMarketPreviousClose ??
-        nestedPrice?.regularMarketPreviousClose ??
-        candidate?.previousClose
-    ),
-    regularMarketDayHigh: readRawValue(candidate?.regularMarketDayHigh ?? nestedSummary?.regularMarketDayHigh ?? candidate?.dayHigh),
-    regularMarketDayLow: readRawValue(candidate?.regularMarketDayLow ?? nestedSummary?.regularMarketDayLow ?? candidate?.dayLow),
-    regularMarketVolume: readRawValue(
-      candidate?.regularMarketVolume ?? nestedSummary?.regularMarketVolume ?? candidate?.volume
-    ),
-    regularMarketTime: readRawValue(candidate?.regularMarketTime ?? nestedPrice?.regularMarketTime ?? candidate?.time),
-    marketState: candidate?.marketState || nestedPrice?.marketState || null
-  };
-}
-
-function scoreCandidate(candidate = {}, ticker = "") {
-  const symbol = String(candidate?.symbol || "").trim().toUpperCase();
-  const hasPrice = Number.isFinite(parsePrice(candidate?.regularMarketPrice));
-  if (!hasPrice) {
-    return -1;
-  }
-
-  let score = 0;
-  if (symbol === String(ticker || "").trim().toUpperCase()) {
-    score += 20;
-  }
-  if (Number.isFinite(parsePrice(candidate?.regularMarketPreviousClose))) {
-    score += 4;
-  }
-  if (Number.isFinite(parsePercent(candidate?.regularMarketChangePercent))) {
-    score += 4;
-  }
-  if (Number.isFinite(parseInteger(candidate?.regularMarketVolume))) {
-    score += 2;
-  }
-  if (candidate?.regularMarketTime) {
-    score += 1;
-  }
-  return score;
-}
-
-function findBestGenericCandidate(payload = {}, ticker = "") {
-  const visited = new Set();
-  let best = null;
-  let bestScore = -1;
-
-  function visit(value, depth = 0) {
-    if (!value || typeof value !== "object" || depth > 12 || visited.has(value)) {
-      return;
-    }
-    visited.add(value);
-
-    const candidate = buildCandidateFromGenericObject(value, ticker);
-    const candidateScore = scoreCandidate(candidate, ticker);
-    if (candidateScore > bestScore) {
-      bestScore = candidateScore;
-      best = candidate;
-    }
-
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        visit(item, depth + 1);
-      }
-      return;
-    }
-
-    for (const child of Object.values(value)) {
-      visit(child, depth + 1);
-    }
-  }
-
-  visit(payload);
-  return best;
-}
-
-function extractQuoteCandidate(payload = {}, ticker = "") {
-  const stores =
-    payload?.context?.dispatcher?.stores ||
-    payload?.context?.stores ||
-    payload?.stores ||
-    payload?.props?.stores ||
-    null;
-
-  if (stores?.QuoteSummaryStore) {
-    const candidate = buildCandidateFromQuoteSummaryStore(stores.QuoteSummaryStore, ticker);
-    if (scoreCandidate(candidate, ticker) >= 0) {
-      return candidate;
-    }
-  }
-
-  const streamQuote =
-    stores?.StreamDataStore?.quoteData?.[ticker] ||
-    stores?.StreamDataStore?.quoteData?.[String(ticker || "").toUpperCase()] ||
-    stores?.StreamDataStore?.quotes?.[ticker] ||
-    null;
-  if (streamQuote) {
-    const candidate = buildCandidateFromGenericObject(streamQuote, ticker);
-    if (scoreCandidate(candidate, ticker) >= 0) {
-      return candidate;
-    }
-  }
-
-  return findBestGenericCandidate(payload, ticker);
-}
-
-function extractEmbeddedPayloads(html = "") {
-  const payloads = [];
-  const candidates = [
-    extractJsonByMarker(html, "root.App.main ="),
-    extractJsonByMarker(html, "window.__PRELOADED_STATE__ ="),
-    extractJsonByMarker(html, "window.__INITIAL_STATE__ ="),
-    extractScriptPayload(html, "__NEXT_DATA__")
-  ].filter(Boolean);
-
-  payloads.push(...candidates);
-  return payloads;
-}
-
-function decodeHtmlEntities(value = "") {
-  return String(value || "")
-    .replaceAll("&nbsp;", " ")
-    .replaceAll("&amp;", "&")
-    .replaceAll("&quot;", "\"")
-    .replaceAll("&#39;", "'")
-    .replaceAll("&lt;", "<")
-    .replaceAll("&gt;", ">")
-    .trim();
-}
-
-function parseHtmlAttributes(raw = "") {
-  const attributes = {};
-  const pattern = /([A-Za-z_:][-A-Za-z0-9_:.]*)(?:=(["'])([\s\S]*?)\2|=([^\s>]+))?/g;
-  let match = pattern.exec(String(raw || ""));
-  while (match) {
-    const [, key, , quotedValue, bareValue] = match;
-    attributes[String(key || "").toLowerCase()] = decodeHtmlEntities(quotedValue ?? bareValue ?? "");
-    match = pattern.exec(String(raw || ""));
-  }
-  return attributes;
-}
-
-function extractFinStreamerCandidate(html = "", ticker = "") {
-  const normalizedTicker = String(ticker || "").trim().toUpperCase();
-  const matches = [...String(html || "").matchAll(/<fin-streamer\b([^>]*)>([\s\S]*?)<\/fin-streamer>/gi)];
-  if (!matches.length) {
-    return null;
-  }
-
-  const candidate = {
-    symbol: normalizedTicker
-  };
-
-  for (const [, rawAttributes = "", rawInnerText = ""] of matches) {
-    const attributes = parseHtmlAttributes(rawAttributes);
-    const symbol = String(
-      attributes["data-symbol"] ||
-        attributes.symbol ||
-        attributes["data-ticker"] ||
-        normalizedTicker
-    )
-      .trim()
-      .toUpperCase();
-    if (normalizedTicker && symbol && symbol !== normalizedTicker) {
-      continue;
-    }
-
-    const field = String(attributes["data-field"] || attributes.field || "").trim();
-    const value = attributes.value || attributes["data-value"] || decodeHtmlEntities(rawInnerText);
-    if (!field || !value) {
-      continue;
-    }
-
-    candidate.symbol = symbol || candidate.symbol;
-    if (field === "regularMarketPrice") {
-      candidate.regularMarketPrice = value;
-    } else if (field === "regularMarketChangePercent") {
-      candidate.regularMarketChangePercent = value;
-    } else if (field === "regularMarketPreviousClose") {
-      candidate.regularMarketPreviousClose = value;
-    } else if (field === "regularMarketDayHigh") {
-      candidate.regularMarketDayHigh = value;
-    } else if (field === "regularMarketDayLow") {
-      candidate.regularMarketDayLow = value;
-    } else if (field === "regularMarketVolume") {
-      candidate.regularMarketVolume = value;
-    } else if (field === "regularMarketTime") {
-      candidate.regularMarketTime = value;
-    } else if (field === "marketState") {
-      candidate.marketState = value;
-    }
-  }
-
-  return scoreCandidate(candidate, normalizedTicker) >= 0 ? candidate : null;
-}
-
-function parseYahooScrapedQuote(candidate = {}, ticker = "", timestamp = new Date().toISOString(), marketSession = {}, providerLatencyMs = null, providerScore = null) {
-  const symbol = String(candidate?.symbol || ticker || "").trim().toUpperCase();
-  const price =
-    parsePrice(candidate?.regularMarketPrice) ??
-    parsePrice(candidate?.postMarketPrice) ??
-    parsePrice(candidate?.preMarketPrice) ??
-    parsePrice(candidate?.price);
-
-  if (!symbol || !Number.isFinite(price)) {
-    return null;
-  }
-
-  const previousClose =
-    parsePrice(candidate?.regularMarketPreviousClose) ??
-    parsePrice(candidate?.postMarketPreviousClose) ??
-    parsePrice(candidate?.preMarketPreviousClose) ??
-    parsePrice(candidate?.previousClose);
-  const fallbackChangePct =
-    parsePercent(candidate?.regularMarketChangePercent) ??
-    parsePercent(candidate?.postMarketChangePercent) ??
-    parsePercent(candidate?.preMarketChangePercent) ??
-    parsePercent(candidate?.changePercent);
-  const changePct = computeChangePct(price, previousClose, fallbackChangePct);
-
-  return {
-    price,
-    changePct,
-    high: parsePrice(candidate?.regularMarketDayHigh) ?? parsePrice(candidate?.dayHigh) ?? null,
-    low: parsePrice(candidate?.regularMarketDayLow) ?? parsePrice(candidate?.dayLow) ?? null,
-    volume: parseInteger(candidate?.regularMarketVolume) ?? parseInteger(candidate?.volume),
+    price: quote.price,
     previousClose,
-    marketState: String(candidate?.marketState || (marketSession?.open ? "REGULAR" : "CLOSED")).toUpperCase(),
-    asOf: toIsoTimestamp(candidate?.regularMarketTime ?? candidate?.regularMarketTimestamp, timestamp),
+    changePct,
+    high: quote.high,
+    low: quote.low,
+    volume: quote.volume,
+    marketState: String(quote.marketState || (session?.open ? "REGULAR" : "CLOSED")).toUpperCase(),
+    asOf: quote.timestamp || timestamp,
     source: "yahoo",
-    sourceDetail: "yahoo",
+    sourceDetail: "yahoo-finance2",
     synthetic: false,
-    dataMode: "live",
-    providerLatencyMs,
-    providerScore
+    dataMode: "observed",
+    providerDataMode: "web-delayed",
+    providerLatencyMs: durationMs,
+    providerScore: score,
+    providerMetadata: {
+      exchange: quote.exchange,
+      currency: quote.currency,
+      timezone: quote.timezone,
+    },
   };
-}
-
-function createPageAttemptSummary({
-  ticker,
-  requestUrl,
-  status,
-  httpStatus,
-  quote = null,
-  error = null,
-  responsePreview = null,
-  lastAttemptAt = null,
-  lastSuccessAt = null
-}) {
-  return {
-    ticker,
-    status,
-    requestUrl,
-    httpStatus,
-    quote,
-    error,
-    responsePreview,
-    lastAttemptAt,
-    lastSuccessAt
-  };
-}
-
-async function mapWithConcurrency(items = [], limit = 3, worker) {
-  const results = new Array(items.length);
-  let cursor = 0;
-
-  async function runWorker() {
-    while (cursor < items.length) {
-      const index = cursor;
-      cursor += 1;
-      results[index] = await worker(items[index], index);
-    }
-  }
-
-  const workers = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, () => runWorker());
-  await Promise.all(workers);
-  return results;
 }
 
 export async function fetchYahooQuotes({
-  baseUrl = DEFAULT_YAHOO_BASE_URL,
-  userAgent = DEFAULT_YAHOO_USER_AGENT,
   tickers = [],
-  timeoutMs = 10_000,
   timestamp = new Date().toISOString(),
-  session = null
+  session = null,
+  marketDataService = null,
 } = {}) {
   const requestedTickers = normalizeRequestedTickers(tickers);
-  const configuredBaseUrl = baseUrl || DEFAULT_YAHOO_BASE_URL;
-  const marketSession = session || { open: false, state: "closed", checkedAt: timestamp };
-
-  if (!requestedTickers.length) {
+  if (requestedTickers.length === 0) {
     return summarizeAttempt({
       provider: "yahoo",
-      transport: "web",
-      configuredBaseUrl,
+      transport: "server-library",
       requestMode: "standby",
-      durationMs: 0,
-      requestUrls: [],
-      requestedTickers: [],
+      requestedTickers,
       returnedTickers: [],
       missingTickers: [],
-      quotaSnapshot: apiQuotaTracker.getProviderSnapshot("yahoo"),
-      quotes: {}
+      quotaSnapshot: null,
+      quotes: {},
     });
   }
 
   const startedAt = Date.now();
-  const pageAttempts = await mapWithConcurrency(requestedTickers, 3, async (ticker) => {
-    const requestUrl = buildYahooQuotePageUrl({
-      baseUrl: configuredBaseUrl,
-      ticker
-    });
-
-    try {
-      const response = await fetchWithTimeout(
-        requestUrl,
-        {
-          headers: {
-            Accept: "text/html,application/xhtml+xml",
-            "User-Agent": userAgent || DEFAULT_YAHOO_USER_AGENT
-          }
-        },
-        timeoutMs
-      );
-      const text = await response.text();
-
-      if (!response.ok) {
-        const error = buildProviderError({
-          provider: "yahoo",
-          scope: "page",
-          code: "yahoo-upstream-status",
-          message: `Yahoo Finance returned HTTP ${response.status}.`,
-          ticker,
-          status: response.status,
-          requestUrl: requestUrl.toString(),
-          responsePreview: text
-        });
-        apiQuotaTracker.recordCall("yahoo", {
-          status: "error",
-          fallback: true,
-          headers: response.headers,
-          timestamp,
-          units: 1
-        });
-        return createPageAttemptSummary({
-          ticker,
-          requestUrl: requestUrl.toString(),
-          status: "error",
-          httpStatus: response.status,
-          error,
-          responsePreview: text,
-          lastAttemptAt: timestamp,
-          lastSuccessAt: null
-        });
-      }
-
-      const payloads = extractEmbeddedPayloads(text);
-      let candidate = null;
-      for (const payload of payloads) {
-        candidate = extractQuoteCandidate(payload, ticker);
-        if (candidate) {
-          break;
-        }
-      }
-
-      if (!candidate) {
-        candidate = extractFinStreamerCandidate(text, ticker);
-      }
-
-      if (!candidate) {
-        const error = buildProviderError({
-          provider: "yahoo",
-          scope: "page",
-          code: "yahoo-html-quote-missing",
-          message: "Yahoo Finance page did not expose a usable embedded or HTML quote payload.",
-          ticker,
-          requestUrl: requestUrl.toString(),
-          responsePreview: text
-        });
-        apiQuotaTracker.recordCall("yahoo", {
-          status: "error",
-          fallback: true,
-          headers: response.headers,
-          timestamp,
-          units: 1
-        });
-        return createPageAttemptSummary({
-          ticker,
-          requestUrl: requestUrl.toString(),
-          status: "error",
-          httpStatus: response.status,
-          error,
-          responsePreview: text,
-          lastAttemptAt: timestamp,
-          lastSuccessAt: null
-        });
-      }
-
-      const quote = parseYahooScrapedQuote(candidate, ticker, timestamp, marketSession, null, null);
-      if (!quote) {
-        const error = buildProviderError({
-          provider: "yahoo",
-          scope: "page",
-          code: "yahoo-quote-missing",
-          message: "Yahoo Finance page payload did not contain a usable quote.",
-          ticker,
-          requestUrl: requestUrl.toString(),
-          responsePreview: text
-        });
-        apiQuotaTracker.recordCall("yahoo", {
-          status: "empty",
-          fallback: true,
-          headers: response.headers,
-          timestamp,
-          units: 1
-        });
-        return createPageAttemptSummary({
-          ticker,
-          requestUrl: requestUrl.toString(),
-          status: "empty",
-          httpStatus: response.status,
-          error,
-          responsePreview: text,
-          lastAttemptAt: timestamp,
-          lastSuccessAt: null
-        });
-      }
-
-      apiQuotaTracker.recordCall("yahoo", {
-        status: "success",
-        fallback: false,
-        headers: response.headers,
-        timestamp,
-        units: 1
-      });
-      return createPageAttemptSummary({
-        ticker,
-        requestUrl: requestUrl.toString(),
-        status: "ok",
-        httpStatus: response.status,
-        quote,
-        responsePreview: null,
-        lastAttemptAt: timestamp,
-        lastSuccessAt: timestamp
-      });
-    } catch (error) {
-      const providerError = buildProviderError({
-        provider: "yahoo",
-        scope: "page",
-        code: error?.name === "AbortError" ? "yahoo-timeout" : "yahoo-request-failed",
-        message:
-          error?.name === "AbortError"
-            ? "Yahoo Finance page request timed out."
-            : error?.message || "Yahoo Finance page request failed.",
-        ticker,
-        requestUrl: requestUrl.toString()
-      });
-      apiQuotaTracker.recordCall("yahoo", {
-        status: "error",
-        fallback: true,
-        timestamp,
-        units: 1
-      });
-      return createPageAttemptSummary({
-        ticker,
-        requestUrl: requestUrl.toString(),
-        status: "error",
-        httpStatus: null,
-        error: providerError,
-        responsePreview: null,
-        lastAttemptAt: timestamp,
-        lastSuccessAt: null
-      });
-    }
-  });
-
-  const durationMs = Date.now() - startedAt;
-  const quotes = {};
-  const requestUrls = [];
   const errors = [];
-  const httpStatuses = [];
-
-  for (const attempt of pageAttempts) {
-    requestUrls.push(attempt.requestUrl);
-    if (Number.isFinite(Number(attempt.httpStatus))) {
-      httpStatuses.push(Number(attempt.httpStatus));
-    }
-    if (attempt.quote) {
-      quotes[attempt.ticker] = attempt.quote;
-    }
-    if (attempt.error) {
-      errors.push(attempt.error);
-    }
+  let normalizedQuotes = [];
+  try {
+    normalizedQuotes = await getMarketDataService(marketDataService).fetchQuotes(requestedTickers);
+    apiQuotaTracker.recordCall("yahoo", {
+      status: normalizedQuotes.length ? "success" : "empty",
+      fallback: false,
+      timestamp,
+      units: 1,
+    });
+  } catch (error) {
+    errors.push(publicProviderError(error));
+    apiQuotaTracker.recordCall("yahoo", { status: "error", fallback: true, timestamp, units: 1 });
   }
 
-  const missingTickers = requestedTickers.filter((ticker) => !quotes[ticker]);
-  const quotaSnapshot = apiQuotaTracker.getProviderSnapshot("yahoo");
+  const durationMs = Date.now() - startedAt;
+  const availableBySymbol = new Map(normalizedQuotes.map((quote) => [quote.symbol, quote]));
+  const returnedTickers = requestedTickers.filter((ticker) => availableBySymbol.has(ticker));
+  const missingTickers = requestedTickers.filter((ticker) => !availableBySymbol.has(ticker));
+  for (const ticker of missingTickers) {
+    errors.push({
+      provider: "yahoo",
+      scope: "symbol",
+      code: "yahoo-quote-missing",
+      reason: "yahoo-quote-missing",
+      message: `Yahoo Finance returned no usable quote for ${ticker}.`,
+      ticker,
+    });
+  }
   const score = computeProviderScore({
-    returnedCount: Object.keys(quotes).length,
+    returnedCount: returnedTickers.length,
     totalTickers: requestedTickers.length,
     durationMs,
     errorCount: errors.length,
-    marketOpen: Boolean(marketSession?.open),
-    transport: "web"
+    marketOpen: Boolean(session?.open),
+    transport: "api",
   });
-  for (const quote of Object.values(quotes)) {
-    quote.providerLatencyMs = durationMs;
-    quote.providerScore = score;
-  }
+  const quotes = Object.fromEntries(returnedTickers.map((ticker) => [
+    ticker,
+    mapQuote(availableBySymbol.get(ticker), { durationMs, score, timestamp, session }),
+  ]));
 
   return summarizeAttempt({
     provider: "yahoo",
-    transport: "web",
-    configuredBaseUrl,
-    requestMode: "live-page-scrape",
+    transport: "server-library",
+    requestMode: "yahoo-finance2-quote",
     durationMs,
-    requestUrls,
+    requestUrls: [],
     requestedTickers,
-    returnedTickers: Object.keys(quotes),
+    returnedTickers,
     missingTickers,
-    httpStatus: httpStatuses.find((status) => status >= 400) || httpStatuses.at(-1) || null,
-    lastAttemptAt: pageAttempts.at(-1)?.lastAttemptAt || timestamp,
-    lastSuccessAt: pageAttempts.findLast((attempt) => attempt.quote)?.lastSuccessAt || null,
-    quotaSnapshot,
+    lastAttemptAt: timestamp,
+    lastSuccessAt: returnedTickers.length ? timestamp : null,
+    quotaSnapshot: null,
     score,
     errors,
-    responsePreview: errors.at(-1)?.responsePreview || null,
     quotes,
-    extras: {
-      pageAttempts: pageAttempts.map((attempt) => ({
-        ticker: attempt.ticker,
-        status: attempt.status,
-        requestUrl: attempt.requestUrl,
-        httpStatus: attempt.httpStatus,
-        lastAttemptAt: attempt.lastAttemptAt,
-        lastSuccessAt: attempt.lastSuccessAt,
-        errorCode: attempt.error?.code || null
-      }))
-    }
   });
+}
+
+const INTERVAL_TO_YAHOO = Object.freeze({
+  "1day": "1d",
+  "1d": "1d",
+  "1h": "1h",
+  "30min": "30m",
+  "15min": "15m",
+  "5min": "5m",
+  "1wk": "1wk",
+  "1mo": "1mo",
+});
+
+function periodForOutputSize(outputsize, interval) {
+  const rows = Math.max(1, Number.parseInt(String(outputsize ?? 365), 10) || 365);
+  if (["5m", "15m", "30m"].includes(interval)) return rows <= 500 ? "5d" : "1mo";
+  if (interval === "1h") {
+    if (rows <= 24) return "5d";
+    if (rows <= 168) return "1mo";
+    if (rows <= 520) return "3mo";
+    if (rows <= 1_050) return "6mo";
+    return "1y";
+  }
+  if (rows <= 1) return "1d";
+  if (rows <= 5) return "5d";
+  if (rows <= 31) return "1mo";
+  if (rows <= 93) return "3mo";
+  if (rows <= 186) return "6mo";
+  if (rows <= 366) return "1y";
+  if (rows <= 732) return "2y";
+  return "5y";
+}
+
+export async function fetchYahooDailyCandles({
+  symbols = [],
+  outputsize = 365,
+  interval = "1day",
+  period = null,
+  marketDataService = null,
+  force = false,
+  timestamp = new Date().toISOString(),
+} = {}) {
+  const requestedSymbols = normalizeRequestedTickers(symbols);
+  const yahooInterval = INTERVAL_TO_YAHOO[String(interval || "").toLowerCase()];
+  if (!yahooInterval) {
+    return {
+      provider: "yahoo",
+      source: "yahoo",
+      candlesBySymbol: {},
+      requestedSymbols,
+      returnedSymbols: [],
+      missingSymbols: requestedSymbols,
+      errors: [{
+        provider: "yahoo",
+        scope: "provider",
+        code: "INVALID_INTERVAL",
+        message: `Yahoo interval is not supported: ${interval}`,
+      }],
+      requestUrls: [],
+      fetchedAt: timestamp,
+    };
+  }
+
+  const resolvedPeriod = period || periodForOutputSize(outputsize, yahooInterval);
+  const ensured = await getMarketDataService(marketDataService).ensureMarketData(requestedSymbols, {
+    period: resolvedPeriod,
+    interval: yahooInterval,
+    force,
+    allowStale: true,
+  });
+  const candlesBySymbol = Object.fromEntries(Object.entries(ensured.data).map(([symbol, dataset]) => [
+    symbol,
+    {
+      meta: { symbol, interval: yahooInterval, source: "yahoo", stale: dataset.stale, cached: dataset.cached },
+      values: dataset.bars.map((bar) => ({
+        datetime: bar.timestamp,
+        open: bar.open,
+        high: bar.high,
+        low: bar.low,
+        close: bar.close,
+        volume: bar.volume,
+      })),
+    },
+  ]));
+  const returnedSymbols = requestedSymbols.filter((symbol) => candlesBySymbol[symbol]?.values?.length);
+  const persistence = Object.values(ensured.data).reduce((total, dataset) => ({
+    inserted: total.inserted + Number(dataset.persistence?.inserted || 0),
+    updated: total.updated + Number(dataset.persistence?.updated || 0),
+    duplicates: total.duplicates + Number(dataset.persistence?.duplicates || 0),
+    rejectedOpen: total.rejectedOpen + Number(dataset.persistence?.rejectedOpen || 0),
+  }), { inserted: 0, updated: 0, duplicates: 0, rejectedOpen: 0 });
+  return {
+    provider: "yahoo",
+    source: "yahoo",
+    candlesBySymbol,
+    requestedSymbols,
+    returnedSymbols,
+    missingSymbols: requestedSymbols.filter((symbol) => !returnedSymbols.includes(symbol)),
+    errors: ensured.errors.map((error) => ({ provider: "yahoo", scope: "symbol", ...error })),
+    persistence,
+    requestUrls: [],
+    fetchedAt: timestamp,
+  };
 }

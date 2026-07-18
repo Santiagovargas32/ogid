@@ -12,6 +12,7 @@ import {
   summarizeAttempt,
   toIsoTimestamp
 } from "./providerUtils.js";
+import { decorateCanonicalQuote, getInstrumentByProviderSymbol } from "../instrumentRegistry.js";
 
 export const DEFAULT_TWELVE_BASE_URL = "https://api.twelvedata.com";
 
@@ -100,9 +101,16 @@ function parseTwelveQuote(item = {}, timestamp = new Date().toISOString(), marke
     source: "twelve",
     sourceDetail: "twelve",
     synthetic: false,
-    dataMode: "live",
+    dataMode: "observed",
+    providerDataMode: "live",
     providerLatencyMs,
-    providerScore
+    providerScore,
+    providerMetadata: {
+      exchange: item?.exchange || null,
+      mic: item?.mic_code || item?.mic || null,
+      currency: item?.currency || null,
+      timezone: item?.timezone || null
+    }
   };
 }
 
@@ -182,6 +190,7 @@ export async function fetchTwelveQuotes({
     const response = await fetchWithTimeout(
       requestUrl,
       {
+        retries: 0,
         headers: {
           Accept: "application/json"
         }
@@ -191,6 +200,12 @@ export async function fetchTwelveQuotes({
     const text = await response.text();
     const payload = text ? JSON.parse(text) : {};
     const durationMs = Date.now() - startedAt;
+    const retryAfterValue = response.headers.get("retry-after");
+    const retryAfterSeconds = Number(retryAfterValue);
+    const retryAfterDate = Date.parse(String(retryAfterValue || ""));
+    const retryAfterMs = retryAfterValue == null ? null : Number.isFinite(retryAfterSeconds)
+      ? Math.max(0, retryAfterSeconds * 1_000)
+      : Number.isFinite(retryAfterDate) ? Math.max(0, retryAfterDate - Date.now()) : null;
     const errors = [];
     const rawStatus = String(payload?.status || "").trim().toLowerCase();
 
@@ -231,8 +246,11 @@ export async function fetchTwelveQuotes({
         continue;
       }
       const symbol = String(item?.symbol || item?.ticker || item?.instrument?.symbol || "").trim().toUpperCase();
-      if (symbol && !quotes[symbol]) {
-        quotes[symbol] = parsed;
+      const instrument = getInstrumentByProviderSymbol("twelve", symbol);
+      if (symbol && instrument && requestedTickers.includes(symbol) && !quotes[symbol]) {
+        quotes[symbol] = decorateCanonicalQuote(parsed, instrument, {
+          providerId: "twelve", providerSymbol: symbol, fetchedAt: timestamp, session: marketSession?.state || null
+        });
       }
     }
 
@@ -298,7 +316,8 @@ export async function fetchTwelveQuotes({
       score,
       errors,
       responsePreview: text,
-      quotes
+      quotes,
+      extras: { retryAfterMs }
     });
   } catch (error) {
     const durationMs = Date.now() - startedAt;
@@ -348,5 +367,34 @@ export async function fetchTwelveQuotes({
       responsePreview: null,
       quotes: {}
     });
+  }
+}
+
+function buildTwelveDailyUrl({ baseUrl = DEFAULT_TWELVE_BASE_URL, symbols = [], apiKey = "", outputsize = 5, adjustmentMode = "splits", interval = "1day" } = {}) {
+  const url = new URL("time_series", ensureTrailingSlash(baseUrl));
+  url.searchParams.set("symbol", symbols.join(",")); url.searchParams.set("interval", interval); url.searchParams.set("outputsize", String(outputsize)); url.searchParams.set("adjust", adjustmentMode); url.searchParams.set("format", "JSON");
+  if (apiKey) url.searchParams.set("apikey", apiKey);
+  return url;
+}
+
+function extractDailySeries(payload, requestedSymbols = []) {
+  if (payload?.meta && Array.isArray(payload?.values)) return [{ symbol: payload.meta.symbol || requestedSymbols[0], meta: payload.meta, values: payload.values }];
+  return requestedSymbols.map((symbol) => { const item = payload?.[symbol] || payload?.data?.[symbol]; return item?.meta && Array.isArray(item?.values) ? { symbol, meta: item.meta, values: item.values } : null; }).filter(Boolean);
+}
+
+export async function fetchTwelveDailyCandles({ baseUrl = DEFAULT_TWELVE_BASE_URL, apiKey = "", symbols = [], outputsize = 5, adjustmentMode = "splits", interval = "1day", timeoutMs = 10_000, timestamp = new Date().toISOString() } = {}) {
+  const requestedSymbols = normalizeRequestedTickers(symbols); const configuredBaseUrl = baseUrl || DEFAULT_TWELVE_BASE_URL;
+  if (!requestedSymbols.length) return { provider: "twelve", candlesBySymbol: {}, errors: [], requestedSymbols, returnedSymbols: [], quotaSnapshot: apiQuotaTracker.getProviderSnapshot("twelve"), requestUrls: [] };
+  if (!apiKey) return { provider: "twelve", candlesBySymbol: {}, errors: [buildProviderError({ provider: "twelve", scope: "provider", code: "api-key-missing", message: "Twelve Data API key is missing.", tickers: requestedSymbols })], requestedSymbols, returnedSymbols: [], quotaSnapshot: apiQuotaTracker.getProviderSnapshot("twelve"), requestUrls: [] };
+  const requestUrl = buildTwelveDailyUrl({ baseUrl: configuredBaseUrl, symbols: requestedSymbols, apiKey, outputsize: Math.min(5000, Math.max(1, Number(outputsize) || 5)), adjustmentMode, interval }); const startedAt = Date.now();
+  try {
+    const response = await fetchWithTimeout(requestUrl, { retries: 0, headers: { Accept: "application/json" } }, timeoutMs); const text = await response.text(); const payload = text ? JSON.parse(text) : {}; const errors = [];
+    if (!response.ok || payload?.status === "error") errors.push(buildProviderError({ provider: "twelve", scope: "batch", code: response.status === 429 ? "rate-limited" : "twelve-time-series-error", message: payload?.message || `Twelve Data returned HTTP ${response.status}.`, status: response.status, tickers: requestedSymbols, requestUrl: requestUrl.toString(), responsePreview: text }));
+    const candlesBySymbol = Object.fromEntries(extractDailySeries(payload, requestedSymbols).map((series) => [String(series.symbol).toUpperCase(), { meta: series.meta, values: series.values }]));
+    const quotaSnapshot = apiQuotaTracker.recordCall("twelve", { status: errors.length ? "error" : "success", fallback: Object.keys(candlesBySymbol).length < requestedSymbols.length, headers: response.headers, timestamp, units: requestedSymbols.length });
+    const retryAfter = response.headers.get("retry-after"); const retryAfterMs = retryAfter == null ? null : Number.isFinite(Number(retryAfter)) ? Number(retryAfter) * 1000 : Math.max(0, Date.parse(retryAfter) - Date.now());
+    return { provider: "twelve", candlesBySymbol, errors, requestedSymbols, returnedSymbols: Object.keys(candlesBySymbol), missingSymbols: requestedSymbols.filter((symbol) => !candlesBySymbol[symbol]), quotaSnapshot, retryAfterMs, httpStatus: response.status, durationMs: Date.now() - startedAt, requestUrls: [requestUrl.toString()] };
+  } catch (error) {
+    return { provider: "twelve", candlesBySymbol: {}, errors: [buildProviderError({ provider: "twelve", scope: "batch", code: error?.name === "AbortError" ? "twelve-timeout" : "twelve-time-series-failed", message: error?.message || "Twelve Data time series request failed.", tickers: requestedSymbols, requestUrl: requestUrl.toString() })], requestedSymbols, returnedSymbols: [], missingSymbols: requestedSymbols, quotaSnapshot: apiQuotaTracker.recordCall("twelve", { status: "error", fallback: true, timestamp, units: requestedSymbols.length }), httpStatus: null, durationMs: Date.now() - startedAt, requestUrls: [requestUrl.toString()] };
   }
 }

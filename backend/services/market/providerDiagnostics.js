@@ -1,19 +1,7 @@
-function normalizeUrl(value = "") {
-  try {
-    const url = new URL(String(value || ""));
-    for (const key of ["apikey", "apiKey", "token", "key"]) {
-      if (url.searchParams.has(key)) {
-        url.searchParams.set(key, "***");
-      }
-    }
-    return url.toString();
-  } catch {
-    return String(value || "");
-  }
-}
+import { sanitizeSensitiveData, sanitizeUrl } from "../../utils/sanitize.js";
 
 export function sanitizeRequestUrl(value = "") {
-  return normalizeUrl(value);
+  return sanitizeUrl(value);
 }
 
 export function sanitizeRequestUrls(values = []) {
@@ -36,7 +24,7 @@ export function buildResponsePreview(payload, maxLength = 240) {
           }
         })();
 
-  const normalized = String(text || "").replace(/\s+/g, " ").trim();
+  const normalized = String(sanitizeSensitiveData(text) || "").replace(/\s+/g, " ").trim();
   if (!normalized) {
     return null;
   }

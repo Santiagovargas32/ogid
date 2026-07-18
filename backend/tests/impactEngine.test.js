@@ -30,6 +30,10 @@ test("computeMarketImpact returns deterministic impact items", () => {
     countries,
     marketQuotes,
     tickers: ["GD", "BA"],
+    instruments: [
+      { canonicalSymbol: "GD", displayName: "General Dynamics", sector: "Aerospace & Defense", assetType: "equity" },
+      { canonicalSymbol: "BA", displayName: "Boeing", sector: "Aerospace & Defense", assetType: "equity" }
+    ],
     countryFilter: ["IL", "IR"],
     windowMin: 120,
     inputMode: "mixed"
