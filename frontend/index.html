@@ -17,9 +17,14 @@
   <nav class="navbar navbar-expand-lg navbar-dark topbar px-3">
     <div class="container-fluid g-0 topbar-shell">
       <div class="topbar-title-group d-flex align-items-center gap-2">
-        <a href="/"><img class="navbar-brand d-flex align-items-center">
-          <img src="/css/favicon.png" alt="OGID logo" width="82" class="d-inline-block align-text-top me-2" /></a>
-        <span class="navbar-brand text-uppercase fw-bold mb-0">OGID - Geopolitical Intel & Market Impact</span>
+        <a class="ogid-brand" href="/" aria-label="OGID dashboard">
+          <img src="/css/favicon.svg" alt="OGID" class="ogid-brand-mark" />
+          <span class="ogid-brand-copy"><strong>OGID</strong><small>Geopolitical Intelligence</small></span>
+        </a>
+        <nav class="view-nav" aria-label="Primary views">
+          <a class="view-nav-link active" href="/" aria-current="page">Dashboard</a>
+          <a class="view-nav-link" href="/admin">Admin</a>
+        </nav>
       </div>
       <div class="status-strip d-flex align-items-center gap-2">
         <span id="source-mode-badge" class="badge text-bg-secondary">Source: initializing</span>
@@ -36,7 +41,7 @@
       <div class="col-12 col-xl-8">
         <section id="panel-hotspots" class="panel panel-vertical panel-map-shell h-100">
           <header class="panel-header d-flex justify-content-between align-items-center">
-            <h2 class="panel-title mb-0">Conflict Hotspots + Operational Seeds</h2>
+            <h2 class="panel-title mb-0">Geopolitical Map</h2>
             <div class="d-flex align-items-center gap-2">
               <span id="quality-hotspots-badge" class="badge text-bg-secondary">Data: initializing</span>
               <span class="small text-light-emphasis">Live WebSocket updates</span>
@@ -49,7 +54,7 @@
       <div class="col-12 col-xl-4">
         <section id="panel-news" class="panel panel-news panel-vertical h-100">
           <header class="panel-header">
-            <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="news-header-row d-flex justify-content-between align-items-center mb-2">
               <h2 class="panel-title mb-0">Live News Feed</h2>
               <div class="d-flex align-items-center gap-2">
                 <button id="refresh-news-btn" class="btn btn-sm btn-outline-info" type="button">Update</button>
@@ -134,7 +139,7 @@
             <div class="d-flex align-items-center gap-2">
               <h2 class="panel-title mb-0">Market Quotes</h2>
               <button id="market-watchlist-btn" class="btn btn-sm btn-outline-info" type="button" data-bs-toggle="modal"
-                data-bs-target="#market-watchlist-modal">Choose 7</button>
+                data-bs-target="#market-watchlist-modal">Choose instruments</button>
             </div>
             <div class="d-flex align-items-center gap-2">
               <span id="quality-market-badge" class="badge text-bg-secondary">Data: initializing</span>
@@ -256,7 +261,7 @@
             class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body">
-          <p class="small text-light-emphasis">Search Yahoo market symbols and choose up to seven verified instruments.
+          <p class="small text-light-emphasis">Search Yahoo market symbols and choose verified instruments.
             Only saved instruments feed quotes, OHLCV and news-impact analysis.</p>
           <form id="market-watchlist-search-form" class="input-group input-group-sm" role="search">
             <label class="visually-hidden" for="market-watchlist-search">Search market symbols</label>

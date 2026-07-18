@@ -11,26 +11,20 @@
       crossorigin="anonymous"
     />
     <link rel="stylesheet" href="/css/styles.css" />
+    <link rel="icon" type="image/svg+xml" href="/css/favicon.svg" />
   </head>
   <body>
     <nav class="navbar navbar-expand-lg navbar-dark topbar px-3">
       <div class="container-fluid g-0 topbar-shell">
         <div class="topbar-title-group">
-          <div class="dropdown">
-            <button
-              class="btn btn-sm btn-outline-light topbar-view-toggle dropdown-toggle"
-              type="button"
-              data-bs-toggle="dropdown"
-              aria-expanded="false"
-            >
-              Views
-            </button>
-            <ul class="dropdown-menu dropdown-menu-dark topbar-dropdown-menu">
-              <li><a class="dropdown-item" href="/">Dashboard</a></li>
-              <li><a class="dropdown-item active" href="/admin" aria-current="page">Admin</a></li>
-            </ul>
-          </div>
-          <span class="navbar-brand text-uppercase fw-bold mb-0">OGID - Admin Operations</span>
+          <a class="ogid-brand" href="/" aria-label="OGID dashboard">
+            <img src="/css/favicon.svg" alt="OGID" class="ogid-brand-mark" />
+            <span class="ogid-brand-copy"><strong>OGID</strong><small>Admin Operations</small></span>
+          </a>
+          <nav class="view-nav" aria-label="Primary views">
+            <a class="view-nav-link" href="/">Dashboard</a>
+            <a class="view-nav-link active" href="/admin" aria-current="page">Admin</a>
+          </nav>
         </div>
         <div class="status-strip d-flex align-items-center gap-2">
           <span id="admin-last-refresh" class="small text-light-emphasis">Updated: --</span>

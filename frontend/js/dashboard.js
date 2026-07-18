@@ -34,17 +34,17 @@ const ANALYTICS_WINDOW_OPTIONS = [
   { label: "12h", minutes: 720 },
   { label: "24h", minutes: 1440 }
 ];
-const CHART_COLORS = ["#49d6c5", "#ff8c42", "#f4c542", "#38c172", "#6fb1ff", "#ff4d4f", "#c59aff"];
+const CHART_COLORS = ["#f3f4f4", "#d9dddf", "#bdc2c5", "#a2a8ac", "#878e93", "#6d747a", "#555c62"];
 const NEWS_PLACEHOLDER_SRC = "/assets/news-placeholder.svg";
 const DIRECTION_COLORS = {
   Bullish: "#38c172",
   Bearish: "#ff4d4f",
   Volatile: "#ff8c42",
-  Sideways: "#6fb1ff"
+  Sideways: "#a2a8ac"
 };
 const MODE_BORDER_COLORS = {
-  live: "#dff5ff",
-  "web-delayed": "#6fb1ff",
+  live: "#f3f4f4",
+  "web-delayed": "#bdc2c5",
   "historical-eod": "#9faebd",
   "router-stale": "#f4c542",
   "synthetic-fallback": "#ffb36b",
@@ -79,7 +79,6 @@ let marketSearchRequestKey = null;
 let marketOhlcvChart = null;
 let marketOhlcvRequestToken = 0;
 let watchlistInitialized = false;
-let apiLimitsPoller = null;
 let marketProviderPoller = null;
 let analyticsRefreshTimer = null;
 let latestAnalytics = null;
@@ -153,18 +152,9 @@ function cacheElements() {
   elements.panelInsights = byId("panel-insights");
   elements.panelAdvancedIntel = byId("panel-advanced-intel");
   elements.panelSituational = byId("panel-situational");
-  elements.panelWebcams = byId("panel-webcams");
-  elements.apiLimitsPanel = byId("api-limits-panel");
-  elements.toggleApiLimits = byId("toggle-api-limits");
-  elements.pipelineStatusBody = byId("pipeline-status-body");
-  elements.pipelineDiagnosticsBody = byId("pipeline-diagnostics-body");
-  elements.apiLimitsBody = byId("api-limits-body");
-  elements.apiLimitsUpdated = byId("api-limits-updated");
-  elements.rssFeedStatusBody = byId("rss-feed-status-body");
   elements.analyticsStatus = byId("analytics-status");
   elements.analyticsWindowSelector = byId("analytics-window-selector");
   elements.couplingTickerSelector = byId("coupling-ticker-selector");
-  elements.recentCycleErrorsBody = byId("recent-cycle-errors-body");
   elements.refreshNewsBtn = byId("refresh-news-btn");
   elements.refreshNewsStatus = byId("refresh-news-status");
   elements.newsDrawer = byId("news-detail-drawer");
@@ -1472,7 +1462,7 @@ function renderMarketQuotes(market = { quotes: {} }) {
 }
 
 function marketInstrumentMeta(instrument = {}) {
-  return [instrument.assetType, instrument.exchange, instrument.currency].filter(Boolean).join(" · ");
+  return [instrument.assetType, instrument.exchange, instrument.currency].filter(Boolean).join(" Â· ");
 }
 
 function renderMarketWatchlistSelection() {
@@ -1482,7 +1472,7 @@ function renderMarketWatchlistSelection() {
   elements.marketWatchlistSelected.innerHTML = marketWatchlistDraft.length
     ? marketWatchlistDraft.map((instrument) => `
       <div class="market-watchlist-item">
-        <span><strong>${escapeHtml(instrument.symbol)}</strong> — ${escapeHtml(instrument.displayName)}<br>
+        <span><strong>${escapeHtml(instrument.symbol)}</strong> â€” ${escapeHtml(instrument.displayName)}<br>
           <small>${escapeHtml(marketInstrumentMeta(instrument))}</small></span>
         <button type="button" class="btn btn-sm btn-outline-danger" data-market-remove="${escapeHtml(instrument.instrumentId)}">Remove</button>
       </div>`).join("")
@@ -1496,7 +1486,7 @@ function renderMarketWatchlistSelection() {
 function syncOhlcvInstrumentOptions({ refresh = false } = {}) {
   const previous = elements.marketOhlcvInstrument.value;
   elements.marketOhlcvInstrument.innerHTML = marketWatchlistDraft.map((instrument) =>
-    `<option value="${escapeHtml(instrument.instrumentId)}">${escapeHtml(instrument.symbol)} · ${escapeHtml(instrument.displayName)}</option>`
+    `<option value="${escapeHtml(instrument.instrumentId)}">${escapeHtml(instrument.symbol)} Â· ${escapeHtml(instrument.displayName)}</option>`
   ).join("");
   const preferred = marketWatchlistDraft.some((instrument) => instrument.instrumentId === previous)
     ? previous
@@ -1534,7 +1524,7 @@ function renderMarketSearchResults(instruments = []) {
     ? instruments.map((instrument) => {
       const selected = selectedIds.has(String(instrument.instrumentId || "").toLowerCase());
       return `<div class="market-watchlist-item">
-        <span><strong>${escapeHtml(instrument.symbol)}</strong> — ${escapeHtml(instrument.displayName)}<br><small>${escapeHtml(marketInstrumentMeta(instrument))}</small></span>
+        <span><strong>${escapeHtml(instrument.symbol)}</strong> â€” ${escapeHtml(instrument.displayName)}<br><small>${escapeHtml(marketInstrumentMeta(instrument))}</small></span>
         <button type="button" class="btn btn-sm btn-outline-info" data-market-add="${escapeHtml(instrument.instrumentId)}" ${selected || atLimit ? "disabled" : ""}>${selected ? "Selected" : "Add"}</button>
       </div>`;
     }).join("")
@@ -1552,7 +1542,7 @@ async function searchMarketInstruments() {
   if (marketSearchRequestKey === requestKey) return;
   const token = ++marketSearchToken;
   marketSearchRequestKey = requestKey;
-  elements.marketWatchlistSearchStatus.textContent = "Searching Yahoo Finance…";
+  elements.marketWatchlistSearchStatus.textContent = "Searching Yahoo Financeâ€¦";
   try {
     const result = await api.getMarketInstrumentSearch({ q: query, limit: 12 });
     if (token !== marketSearchToken) return;
@@ -1607,8 +1597,8 @@ async function saveMarketWatchlist() {
     const saved = await api.updateMarketWatchlist(marketSelectionIds(marketWatchlistDraft));
     renderMarketWatchlist(saved);
     elements.marketWatchlistStatus.textContent = marketWatchlistModel.maxSelected == null
-      ? `${marketWatchlistDraft.length} selected · saved`
-      : `${marketWatchlistDraft.length}/${marketWatchlistModel.maxSelected} selected · saved`;
+      ? `${marketWatchlistDraft.length} selected Â· saved`
+      : `${marketWatchlistDraft.length}/${marketWatchlistModel.maxSelected} selected Â· saved`;
     renderMarketQuotes(getState().market || { quotes: {} });
     marketQuotesPoller?.trigger(0);
     await refreshAnalytics();
@@ -1627,8 +1617,8 @@ function renderMarketOhlcv(payload, instrument) {
   marketOhlcvChart = new Chart(elements.marketOhlcvCanvas, {
     type: "bar",
     data: { labels: series.labels, datasets: [
-      { type: "line", label: "Close", data: series.closes, borderColor: "#49d6c5", backgroundColor: "rgba(73,214,197,.15)", borderWidth: 2, pointRadius: 0, tension: .15, yAxisID: "price" },
-      { type: "bar", label: "Volume", data: series.volumes, backgroundColor: "rgba(111,177,255,.28)", borderWidth: 0, yAxisID: "volume" }
+      { type: "line", label: "Close", data: series.closes, borderColor: "#d9dddf", backgroundColor: "rgba(217,221,223,.12)", borderWidth: 2, pointRadius: 0, tension: .15, yAxisID: "price" },
+      { type: "bar", label: "Volume", data: series.volumes, backgroundColor: "rgba(154,159,166,.28)", borderWidth: 0, yAxisID: "volume" }
     ] },
     options: {
       responsive: true, maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
@@ -1643,7 +1633,7 @@ function renderMarketOhlcv(payload, instrument) {
       }
     }
   });
-  elements.marketOhlcvStatus.textContent = `${instrument.symbol} · ${payload.status || "stored"} · ${series.candles.length} bars${payload.error?.message ? ` · ${payload.error.message}` : ""}`;
+  elements.marketOhlcvStatus.textContent = `${instrument.symbol} Â· ${payload.status || "stored"} Â· ${series.candles.length} bars${payload.error?.message ? ` Â· ${payload.error.message}` : ""}`;
 }
 
 async function loadMarketOhlcv() {
@@ -1651,7 +1641,7 @@ async function loadMarketOhlcv() {
   const instrument = marketWatchlistDraft.find((item) => item.instrumentId === instrumentId);
   if (!instrument) return;
   const token = ++marketOhlcvRequestToken;
-  elements.marketOhlcvStatus.textContent = `Loading ${instrument.symbol} OHLCV…`;
+  elements.marketOhlcvStatus.textContent = `Loading ${instrument.symbol} OHLCVâ€¦`;
   try {
     const payload = await api.getMarketCandles({ instrumentId, interval: elements.marketOhlcvInterval.value, adjusted: "splits", limit: 240 });
     if (token === marketOhlcvRequestToken) renderMarketOhlcv(payload, instrument);
@@ -1988,7 +1978,7 @@ function renderPredictedSectorDirection(items = [], overlayMessage = "") {
   );
   impactTimelineChart.data.datasets[0].data = items.map((item) => Number(item.score || 0));
   impactTimelineChart.data.datasets[0].backgroundColor = items.map(
-    (item) => DIRECTION_COLORS[item.direction] || "#6fb1ff"
+    (item) => DIRECTION_COLORS[item.direction] || "#a2a8ac"
   );
   impactTimelineChart.data.datasets[0].confidenceMap = items.map((item) => Number(item.confidence || 0));
   impactTimelineChart.update();
@@ -2016,7 +2006,7 @@ function renderTickerOutlookMatrix(items = [], visibleTickers = new Set(), analy
 
   sectorBreakdownChart.data.datasets[0].data = points;
   sectorBreakdownChart.data.datasets[0].pointBackgroundColor = points.map(
-    (point) => DIRECTION_COLORS[point.direction] || "#6fb1ff"
+    (point) => DIRECTION_COLORS[point.direction] || "#a2a8ac"
   );
   sectorBreakdownChart.data.datasets[0].pointBorderColor = points.map(
     (point) => MODE_BORDER_COLORS[point.dataMode] || MODE_BORDER_COLORS["synthetic-fallback"]
@@ -2291,275 +2281,6 @@ function syncWatchlistFromState(state) {
   }
 }
 
-function toggleApiLimitsPanel() {
-  elements.apiLimitsPanel.classList.toggle("d-none");
-}
-
-function renderPipelineStatus(payload = {}) {
-  const market = payload.market || {};
-  const news = payload.news || {};
-
-  if (!elements.pipelineStatusBody) {
-    return;
-  }
-
-  const rows = [
-    {
-      pipeline: "market",
-      band: market.quotaBand || "--",
-      nextRun: market.nextRecommendedRunAt ? `${formatShortTime(market.nextRecommendedRunAt)} (${formatDurationMs(market.nextDelayMs)})` : "--",
-      mode: market.requestMode || "--",
-      skipped: (market.providersSkipped || []).map((item) => item.provider).join(", ") || "--",
-      batchOrPage: market.batchSize || "--",
-      lastError:
-        market.lastUpstreamError ||
-        ((market.usedStaleQuotes || []).length ? `stale:${(market.usedStaleQuotes || []).length}` : "--")
-    },
-    {
-      pipeline: "news",
-      band: news.quotaBand || "--",
-      nextRun: news.nextRecommendedRunAt ? `${formatShortTime(news.nextRecommendedRunAt)} (${formatDurationMs(news.nextDelayMs)})` : "--",
-      mode: news.provider || "--",
-      skipped: (news.providersSkipped || []).map((item) => item.provider).join(", ") || "--",
-      batchOrPage: news.pageSize || "--",
-      lastError: (news.attempts || []).filter((item) => item.status === "error").map((item) => item.provider).join(", ") || "--"
-    }
-  ];
-
-  elements.pipelineStatusBody.innerHTML = rows
-    .map(
-      (row) => `
-        <tr>
-          <td>${escapeHtml(row.pipeline)}</td>
-          <td>${escapeHtml(row.band)}</td>
-          <td>${escapeHtml(row.nextRun)}</td>
-          <td>${escapeHtml(String(row.mode))}</td>
-          <td>${escapeHtml(row.skipped)}</td>
-          <td>${escapeHtml(String(row.batchOrPage))}</td>
-          <td>${escapeHtml(row.lastError)}</td>
-        </tr>
-      `
-    )
-    .join("");
-
-  renderPipelineDiagnostics(news);
-  renderRecentCycleErrors(payload.recentCycleErrors || []);
-}
-
-function buildNewsProviderDiagnostics(news = {}) {
-  const attemptByProvider = new Map(
-    (news.attempts || []).map((attempt) => [String(attempt.provider || "").toLowerCase(), attempt])
-  );
-  const rawCounts = news.rawCountByProvider || {};
-  const selectedCounts = news.selectedCountByProvider || {};
-  const queryLengths = news.queryLengthByProvider || {};
-  const providers = new Set([
-    ...Object.keys(rawCounts),
-    ...Object.keys(selectedCounts),
-    ...Object.keys(queryLengths),
-    ...(news.attempts || []).map((attempt) => String(attempt.provider || "").toLowerCase())
-  ]);
-
-  return [...providers]
-    .filter(Boolean)
-    .sort()
-    .map((provider) => {
-      const attempt = attemptByProvider.get(provider) || {};
-      const hasRawCount = Object.prototype.hasOwnProperty.call(rawCounts, provider);
-      const hasSelectedCount = Object.prototype.hasOwnProperty.call(selectedCounts, provider);
-      const hasQueryLength = Object.prototype.hasOwnProperty.call(queryLengths, provider);
-      const status = ["ok", "empty", "error", "skipped"].includes(String(attempt.status || "").toLowerCase())
-        ? String(attempt.status).toLowerCase()
-        : Number(news.selectedCountByProvider?.[provider] || 0) > 0
-          ? "ok"
-          : "empty";
-
-      return {
-        provider,
-        status,
-        rawCount: Number(hasRawCount ? rawCounts[provider] : attempt.rawCount || 0),
-        selectedCount: Number(hasSelectedCount ? selectedCounts[provider] : attempt.count || 0),
-        queryLength: Number(hasQueryLength ? queryLengths[provider] : 0),
-        reason: attempt.reason || "",
-        nextAllowedAt: attempt.nextAllowedAt || ""
-      };
-    });
-}
-
-function buildSourceSelectionDiagnostics(news = {}) {
-  return (news.selectionBySourceName || [])
-    .slice(0, 8)
-    .map((item) => ({
-      provider: item.provider || "unknown",
-      sourceName: item.sourceName || "Unknown Source",
-      raw: Number(item.raw || 0),
-      filtered: Number(item.filtered || 0),
-      selected: Number(item.selected || 0)
-    }));
-}
-
-function renderPipelineDiagnostics(news = {}) {
-  if (elements.pipelineDiagnosticsBody) {
-    const diagnostics = buildNewsProviderDiagnostics(news);
-    const sourceDiagnostics = buildSourceSelectionDiagnostics(news);
-
-    if (!diagnostics.length) {
-      elements.pipelineDiagnosticsBody.innerHTML =
-        '<div class="diagnostic-item diagnostic-item-meta">No provider diagnostics available.</div>';
-    } else {
-      const providerMarkup = diagnostics
-        .map((item) => {
-          const reasonLine = item.reason
-            ? `<div class="diagnostic-item-meta">reason: ${escapeHtml(item.reason)}${item.nextAllowedAt ? ` | next: ${escapeHtml(formatShortTime(item.nextAllowedAt))}` : ""
-            }</div>`
-            : item.nextAllowedAt
-              ? `<div class="diagnostic-item-meta">next: ${escapeHtml(formatShortTime(item.nextAllowedAt))}</div>`
-              : "";
-          return `
-            <article class="diagnostic-item">
-              <div class="diagnostic-item-header">
-                <strong>${escapeHtml(item.provider)}</strong>
-                <span class="diagnostic-pill ${item.status}">${escapeHtml(item.status)}</span>
-              </div>
-              <div class="diagnostic-item-meta">
-                raw: ${item.rawCount} | selected: ${item.selectedCount} | query length: ${item.queryLength}
-              </div>
-              ${reasonLine}
-            </article>
-          `;
-        })
-        .join("");
-      const sourceMarkup = sourceDiagnostics.length
-        ? `
-          <div class="diagnostic-section-label">Selection by source</div>
-          ${sourceDiagnostics
-          .map(
-            (item) => `
-                <article class="diagnostic-item">
-                  <div class="diagnostic-item-header">
-                    <strong>${escapeHtml(item.sourceName)}</strong>
-                    <span class="diagnostic-pill ok">${escapeHtml(item.provider)}</span>
-                  </div>
-                  <div class="diagnostic-item-meta">raw: ${item.raw} | filtered: ${item.filtered} | selected: ${item.selected}</div>
-                </article>
-              `
-          )
-          .join("")}
-        `
-        : "";
-      elements.pipelineDiagnosticsBody.innerHTML = providerMarkup + sourceMarkup;
-    }
-  }
-
-  if (!elements.rssFeedStatusBody) {
-    return;
-  }
-
-  const feedStatus = news.rssFeedStatus || [];
-  if (!feedStatus.length) {
-    elements.rssFeedStatusBody.innerHTML =
-      '<div class="diagnostic-item diagnostic-item-meta">No RSS diagnostics available.</div>';
-    return;
-  }
-
-  elements.rssFeedStatusBody.innerHTML = feedStatus
-    .map((feed) => {
-      const status = String(feed.status || "empty").toLowerCase();
-      const safeStatus = ["ok", "error", "empty", "invalid-feed", "skipped"].includes(status) ? status : "empty";
-      return `
-        <article class="diagnostic-item">
-          <div class="diagnostic-item-header">
-            <strong>${escapeHtml(feed.label || feed.url || "RSS feed")}</strong>
-            <span class="diagnostic-pill ${safeStatus}">${escapeHtml(status)}</span>
-          </div>
-          <div class="diagnostic-item-meta">
-            count: ${Number(feed.count || 0)} | ${escapeHtml(feed.error || feed.url || "--")}
-          </div>
-        </article>
-      `;
-    })
-    .join("");
-}
-
-function renderRecentCycleErrors(items = []) {
-  if (!elements.recentCycleErrorsBody) {
-    return;
-  }
-
-  if (!(items || []).length) {
-    elements.recentCycleErrorsBody.innerHTML =
-      '<div class="diagnostic-item diagnostic-item-meta">No recent cycle errors recorded.</div>';
-    return;
-  }
-
-  elements.recentCycleErrorsBody.innerHTML = (items || [])
-    .slice(-10)
-    .reverse()
-    .map(
-      (item) => `
-        <article class="diagnostic-item">
-          <div class="diagnostic-item-header">
-            <strong>${escapeHtml(item.provider || item.cycle || "system")}</strong>
-            <span class="diagnostic-pill error">${escapeHtml(item.code || "error")}</span>
-          </div>
-          <div class="diagnostic-item-meta">${escapeHtml(item.cycle || "system")} | ${escapeHtml(formatShortTime(item.at))}</div>
-          <div class="diagnostic-item-meta">${escapeHtml(item.message || "unknown-error")}</div>
-        </article>
-      `
-    )
-    .join("");
-}
-
-function renderApiLimits(payload = { providers: [] }) {
-  const providers = payload.providers || [];
-  elements.apiLimitsUpdated.textContent = `Updated: ${formatDate(payload.generatedAt)}`;
-
-  if (!providers.length) {
-    elements.apiLimitsBody.innerHTML =
-      '<tr><td colspan="8" class="text-light-emphasis">No API limits data available.</td></tr>';
-    return;
-  }
-
-  elements.apiLimitsBody.innerHTML = providers
-    .map((provider) => {
-      const statusClass = provider.exhausted ? "text-danger" : "text-light-emphasis";
-      const remaining = Number.isFinite(provider.effectiveRemaining) ? provider.effectiveRemaining : "--";
-      return `
-        <tr>
-          <td>${escapeHtml(provider.provider)}</td>
-          <td>${escapeHtml(provider.quotaBand || "--")}</td>
-          <td>${provider.calls24h}</td>
-          <td>${provider.success24h}</td>
-          <td>${provider.errors24h}</td>
-          <td>${provider.fallback24h}</td>
-          <td>${remaining}</td>
-          <td class="${statusClass}">${provider.lastStatus || "idle"}</td>
-        </tr>
-      `;
-    })
-    .join("");
-}
-
-async function refreshApiLimits() {
-  try {
-    const [limits, pipeline] = await Promise.all([api.getApiLimits(), api.getPipelineStatus()]);
-    renderApiLimits(limits);
-    renderPipelineStatus(pipeline);
-  } catch (error) {
-    console.error("Failed to load API limits:", error);
-  }
-}
-
-function startPolling() {
-  clearInterval(apiLimitsPoller);
-
-  apiLimitsPoller = setInterval(() => {
-    if (!elements.apiLimitsPanel.classList.contains("d-none")) {
-      refreshApiLimits();
-    }
-  }, 120_000);
-}
-
 async function bootstrap() {
   cacheElements();
   initNewsDrawer();
@@ -2618,7 +2339,6 @@ async function bootstrap() {
   window.addEventListener("beforeunload", () => {
     socket?.close();
     marketQuotesPoller?.stop();
-    clearInterval(apiLimitsPoller);
     clearInterval(marketProviderPoller);
     clearTimeout(analyticsRefreshTimer);
     clearTimeout(marketSearchTimer);

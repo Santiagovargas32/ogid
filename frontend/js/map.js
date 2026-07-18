@@ -5,10 +5,10 @@ const LEVEL_COLORS = {
   Stable: "#38c172"
 };
 
-const EVENT_COLOR = "#49d6c5";
-const WATCHLIST_COLOR = "#6fb1ff";
-const STATIC_SEED_COLOR = "#8fd9ff";
-const MOVING_SEED_COLOR = "#ff9c73";
+const EVENT_COLOR = "#d9dddf";
+const WATCHLIST_COLOR = "#f3f4f4";
+const STATIC_SEED_COLOR = "#9a9fa6";
+const MOVING_SEED_COLOR = "#c49a73";
 const HEAT_ZOOM_THRESHOLD = 3;
 const CARTO_DARK_MATTER_URL = "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
 const CARTO_ATTRIBUTION = "&copy; OpenStreetMap contributors &copy; CARTO";
@@ -412,10 +412,6 @@ export class HotspotMap {
     if (!mapContainer) {
       return;
     }
-
-    const panel = mapContainer.closest(".panel");
-    panel?.querySelector(".map-toolbar-shell")?.remove();
-    panel?.querySelector(".map-mobile-sheet")?.remove();
 
     this.map = L.map(this.elementId, {
       zoomControl: true,
