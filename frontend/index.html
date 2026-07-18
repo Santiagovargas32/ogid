@@ -10,14 +10,17 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
   <link rel="stylesheet" href="/css/styles.css" />
+  <link rel="icon" type="image/svg+xml" href="/css/favicon.svg" />
 </head>
 
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark topbar px-3">
-      <div class="container-fluid g-0 topbar-shell">
-        <div class="topbar-title-group">
-          <span class="navbar-brand text-uppercase fw-bold mb-0">OGID - Geopolitical Intel & Market Impact</span>
-        </div>
+  <nav class="navbar navbar-expand-lg navbar-dark topbar px-3">
+    <div class="container-fluid g-0 topbar-shell">
+      <div class="topbar-title-group d-flex align-items-center gap-2">
+        <a href="/"><img class="navbar-brand d-flex align-items-center">
+          <img src="/css/favicon.png" alt="OGID logo" width="82" class="d-inline-block align-text-top me-2" /></a>
+        <span class="navbar-brand text-uppercase fw-bold mb-0">OGID - Geopolitical Intel & Market Impact</span>
+      </div>
       <div class="status-strip d-flex align-items-center gap-2">
         <span id="source-mode-badge" class="badge text-bg-secondary">Source: initializing</span>
         <span id="market-mode-badge" class="badge text-bg-secondary">Market: initializing</span>
@@ -128,13 +131,18 @@
       <div class="col-12 col-xl-4">
         <section id="panel-market" class="panel panel-vertical h-100">
           <header class="panel-header d-flex justify-content-between align-items-center">
-            <h2 class="panel-title mb-0">Market Quotes</h2>
+            <div class="d-flex align-items-center gap-2">
+              <h2 class="panel-title mb-0">Market Quotes</h2>
+              <button id="market-watchlist-btn" class="btn btn-sm btn-outline-info" type="button" data-bs-toggle="modal"
+                data-bs-target="#market-watchlist-modal">Choose 7</button>
+            </div>
             <div class="d-flex align-items-center gap-2">
               <span id="quality-market-badge" class="badge text-bg-secondary">Data: initializing</span>
               <span id="market-updated-text" class="small text-light-emphasis">--</span>
             </div>
           </header>
           <div id="market-coverage-text" class="panel-meta-strip small text-light-emphasis px-3 py-2">Coverage: --</div>
+          <div id="market-provider-status-text" class="panel-meta-strip small text-light-emphasis px-3 py-2">Yahoo transport: checking…</div>
           <div class="table-responsive market-table-shell px-2 py-2">
             <table class="table table-sm table-dark align-middle mb-0 market-table">
               <thead>
@@ -146,6 +154,28 @@
               </thead>
               <tbody id="market-quotes-body"></tbody>
             </table>
+          </div>
+          <div class="panel-subheader px-3 py-2 market-ohlcv-header">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+              <h3 class="panel-subtitle mb-0">Selected Instrument OHLCV</h3>
+              <div class="d-flex align-items-center gap-2 market-ohlcv-controls">
+                <label class="visually-hidden" for="market-ohlcv-instrument">Instrument</label>
+                <select id="market-ohlcv-instrument" class="form-select form-select-sm" aria-label="OHLCV instrument"
+                  disabled></select>
+                <label class="visually-hidden" for="market-ohlcv-interval">Interval</label>
+                <select id="market-ohlcv-interval" class="form-select form-select-sm" aria-label="OHLCV interval">
+                  <option value="1day">1 day</option>
+                  <option value="1h">1 hour</option>
+                  <option value="30min">30 min</option>
+                  <option value="15min">15 min</option>
+                  <option value="5min">5 min</option>
+                </select>
+              </div>
+            </div>
+            <div id="market-ohlcv-status" class="small text-light-emphasis mt-1" aria-live="polite">Select an instrument.</div>
+          </div>
+          <div class="market-ohlcv-chart-wrap px-2 py-2">
+            <canvas id="market-ohlcv-chart" aria-label="Selected instrument OHLCV chart" role="img"></canvas>
           </div>
           <div class="panel-subheader px-3 py-2">
             <div class="d-flex justify-content-between align-items-center">
@@ -160,14 +190,14 @@
       <div class="col-12 col-xl-4">
         <section id="panel-insights" class="panel panel-vertical h-100">
           <header class="panel-header d-flex justify-content-between align-items-center">
-            <h2 class="panel-title mb-0">AI Insight & Predictions</h2>
+            <h2 class="panel-title mb-0">Deterministic Insights & Heuristic Scenarios</h2>
             <div class="d-flex align-items-center gap-2">
               <span id="quality-insights-badge" class="badge text-bg-secondary">Data: initializing</span>
               <span class="small text-light-emphasis">Deterministic</span>
             </div>
           </header>
           <div class="panel-subheader px-3 py-2">
-            <h3 class="panel-subtitle mb-0">Market Predictions</h3>
+            <h3 class="panel-subtitle mb-0">Heuristic Scenarios</h3>
           </div>
           <div id="predictions-list" class="predictions-list"></div>
           <div class="panel-subheader px-3 py-2">
@@ -186,7 +216,7 @@
       <div class="col-12 col-xl-4">
         <section class="panel panel-vertical h-100">
           <header class="panel-header">
-            <h2 class="panel-title mb-0">Predicted Sector Direction & Confidence</h2>
+            <h2 class="panel-title mb-0">Heuristic Sector Direction & Signal Strength</h2>
           </header>
           <div class="chart-wrap">
             <canvas id="impact-timeline-chart"></canvas>
@@ -196,7 +226,7 @@
       <div class="col-12 col-xl-4">
         <section class="panel panel-vertical h-100">
           <header class="panel-header">
-            <h2 class="panel-title mb-0">Ticker Outlook Matrix</h2>
+            <h2 class="panel-title mb-0">Heuristic Ticker Outlook Matrix</h2>
           </header>
           <div class="chart-wrap">
             <canvas id="sector-breakdown-chart"></canvas>
@@ -216,6 +246,37 @@
       </div>
     </div>
   </main>
+
+  <div class="modal fade" id="market-watchlist-modal" tabindex="-1" aria-labelledby="market-watchlist-title"
+    aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable">
+      <div class="modal-content bg-dark text-light">
+        <div class="modal-header">
+          <h2 class="modal-title fs-5" id="market-watchlist-title">Instruments to follow</h2><button type="button"
+            class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="small text-light-emphasis">Search Yahoo market symbols and choose up to seven verified instruments.
+            Only saved instruments feed quotes, OHLCV and news-impact analysis.</p>
+          <form id="market-watchlist-search-form" class="input-group input-group-sm" role="search">
+            <label class="visually-hidden" for="market-watchlist-search">Search market symbols</label>
+            <input id="market-watchlist-search" class="form-control" type="search" minlength="2" maxlength="80"
+              autocomplete="off" placeholder="Search symbol or company" disabled />
+            <button class="btn btn-outline-info" type="submit">Search</button>
+          </form>
+          <div id="market-watchlist-search-status" class="small text-light-emphasis mt-2" aria-live="polite">Load the
+            current watchlist to search.</div>
+          <div id="market-watchlist-search-results" class="market-watchlist-results mt-2"></div>
+          <h3 class="h6 mt-3 mb-2">Selected instruments</h3>
+          <div id="market-watchlist-selected" class="market-watchlist-selected"></div>
+          <div id="market-watchlist-status" class="small mt-2" aria-live="polite"></div>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn btn-secondary"
+            data-bs-dismiss="modal">Cancel</button><button id="market-watchlist-save" type="button"
+            class="btn btn-info">Save selection</button></div>
+      </div>
+    </div>
+  </div>
 
   <div class="offcanvas offcanvas-end news-drawer" tabindex="-1" id="news-detail-drawer"
     aria-labelledby="news-detail-title">
@@ -242,7 +303,9 @@
     crossorigin="anonymous"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"
+    integrity="sha384-JUh163oCRItcbPme8pYnROHQMC6fNKTBWtRG3I3I0erJkzNgL7uxKlNwcrcFKeqF"
+    crossorigin="anonymous"></script>
   <script type="module" src="/js/dashboard.js"></script>
 </body>
 

@@ -1259,6 +1259,7 @@ body {
 }
 
 @keyframes seed-pulse {
+
   0%,
   100% {
     transform: scale(0.92);
@@ -2206,4 +2207,45 @@ body {
     bottom: 0.65rem;
     transform: none;
   }
+}
+
+.market-watchlist-results,
+.market-watchlist-selected {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.market-watchlist-results {
+  max-height: 16rem;
+  overflow-y: auto;
+}
+
+.market-watchlist-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0.7rem;
+  border: 1px solid rgba(111, 177, 255, 0.18);
+  border-radius: 0.45rem;
+  background: rgba(9, 20, 29, 0.62);
+}
+
+.market-watchlist-item small {
+  color: var(--bs-secondary-color);
+}
+
+.market-ohlcv-header {
+  border-top: 1px solid rgba(111, 177, 255, 0.15);
+}
+
+.market-ohlcv-controls select {
+  min-width: 8rem;
+  max-width: 14rem;
+}
+
+.market-ohlcv-chart-wrap {
+  position: relative;
+  min-height: 250px;
+  height: 250px;
 }

@@ -341,7 +341,7 @@ function buildSeedPopup(asset = {}) {
       Host country: ${escapeHtml(hostCountry)}<br/>
       ${facilityType}
       Status: <strong>${escapeHtml(humanizeStatus(asset.status))}</strong><br/>
-      Confidence: ${Math.round(numericValue(asset.confidence, 0) * 100)}%<br/>
+      Evidence strength: ${Math.round(numericValue(asset.confidence, 0) * 100)}%<br/>
       Activity: ${numericValue(asset.activityScore)}<br/>
       Linked signals: ${numericValue(asset.linkedArticleCount)}<br/>
       Last evidence: ${formatTimestamp(asset.lastEvidenceAt)}<br/>

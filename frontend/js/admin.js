@@ -26,6 +26,7 @@ function cacheElements() {
   elements.marketPrimaryDiagnosticsBody = byId("market-primary-diagnostics-body");
   elements.marketFallbackDiagnosticsBody = byId("market-fallback-diagnostics-body");
   elements.marketRouterDiagnosticsBody = byId("market-router-diagnostics-body");
+  elements.marketTransportDiagnosticsBody = byId("market-transport-diagnostics-body");
   elements.rssFeedStatusBody = byId("rss-feed-status-body");
   elements.recentCycleErrorsBody = byId("recent-cycle-errors-body");
   elements.apiLimitsUpdated = byId("api-limits-updated");
@@ -596,6 +597,72 @@ function renderMarketRouterDiagnostics(market = {}) {
   ].join("");
 }
 
+function renderMarketTransportDiagnostics(market = {}) {
+  if (!elements.marketTransportDiagnosticsBody) return;
+  const transport = market.transportDiagnostics || {};
+  const queue = transport.client?.queue || {};
+  const operations = queue.operations || {};
+  const cooldowns = queue.cooldowns || {};
+  if (!transport.client) {
+    elements.marketTransportDiagnosticsBody.innerHTML =
+      '<article class="diagnostic-item"><div class="diagnostic-item-meta">Yahoo transport diagnostics are not available.</div></article>';
+    return;
+  }
+
+  const operationCards = ["search", "quote", "chart"].map((operation) => {
+    const metrics = operations[operation] || {};
+    const cooldownMs = Number(cooldowns[operation] || 0);
+    const lastError = metrics.lastError || null;
+    const lastFailureAt = metrics.lastFailureAt ? Date.parse(metrics.lastFailureAt) : NaN;
+    const lastSuccessAt = metrics.lastSuccessAt ? Date.parse(metrics.lastSuccessAt) : NaN;
+    const hasCurrentError = lastError && (!Number.isFinite(lastSuccessAt) || lastFailureAt > lastSuccessAt);
+    const status = cooldownMs > 0 ? "partial" : hasCurrentError ? "error" : metrics.lastSuccessAt ? "ok" : "idle";
+    const statusLabel = cooldownMs > 0 ? `limited ${Math.max(1, Math.ceil(cooldownMs / 1_000))}s` : status;
+    return `
+      <article class="diagnostic-item">
+        <div class="diagnostic-item-header">
+          <strong>${escapeHtml(operation)}</strong>
+          <span class="diagnostic-pill ${status}">${escapeHtml(statusLabel)}</span>
+        </div>
+        <div class="diagnostic-item-meta">logical: ${Number(metrics.requested || 0)} | upstream: ${Number(metrics.started || 0)} | ok: ${Number(metrics.completed || 0)} | failed: ${Number(metrics.failed || 0)}</div>
+        <div class="diagnostic-item-meta">retry: ${Number(metrics.retries || 0)} | dedup: ${Number(metrics.deduplicated || 0)} | cooldown blocks: ${Number(metrics.blockedByCooldown || 0)}</div>
+        <div class="diagnostic-item-meta">last attempt: ${escapeHtml(formatDate(metrics.lastAttemptAt))} | success: ${escapeHtml(formatDate(metrics.lastSuccessAt))}</div>
+        <div class="diagnostic-item-meta">last error: ${escapeHtml(lastError ? `${lastError.status || lastError.code || "error"} ${lastError.message || ""}` : "--")}</div>
+      </article>
+    `;
+  });
+
+  const search = transport.search || {};
+  const lastSearch = search.last || {};
+  const recentErrors = Array.isArray(queue.recentErrors) ? queue.recentErrors.slice(-5).reverse() : [];
+  elements.marketTransportDiagnosticsBody.innerHTML = [
+    `
+      <article class="diagnostic-item">
+        <div class="diagnostic-item-header">
+          <strong>Transport</strong>
+          <span class="diagnostic-pill ${queue.active > 0 ? "partial" : "ok"}">${escapeHtml(transport.transport || "server-library")}</span>
+        </div>
+        <div class="diagnostic-item-meta">active: ${Number(queue.active || 0)} | queued: ${Number(queue.queued || 0)} | in-flight: ${Number(queue.inFlight || 0)} | concurrency: ${Number(queue.concurrency || 0)}</div>
+        <div class="diagnostic-item-meta">search cache: ${Number(search.cacheEntries || 0)} | TTL: ${escapeHtml(formatDurationMs(search.cacheTtlMs || 0))}</div>
+        <div class="diagnostic-item-meta">last lookup: ${escapeHtml(lastSearch.source || "--")} | results: ${Number(lastSearch.resultCount || 0)} | degraded: ${lastSearch.degraded ? "yes" : "no"}</div>
+        <div class="diagnostic-item-meta">policy: ${escapeHtml(transport.symbolPolicy?.exactLookup || "--")}</div>
+        <div class="diagnostic-item-meta">allowed types: ${escapeHtml(formatInlineList(transport.supportedAssetTypes || []))}</div>
+      </article>
+    `,
+    ...operationCards,
+    ...recentErrors.map((item) => `
+      <article class="diagnostic-item">
+        <div class="diagnostic-item-header">
+          <strong>${escapeHtml(item.scope || "yahoo")}</strong>
+          <span class="diagnostic-pill ${item.blockedByCooldown ? "partial" : "error"}">${escapeHtml(item.error?.status || item.error?.code || "error")}</span>
+        </div>
+        <div class="diagnostic-item-meta">${escapeHtml(formatDate(item.at))} | ${item.blockedByCooldown ? "local cooldown" : "upstream response"}</div>
+        <div class="diagnostic-item-meta">${escapeHtml(item.error?.message || "Yahoo request failed")}</div>
+      </article>
+    `)
+  ].join("");
+}
+
 function renderPipelineDiagnostics(news = {}, market = {}) {
   const diagnostics = buildNewsProviderDiagnostics(news);
   if (!diagnostics.length) {
@@ -630,6 +697,7 @@ function renderPipelineDiagnostics(news = {}, market = {}) {
     renderMarketProviderDiagnostics(elements.marketPrimaryDiagnosticsBody, market, market.providerSlots?.[0] || {}, "primary");
     renderMarketProviderDiagnostics(elements.marketFallbackDiagnosticsBody, market, market.providerSlots?.[1] || {}, "fallback");
     renderMarketRouterDiagnostics(market);
+    renderMarketTransportDiagnostics(market);
     return;
   }
   elements.rssFeedStatusBody.innerHTML = feedStatus
@@ -651,6 +719,7 @@ function renderPipelineDiagnostics(news = {}, market = {}) {
   renderMarketProviderDiagnostics(elements.marketPrimaryDiagnosticsBody, market, market.providerSlots?.[0] || {}, "primary");
   renderMarketProviderDiagnostics(elements.marketFallbackDiagnosticsBody, market, market.providerSlots?.[1] || {}, "fallback");
   renderMarketRouterDiagnostics(market);
+  renderMarketTransportDiagnostics(market);
 }
 
 function renderRecentCycleErrors(items = []) {

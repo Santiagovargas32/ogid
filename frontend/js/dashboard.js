@@ -11,6 +11,15 @@ import { startRiskEngine } from "./intelligence/riskEngine.js";
 import { startTrendDetector } from "./intelligence/trendDetector.js";
 import { startEscalationHotspots } from "./intelligence/escalationHotspots.js";
 import { startSignalAnomalies } from "./intelligence/signalAnomalies.js";
+import {
+  addMarketInstrument,
+  marketSelectionIds,
+  marketSelectionSymbols,
+  removeMarketInstrument,
+  resolveSelectedMarketInstruments,
+  validateMarketSelection
+} from "./marketWatchlistModel.js";
+import { buildOhlcvChartSeries } from "./marketOhlcvModel.js";
 
 const LEVEL_RANK = {
   Stable: 1,
@@ -60,8 +69,18 @@ let impactScatterChart;
 let socket;
 let selectedCountries = new Set();
 let currentWatchlist = [];
+let selectedMarketSymbols = [];
+let marketWatchlistLoaded = false;
+let marketWatchlistModel = { maxSelected: null, instruments: [] };
+let marketWatchlistDraft = [];
+let marketSearchTimer = null;
+let marketSearchToken = 0;
+let marketSearchRequestKey = null;
+let marketOhlcvChart = null;
+let marketOhlcvRequestToken = 0;
 let watchlistInitialized = false;
 let apiLimitsPoller = null;
+let marketProviderPoller = null;
 let analyticsRefreshTimer = null;
 let latestAnalytics = null;
 let latestAnalyticsContext = "";
@@ -95,6 +114,7 @@ function cacheElements() {
   elements.lastUpdateText = byId("last-update-text");
   elements.marketUpdatedText = byId("market-updated-text");
   elements.marketCoverageText = byId("market-coverage-text");
+  elements.marketProviderStatusText = byId("market-provider-status-text");
   elements.newsCount = byId("news-count");
   elements.newsFeed = byId("news-feed");
   elements.predictionsList = byId("predictions-list");
@@ -109,6 +129,17 @@ function cacheElements() {
   elements.distStable = byId("dist-stable");
   elements.countryFilterBar = byId("country-filter-bar");
   elements.marketQuotesBody = byId("market-quotes-body");
+  elements.marketWatchlistSearchForm = byId("market-watchlist-search-form");
+  elements.marketWatchlistSearch = byId("market-watchlist-search");
+  elements.marketWatchlistSearchStatus = byId("market-watchlist-search-status");
+  elements.marketWatchlistSearchResults = byId("market-watchlist-search-results");
+  elements.marketWatchlistSelected = byId("market-watchlist-selected");
+  elements.marketWatchlistSave = byId("market-watchlist-save");
+  elements.marketWatchlistStatus = byId("market-watchlist-status");
+  elements.marketOhlcvInstrument = byId("market-ohlcv-instrument");
+  elements.marketOhlcvInterval = byId("market-ohlcv-interval");
+  elements.marketOhlcvStatus = byId("market-ohlcv-status");
+  elements.marketOhlcvCanvas = byId("market-ohlcv-chart");
   elements.marketImpactList = byId("market-impact-list");
   elements.qualityHotspotsBadge = byId("quality-hotspots-badge");
   elements.qualityNewsBadge = byId("quality-news-badge");
@@ -358,21 +389,24 @@ function formatWindowLabel(minutes) {
   return `${normalized}m`;
 }
 
-function normalizeMarketDataMode(mode = "synthetic-fallback") {
+function normalizeMarketDataMode(mode = "synthetic") {
   const normalized = String(mode || "").toLowerCase();
   if (normalized === "fallback") {
-    return "synthetic-fallback";
+    return "synthetic";
   }
   if (normalized === "stale") {
-    return "router-stale";
+    return "stale";
   }
-  return normalized || "synthetic-fallback";
+  if (["live", "web-delayed"].includes(normalized)) return "observed";
+  if (normalized === "synthetic-fallback") return "synthetic";
+  if (normalized === "router-stale" || normalized === "historical-eod") return "stale";
+  return normalized || "synthetic";
 }
 
-function marketModeLabel(mode = "synthetic-fallback") {
+function marketModeLabel(mode = "synthetic") {
   const normalized = normalizeMarketDataMode(mode);
-  if (normalized === "live") {
-    return "LIVE";
+  if (normalized === "observed") {
+    return "OBSERVED";
   }
   if (normalized === "web-delayed") {
     return "WEB DELAYED";
@@ -380,13 +414,13 @@ function marketModeLabel(mode = "synthetic-fallback") {
   if (normalized === "historical-eod") {
     return "EOD";
   }
-  if (normalized === "router-stale") {
-    return "STALE CACHE";
+  if (normalized === "stale") {
+    return "STALE";
   }
   return "SIM";
 }
 
-function marketModeShortLabel(mode = "synthetic-fallback") {
+function marketModeShortLabel(mode = "synthetic") {
   const normalized = normalizeMarketDataMode(mode);
   if (normalized === "web-delayed") {
     return "W";
@@ -394,16 +428,16 @@ function marketModeShortLabel(mode = "synthetic-fallback") {
   if (normalized === "historical-eod") {
     return "E";
   }
-  if (normalized === "router-stale") {
+  if (normalized === "stale") {
     return "C";
   }
-  if (normalized === "synthetic-fallback") {
+  if (normalized === "synthetic") {
     return "S";
   }
   return "";
 }
 
-function marketModeClass(mode = "synthetic-fallback") {
+function marketModeClass(mode = "synthetic") {
   return `market-mode-${normalizeMarketDataMode(mode)}`;
 }
 
@@ -708,7 +742,12 @@ function renderMeta(meta, market) {
   elements.marketModeBadge.className = `badge ${sourceBadgeClass(market.sourceMode)}`;
   const sessionLabel = market.session?.open ? "open" : market.session?.state || "closed";
   const dataLabel = market.sourceMode || "fallback";
-  elements.marketModeBadge.textContent = `Market: session ${sessionLabel} | data ${dataLabel}`;
+  const offHoursPaused = !market.session?.open
+    && market.sourceMeta?.upstreamPaused === true
+    && market.sourceMeta?.pauseReason === "offhours-skip";
+  elements.marketModeBadge.textContent = offHoursPaused
+    ? `Market: session ${sessionLabel} | provider paused by policy`
+    : `Market: session ${sessionLabel} | data ${dataLabel}`;
   elements.marketModeBadge.title = [
     `session: ${market.session?.state || "--"}`,
     `data: ${dataLabel}`,
@@ -796,6 +835,57 @@ function renderCountryFilters() {
       ${selectedChipHtml || '<span class="small text-light-emphasis">No countries selected</span>'}
     </div>
   `;
+}
+
+function marketOperationLabel(queue = {}, operation) {
+  const metrics = queue.operations?.[operation] || {};
+  const cooldownMs = Number(queue.cooldowns?.[operation] || 0);
+  if (cooldownMs > 0) {
+    const code = metrics.lastError?.status || metrics.lastError?.code || 429;
+    return `${operation} limited ${Math.max(1, Math.ceil(cooldownMs / 1_000))}s (${code})`;
+  }
+  const failedAt = metrics.lastFailureAt ? Date.parse(metrics.lastFailureAt) : NaN;
+  const successAt = metrics.lastSuccessAt ? Date.parse(metrics.lastSuccessAt) : NaN;
+  if (metrics.lastError && (!Number.isFinite(successAt) || failedAt > successAt)) {
+    return `${operation} error ${metrics.lastError.status || metrics.lastError.code || "unknown"}`;
+  }
+  if (metrics.lastSuccessAt) return `${operation} ready`;
+  return `${operation} idle`;
+}
+
+function renderMarketProviderStatus(payload = {}) {
+  if (!elements.marketProviderStatusText) return;
+  const diagnostics = payload.diagnostics || {};
+  const queue = diagnostics.client?.queue || {};
+  const search = diagnostics.search?.last || null;
+  const searchSuffix = search
+    ? ` | last lookup ${search.source || "--"}${search.degraded ? " (degraded)" : ""}: ${Number(search.resultCount || 0)} result(s)`
+    : "";
+  const policySuffix = payload.upstreamPaused
+    ? ` | scheduled quotes paused${payload.pauseReason ? ` (${payload.pauseReason})` : ""}`
+    : "";
+  elements.marketProviderStatusText.textContent = [
+    `Yahoo transport: ${diagnostics.transport || "server-library"}`,
+    marketOperationLabel(queue, "search"),
+    marketOperationLabel(queue, "quote"),
+    marketOperationLabel(queue, "chart")
+  ].join(" | ") + searchSuffix + policySuffix;
+}
+
+async function refreshMarketProviderStatus() {
+  try {
+    renderMarketProviderStatus(await api.getMarketProviderStatus());
+  } catch (error) {
+    if (elements.marketProviderStatusText) {
+      elements.marketProviderStatusText.textContent = `Yahoo transport diagnostics unavailable: ${error.message}`;
+    }
+  }
+}
+
+function startMarketProviderPolling() {
+  clearInterval(marketProviderPoller);
+  refreshMarketProviderStatus();
+  marketProviderPoller = setInterval(refreshMarketProviderStatus, 15_000);
 }
 
 function handleFilterClick(event) {
@@ -1113,7 +1203,7 @@ function initImpactTimelineChart() {
           callbacks: {
             label(context) {
               const confidence = context.dataset.confidenceMap?.[context.dataIndex] ?? "--";
-              return `score: ${context.raw} | confidence: ${confidence}%`;
+              return `score: ${context.raw} | signal strength: ${confidence}%`;
             }
           }
         }
@@ -1246,7 +1336,7 @@ function renderPredictions(predictions = { tickers: [], sectors: [] }, market = 
               </div>
             </div>
             <div class="prediction-grid">
-              <div class="prediction-meta">Confidence: ${escapeHtml(String(prediction.confidence ?? "--"))}%</div>
+              <div class="prediction-meta">Signal strength: ${escapeHtml(String(prediction.signalStrength ?? prediction.confidence ?? "--"))}%</div>
               <div class="prediction-meta">Score: ${escapeHtml(String(prediction.predictionScore ?? "--"))}</div>
               <div class="prediction-meta">Horizon: ${escapeHtml(String(prediction.horizonHours ?? "--"))}h</div>
               <div class="prediction-meta">Quote freshness: ${escapeHtml(quoteFreshness)}</div>
@@ -1282,7 +1372,7 @@ function renderPredictions(predictions = { tickers: [], sectors: [] }, market = 
       )}</span>
         </div>
         <div class="prediction-meta">
-          Confidence: ${prediction.confidence}% | Horizon: ${prediction.horizonHours}h | Tickers: ${prediction.tickers?.join(", ") || "N/A"
+          Signal strength: ${prediction.signalStrength ?? prediction.confidence}% | Horizon: ${prediction.horizonHours}h | Tickers: ${prediction.tickers?.join(", ") || "N/A"
         }
         </div>
         <div class="insight-drivers mt-1">
@@ -1323,7 +1413,7 @@ function renderInsights(insights = [], emptyReason = "") {
         </div>
         <p class="insight-summary">${escapeHtml(insight.summary)}</p>
         <div class="small text-light-emphasis mb-2">
-          Trend: ${trendGlyph[insight.trend] || "-"} ${escapeHtml(insight.trend)} | Confidence: ${insight.confidence}%
+          Trend: ${trendGlyph[insight.trend] || "-"} ${escapeHtml(insight.trend)} | Signal strength: ${insight.signalStrength ?? insight.confidence}%
         </div>
         <div class="insight-drivers">
           ${(insight.drivers || []).map((driver) => `<span class="driver-pill">${escapeHtml(driver)}</span>`).join("")}
@@ -1335,7 +1425,8 @@ function renderInsights(insights = [], emptyReason = "") {
 }
 
 function renderMarketQuotes(market = { quotes: {} }) {
-  const quotes = Object.entries(market.quotes || {});
+  const allowed = new Set(selectedMarketSymbols);
+  const quotes = Object.entries(market.quotes || {}).filter(([ticker]) => !marketWatchlistLoaded || allowed.has(ticker));
   if (!quotes.length) {
     elements.marketQuotesBody.innerHTML = '<tr><td colspan="3" class="text-light-emphasis">No market quotes available.</td></tr>';
     return;
@@ -1351,7 +1442,14 @@ function renderMarketQuotes(market = { quotes: {} }) {
       const quoteAgeMin = deriveQuoteAgeMin(quote);
       const ageLabel = Number.isFinite(quoteAgeMin) ? `${quoteAgeMin}m old` : "age --";
       const sourceLabel = [quote.source || "unknown", quote.sourceDetail ? `/${quote.sourceDetail}` : ""].join("");
+      const staleLabel = quote.stale === true || mode === "stale" ? "stale yes" : "stale no";
       const qualityBits = [
+        quote.currency ? `currency ${quote.currency}` : null,
+        quote.exchange ? `exchange ${quote.exchange}` : null,
+        quote.session ? `session ${quote.session}` : null,
+        quote.asOf ? `asOf ${quote.asOf}` : null,
+        `data ${mode}`,
+        staleLabel,
         Number.isFinite(Number(quote.providerScore)) ? `score ${Number(quote.providerScore)}` : null,
         Number.isFinite(Number(quote.providerLatencyMs)) ? `${Number(quote.providerLatencyMs)}ms` : null,
         quote.marketState ? `state ${String(quote.marketState).toLowerCase()}` : null
@@ -1371,6 +1469,195 @@ function renderMarketQuotes(market = { quotes: {} }) {
       `;
     })
     .join("");
+}
+
+function marketInstrumentMeta(instrument = {}) {
+  return [instrument.assetType, instrument.exchange, instrument.currency].filter(Boolean).join(" · ");
+}
+
+function renderMarketWatchlistSelection() {
+  const maxSelected = Number.isInteger(Number(marketWatchlistModel.maxSelected)) && Number(marketWatchlistModel.maxSelected) > 0
+    ? Number(marketWatchlistModel.maxSelected)
+    : null;
+  elements.marketWatchlistSelected.innerHTML = marketWatchlistDraft.length
+    ? marketWatchlistDraft.map((instrument) => `
+      <div class="market-watchlist-item">
+        <span><strong>${escapeHtml(instrument.symbol)}</strong> — ${escapeHtml(instrument.displayName)}<br>
+          <small>${escapeHtml(marketInstrumentMeta(instrument))}</small></span>
+        <button type="button" class="btn btn-sm btn-outline-danger" data-market-remove="${escapeHtml(instrument.instrumentId)}">Remove</button>
+      </div>`).join("")
+    : '<div class="small text-light-emphasis">No instruments selected. Quotes and news-impact analysis will stay empty.</div>';
+  elements.marketWatchlistStatus.textContent = maxSelected == null
+    ? `${marketWatchlistDraft.length} selected`
+    : `${marketWatchlistDraft.length}/${maxSelected} selected`;
+  elements.marketWatchlistSave.disabled = !validateMarketSelection(marketWatchlistDraft, maxSelected).valid;
+}
+
+function syncOhlcvInstrumentOptions({ refresh = false } = {}) {
+  const previous = elements.marketOhlcvInstrument.value;
+  elements.marketOhlcvInstrument.innerHTML = marketWatchlistDraft.map((instrument) =>
+    `<option value="${escapeHtml(instrument.instrumentId)}">${escapeHtml(instrument.symbol)} · ${escapeHtml(instrument.displayName)}</option>`
+  ).join("");
+  const preferred = marketWatchlistDraft.some((instrument) => instrument.instrumentId === previous)
+    ? previous
+    : marketWatchlistDraft[0]?.instrumentId || "";
+  elements.marketOhlcvInstrument.value = preferred;
+  elements.marketOhlcvInstrument.disabled = !preferred;
+  if (!preferred) {
+    marketOhlcvChart?.destroy();
+    marketOhlcvChart = null;
+    elements.marketOhlcvStatus.textContent = "Add an instrument to load OHLCV.";
+  } else if (refresh) loadMarketOhlcv();
+}
+
+function renderMarketWatchlist(model, { refreshOhlcv = true } = {}) {
+  marketWatchlistModel = model || { maxSelected: null, instruments: [] };
+  marketWatchlistDraft = resolveSelectedMarketInstruments(marketWatchlistModel);
+  selectedMarketSymbols = marketSelectionSymbols(marketWatchlistDraft);
+  marketWatchlistLoaded = true;
+  elements.marketWatchlistSearch.disabled = false;
+  elements.marketWatchlistSearchStatus.textContent = "Search by ticker or company name.";
+  renderMarketWatchlistSelection();
+  syncOhlcvInstrumentOptions({ refresh: refreshOhlcv });
+}
+
+function currentMarketSearchResults() {
+  try { return JSON.parse(elements.marketWatchlistSearchResults.dataset.results || "[]"); }
+  catch { return []; }
+}
+
+function renderMarketSearchResults(instruments = []) {
+  const selectedIds = new Set(marketSelectionIds(marketWatchlistDraft).map((value) => value.toLowerCase()));
+  const configuredLimit = Number(marketWatchlistModel.maxSelected);
+  const atLimit = Number.isInteger(configuredLimit) && configuredLimit > 0 && marketWatchlistDraft.length >= configuredLimit;
+  elements.marketWatchlistSearchResults.innerHTML = instruments.length
+    ? instruments.map((instrument) => {
+      const selected = selectedIds.has(String(instrument.instrumentId || "").toLowerCase());
+      return `<div class="market-watchlist-item">
+        <span><strong>${escapeHtml(instrument.symbol)}</strong> — ${escapeHtml(instrument.displayName)}<br><small>${escapeHtml(marketInstrumentMeta(instrument))}</small></span>
+        <button type="button" class="btn btn-sm btn-outline-info" data-market-add="${escapeHtml(instrument.instrumentId)}" ${selected || atLimit ? "disabled" : ""}>${selected ? "Selected" : "Add"}</button>
+      </div>`;
+    }).join("")
+    : '<div class="small text-light-emphasis">No matching Yahoo instruments.</div>';
+}
+
+async function searchMarketInstruments() {
+  const query = elements.marketWatchlistSearch.value.trim();
+  if (query.length < 2) {
+    elements.marketWatchlistSearchStatus.textContent = "Enter at least two characters.";
+    elements.marketWatchlistSearchResults.innerHTML = "";
+    return;
+  }
+  const requestKey = query.toLowerCase();
+  if (marketSearchRequestKey === requestKey) return;
+  const token = ++marketSearchToken;
+  marketSearchRequestKey = requestKey;
+  elements.marketWatchlistSearchStatus.textContent = "Searching Yahoo Finance…";
+  try {
+    const result = await api.getMarketInstrumentSearch({ q: query, limit: 12 });
+    if (token !== marketSearchToken) return;
+    const instruments = result?.instruments || [];
+    elements.marketWatchlistSearchResults.dataset.results = JSON.stringify(instruments);
+    renderMarketSearchResults(instruments);
+    const meta = result?.meta || {};
+    const sourceLabel = meta.source === "verified-registry"
+      ? meta.degraded ? " Saved verified symbols shown while Yahoo Search is limited." : " Verified local symbol."
+      : meta.source === "yahoo-quote" ? " Exact ticker verified with Yahoo Quote." : "";
+    elements.marketWatchlistSearchStatus.textContent = `${instruments.length} result${instruments.length === 1 ? "" : "s"}.${sourceLabel}`;
+    refreshMarketProviderStatus();
+  } catch (error) {
+    if (token !== marketSearchToken) return;
+    const retryAfter = Number.isFinite(error.retryAfterSec) ? ` Retry after ${error.retryAfterSec}s.` : "";
+    elements.marketWatchlistSearchStatus.textContent = error.code === "MARKET_SEARCH_PROVIDER_RATE_LIMITED"
+      ? `Yahoo Finance instrument lookup is temporarily limited.${retryAfter} Existing results and saved symbols are preserved.`
+      : `Search failed: ${error.message}`;
+    refreshMarketProviderStatus();
+  } finally {
+    if (marketSearchRequestKey === requestKey) marketSearchRequestKey = null;
+  }
+}
+
+function handleMarketWatchlistAction(event) {
+  const add = event.target.closest("[data-market-add]");
+  const remove = event.target.closest("[data-market-remove]");
+  if (add) {
+    const candidate = currentMarketSearchResults().find((instrument) => instrument.instrumentId === add.dataset.marketAdd);
+    const result = addMarketInstrument(marketWatchlistDraft, candidate, marketWatchlistModel.maxSelected);
+    marketWatchlistDraft = result.instruments;
+    if (result.reason === "limit") elements.marketWatchlistStatus.textContent = `The watchlist is limited to ${marketWatchlistModel.maxSelected} instruments.`;
+  } else if (remove) marketWatchlistDraft = removeMarketInstrument(marketWatchlistDraft, remove.dataset.marketRemove).instruments;
+  else return;
+  renderMarketWatchlistSelection();
+  renderMarketSearchResults(currentMarketSearchResults());
+}
+
+async function loadMarketWatchlist() {
+  try { renderMarketWatchlist(await api.getMarketWatchlist()); }
+  catch (error) {
+    marketWatchlistLoaded = true;
+    elements.marketWatchlistSearchStatus.textContent = "Watchlist unavailable.";
+    elements.marketWatchlistStatus.textContent = `Unable to load watchlist: ${error.message}`;
+  }
+}
+
+async function saveMarketWatchlist() {
+  if (!validateMarketSelection(marketWatchlistDraft, marketWatchlistModel.maxSelected).valid) return;
+  elements.marketWatchlistSave.disabled = true;
+  try {
+    const saved = await api.updateMarketWatchlist(marketSelectionIds(marketWatchlistDraft));
+    renderMarketWatchlist(saved);
+    elements.marketWatchlistStatus.textContent = marketWatchlistModel.maxSelected == null
+      ? `${marketWatchlistDraft.length} selected · saved`
+      : `${marketWatchlistDraft.length}/${marketWatchlistModel.maxSelected} selected · saved`;
+    renderMarketQuotes(getState().market || { quotes: {} });
+    marketQuotesPoller?.trigger(0);
+    await refreshAnalytics();
+  } catch (error) { elements.marketWatchlistStatus.textContent = `Save failed: ${error.message}`; }
+  finally { elements.marketWatchlistSave.disabled = false; }
+}
+
+function renderMarketOhlcv(payload, instrument) {
+  const series = buildOhlcvChartSeries(payload?.candles || []);
+  marketOhlcvChart?.destroy();
+  marketOhlcvChart = null;
+  if (!series.candles.length) {
+    elements.marketOhlcvStatus.textContent = `${instrument?.symbol || "Instrument"}: no OHLCV data available.`;
+    return;
+  }
+  marketOhlcvChart = new Chart(elements.marketOhlcvCanvas, {
+    type: "bar",
+    data: { labels: series.labels, datasets: [
+      { type: "line", label: "Close", data: series.closes, borderColor: "#49d6c5", backgroundColor: "rgba(73,214,197,.15)", borderWidth: 2, pointRadius: 0, tension: .15, yAxisID: "price" },
+      { type: "bar", label: "Volume", data: series.volumes, backgroundColor: "rgba(111,177,255,.28)", borderWidth: 0, yAxisID: "volume" }
+    ] },
+    options: {
+      responsive: true, maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
+      scales: {
+        x: { ticks: { maxTicksLimit: 7, color: "#9faebd", callback(_value, index) { return new Date(series.labels[index]).toLocaleDateString(); } }, grid: { display: false } },
+        price: { position: "left", ticks: { color: "#9faebd" }, grid: { color: "rgba(255,255,255,.05)" } },
+        volume: { position: "right", beginAtZero: true, ticks: { color: "#6f8192", maxTicksLimit: 4 }, grid: { display: false } }
+      },
+      plugins: {
+        legend: { labels: { color: "#d7e3ea", boxWidth: 12 } },
+        tooltip: { callbacks: { afterBody(items) { const candle = series.candles[items[0]?.dataIndex]; return candle ? [`O ${candle.open}  H ${candle.high}`, `L ${candle.low}  C ${candle.close}`, `V ${candle.volume ?? "n/a"}`] : []; } } }
+      }
+    }
+  });
+  elements.marketOhlcvStatus.textContent = `${instrument.symbol} · ${payload.status || "stored"} · ${series.candles.length} bars${payload.error?.message ? ` · ${payload.error.message}` : ""}`;
+}
+
+async function loadMarketOhlcv() {
+  const instrumentId = elements.marketOhlcvInstrument.value;
+  const instrument = marketWatchlistDraft.find((item) => item.instrumentId === instrumentId);
+  if (!instrument) return;
+  const token = ++marketOhlcvRequestToken;
+  elements.marketOhlcvStatus.textContent = `Loading ${instrument.symbol} OHLCV…`;
+  try {
+    const payload = await api.getMarketCandles({ instrumentId, interval: elements.marketOhlcvInterval.value, adjusted: "splits", limit: 240 });
+    if (token === marketOhlcvRequestToken) renderMarketOhlcv(payload, instrument);
+  } catch (error) {
+    if (token === marketOhlcvRequestToken) elements.marketOhlcvStatus.textContent = `OHLCV unavailable: ${error.message}`;
+  }
 }
 
 function shouldIgnoreMarketPayload(market = {}) {
@@ -1409,7 +1696,7 @@ function startMarketQuotesPolling() {
       }),
     task: async () => {
       const currentState = getState();
-      const tickers = Object.keys(currentState.market?.quotes || {});
+      const tickers = marketWatchlistLoaded ? selectedMarketSymbols : Object.keys(currentState.market?.quotes || {});
       if (!tickers.length) {
         return null;
       }
@@ -1604,7 +1891,7 @@ function resolveAnalyticsPayload(rawState) {
   const predictedSectorDirection = (rawState.predictions?.sectors || []).map((sector) => ({
     sector: sector.sector,
     direction: sector.direction,
-    confidence: sector.confidence,
+    confidence: sector.signalStrength ?? sector.confidence,
     score: sector.score,
     inputMode: sector.inputMode
   }));
@@ -1620,7 +1907,7 @@ function resolveAnalyticsPayload(rawState) {
       direction: prediction.direction,
       eventScore: impact.eventScore || 0,
       impactScore,
-      predictedConfidence: prediction.predictedConfidence || prediction.confidence || 0,
+      predictedConfidence: prediction.signalStrength || prediction.predictedConfidence || prediction.confidence || 0,
       predictionScore: prediction.predictionScore || 0,
       changePct,
       radius: Math.max(4, Math.min(20, 4 + Math.abs(changePct) * 1.5 + Math.min(8, impactScore / 5))),
@@ -2295,6 +2582,14 @@ async function bootstrap() {
   elements.countryFilterBar.addEventListener("change", handleCountryPickerChange);
   document.body.addEventListener("click", handleActionClick);
   elements.refreshNewsBtn.addEventListener("click", handleManualRefreshClick);
+  elements.marketWatchlistSave.addEventListener("click", saveMarketWatchlist);
+  elements.marketWatchlistSearchForm.addEventListener("submit", (event) => { event.preventDefault(); clearTimeout(marketSearchTimer); searchMarketInstruments(); });
+  elements.marketWatchlistSearch.addEventListener("input", () => { clearTimeout(marketSearchTimer); marketSearchTimer = setTimeout(searchMarketInstruments, 350); });
+  elements.marketWatchlistSearchResults.addEventListener("click", handleMarketWatchlistAction);
+  elements.marketWatchlistSelected.addEventListener("click", handleMarketWatchlistAction);
+  elements.marketOhlcvInstrument.addEventListener("change", loadMarketOhlcv);
+  elements.marketOhlcvInterval.addEventListener("change", loadMarketOhlcv);
+  await loadMarketWatchlist();
 
   subscribe((state) => {
     syncWatchlistFromState(state);
@@ -2318,12 +2613,16 @@ async function bootstrap() {
 
   startMarketQuotesPolling();
   marketQuotesPoller?.trigger(0);
+  startMarketProviderPolling();
 
   window.addEventListener("beforeunload", () => {
     socket?.close();
     marketQuotesPoller?.stop();
     clearInterval(apiLimitsPoller);
+    clearInterval(marketProviderPoller);
     clearTimeout(analyticsRefreshTimer);
+    clearTimeout(marketSearchTimer);
+    marketOhlcvChart?.destroy();
     clearInterval(manualRefreshCooldownTimer);
     teardownHandlers.forEach((teardown) => teardown?.());
   });
