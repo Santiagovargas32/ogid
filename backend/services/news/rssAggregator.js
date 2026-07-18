@@ -3,6 +3,8 @@ import { BoundedCache } from "../shared/boundedCache.js";
 import { deduplicateRssArticles } from "./rssDeduplicator.js";
 import { buildExtendedRssFeedCatalog, classifyRssArticle } from "./rssClassifier.js";
 import { fetchRss } from "./providers/rssProvider.js";
+import { buildCanonicalRssCatalog } from "./rssCanonicalCatalog.js";
+import { compareRssSnapshots, projectCanonicalToProvider, RssCanonicalPipeline } from "./rssCanonicalPipeline.js";
 
 const log = createLogger("backend/services/news/rssAggregator");
 
@@ -27,6 +29,19 @@ export class RssAggregatorService {
     this.cursor = 0;
     this.corpus = [];
     this.lastSnapshot = null;
+    this.shadowComparisonStats = { cycles: 0, equivalentCycles: 0 };
+    this.canonicalPipeline = new RssCanonicalPipeline({
+      catalog: this.canonicalCatalog,
+      fetchImpl: config.canonicalFetchImpl,
+      now: config.now,
+      persistencePath: config.persistencePath || config.news?.rssCanonicalStateFile || null,
+      globalConcurrency: config.globalConcurrency || config.news?.rssGlobalConcurrency || 4,
+      hostConcurrency: config.hostConcurrency || config.news?.rssHostConcurrency || 1,
+      maxFeedsPerCycle: this.maxFeedsPerRun,
+      cycleDeadlineMs: config.cycleDeadlineMs || config.news?.rssCycleDeadlineMs || 60_000,
+      timeoutMs: this.timeoutMs,
+      maxCorpusItems: this.maxCorpusItems
+    });
   }
 
   configure(config = {}) {
@@ -36,6 +51,12 @@ export class RssAggregatorService {
     const catalog = buildExtendedRssFeedCatalog(config.rssFeeds || config.news?.rssFeeds || []);
     this.feedCatalog = catalog.feeds;
     this.feedCatalogStats = catalog.stats;
+    this.pipelineMode = ["legacy", "shadow", "canonical"].includes(String(config.pipelineMode || config.news?.rssPipelineMode || "legacy").toLowerCase())
+      ? String(config.pipelineMode || config.news?.rssPipelineMode || "legacy").toLowerCase() : "legacy";
+    this.canonicalCatalog = buildCanonicalRssCatalog({
+      primaryFeeds: (config.rssFeeds || config.news?.rssFeeds || []).filter((feed) => !feed.generated),
+      secondaryFeeds: catalog.feeds.filter((feed) => feed.generated)
+    });
     const derivedMaxFeedsPerRun = this.feedCatalog.filter((feed) => !feed.disabled).length || 1;
     const configuredPageSize = toPositiveInt(config.news?.pageSize, null);
     const derivedMaxCorpusItems = Math.max(
@@ -87,16 +108,24 @@ export class RssAggregatorService {
 
   async runRefresh() {
     const feeds = this.nextFeedBatch();
-    const providerResult = await fetchRss({
-      feeds,
-      timeoutMs: this.timeoutMs
-    });
-    const enriched = (providerResult.articles || []).map((article, index) =>
-      classifyRssArticle({
-        ...article,
-        id: article.id || `rss-aggregate-${Date.now()}-${index + 1}`
-      })
-    );
+    const legacyPromise = this.pipelineMode === "canonical" ? null : fetchRss({ feeds, timeoutMs: this.timeoutMs });
+    const canonicalPromise = this.pipelineMode === "legacy" ? null : this.canonicalPipeline.runCycle();
+    if (this.pipelineMode === "canonical") {
+      const canonicalSnapshot = await canonicalPromise;
+      return this.#buildSnapshot(projectCanonicalToProvider(canonicalSnapshot), feeds, { canonicalSnapshot });
+    }
+    const providerResult = await legacyPromise;
+    const canonicalSnapshot = canonicalPromise ? await canonicalPromise : null;
+    return this.#buildSnapshot(providerResult, feeds, { canonicalSnapshot });
+  }
+
+  #buildSnapshot(providerResult, feeds, { canonicalSnapshot = null } = {}) {
+    const enriched = providerResult.sourceMeta?.canonical
+      ? (providerResult.articles || [])
+      : (providerResult.articles || []).map((article, index) => classifyRssArticle({
+          ...article,
+          id: article.id || `rss-aggregate-${Date.now()}-${index + 1}`
+        }));
     const merged = deduplicateRssArticles([...this.corpus, ...enriched], {
       maxItems: this.maxCorpusItems
     });
@@ -113,18 +142,52 @@ export class RssAggregatorService {
         totalItems: this.corpus.length,
         dedupedClusters: Object.keys(merged.clusters || {}).length,
         feedStatus: providerResult.sourceMeta?.feedStatus || [],
-        provider: "rss-aggregate"
+        provider: "rss-aggregate",
+        pipelineMode: this.pipelineMode,
+        canonicalCatalogStats: this.canonicalCatalog.stats
       }
     };
+
+    if (canonicalSnapshot) {
+      const comparison = compareRssSnapshots(providerResult, canonicalSnapshot);
+      const requests = Number(canonicalSnapshot.meta?.metrics?.externalRequests || 0);
+      const errors = Number(canonicalSnapshot.meta?.metrics?.errors || 0);
+      const errorRate = requests ? errors / requests : 0;
+      const equivalent = comparison.coverage >= 0.95 && errorRate <= 0.05;
+      this.shadowComparisonStats.cycles += 1;
+      this.shadowComparisonStats.equivalentCycles = equivalent ? this.shadowComparisonStats.equivalentCycles + 1 : 0;
+      snapshot.meta.shadow = this.pipelineMode === "shadow";
+      snapshot.meta.equivalence = {
+        ...comparison,
+        errorRate,
+        equivalent,
+        consecutiveEquivalentCycles: this.shadowComparisonStats.equivalentCycles,
+        cutoverEligible: this.shadowComparisonStats.equivalentCycles >= 10,
+        criteria: { minimumCoverage: 0.95, maximumErrorRate: 0.05, consecutiveCycles: 10 }
+      };
+      snapshot.meta.canonicalMetrics = canonicalSnapshot.meta?.metrics || {};
+    }
 
     this.lastSnapshot = snapshot;
     this.cache.set("rss-aggregate", snapshot, this.refreshIntervalMs);
     log.info("rss_aggregate_refreshed", {
       catalogSize: this.feedCatalog.length,
       queriedFeedCount: feeds.length,
-      totalItems: this.corpus.length
+      totalItems: this.corpus.length,
+      pipelineMode: this.pipelineMode,
+      coverage: snapshot.meta.equivalence?.coverage ?? null,
+      crossPipelineDuplicates: snapshot.meta.equivalence?.crossPipelineDuplicates ?? null,
+      canonicalErrors: snapshot.meta.canonicalMetrics?.errors ?? null,
+      canonicalExternalRequests: snapshot.meta.canonicalMetrics?.externalRequests ?? null,
+      canonicalLatencyMs: snapshot.meta.canonicalMetrics?.latencyMs ?? null
     });
     return snapshot;
+  }
+
+  rollbackToLegacy() {
+    this.pipelineMode = "legacy";
+    this.cache.clear?.();
+    return this.canonicalPipeline.rollback();
   }
 
   async getSnapshot({ force = false, countries = [], topic = "", threat = "", limit = null } = {}) {

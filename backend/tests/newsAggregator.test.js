@@ -23,7 +23,7 @@ test("news aggregator falls back when provider keys are missing", async () => {
   assert.ok(Array.isArray(result.articles));
   assert.ok(result.articles.length > 0);
   assert.ok(result.articles.every((article) => article.synthetic === true));
-  assert.ok(result.articles.every((article) => article.dataMode === "fallback"));
+  assert.ok(result.articles.every((article) => article.dataMode === "synthetic"));
 });
 
 test("news aggregator combines providers and keeps headline-only policy for rss feeds", async () => {

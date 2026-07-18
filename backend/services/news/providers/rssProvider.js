@@ -1,4 +1,5 @@
 import { parseRateLimitHeaders } from "../../admin/apiQuotaTrackerService.js";
+import { providerRuntime } from "../../providers/providerRuntime.js";
 import { sanitizeArticleContent } from "../newsContentSanitizer.js";
 
 const INVALID_FEED_CACHE_MS = 6 * 60 * 60 * 1_000;
@@ -38,8 +39,9 @@ function extractImage(block) {
   return enclosureMatch ? decodeEntities(enclosureMatch[1].trim()) : null;
 }
 
-function parseFeedArticles(xml = "", feedLabel = "RSS Feed") {
+export function parseFeedArticles(xml = "", feedLabel = "RSS Feed", sourceDefinition = {}) {
   const sourceName = extractTag(xml, "title") || feedLabel;
+  const sourceType = sourceDefinition.type || "rss";
   const items = String(xml || "").match(/<item\b[\s\S]*?<\/item>/gi) || String(xml || "").match(/<entry\b[\s\S]*?<\/entry>/gi) || [];
 
   return items.map((item, index) => {
@@ -66,8 +68,11 @@ function parseFeedArticles(xml = "", feedLabel = "RSS Feed") {
     return {
       provider: "rss",
       source: {
-        name: sourceName
+        name: sourceName,
+        sourceId: sourceDefinition.sourceId || null,
+        type: sourceType
       },
+      publisher: sourceType === "generated_search" ? null : sourceDefinition.publisher || sourceName,
       title: sanitized.title,
       description: sanitized.description,
       content: sanitized.content,
@@ -77,16 +82,23 @@ function parseFeedArticles(xml = "", feedLabel = "RSS Feed") {
       urlToImage: sanitized.leadImageUrl,
       leadImageUrl: sanitized.leadImageUrl,
       publishedAt,
-      usagePolicy: "headline-only-link-out"
+      usagePolicy: "headline-only-link-out",
+      dataMode: "observed",
+      provenance: {
+        sourceId: sourceDefinition.sourceId || null,
+        sourceType,
+        queryProvider: sourceDefinition.queryProvider || null,
+        methodVersion: sourceDefinition.provenance?.methodVersion || "rss-parser-v1"
+      }
     };
   });
 }
 
-function hasFeedEntries(xml = "") {
+export function hasFeedEntries(xml = "") {
   return /<item\b[\s\S]*?<\/item>/i.test(String(xml || "")) || /<entry\b[\s\S]*?<\/entry>/i.test(String(xml || ""));
 }
 
-function hasFeedEnvelope(xml = "") {
+export function hasFeedEnvelope(xml = "") {
   return /<rss\b/i.test(String(xml || "")) || /<feed\b/i.test(String(xml || ""));
 }
 
@@ -109,17 +121,7 @@ function markInvalidFeed(url) {
 }
 
 async function fetchWithTimeout(url, options, timeoutMs) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    return await fetch(url, {
-      ...options,
-      signal: controller.signal
-    });
-  } finally {
-    clearTimeout(timeout);
-  }
+  return providerRuntime.fetch("rss", url, { ...options, timeoutMs });
 }
 
 export async function fetchRss({
@@ -225,7 +227,7 @@ export async function fetchRss({
         continue;
       }
 
-      const parsedArticles = parseFeedArticles(payload, label);
+      const parsedArticles = parseFeedArticles(payload, label, feed);
       articles.push(...parsedArticles);
       feedStatus.push({
         label,

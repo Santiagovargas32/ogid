@@ -1,4 +1,5 @@
 import { BASELINE_COUNTRIES, detectCountryMentions, getCountryByIso2 } from "../../utils/countryCatalog.js";
+import { NEWS_SOURCE_CATALOG, coerceLegacyRssFeeds, projectLegacyGeneratedSearches } from "./newsSourceCatalog.js";
 
 const SOURCE_CREDIBILITY = Object.freeze({
   reuters: 0.98,
@@ -32,56 +33,6 @@ const THREAT_LEVELS = Object.freeze([
   { id: "elevated", minScore: 5 },
   { id: "monitoring", minScore: 2 },
   { id: "low", minScore: 0 }
-]);
-
-const FEED_COUNTRY_TERMS = Object.freeze([
-  "United States",
-  "Ukraine",
-  "Russia",
-  "China",
-  "Taiwan",
-  "Israel",
-  "Iran",
-  "Turkey",
-  "India",
-  "Pakistan",
-  "South Korea",
-  "North Korea",
-  "Syria",
-  "Iraq",
-  "Yemen",
-  "Sudan",
-  "Ethiopia",
-  "Venezuela",
-  "Myanmar",
-  "Afghanistan",
-  "European Union",
-  "Middle East",
-  "NATO",
-  "South China Sea",
-  "Arctic",
-  "Sahel",
-  "Baltic",
-  "Red Sea",
-  "Black Sea"
-]);
-
-const FEED_TOPIC_TERMS = Object.freeze([
-  "conflict",
-  "sanctions",
-  "cyber",
-  "defense",
-  "shipping",
-  "energy",
-  "election",
-  "protest",
-  "earthquake",
-  "wildfire",
-  "satellite launch",
-  "prediction market",
-  "inflation",
-  "food security",
-  "water stress"
 ]);
 
 function normalizeText(value = "") {
@@ -192,14 +143,6 @@ export function classifyRssArticle(article = {}) {
   };
 }
 
-function googleNewsRssUrl(query) {
-  return `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`;
-}
-
-function feedLabel(countryTerm, topicTerm) {
-  return `Google News ${countryTerm} ${topicTerm}`;
-}
-
 function dedupeFeeds(feeds = []) {
   const seen = new Set();
   return feeds.filter((feed) => {
@@ -213,26 +156,11 @@ function dedupeFeeds(feeds = []) {
 }
 
 export function buildExtendedRssFeedCatalog(configuredFeeds = []) {
-  const generated = [];
-  for (const countryTerm of FEED_COUNTRY_TERMS) {
-    for (const topicTerm of FEED_TOPIC_TERMS) {
-      generated.push({
-        label: feedLabel(countryTerm, topicTerm),
-        url: googleNewsRssUrl(`"${countryTerm}" ${topicTerm}`),
-        generated: true,
-        disabled: false
-      });
-    }
-  }
+  const configured = coerceLegacyRssFeeds(configuredFeeds);
+  const generated = projectLegacyGeneratedSearches(NEWS_SOURCE_CATALOG);
 
   const catalog = dedupeFeeds([
-    ...(configuredFeeds || []).map((feed) => ({
-      label: feed.label || feed.url,
-      url: feed.url,
-      disabled: Boolean(feed.disabled),
-      reason: feed.reason || null,
-      generated: false
-    })),
+    ...configured,
     ...generated
   ]);
 
@@ -240,9 +168,16 @@ export function buildExtendedRssFeedCatalog(configuredFeeds = []) {
     feeds: catalog,
     stats: {
       generatedCount: generated.length,
-      configuredCount: (configuredFeeds || []).length,
+      configuredCount: configured.length,
       totalCount: catalog.length,
-      supportedCountries: BASELINE_COUNTRIES.length
+      supportedCountries: BASELINE_COUNTRIES.length,
+      catalogVersion: NEWS_SOURCE_CATALOG.catalogVersion,
+      methodVersion: NEWS_SOURCE_CATALOG.methodVersion,
+      typeCounts: {
+        rss: configured.filter((feed) => feed.type === "rss").length,
+        generated_search: generated.length,
+        discovery: configured.filter((feed) => feed.type === "discovery").length
+      }
     }
   };
 }

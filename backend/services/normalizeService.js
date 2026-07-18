@@ -3,6 +3,7 @@ import { detectCountryMentions } from "../utils/countryCatalog.js";
 import { analyzeSentiment } from "../utils/sentimentRules.js";
 import { extractConflictSignal } from "../utils/conflictTags.js";
 import { sanitizeArticleContent } from "./news/newsContentSanitizer.js";
+import { DATA_MODES, normalizeDataMode } from "../utils/dataMode.js";
 
 function toIsoDate(value, fallback) {
   const date = value ? new Date(value) : new Date(fallback);
@@ -27,6 +28,7 @@ function normalizeArticle(rawArticle, index, provider) {
   }
 
   const publishedAt = toIsoDate(rawArticle?.publishedAt, Date.now() - index * 60_000);
+  const receivedAt = toIsoDate(rawArticle?.receivedAt || rawArticle?.fetchedAt, Date.now());
   const textBlob = `${title}. ${description}. ${content}`;
   const countryMentions = detectCountryMentions(textBlob);
   const sentiment = analyzeSentiment(textBlob);
@@ -45,9 +47,13 @@ function normalizeArticle(rawArticle, index, provider) {
     imageUrl: sanitized.leadImageUrl,
     leadImageUrl: sanitized.leadImageUrl,
     publishedAt,
+    receivedAt,
     countryMentions,
     synthetic: Boolean(rawArticle?.synthetic),
-    dataMode: rawArticle?.dataMode || (String(rawArticle?.provider || provider) === "fallback" ? "fallback" : "live"),
+    dataMode: normalizeDataMode(
+      rawArticle?.dataMode,
+      String(rawArticle?.provider || provider) === "fallback" ? DATA_MODES.SYNTHETIC : DATA_MODES.OBSERVED
+    ),
     usagePolicy: rawArticle?.usagePolicy || "standard-link-out",
     sentiment,
     conflict

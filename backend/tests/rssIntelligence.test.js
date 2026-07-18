@@ -3,11 +3,12 @@ import assert from "node:assert/strict";
 import { buildExtendedRssFeedCatalog, classifyRssArticle } from "../services/news/rssClassifier.js";
 import { deduplicateRssArticles } from "../services/news/rssDeduplicator.js";
 
-test("rss classifier builds a 435+ feed catalog and extracts threat metadata", () => {
+test("rss classifier keeps RSS sources distinct from 435 generated searches", () => {
   const catalog = buildExtendedRssFeedCatalog([
     { label: "BBC World", url: "https://feeds.bbci.co.uk/news/world/rss.xml" }
   ]);
-  assert.ok(catalog.stats.totalCount >= 435);
+  assert.deepEqual(catalog.stats.typeCounts, { rss: 1, generated_search: 435, discovery: 0 });
+  assert.equal(catalog.stats.totalCount, 436);
 
   const classified = classifyRssArticle({
     id: "rss-1",

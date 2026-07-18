@@ -1,4 +1,5 @@
 import { parseRateLimitHeaders } from "../../admin/apiQuotaTrackerService.js";
+import { providerRuntime } from "../../providers/providerRuntime.js";
 
 function ensureTrailingSlash(baseUrl) {
   return String(baseUrl).endsWith("/") ? String(baseUrl) : `${String(baseUrl)}/`;
@@ -8,24 +9,14 @@ function buildGnewsUrl({ baseUrl, query, language, pageSize, apiKey }) {
   const url = new URL("search", ensureTrailingSlash(baseUrl));
   url.searchParams.set("q", query);
   url.searchParams.set("lang", language);
-  url.searchParams.set("max", String(pageSize));
+  url.searchParams.set("max", String(Math.min(10, Math.max(1, Number(pageSize) || 10))));
   url.searchParams.set("sortby", "publishedAt");
   url.searchParams.set("apikey", apiKey);
   return url;
 }
 
 async function fetchWithTimeout(url, options, timeoutMs) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    return await fetch(url, {
-      ...options,
-      signal: controller.signal
-    });
-  } finally {
-    clearTimeout(timeout);
-  }
+  return providerRuntime.fetch("gnews", url, { ...options, timeoutMs });
 }
 
 function normalizeGnewsArticle(article) {

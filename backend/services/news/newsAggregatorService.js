@@ -140,7 +140,7 @@ function buildFallbackArticles() {
     title: `[SIMULATED] ${seed.title}`,
     provider: "fallback",
     synthetic: true,
-    dataMode: "fallback",
+    dataMode: "synthetic",
     url: `https://local.ogid/fallback/${index + 1}`,
     urlToImage: null,
     publishedAt: new Date(now - index * 180_000).toISOString()
@@ -423,7 +423,7 @@ export async function fetchAggregatedNews({
       }).map((article) => ({
         ...article,
         synthetic: false,
-        dataMode: "live"
+        dataMode: "observed"
       }));
 
       rateLimitsByProvider[providerName] = rateLimit;

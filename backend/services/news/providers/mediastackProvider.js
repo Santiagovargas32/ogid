@@ -1,4 +1,5 @@
 import { parseRateLimitHeaders } from "../../admin/apiQuotaTrackerService.js";
+import { providerRuntime } from "../../providers/providerRuntime.js";
 
 function ensureTrailingSlash(baseUrl) {
   return String(baseUrl).endsWith("/") ? String(baseUrl) : `${String(baseUrl)}/`;
@@ -30,17 +31,7 @@ function buildMediastackUrl({ baseUrl, apiKey, query, language, pageSize, countr
 }
 
 async function fetchWithTimeout(url, options, timeoutMs) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    return await fetch(url, {
-      ...options,
-      signal: controller.signal
-    });
-  } finally {
-    clearTimeout(timeout);
-  }
+  return providerRuntime.fetch("mediastack", url, { ...options, timeoutMs });
 }
 
 function normalizeMediastackArticle(article) {
@@ -71,9 +62,12 @@ export async function fetchMediastack({
   if (!apiKey) {
     throw new Error("mediastack-api-key-missing");
   }
+  if (new URL(baseUrl || "https://api.mediastack.com/v1").protocol !== "https:") {
+    throw new Error("mediastack-disabled-insecure-http");
+  }
 
   const url = buildMediastackUrl({
-    baseUrl: baseUrl || "http://api.mediastack.com/v1",
+    baseUrl: baseUrl || "https://api.mediastack.com/v1",
     apiKey,
     query,
     language,

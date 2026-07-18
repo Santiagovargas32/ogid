@@ -1,4 +1,5 @@
 import { parseRateLimitHeaders } from "../../admin/apiQuotaTrackerService.js";
+import { providerRuntime } from "../../providers/providerRuntime.js";
 
 function ensureTrailingSlash(baseUrl) {
   return String(baseUrl).endsWith("/") ? String(baseUrl) : `${String(baseUrl)}/`;
@@ -22,17 +23,7 @@ function buildNewsApiUrl({ baseUrl, query, language, pageSize, domains = [], sou
 }
 
 async function fetchWithTimeout(url, options, timeoutMs) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    return await fetch(url, {
-      ...options,
-      signal: controller.signal
-    });
-  } finally {
-    clearTimeout(timeout);
-  }
+  return providerRuntime.fetch("newsapi", url, { ...options, timeoutMs });
 }
 
 export async function fetchNewsApi({
