@@ -256,6 +256,128 @@ test("news aggregator normalizes nested query packs and injects market signal te
     assert.equal(capturedQuery.includes("defense contractor"), true);
     assert.equal(capturedQuery.includes("upgrade OR downgrade"), true);
     assert.equal(capturedQuery.includes("GD OR BA"), true);
+    assert.equal(result.sourceMeta.queryTruncatedByProvider.newsapi, false);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("news aggregator bounds NewsAPI queries at complete boolean terms", async () => {
+  apiQuotaTracker.reset({
+    newsapiDailyLimit: 10
+  });
+
+  const originalFetch = global.fetch;
+  let capturedQuery = "";
+  global.fetch = async (url) => {
+    const requestUrl = new URL(String(url));
+    capturedQuery = requestUrl.searchParams.get("q") || "";
+    return new Response(
+      JSON.stringify({
+        totalResults: 1,
+        articles: [
+          {
+            source: { name: "Reuters" },
+            title: "Geopolitics and defense shares remain in focus",
+            description: "Sanctions and shipping risks affect stocks.",
+            content: "Markets are monitoring energy and semiconductor guidance.",
+            url: "https://example.com/bounded-newsapi-query",
+            publishedAt: new Date().toISOString()
+          }
+        ]
+      }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    );
+  };
+
+  try {
+    const result = await fetchAggregatedNews({
+      providers: ["newsapi"],
+      newsApiKey: "test-key",
+      query: "geopolitics OR conflict OR sanctions OR military",
+      queryPacks: {
+        editorial: {
+          defense: "missile OR defense contractor OR arms deal OR air defense",
+          energy: "oil OR gas OR lng OR pipeline OR refinery",
+          sanctions: "sanctions OR export controls OR secondary sanctions",
+          shipping: "shipping lane OR tanker OR strait OR maritime security",
+          macro: "central bank OR inflation OR tariffs OR sovereign risk",
+          semiconductors: "semiconductor OR chip export OR foundry OR fab"
+        },
+        marketSignals: {
+          priceAction: "shares OR stock OR stocks OR equity OR equities OR premarket OR \"after hours\" OR \"price target\" OR upgrade OR downgrade OR guidance OR earnings OR selloff OR rally"
+        }
+      },
+      marketTickers: ["BTC-USD"],
+      language: "en",
+      pageSize: 100,
+      timeoutMs: 1000
+    });
+
+    assert.equal(result.sourceMode, "live");
+    assert.equal(result.sourceMeta.queryOriginalLengthByProvider.newsapi, 571);
+    assert.equal(result.sourceMeta.queryLengthByProvider.newsapi, capturedQuery.length);
+    assert.equal(result.sourceMeta.queryTruncatedByProvider.newsapi, true);
+    assert.equal(capturedQuery.length <= 500, true);
+    assert.equal(capturedQuery.endsWith(")"), true);
+    assert.equal((capturedQuery.match(/\(/g) || []).length, (capturedQuery.match(/\)/g) || []).length);
+    assert.equal(capturedQuery.includes("\"after hours\""), true);
+    assert.equal(capturedQuery.includes("\"price target\""), false);
+    assert.equal(result.sourceMeta.attempts[0].queryTruncated, true);
+    assert.equal(result.sourceMeta.attempts[0].queryOriginalLength, 571);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("news aggregator bounds NewsAPI ticker clauses from an unlimited watchlist", async () => {
+  apiQuotaTracker.reset({
+    newsapiDailyLimit: 10
+  });
+
+  const originalFetch = global.fetch;
+  let capturedQuery = "";
+  global.fetch = async (url) => {
+    capturedQuery = new URL(String(url)).searchParams.get("q") || "";
+    return new Response(
+      JSON.stringify({
+        totalResults: 1,
+        articles: [
+          {
+            source: { name: "Reuters" },
+            title: "Geopolitics shares update",
+            description: "Market watchlist update.",
+            content: "Selected stocks remain active.",
+            url: "https://example.com/bounded-newsapi-tickers",
+            publishedAt: new Date().toISOString()
+          }
+        ]
+      }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    );
+  };
+
+  const marketTickers = Array.from({ length: 60 }, (_, index) => `LONG-TICKER-${index + 1}`);
+  try {
+    const result = await fetchAggregatedNews({
+      providers: ["newsapi"],
+      newsApiKey: "test-key",
+      query: "geopolitics",
+      queryPacks: {
+        editorial: {},
+        marketSignals: { priceAction: "shares" }
+      },
+      marketTickers,
+      language: "en",
+      pageSize: 10,
+      timeoutMs: 1000
+    });
+
+    assert.equal(result.sourceMode, "live");
+    assert.equal(capturedQuery.length <= 500, true);
+    assert.equal(capturedQuery.includes("LONG-TICKER-1"), true);
+    assert.equal(capturedQuery.includes("LONG-TICKER-60"), false);
+    assert.equal(result.sourceMeta.queryTruncatedByProvider.newsapi, true);
   } finally {
     global.fetch = originalFetch;
   }

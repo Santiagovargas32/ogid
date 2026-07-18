@@ -1,6 +1,8 @@
 import { parseRateLimitHeaders } from "../../admin/apiQuotaTrackerService.js";
 import { providerRuntime } from "../../providers/providerRuntime.js";
 
+export const NEWSAPI_MAX_QUERY_LENGTH = 500;
+
 function ensureTrailingSlash(baseUrl) {
   return String(baseUrl).endsWith("/") ? String(baseUrl) : `${String(baseUrl)}/`;
 }
@@ -38,6 +40,14 @@ export async function fetchNewsApi({
 }) {
   if (!apiKey) {
     throw new Error("newsapi-api-key-missing");
+  }
+  const queryLength = String(query || "").length;
+  if (queryLength > NEWSAPI_MAX_QUERY_LENGTH) {
+    const error = new Error(`newsapi-query-too-long:${queryLength}`);
+    error.code = "newsapi-query-too-long";
+    error.skipProvider = true;
+    error.skipReason = "query-too-long";
+    throw error;
   }
 
   const url = buildNewsApiUrl({

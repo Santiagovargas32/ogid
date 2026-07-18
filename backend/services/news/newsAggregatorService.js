@@ -4,7 +4,7 @@ import { normalizeNewsQueryPacks } from "./newsQueryPackService.js";
 import { fetchGdelt } from "./providers/gdeltProvider.js";
 import { fetchGnews } from "./providers/gnewsProvider.js";
 import { fetchMediastack } from "./providers/mediastackProvider.js";
-import { fetchNewsApi } from "./providers/newsApiProvider.js";
+import { fetchNewsApi, NEWSAPI_MAX_QUERY_LENGTH } from "./providers/newsApiProvider.js";
 import { fetchRss } from "./providers/rssProvider.js";
 
 const log = createLogger("backend/services/news/newsAggregatorService");
@@ -235,12 +235,123 @@ function applyEditorialFilters(articles = [], { sourceAllowlist = [], domainAllo
   });
 }
 
-function composeNewsQuery({ query, queryPacks = {} }) {
-  const parts = [String(query || "").trim(), ...Object.values(queryPacks || {}).map((value) => String(value || "").trim())]
-    .filter(Boolean)
-    .map((value) => `(${value})`);
+function buildNewsQueryClauses({ query, queryPacks = {} }) {
+  return [query, ...Object.values(queryPacks || {})]
+    .map((value) => ({ value: String(value || "").trim() }))
+    .filter((clause) => clause.value);
+}
 
-  return parts.join(" OR ");
+function serializeNewsQueryClauses(clauses = []) {
+  return clauses.map((clause) => `(${clause.value})`).join(" OR ");
+}
+
+function splitTopLevelOrTerms(value = "") {
+  const expression = String(value || "").trim();
+  const terms = [];
+  let start = 0;
+  let quoteOpen = false;
+  let escaped = false;
+  let parenthesisDepth = 0;
+  let validExpression = true;
+
+  for (let index = 0; index < expression.length; index += 1) {
+    const character = expression[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (quoteOpen && character === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (character === '"') {
+      quoteOpen = !quoteOpen;
+      continue;
+    }
+    if (quoteOpen) {
+      continue;
+    }
+    if (character === "(") {
+      parenthesisDepth += 1;
+      continue;
+    }
+    if (character === ")") {
+      if (parenthesisDepth === 0) {
+        validExpression = false;
+      } else {
+        parenthesisDepth -= 1;
+      }
+      continue;
+    }
+    if (parenthesisDepth === 0 && expression.slice(index, index + 4).toUpperCase() === " OR ") {
+      terms.push(expression.slice(start, index).trim());
+      start = index + 4;
+      index += 3;
+    }
+  }
+
+  if (quoteOpen || parenthesisDepth !== 0 || !validExpression) {
+    return [expression];
+  }
+
+  terms.push(expression.slice(start).trim());
+  return terms.filter(Boolean);
+}
+
+function composeNewsQuery({ query, queryPacks = {} }) {
+  return serializeNewsQueryClauses(buildNewsQueryClauses({ query, queryPacks }));
+}
+
+function composeNewsQueryWithinLimit({ query, queryPacks = {}, maxLength }) {
+  const clauses = buildNewsQueryClauses({ query, queryPacks });
+  const originalQuery = serializeNewsQueryClauses(clauses);
+  const selectedClauses = [];
+  let omittedClauseCount = 0;
+  let truncatedClauseCount = 0;
+
+  for (const clause of clauses) {
+    const fullCandidate = serializeNewsQueryClauses([...selectedClauses, clause]);
+    if (fullCandidate.length <= maxLength) {
+      selectedClauses.push(clause);
+      continue;
+    }
+
+    const terms = splitTopLevelOrTerms(clause.value);
+    const selectedTerms = [];
+    for (const term of terms) {
+      const partialClause = {
+        ...clause,
+        value: [...selectedTerms, term].join(" OR ")
+      };
+      const partialCandidate = serializeNewsQueryClauses([...selectedClauses, partialClause]);
+      if (partialCandidate.length > maxLength) {
+        break;
+      }
+      selectedTerms.push(term);
+    }
+
+    if (!selectedTerms.length) {
+      omittedClauseCount += 1;
+      continue;
+    }
+
+    selectedClauses.push({
+      ...clause,
+      value: selectedTerms.join(" OR ")
+    });
+    if (selectedTerms.length < terms.length) {
+      truncatedClauseCount += 1;
+    }
+  }
+
+  const boundedQuery = serializeNewsQueryClauses(selectedClauses);
+  return {
+    query: boundedQuery,
+    originalQueryLength: originalQuery.length,
+    queryTruncated: boundedQuery !== originalQuery,
+    omittedClauseCount,
+    truncatedClauseCount
+  };
 }
 
 function resolveNormalizedQueryPacks(queryPacks = {}, marketTickers = []) {
@@ -261,25 +372,51 @@ function trimQueryToLimit(query = "", maxLength = GNEWS_MAX_QUERY_LENGTH) {
   return (lastBoundary > 0 ? sliced.slice(0, lastBoundary) : sliced).trim();
 }
 
-function resolveProviderQuery(providerName, { baseQuery, composedQuery }) {
+function resolveProviderQuery(providerName, { baseQuery, composedQuery, queryPacks }) {
+  if (providerName === "newsapi") {
+    const boundedQuery = composeNewsQueryWithinLimit({
+      query: baseQuery,
+      queryPacks,
+      maxLength: NEWSAPI_MAX_QUERY_LENGTH
+    });
+    return {
+      ...boundedQuery,
+      skipReason: boundedQuery.query ? null : "missing-query"
+    };
+  }
+
   if (providerName === "gnews" || providerName === "gdelt") {
     const normalizedBaseQuery = String(baseQuery || "").trim();
     if (!normalizedBaseQuery) {
       return {
         query: "",
-        skipReason: "missing-base-query"
+        skipReason: "missing-base-query",
+        originalQueryLength: 0,
+        queryTruncated: false,
+        omittedClauseCount: 0,
+        truncatedClauseCount: 0
       };
     }
 
+    const trimmedQuery = trimQueryToLimit(normalizedBaseQuery, GNEWS_MAX_QUERY_LENGTH);
     return {
-      query: trimQueryToLimit(normalizedBaseQuery, GNEWS_MAX_QUERY_LENGTH),
-      skipReason: null
+      query: trimmedQuery,
+      skipReason: null,
+      originalQueryLength: normalizedBaseQuery.length,
+      queryTruncated: trimmedQuery !== normalizedBaseQuery,
+      omittedClauseCount: 0,
+      truncatedClauseCount: 0
     };
   }
 
+  const providerQuery = composedQuery || baseQuery;
   return {
-    query: composedQuery || baseQuery,
-    skipReason: null
+    query: providerQuery,
+    skipReason: null,
+    originalQueryLength: providerQuery.length,
+    queryTruncated: false,
+    omittedClauseCount: 0,
+    truncatedClauseCount: 0
   };
 }
 
@@ -324,13 +461,22 @@ export async function fetchAggregatedNews({
   const providerRequests = Object.fromEntries(
     normalizedProviders.map((providerName) => [
       providerName,
-      resolveProviderQuery(providerName, { baseQuery, composedQuery })
+      resolveProviderQuery(providerName, { baseQuery, composedQuery, queryPacks: normalizedQueryPacks })
     ])
   );
   const upstreamRawArticles = [];
   const rawCountByProvider = Object.fromEntries(normalizedProviders.map((providerName) => [providerName, 0]));
   const queryLengthByProvider = Object.fromEntries(
     normalizedProviders.map((providerName) => [providerName, providerRequests[providerName]?.query?.length || 0])
+  );
+  const queryOriginalLengthByProvider = Object.fromEntries(
+    normalizedProviders.map((providerName) => [
+      providerName,
+      providerRequests[providerName]?.originalQueryLength ?? providerRequests[providerName]?.query?.length ?? 0
+    ])
+  );
+  const queryTruncatedByProvider = Object.fromEntries(
+    normalizedProviders.map((providerName) => [providerName, providerRequests[providerName]?.queryTruncated === true])
   );
   const filteredCountByProvider = Object.fromEntries(normalizedProviders.map((providerName) => [providerName, 0]));
   const dynamicProvidersSkipped = [];
@@ -345,6 +491,13 @@ export async function fetchAggregatedNews({
       skipReason: null
     };
     const providerQuery = providerRequest.query || "";
+    const requestQueryMeta = {
+      queryLength: providerQuery.length,
+      queryOriginalLength: providerRequest.originalQueryLength ?? providerQuery.length,
+      queryTruncated: providerRequest.queryTruncated === true,
+      omittedQueryClauseCount: providerRequest.omittedClauseCount || 0,
+      truncatedQueryClauseCount: providerRequest.truncatedClauseCount || 0
+    };
 
     if (policySkippedProviders.has(providerName)) {
       const skipped = policySkippedProviders.get(providerName);
@@ -354,7 +507,8 @@ export async function fetchAggregatedNews({
         reason: skipped.reason || "skipped",
         rawCount: 0,
         count: 0,
-        nextAllowedAt: skipped.nextAllowedAt || null
+        nextAllowedAt: skipped.nextAllowedAt || null,
+        ...requestQueryMeta
       });
       continue;
     }
@@ -371,7 +525,8 @@ export async function fetchAggregatedNews({
         reason: providerRequest.skipReason,
         rawCount: 0,
         count: 0,
-        nextAllowedAt: null
+        nextAllowedAt: null,
+        ...requestQueryMeta
       });
       log.info("news_provider_skipped", {
         provider: providerName,
@@ -387,7 +542,7 @@ export async function fetchAggregatedNews({
       pageSize,
       language,
       queryHash: hashQuery(providerQuery),
-      queryLength: providerQuery.length
+      ...requestQueryMeta
     });
 
     try {
@@ -436,7 +591,8 @@ export async function fetchAggregatedNews({
         provider: providerName,
         status: filteredArticles.length ? "ok" : "empty",
         count: filteredArticles.length,
-        rawCount
+        rawCount,
+        ...requestQueryMeta
       });
 
       apiQuotaTracker.recordCall(providerName, {
@@ -464,7 +620,8 @@ export async function fetchAggregatedNews({
           reason: error.skipReason || error.message,
           rawCount: 0,
           count: 0,
-          nextAllowedAt: error.nextAllowedAt || null
+          nextAllowedAt: error.nextAllowedAt || null,
+          ...requestQueryMeta
         });
         log.info("news_provider_skipped", {
           provider: providerName,
@@ -478,7 +635,8 @@ export async function fetchAggregatedNews({
         provider: providerName,
         status: "error",
         reason: error.code || error.message,
-        message: error.message
+        message: error.message,
+        ...requestQueryMeta
       });
       apiQuotaTracker.recordCall(providerName, {
         status: "error",
@@ -517,6 +675,8 @@ export async function fetchAggregatedNews({
           ...dedupedCountByProvider
         },
         queryLengthByProvider,
+        queryOriginalLengthByProvider,
+        queryTruncatedByProvider,
         rssFeedStatus
       }
     };
@@ -546,6 +706,8 @@ export async function fetchAggregatedNews({
       rawCountByProvider,
       filteredCountByProvider,
       queryLengthByProvider,
+      queryOriginalLengthByProvider,
+      queryTruncatedByProvider,
       rssFeedStatus
     }
   };
