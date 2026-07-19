@@ -29,6 +29,10 @@ OGID is a local web app for monitoring geopolitical OSINT signals and their pote
   - in-memory quotes/timeseries plus optional persisted `snapshot.json` and per-ticker `jsonl` history
 - Deterministic event-window impact model:
   - correlates geopolitical news signals with ticker price reaction
+- Optional grounded AI enrichment layer:
+  - runs after deterministic news/market snapshots and never blocks ingestion or WebSocket publication
+  - supports NVIDIA NIM through an OpenAI-compatible backend endpoint, with strict JSON validation, evidence references, bounded queue and daily request/token budgets
+  - defaults to `AI_PROVIDER=none` and `AI_MODE=off`, producing zero AI calls
 - Frontend controls:
   - country filter chips
   - conflict hotspots + active event signals on map
@@ -102,6 +106,8 @@ LOG_LEVEL=info
 The versioned backend source catalog is the default inventory: 68 RSS entries (67 enabled and one retained as disabled) plus 435 explicitly typed generated searches. `NEWS_RSS_FEEDS` and `NEWS_RSS_DISABLED_FEEDS` are optional complete overrides; leave them empty to use the catalog.
 
 `MARKET_TICKERS` is an optional initial selection. The Market Quotes dialog discovers candidates with one Yahoo search by symbol or company. A selected candidate is verified once with a Yahoo quote when the watchlist is saved, then persisted with its metadata. Only that selection feeds quotes, OHLCV, predictions and news-impact analysis. Accepted search result types are equities, ETFs, mutual funds, indices, currencies, cryptocurrencies and futures. Provider symbols preserve Yahoo notation (for example `NQ=F`, `^GSPC`, `EURUSD=X`, `BTC-USD` and `BRK.B`) and selected symbols survive restart in `data/market/watchlist-selection.json`.
+
+AI enrichment is an additive consumer of the normalized, selected intelligence corpus; it does not change RSS source selection, polling, canonical RSS state or deterministic scoring. Configure `NVIDIA_MODEL_SUMMARY`, `NVIDIA_MODEL_REASONING` and `NVIDIA_API_KEY`, start with `AI_MODE=shadow`, and inspect `/api/admin/ai-enrichments`. `NVIDIA_STRUCTURED_OUTPUT_MODE=guided-json` sends the JSON schema at the top level; use `response-format` only for a verified SGLang backend. The adapter never switches formats silently. Promote to `visible` only after reviewing accepted outputs. `headline-only-link-out` sources send only the headline and deterministic metadata to the model. Valid feature names are `article-summary`, `country-insight` and `market-explanation`; the latter two remain independently opt-in through `AI_FEATURES`. Set `AI_MODE=off` or `AI_PROVIDER=none` and restart for immediate rollback. The former `NVIDIA_SUMMARY_MODEL`, `NVIDIA_REASONING_MODEL`, `AI_REQUEST_DAILY_BUDGET` and `AI_TOKEN_DAILY_BUDGET` names remain accepted as compatibility aliases.
 
 Search is limited server-side to 30 requests per client per minute; this is an internal abuse guard, not a declared Yahoo quota. Successful identical searches are cached for five minutes. An upstream Yahoo `429` is not retried immediately: it opens a global cooldown (at least 60 seconds), and the search API returns `503 MARKET_SEARCH_PROVIDER_RATE_LIMITED` with `Retry-After`. The UI deduplicates an identical in-flight search and preserves existing results/watchlist entries during the cooldown. An existing schema-v1 watchlist is migrated from the local snapshot and revalidated with Yahoo; failures remain explicit.
 
@@ -187,6 +193,7 @@ Before promoting a new source into the canonical catalog, validate its HTTP/XML 
 - `GET /api/market/analytics?tickers=GD,BA,NOC&countries=US,IL,IR&windowMin=120`
 - `GET /api/admin/api-limits`
 - `GET /api/admin/pipeline-status`
+- `GET /api/admin/ai-enrichments?status=ready&kind=article_summary&page=1&pageSize=50`
 
 Yahoo Finance is not an official guaranteed API. Upstream limits and intraday retention can change; the application therefore uses a bounded queue and stale local fallback, and throws an explicit error when neither fresh nor stored data exists.
 

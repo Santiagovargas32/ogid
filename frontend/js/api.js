@@ -67,6 +67,7 @@ export const api = {
   getApiLimits: () => request("/api/admin/api-limits"),
   getPipelineStatus: () => request("/api/admin/pipeline-status"),
   getAdminNewsRaw: (params = {}) => request("/api/admin/news-raw", params),
+  getAdminAiEnrichments: (params = {}) => request("/api/admin/ai-enrichments", params),
   refreshMediaStreams: (payload = {}) => request("/api/media/streams/refresh", {}, { method: "POST", body: payload }),
   getMediaStreamsHealth: () => request("/api/media/streams/health")
 };

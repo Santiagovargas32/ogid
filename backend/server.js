@@ -32,6 +32,10 @@ import { errorHandler, notFoundHandler } from "./utils/error.js";
 import { createLogger, requestLogger } from "./utils/logger.js";
 import { queryParamAllowlist } from "./utils/queryParamAllowlist.js";
 import { sensitiveRouteAuth } from "./middleware/sensitiveRouteAuth.js";
+import { AiBudgetService } from "./services/ai/aiBudgetService.js";
+import { AiEnrichmentStore } from "./services/ai/aiEnrichmentStore.js";
+import { AiEnrichmentCoordinator } from "./services/ai/aiEnrichmentCoordinator.js";
+import { createAiProvider } from "./services/ai/aiProviders.js";
 
 const log = createLogger("backend/server");
 
@@ -233,6 +237,24 @@ function normalizeMarketOffHoursStrategy(value = "") {
   return ["skip", "yahoo", "keep"].includes(normalized) ? normalized : "keep";
 }
 
+const AI_PROVIDERS = new Set(["none", "nvidia"]);
+const AI_MODES = new Set(["off", "shadow", "visible"]);
+const AI_FEATURES = new Set(["article-summary", "country-insight", "market-explanation"]);
+
+function normalizeAiProvider(value = "") {
+  const normalized = String(value || "none").trim().toLowerCase();
+  return AI_PROVIDERS.has(normalized) ? normalized : "none";
+}
+
+function normalizeAiMode(value = "") {
+  const normalized = String(value || "off").trim().toLowerCase();
+  return AI_MODES.has(normalized) ? normalized : "off";
+}
+
+function normalizeAiFeatures(value) {
+  return [...new Set(toList(value, ["article-summary"]).map((item) => item.toLowerCase()).filter((item) => AI_FEATURES.has(item)))];
+}
+
 function readConfig(overrides = {}) {
   validateNewsSourceCatalog(NEWS_SOURCE_CATALOG);
   const newsOverrides = overrides.news || {};
@@ -354,6 +376,27 @@ function readConfig(overrides = {}) {
       },
       countries: watchlistCountries,
       marketTickers
+    },
+    ai: {
+      provider: normalizeAiProvider(process.env.AI_PROVIDER),
+      mode: normalizeAiMode(process.env.AI_MODE),
+      features: normalizeAiFeatures(process.env.AI_FEATURES),
+      baseUrl: process.env.NVIDIA_BASE_URL || "https://integrate.api.nvidia.com/v1",
+      apiKey: process.env.NVIDIA_API_KEY || "",
+      structuredOutputMode: String(process.env.NVIDIA_STRUCTURED_OUTPUT_MODE || "guided-json").trim().toLowerCase(),
+      summaryModel: process.env.NVIDIA_MODEL_SUMMARY || process.env.NVIDIA_SUMMARY_MODEL || "",
+      reasoningModel: process.env.NVIDIA_MODEL_REASONING || process.env.NVIDIA_REASONING_MODEL || process.env.NVIDIA_MODEL_SUMMARY || process.env.NVIDIA_SUMMARY_MODEL || "",
+      timeoutMs: toPositiveInt(process.env.AI_TIMEOUT_MS, 20_000),
+      maxRetries: Math.min(1, toNonNegativeInt(process.env.AI_MAX_RETRIES, 1)),
+      maxConcurrency: Math.min(2, toPositiveInt(process.env.AI_MAX_CONCURRENCY, 1)),
+      maxQueueSize: toPositiveInt(process.env.AI_QUEUE_MAX, 100),
+      maxJobsPerCycle: toPositiveInt(process.env.AI_MAX_JOBS_PER_CYCLE, 10),
+      maxInputChars: toPositiveInt(process.env.AI_MAX_INPUT_CHARS, 6_000),
+      maxOutputTokens: toPositiveInt(process.env.AI_MAX_OUTPUT_TOKENS, 1_200),
+      dailyRequestBudget: toPositiveInt(process.env.AI_DAILY_REQUEST_BUDGET || process.env.AI_REQUEST_DAILY_BUDGET, 50),
+      dailyTokenBudget: toPositiveInt(process.env.AI_DAILY_TOKEN_BUDGET || process.env.AI_TOKEN_DAILY_BUDGET, 100_000),
+      stateFile: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, process.env.AI_STATE_FILE || "data/ai/ai-enrichments.json"),
+      budgetStateFile: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, process.env.AI_BUDGET_STATE_FILE || "data/ai/ai-budget.json")
     },
     market: {
       enabled: Boolean(envMarketProvider),
@@ -508,6 +551,11 @@ function readConfig(overrides = {}) {
         ...config.market.intervalByBandMs,
         ...(overrides.market?.intervalByBandMs || {})
       }
+    },
+    ai: {
+      ...config.ai,
+      ...(overrides.ai || {}),
+      features: overrides.ai?.features || config.ai.features
     },
     apiLimits: {
       ...config.apiLimits,
@@ -687,6 +735,13 @@ export function createAppServer(overrides = {}) {
     cycleDeadlineMs: config.news.rssCycleDeadlineMs,
     persistencePath: config.news.rssCanonicalStateFile
   });
+  const aiStore = new AiEnrichmentStore({ persistencePath: config.ai.stateFile });
+  const aiBudget = new AiBudgetService({
+    dailyRequestBudget: config.ai.dailyRequestBudget,
+    dailyTokenBudget: config.ai.dailyTokenBudget,
+    persistencePath: config.ai.budgetStateFile
+  });
+  const aiProvider = createAiProvider(config.ai, overrides.aiProvider);
   const signalCorrelator = new SignalCorrelatorService();
   const mapLayerService = new MapLayerService({
     stateManager,
@@ -717,6 +772,17 @@ export function createAppServer(overrides = {}) {
     heartbeatMs: config.wsHeartbeatMs,
     stateManager
   });
+  const aiCoordinator = new AiEnrichmentCoordinator({
+    config: config.ai,
+    provider: aiProvider,
+    store: aiStore,
+    budget: aiBudget,
+    stateManager,
+    socketServer,
+    technicalIndicatorService,
+    newsPriceCouplingService
+  });
+  aiCoordinator.syncProjection();
   mediaStreamService.setSocketServer(socketServer);
   const orchestrator = new RefreshOrchestratorService({
     stateManager,
@@ -727,7 +793,8 @@ export function createAppServer(overrides = {}) {
     mapLayerService,
     marketHistoryStore,
     dailyCandleService,
-    intradayCandleService
+    intradayCandleService,
+    aiCoordinator
   });
   const manualRefreshService = new ManualRefreshService({
     orchestrator,
@@ -753,6 +820,7 @@ export function createAppServer(overrides = {}) {
   app.locals.marketWatchlistService = marketWatchlistService;
   app.locals.marketDataService = marketDataService;
   app.locals.marketSearchRateLimiter = marketSearchRateLimiter;
+  app.locals.aiCoordinator = aiCoordinator;
 
   return {
     app,
@@ -761,6 +829,7 @@ export function createAppServer(overrides = {}) {
     manualRefreshService,
     socketServer,
     mediaStreamService,
+    aiCoordinator,
     config,
     async start() {
       const hydratedWatchlist = await marketWatchlistService.hydrate();
@@ -809,7 +878,12 @@ export function createAppServer(overrides = {}) {
         youtubeApiKeyConfigured: isRealKey(config.media?.youtube?.apiKey),
         youtubeSearchDailyBudget: config.media?.youtube?.searchDailyBudget,
         youtubeSearchReserve: config.media?.youtube?.searchReserve,
-        youtubeResolveConcurrency: config.media?.youtube?.resolveConcurrency
+        youtubeResolveConcurrency: config.media?.youtube?.resolveConcurrency,
+        aiProvider: config.ai?.provider,
+        aiMode: config.ai?.mode,
+        aiFeatures: config.ai?.features,
+        nvidiaStructuredOutputMode: config.ai?.structuredOutputMode,
+        nvidiaApiKeyConfigured: isRealKey(config.ai?.apiKey)
       });
       if (!config.runtime.disableBackgroundRefresh) {
         orchestrator.start();
@@ -820,6 +894,7 @@ export function createAppServer(overrides = {}) {
     async stop() {
       orchestrator.stop();
       mediaStreamService.stop();
+      await aiCoordinator.stop();
       socketServer.close();
       await new Promise((resolve, reject) => {
         server.close((error) => {

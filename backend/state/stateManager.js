@@ -86,6 +86,25 @@ function buildInitialAdminState() {
   };
 }
 
+function buildInitialAiState() {
+  return {
+    schemaVersion: "ai-projection-v1",
+    mode: "off",
+    provider: "none",
+    enabled: false,
+    updatedAt: null,
+    articleSummaries: {},
+    countryInsights: {},
+    marketExplanations: {},
+    status: {
+      queueDepth: 0,
+      active: 0,
+      features: [],
+      counts: {}
+    }
+  };
+}
+
 function resolveInputMode(newsMode, marketMode) {
   if (newsMode === "live" && marketMode === "live") {
     return "live";
@@ -240,6 +259,7 @@ class StateManager {
         scatterPoints: []
       },
       impactHistory: [],
+      ai: buildInitialAiState(),
       admin: buildInitialAdminState()
     };
   }
@@ -357,6 +377,24 @@ class StateManager {
 
   getAdminIntelRawNews() {
     return structuredClone(this.state.admin?.intelRawNews || buildInitialAdminState().intelRawNews);
+  }
+
+  setAiProjection(nextValue = {}) {
+    this.state = {
+      ...this.state,
+      ai: {
+        ...buildInitialAiState(),
+        ...(nextValue || {}),
+        articleSummaries: nextValue?.articleSummaries || {},
+        countryInsights: nextValue?.countryInsights || {},
+        marketExplanations: nextValue?.marketExplanations || {},
+        status: {
+          ...buildInitialAiState().status,
+          ...(nextValue?.status || {})
+        }
+      }
+    };
+    return structuredClone(this.state.ai);
   }
 
   setRefreshStatus(nextStatus = {}) {

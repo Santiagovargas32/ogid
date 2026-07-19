@@ -44,3 +44,20 @@ test("dashboard keeps map and news contracts without retired admin selectors", a
   assert.doesNotMatch(dashboard, /up to seven|Choose 7/i);
   assert.doesNotMatch(script, /api-limits-panel|panel-webcams|toggleApiLimitsPanel/);
 });
+
+test("AI enrichment surfaces remain explicitly separated from deterministic content", async () => {
+  const [dashboard, admin, script, adminScript] = await Promise.all([
+    frontendFile("index.html"),
+    frontendFile("admin.html"),
+    frontendFile("js/dashboard.js"),
+    frontendFile("js/admin.js")
+  ]);
+  assert.match(dashboard, /id="news-drawer-ai"/);
+  assert.match(dashboard, /id="ai-country-shell"/);
+  assert.match(dashboard, /id="ai-market-shell"/);
+  assert.match(admin, /id="ai-diagnostics-body"/);
+  assert.match(admin, /id="ai-enrichments-body"/);
+  assert.match(script, /renderAiEvidence/);
+  assert.match(adminScript, /const storedCounts = ai\.store\?\.counts \|\| \{\}/);
+  assert.match(adminScript, /stored ready:/);
+});

@@ -29,6 +29,9 @@ function cacheElements() {
   elements.marketTransportDiagnosticsBody = byId("market-transport-diagnostics-body");
   elements.rssFeedStatusBody = byId("rss-feed-status-body");
   elements.recentCycleErrorsBody = byId("recent-cycle-errors-body");
+  elements.aiDiagnosticsBody = byId("ai-diagnostics-body");
+  elements.aiEnrichmentsUpdated = byId("ai-enrichments-updated");
+  elements.aiEnrichmentsBody = byId("ai-enrichments-body");
   elements.apiLimitsUpdated = byId("api-limits-updated");
   elements.apiLimitsBody = byId("api-limits-body");
   elements.intelNewsCount = byId("intel-news-count");
@@ -372,6 +375,7 @@ function renderMediaSummary(media = {}, health = {}) {
 function renderPipelineStatus(payload = {}) {
   const market = payload.market || {};
   const news = payload.news || {};
+  const ai = payload.ai || {};
   elements.pipelineGeneratedAt.textContent = `Generated: ${formatDate(payload.generatedAt)}`;
   const rows = [
     {
@@ -398,6 +402,17 @@ function renderPipelineStatus(payload = {}) {
       mode: news.pageSize ? `page:${news.pageSize}` : "--",
       provider: news.provider || "--",
       lastError: (news.attempts || []).filter((item) => item.status === "error").map((item) => item.provider).join(", ") || "--"
+    },
+    {
+      pipeline: "ai",
+      band: ai.budget?.exhausted ? "EXHAUSTED" : ai.enabled ? "ACTIVE" : "OFF",
+      nextRun: ai.budget?.nextResetAt ? `reset ${formatShortTime(ai.budget.nextResetAt)}` : "--",
+      lastRun: formatShortTime(ai.updatedAt),
+      duration: "async",
+      status: ai.mode || "off",
+      mode: `queue:${Number(ai.queue?.depth || 0)}`,
+      provider: ai.activeProvider || ai.configuredProvider || "none",
+      lastError: ai.lastError?.code || "--"
     }
   ];
 
@@ -420,7 +435,38 @@ function renderPipelineStatus(payload = {}) {
     .join("");
 
   renderPipelineDiagnostics(news, market);
+  renderAiDiagnostics(ai);
   renderRecentCycleErrors(payload.recentCycleErrors || []);
+}
+
+function renderAiDiagnostics(ai = {}) {
+  if (!elements.aiDiagnosticsBody) return;
+  const budget = ai.budget || {};
+  const metrics = ai.metrics || {};
+  const storedCounts = ai.store?.counts || {};
+  const transport = ai.transport || {};
+  const circuit = transport.circuit || {};
+  elements.aiDiagnosticsBody.innerHTML = [
+    `<article class="diagnostic-item"><div class="diagnostic-item-header"><strong>${escapeHtml(ai.activeProvider || "none")}</strong><span class="diagnostic-pill ${ai.enabled ? "ok" : "idle"}">${escapeHtml(ai.mode || "off")}</span></div><div class="diagnostic-item-meta">features: ${escapeHtml(formatInlineList(ai.features || []))}</div><div class="diagnostic-item-meta">models: ${escapeHtml(ai.models?.summary || "--")} | ${escapeHtml(ai.models?.reasoning || "--")}</div><div class="diagnostic-item-meta">structured output: ${escapeHtml(ai.structuredOutputMode || "--")}</div><div class="diagnostic-item-meta">queue: ${Number(ai.queue?.depth || 0)} | active: ${Number(ai.queue?.active || 0)} | concurrency: ${Number(ai.queue?.concurrency || 0)}</div></article>`,
+    `<article class="diagnostic-item"><div class="diagnostic-item-header"><strong>Budget UTC</strong><span class="diagnostic-pill ${budget.exhausted ? "error" : "ok"}">${budget.exhausted ? "exhausted" : "available"}</span></div><div class="diagnostic-item-meta">requests: ${Number(budget.requestsUsed || 0)}/${Number(budget.requestBudget || 0)} | tokens: ${Number(budget.tokensUsed || 0)}/${Number(budget.tokenBudget || 0)}</div><div class="diagnostic-item-meta">reset: ${escapeHtml(formatDate(budget.nextResetAt))}</div></article>`,
+    `<article class="diagnostic-item"><div class="diagnostic-item-header"><strong>Validation</strong><span class="diagnostic-item-meta">stored ${Number(ai.store?.total || 0)}</span></div><div class="diagnostic-item-meta">stored ready: ${Number(storedCounts.ready || 0)} | rejected: ${Number(storedCounts.rejected || 0)} | failed: ${Number(storedCounts.failed || 0)} | runtime cache hits: ${Number(metrics.cacheHits || 0)}</div><div class="diagnostic-item-meta">last error: ${escapeHtml(ai.lastError?.code || "--")}</div></article>`,
+    `<article class="diagnostic-item"><div class="diagnostic-item-header"><strong>Circuit breaker</strong><span class="diagnostic-pill ${circuit.state === "open" ? "error" : "ok"}">${escapeHtml(circuit.state || "inactive")}</span></div><div class="diagnostic-item-meta">failures: ${Number(circuit.failures || 0)} | 429: ${Number(transport.results?.[429] || 0)} | retries: ${Number(transport.retries || 0)}</div><div class="diagnostic-item-meta">opened: ${escapeHtml(formatDate(circuit.openedAt))}</div></article>`
+  ].join("");
+}
+
+function renderAiEnrichments(payload = {}) {
+  if (!elements.aiEnrichmentsBody || !elements.aiEnrichmentsUpdated) return;
+  elements.aiEnrichmentsUpdated.textContent = `Updated: ${formatDate(payload.generatedAt)}`;
+  const items = payload.items || [];
+  if (!items.length) {
+    elements.aiEnrichmentsBody.innerHTML = renderEmptyRow(7, "No AI enrichments stored.");
+    return;
+  }
+  elements.aiEnrichmentsBody.innerHTML = items.map((item) => {
+    const preview = item.output?.summary || item.output?.overview || item.output?.narrative || "--";
+    const versions = `${item.promptVersion || "--"} / ${item.schemaVersion || "--"}`;
+    return `<tr><td>${escapeHtml(formatDate(item.updatedAt))}</td><td>${escapeHtml(item.kind || "--")}</td><td>${escapeHtml(item.subjectId || "--")}</td><td>${escapeHtml(item.status || "--")}</td><td>${escapeHtml(item.model || "--")}</td><td>${escapeHtml(versions)}</td><td>${escapeHtml(String(preview).slice(0, 240))}</td></tr>`;
+  }).join("");
 }
 
 function buildNewsProviderDiagnostics(news = {}) {
@@ -927,7 +973,8 @@ async function refreshAll({ forceMedia = false } = {}) {
     intelRawResult,
     aggregateRawResult,
     mediaResult,
-    mediaHealthResult
+    mediaHealthResult,
+    aiEnrichmentsResult
   ] =
     await Promise.allSettled([
       api.getHealth(),
@@ -938,7 +985,8 @@ async function refreshAll({ forceMedia = false } = {}) {
       api.getAdminNewsRaw({ dataset: "intel", page: rawPaginationState.intel, pageSize: RAW_PAGE_SIZE }),
       api.getAdminNewsRaw({ dataset: "rss-aggregate", page: rawPaginationState.rssAggregate, pageSize: RAW_PAGE_SIZE }),
       api.getMediaStreams(forceMedia ? { resolve: "all", force: 1 } : { resolve: "none" }),
-      api.getMediaStreamsHealth()
+      api.getMediaStreamsHealth(),
+      api.getAdminAiEnrichments({ page: 1, pageSize: 50 })
     ]);
 
   const health = healthResult.status === "fulfilled" ? healthResult.value : {};
@@ -951,6 +999,7 @@ async function refreshAll({ forceMedia = false } = {}) {
   const aggregateRaw = aggregateRawResult.status === "fulfilled" ? aggregateRawResult.value : null;
   const media = mediaResult.status === "fulfilled" ? mediaResult.value : {};
   const mediaHealth = mediaHealthResult.status === "fulfilled" ? mediaHealthResult.value : {};
+  const aiEnrichments = aiEnrichmentsResult.status === "fulfilled" ? aiEnrichmentsResult.value : { items: [] };
 
   renderServerSummary(health, pipeline);
   renderMediaSummary(media, mediaHealth);
@@ -961,6 +1010,7 @@ async function refreshAll({ forceMedia = false } = {}) {
   applyRawNewsPayload("intel", intelRaw || {});
   applyRawNewsPayload("rssAggregate", aggregateRaw || {});
   renderMediaStreams(media);
+  renderAiEnrichments(aiEnrichments);
 
   const now = formatDate(new Date().toISOString());
   elements.adminLastRefresh.textContent = `Updated: ${now}`;

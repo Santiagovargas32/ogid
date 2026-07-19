@@ -140,6 +140,10 @@ function cacheElements() {
   elements.marketOhlcvStatus = byId("market-ohlcv-status");
   elements.marketOhlcvCanvas = byId("market-ohlcv-chart");
   elements.marketImpactList = byId("market-impact-list");
+  elements.aiMarketShell = byId("ai-market-shell");
+  elements.aiMarketList = byId("ai-market-list");
+  elements.aiCountryShell = byId("ai-country-shell");
+  elements.aiCountryList = byId("ai-country-list");
   elements.qualityHotspotsBadge = byId("quality-hotspots-badge");
   elements.qualityNewsBadge = byId("quality-news-badge");
   elements.qualityMarketBadge = byId("quality-market-badge");
@@ -162,6 +166,7 @@ function cacheElements() {
   elements.newsDrawerMeta = byId("news-drawer-meta");
   elements.newsDrawerImage = byId("news-drawer-image");
   elements.newsDrawerBody = byId("news-drawer-body");
+  elements.newsDrawerAi = byId("news-drawer-ai");
   elements.newsDrawerLink = byId("news-drawer-link");
 }
 
@@ -215,6 +220,51 @@ function buildNewsParagraphs(article = {}) {
   return excerpt ? [excerpt] : [];
 }
 
+function articleAiEntry(articleId, ai = getState().ai || {}) {
+  return ai?.articleSummaries?.[String(articleId || "")] || null;
+}
+
+function aiStatusLabel(entry = {}) {
+  if (entry.status === "ready") return "AI READY";
+  if (entry.status === "stale") return "AI STALE";
+  if (["pending", "running"].includes(entry.status)) return "AI PENDING";
+  return "AI UNAVAILABLE";
+}
+
+function renderAiEvidence(entry = {}) {
+  const evidence = (entry.provenance?.evidence || []).slice(0, 8);
+  if (!evidence.length) return "";
+  const sources = evidence.map((item) => {
+    const label = item.publisher || item.sourceName || item.articleId || "source";
+    if (item.canonicalUrl) {
+      return `<a href="${escapeHtml(item.canonicalUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
+    }
+    return `<span>${escapeHtml(label)}</span>`;
+  }).join(" · ");
+  return `<div class="ai-evidence-list"><strong>Evidence:</strong> ${sources}</div>`;
+}
+
+function renderArticleAiDetail(entry = null) {
+  if (!elements.newsDrawerAi) return;
+  elements.newsDrawerAi.classList.add("d-none");
+  elements.newsDrawerAi.innerHTML = "";
+  if (!entry) return;
+  elements.newsDrawerAi.classList.remove("d-none");
+  const output = entry.output;
+  if (!output) {
+    elements.newsDrawerAi.innerHTML = `<div class="ai-enrichment-label">AI analysis</div><p>${escapeHtml(aiStatusLabel(entry))}. Deterministic article data remains available above.</p>`;
+    return;
+  }
+  const developments = (output.keyDevelopments || []).map((item) => `<li>${escapeHtml(item.text)}</li>`).join("");
+  elements.newsDrawerAi.innerHTML = `
+    <div class="ai-enrichment-label">AI analysis · ${escapeHtml(entry.status)}</div>
+    <p>${escapeHtml(output.summary || "")}</p>
+    ${developments ? `<ul>${developments}</ul>` : ""}
+    ${renderAiEvidence(entry)}
+    <div class="small text-light-emphasis">Model: ${escapeHtml(entry.model || "--")} · Generated: ${escapeHtml(formatDate(entry.generatedAt))} · Uncertainty: ${escapeHtml(output.uncertainty?.level || "unknown")}</div>
+  `;
+}
+
 function openNewsDrawer(articleId = "") {
   const article = currentNewsById.get(articleId);
   if (!article || !elements.newsDrawerTitle || !elements.newsDrawerMeta || !elements.newsDrawerBody || !elements.newsDrawerLink) {
@@ -233,6 +283,7 @@ function openNewsDrawer(articleId = "") {
   elements.newsDrawerBody.innerHTML = buildNewsParagraphs(article)
     .map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`)
     .join("");
+  renderArticleAiDetail(articleAiEntry(article.id));
 
   if (leadImageUrl) {
     elements.newsDrawerImage.classList.remove("d-none");
@@ -1051,7 +1102,7 @@ function resolveImpactEmptyReason(rawState, filteredState) {
   );
 }
 
-function renderNews(news = [], countries = {}) {
+function renderNews(news = [], countries = {}, ai = {}) {
   const ordered = [...news].sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
   elements.newsCount.textContent = `${ordered.length} items`;
   currentNewsById = new Map(ordered.map((article) => [String(article.id), article]));
@@ -1074,6 +1125,10 @@ function renderNews(news = [], countries = {}) {
         : `<img class="news-thumb news-thumb-placeholder news-thumb-fallback" src="${NEWS_PLACEHOLDER_SRC}" alt="No image" loading="lazy" />`;
       const flag = article.synthetic ? '<span class="news-flag">SIMULATED</span>' : "";
       const provider = String(article.provider || "").toUpperCase() || "RSS";
+      const aiEntry = articleAiEntry(article.id, ai);
+      const aiFlag = aiEntry
+        ? `<span class="news-ai-badge ai-status-${escapeHtml(aiEntry.status || "unknown")}">${escapeHtml(aiStatusLabel(aiEntry))}</span>`
+        : "";
 
       return `
       <article class="news-item ${newsLevelClass(level)}">
@@ -1089,6 +1144,7 @@ function renderNews(news = [], countries = {}) {
               <span class="news-meta-pill">${escapeHtml(mentions)}</span>
               <span class="news-meta-pill">${escapeHtml(provider)}</span>
               ${flag}
+              ${aiFlag}
             </div>
             <div class="news-card-actions">
               <button class="btn btn-sm btn-outline-info news-card-cta" type="button" data-action="open-news" data-news-id="${escapeHtml(
@@ -1412,6 +1468,38 @@ function renderInsights(insights = [], emptyReason = "") {
     `
     )
     .join("");
+}
+
+function renderAiCountryInsights(ai = {}) {
+  if (!elements.aiCountryShell || !elements.aiCountryList) return;
+  const allowed = selectedIncludesAll() ? null : new Set(activeCountryList());
+  const entries = Object.entries(ai.countryInsights || {}).filter(([iso2]) => !allowed || allowed.has(iso2));
+  elements.aiCountryShell.classList.toggle("d-none", ai.mode !== "visible" || entries.length === 0);
+  elements.aiCountryList.innerHTML = entries.map(([iso2, entry]) => {
+    const output = entry.output;
+    return `<article class="ai-enrichment-card">
+      <div class="ai-enrichment-label">${escapeHtml(iso2)} · ${escapeHtml(aiStatusLabel(entry))}</div>
+      <p>${escapeHtml(output?.overview || "AI enrichment is pending or unavailable.")}</p>
+      ${renderAiEvidence(entry)}
+      <div class="small text-light-emphasis">Generated content · ${escapeHtml(entry.model || "--")} · uncertainty ${escapeHtml(output?.uncertainty?.level || "unknown")}</div>
+    </article>`;
+  }).join("");
+}
+
+function renderAiMarketExplanations(ai = {}) {
+  if (!elements.aiMarketShell || !elements.aiMarketList) return;
+  const allowed = new Set(selectedMarketSymbols || []);
+  const entries = Object.entries(ai.marketExplanations || {}).filter(([, entry]) => !allowed.size || allowed.has(entry.ticker));
+  elements.aiMarketShell.classList.toggle("d-none", ai.mode !== "visible" || entries.length === 0);
+  elements.aiMarketList.innerHTML = entries.map(([instrumentId, entry]) => {
+    const output = entry.output;
+    return `<article class="ai-enrichment-card">
+      <div class="ai-enrichment-label">${escapeHtml(entry.ticker || instrumentId)} · ${escapeHtml(aiStatusLabel(entry))}</div>
+      <p>${escapeHtml(output?.narrative || "AI enrichment is pending or unavailable.")}</p>
+      ${renderAiEvidence(entry)}
+      <div class="small text-light-emphasis">Generated content · causality ${escapeHtml(output?.causality || "not established")} · uncertainty ${escapeHtml(output?.uncertainty?.level || "unknown")}</div>
+    </article>`;
+  }).join("");
 }
 
 function renderMarketQuotes(market = { quotes: {} }) {
@@ -2111,13 +2199,15 @@ function renderDashboard(rawState) {
   const state = filterStateBySelection(rawState);
   const analytics = resolveAnalyticsPayload(rawState);
   renderMeta(rawState.meta, rawState.market || {});
-  renderNews(state.news, state.countries);
+  renderNews(state.news, state.countries, rawState.ai || {});
   renderDistribution(state.countries);
   renderRiskChart(state.countries);
   renderPredictions(rawState.predictions || {}, rawState.market || {});
   renderInsights(state.insights, resolveInsightsEmptyReason(rawState, state));
+  renderAiCountryInsights(rawState.ai || {});
   renderMarketQuotes(rawState.market || {});
   renderImpact(resolveRenderedImpact(rawState, state, analytics));
+  renderAiMarketExplanations(rawState.ai || {});
   renderCharts(rawState, state, analytics);
   hotspotMap.render(state.hotspots, state.news, currentWatchlist, state.mapAssets || { staticPoints: [], movingSeeds: [] });
 }
@@ -2239,6 +2329,10 @@ function mountWebSocket() {
       if (message.type === "update") {
         applyUpdate(message.data);
         scheduleAnalyticsRefresh();
+        return;
+      }
+      if (message.type === "ai:update:v1") {
+        applyUpdate(message.data || {});
         return;
       }
       if (message.type === "media:streams:updated") {

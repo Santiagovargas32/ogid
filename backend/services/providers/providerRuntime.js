@@ -29,6 +29,7 @@ export class ProviderRuntime {
     return this.metrics.get(provider);
   }
   getMetrics(provider) { return structuredClone(this.metric(provider)); }
+  getCircuitSnapshot(provider) { return structuredClone(this.circuit(provider)); }
   recordCache(provider, hit = true) { if (hit) this.metric(provider).cacheHits += 1; }
   reset() { this.providerSemaphores.clear(); this.hostSemaphores.clear(); this.inFlight.clear(); this.circuits.clear(); this.metrics.clear(); }
   circuit(provider) { if (!this.circuits.has(provider)) this.circuits.set(provider, { state: "closed", failures: 0, openedAt: null }); return this.circuits.get(provider); }

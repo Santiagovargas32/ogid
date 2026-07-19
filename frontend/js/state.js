@@ -62,7 +62,18 @@ const appState = {
     sectorBreakdown: [],
     scatterPoints: []
   },
-  impactHistory: []
+  impactHistory: [],
+  ai: {
+    schemaVersion: "ai-projection-v1",
+    mode: "off",
+    provider: "none",
+    enabled: false,
+    updatedAt: null,
+    articleSummaries: {},
+    countryInsights: {},
+    marketExplanations: {},
+    status: { queueDepth: 0, active: 0, features: [], counts: {} }
+  }
 };
 
 const subscribers = new Set();
@@ -130,6 +141,9 @@ function applyPayload(payload = {}) {
   }
   if (Array.isArray(payload.impactHistory)) {
     appState.impactHistory = payload.impactHistory;
+  }
+  if (payload.ai && typeof payload.ai === "object") {
+    appState.ai = payload.ai;
   }
 }
 

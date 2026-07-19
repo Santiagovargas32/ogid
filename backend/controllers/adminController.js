@@ -397,7 +397,41 @@ export function getPipelineStatus(_req, res) {
         queryLengthByProvider: intelSnapshot?.meta?.sourceMeta?.queryLengthByProvider || {},
         snapshots: newsProviderSnapshots
       },
+      ai: res.app.locals.aiCoordinator?.getAdminSnapshot?.() || {
+        enabled: false,
+        configuredProvider: "none",
+        activeProvider: "none",
+        mode: "off",
+        features: [],
+        queue: { depth: 0, active: 0 },
+        metrics: {},
+        budget: null,
+        store: null,
+        transport: {},
+        lastError: null,
+        updatedAt: null
+      },
       recentCycleErrors: buildRecentCycleErrors()
+    }
+  });
+}
+
+export function getAiEnrichments(req, res) {
+  const coordinator = res.app.locals.aiCoordinator;
+  if (!coordinator) throw new AppError("AI enrichment service unavailable.", 503, "AI_ENRICHMENT_UNAVAILABLE");
+  const status = String(req.query.status || "").trim().toLowerCase();
+  const kind = String(req.query.kind || "").trim().toLowerCase();
+  const allowedStatuses = new Set(["", "pending", "running", "ready", "rejected", "failed", "stale"]);
+  const allowedKinds = new Set(["", "article_summary", "country_insight", "market_explanation"]);
+  if (!allowedStatuses.has(status)) throw new AppError("Unsupported AI enrichment status.", 400, "INVALID_AI_STATUS");
+  if (!allowedKinds.has(kind)) throw new AppError("Unsupported AI enrichment kind.", 400, "INVALID_AI_KIND");
+  const page = parsePositiveInt(req.query.page, 1, { min: 1, max: 10_000 });
+  const pageSize = parsePositiveInt(req.query.pageSize, 50, { min: 1, max: 250 });
+  res.json({
+    ok: true,
+    data: {
+      ...coordinator.listAdminEnrichments({ status, kind, page, pageSize }),
+      generatedAt: new Date().toISOString()
     }
   });
 }

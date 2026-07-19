@@ -71,30 +71,69 @@ function normalizeSector(instrument = {}) {
   return sector || "broad";
 }
 
-function instrumentMatchesArticle(instrument, text) {
-  const symbol = normalizeText(instrument.canonicalSymbol || instrument.symbol || "").trim();
-  const displayName = normalizeText(instrument.displayName || "").trim();
-  const sector = normalizeText(instrument.sector || "").trim();
-  const industry = normalizeText(instrument.industry || "").trim();
-  return [symbol, displayName, sector, industry].filter((value) => value.length >= 3).some((value) => text.includes(` ${value} `));
+function matchingInstrumentField(instrument, text) {
+  const candidates = [
+    ["symbol", normalizeText(instrument.canonicalSymbol || instrument.symbol || "").trim()],
+    ["displayName", normalizeText(instrument.displayName || "").trim()],
+    ["sector", normalizeText(instrument.sector || "").trim()],
+    ["industry", normalizeText(instrument.industry || "").trim()]
+  ];
+  return candidates.find(([, value]) => value.length >= 3 && text.includes(` ${value} `))?.[0] || null;
 }
 
-function inferTickersForArticle(article, instrumentsByTicker) {
-  const tickers = new Set();
+export function buildArticleInstrumentLinks(article, { tickers = [], instruments = [], marketQuotes = {} } = {}) {
+  const normalizedTickers = tickers.map((ticker) => String(ticker || "").trim().toUpperCase()).filter(Boolean);
+  const instrumentsByTicker = new Map(normalizedTickers.map((ticker) => {
+    const instrument = instruments.find((item) => String(item.canonicalSymbol || item.symbol || "").toUpperCase() === ticker)
+      || marketQuotes[ticker]
+      || { canonicalSymbol: ticker };
+    return [ticker, instrument];
+  }));
   const conflictWeight = article.conflict?.totalWeight ?? 0;
   const negative = article.sentiment?.label === "negative";
   const text = normalizeText(`${article.title || ""}. ${article.description || ""}. ${article.content || ""}`);
   const hasEnergySignal = ENERGY_KEYWORDS.some((keyword) => text.includes(` ${keyword} `));
+  const links = [];
 
   for (const [ticker, instrument] of instrumentsByTicker) {
     const sector = normalizeSector(instrument);
-    if (instrumentMatchesArticle(instrument, text)
-      || (sector === "defense" && (conflictWeight > 0 || negative))
-      || (sector === "energy" && hasEnergySignal)
-      || sector === "broad") tickers.add(ticker);
+    const directField = matchingInstrumentField(instrument, text);
+    let relation = null;
+    let evidenceField = null;
+    if (directField) {
+      relation = "direct";
+      evidenceField = directField;
+    } else if (sector === "defense" && (conflictWeight > 0 || negative)) {
+      relation = "sector";
+      evidenceField = conflictWeight > 0 ? "conflict" : "sentiment";
+    } else if (sector === "energy" && hasEnergySignal) {
+      relation = "sector";
+      evidenceField = "energy-keyword";
+    } else if (sector === "broad") {
+      relation = "macro";
+      evidenceField = "broad-instrument";
+    }
+    if (!relation) continue;
+    links.push({
+      instrumentId: instrument.instrumentId || null,
+      canonicalSymbol: ticker,
+      relation,
+      evidenceField,
+      methodVersion: "article-instrument-link-v1"
+    });
   }
 
-  return [...tickers];
+  return links;
+}
+
+function inferTickersForArticle(article, instrumentsByTicker) {
+  return buildArticleInstrumentLinks(article, {
+    tickers: [...instrumentsByTicker.keys()],
+    instruments: [...instrumentsByTicker.entries()].map(([ticker, instrument]) => ({
+      ...instrument,
+      canonicalSymbol: instrument.canonicalSymbol || instrument.symbol || ticker
+    }))
+  }).map((link) => link.canonicalSymbol);
 }
 
 function shouldIncludeArticle(article, countryFilterSet) {

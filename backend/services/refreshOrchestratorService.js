@@ -75,7 +75,8 @@ class RefreshOrchestratorService {
     mapLayerService = null,
     marketHistoryStore = null,
     dailyCandleService = null,
-    intradayCandleService = null
+    intradayCandleService = null,
+    aiCoordinator = null
   }) {
     this.stateManager = stateManager;
     this.socketServer = socketServer;
@@ -86,6 +87,7 @@ class RefreshOrchestratorService {
     this.marketHistoryStore = marketHistoryStore;
     this.dailyCandleService = dailyCandleService;
     this.intradayCandleService = intradayCandleService;
+    this.aiCoordinator = aiCoordinator;
     this.newsInFlight = false;
     this.marketInFlight = false;
     this.manualRefreshInFlight = false;
@@ -178,7 +180,8 @@ class RefreshOrchestratorService {
       timeseries: snapshot.timeseries,
       market: snapshot.market,
       impact: snapshot.impact,
-      impactHistory: snapshot.impactHistory
+      impactHistory: snapshot.impactHistory,
+      ai: snapshot.ai
     };
   }
 
@@ -438,6 +441,13 @@ class RefreshOrchestratorService {
       snapshot = await this.enrichSnapshotWithMapAssets(snapshot, aggregateNews);
       await this.refreshSecondaryIntel(snapshot, aggregateNews);
       this.socketServer.broadcast("update", this.buildUpdatePayload(snapshot), snapshot.meta);
+      void Promise.resolve(this.aiCoordinator?.reconcileNewsSnapshot?.({
+        snapshot,
+        signalCorpus,
+        displaySelection: selectedNews,
+        rawArticles: newsResult.articles || [],
+        instruments: selectedMarketInstruments
+      })).catch((error) => log.warn("ai_news_reconcile_failed", { message: error.message }));
       this.newsBackoffMs = 0;
 
       log.info("news_cycle_completed", {
@@ -631,6 +641,10 @@ class RefreshOrchestratorService {
         void this.intradayCandleService?.runScheduled?.().catch((error) => log.warn("intraday_candle_cycle_failed", { message: error.message }));
       }
       this.socketServer.broadcast("update", this.buildUpdatePayload(snapshot), snapshot.meta);
+      void Promise.resolve(this.aiCoordinator?.reconcileMarketSnapshot?.({
+        snapshot,
+        instruments: selectedMarketInstruments
+      })).catch((error) => log.warn("ai_market_reconcile_failed", { message: error.message }));
       const coverage = marketState.sourceMeta?.coverageByMode || {};
       const fallbackCount = Number(coverage.routerStale || 0) + Number(coverage.syntheticFallback || 0);
 

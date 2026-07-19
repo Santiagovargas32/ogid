@@ -118,10 +118,33 @@
                   </div>
                   <div class="col-12 col-xl-6 col-xxl-3">
                     <section class="diagnostic-card h-100">
+                      <header class="diagnostic-card-header">AI Enrichment</header>
+                      <div id="ai-diagnostics-body" class="diagnostic-list"></div>
+                    </section>
+                  </div>
+                  <div class="col-12 col-xl-6 col-xxl-3">
+                    <section class="diagnostic-card h-100">
                       <header class="diagnostic-card-header">Recent Cycle Errors</header>
                       <div id="recent-cycle-errors-body" class="diagnostic-list"></div>
                     </section>
                   </div>
+                </div>
+              </section>
+            </div>
+          </div>
+
+          <div class="row g-3 mt-1">
+            <div class="col-12">
+              <section class="panel panel-vertical h-100">
+                <header class="panel-header d-flex justify-content-between align-items-center">
+                  <h2 class="panel-title mb-0">AI Enrichments</h2>
+                  <span id="ai-enrichments-updated" class="small text-light-emphasis">--</span>
+                </header>
+                <div class="table-responsive px-2 py-2">
+                  <table class="table table-sm table-dark align-middle mb-0 market-table">
+                    <thead><tr><th>Updated</th><th>Kind</th><th>Subject</th><th>Status</th><th>Model</th><th>Versions</th><th>Accepted output</th></tr></thead>
+                    <tbody id="ai-enrichments-body"></tbody>
+                  </table>
                 </div>
               </section>
             </div>

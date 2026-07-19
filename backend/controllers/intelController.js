@@ -86,11 +86,28 @@ function applyNewsFilters(news, { sources, limit }) {
     .slice(0, limit);
 }
 
+function filterAiProjection(ai = {}, { news = [], countries = [], impact = { items: [] } } = {}) {
+  const articleIds = new Set(news.map((article) => String(article.id || "")).filter(Boolean));
+  const countryIds = new Set(countries || []);
+  const visibleTickers = new Set((impact.items || []).map((item) => String(item.ticker || "").toUpperCase()).filter(Boolean));
+  return {
+    ...ai,
+    articleSummaries: Object.fromEntries(Object.entries(ai.articleSummaries || {}).filter(([legacyId]) => articleIds.has(legacyId))),
+    countryInsights: Object.fromEntries(Object.entries(ai.countryInsights || {}).filter(([iso2]) => !countryIds.size || countryIds.has(iso2))),
+    marketExplanations: Object.fromEntries(Object.entries(ai.marketExplanations || {}).filter(([, entry]) => !countryIds.size || visibleTickers.has(String(entry?.ticker || "").toUpperCase())))
+  };
+}
+
 export function getSnapshot(req, res) {
   const filters = buildFilters(req, res);
   const snapshot = stateManager.getSnapshot();
   const filtered = applyCountryFilter(snapshot, filters.countries);
   filtered.news = applyNewsFilters(filtered.news, filters);
+  filtered.ai = filterAiProjection(filtered.ai || {}, {
+    news: filtered.news,
+    countries: filters.countries,
+    impact: filtered.impact
+  });
   const insightsEmptyReason = buildInsightsEmptyReason({
     filteredInsights: filtered.insights,
     sourceSnapshot: snapshot,

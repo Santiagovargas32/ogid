@@ -6,6 +6,7 @@ const ROUTE_QUERY_PARAMS = new Map(
     "GET /api/admin/api-limits": [],
     "GET /api/admin/news-raw": ["dataset", "page", "pageSize"],
     "GET /api/admin/pipeline-status": [],
+    "GET /api/admin/ai-enrichments": ["status", "kind", "page", "pageSize"],
 
     "GET /api/intel/snapshot": ["countries", "sources", "limit"],
     "POST /api/intel/refresh": ["countries"],

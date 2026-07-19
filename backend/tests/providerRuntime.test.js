@@ -59,8 +59,10 @@ test("circuit opens and recovers half-open with a simulated clock", async () => 
   let now = 0; let fail = true;
   const runtime = new ProviderRuntime({ now: () => now, failureThreshold: 1, recoveryMs: 1_000, sleep: async () => {}, fetchImpl: async () => fail ? ok(503) : ok() });
   await assert.rejects(runtime.fetch("circuit", "https://example.test/a", { retries: 0, throwHttpErrors: true, quotaTracker: unlimitedQuota }));
+  assert.equal(runtime.getCircuitSnapshot("circuit").state, "open");
   await assert.rejects(runtime.fetch("circuit", "https://example.test/b", { quotaTracker: unlimitedQuota }), (error) => error.code === ProviderErrorCode.CIRCUIT_OPEN);
   now = 1_001; fail = false; assert.equal((await runtime.fetch("circuit", "https://example.test/c", { quotaTracker: unlimitedQuota })).status, 200);
+  assert.equal(runtime.getCircuitSnapshot("circuit").state, "closed");
 });
 
 test("quota consumption survives restart through an atomic state file", () => {
