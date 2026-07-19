@@ -151,3 +151,44 @@ test("rss provider sanitizes html content and extracts an embedded image when fe
     resetRssFeedValidationCacheForTests();
   }
 });
+
+test("rss provider replaces invalid publication dates and exposes timestamp fallback diagnostics", async () => {
+  resetRssFeedValidationCacheForTests();
+
+  const originalFetch = global.fetch;
+  global.fetch = async () =>
+    new Response(
+      `<?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+          <channel>
+            <title>Malformed Date Feed</title>
+            <item>
+              <title>Missile activity update</title>
+              <description>Regional monitoring update.</description>
+              <link>https://example.com/malformed-date</link>
+              <pubDate>not-a-date</pubDate>
+            </item>
+          </channel>
+        </rss>`,
+      {
+        status: 200,
+        headers: { "content-type": "application/xml" }
+      }
+    );
+
+  try {
+    const result = await fetchRss({
+      feeds: [{ label: "Malformed Date Feed", url: "https://example.com/feed.xml" }],
+      timeoutMs: 1000
+    });
+
+    assert.equal(result.articles.length, 1);
+    assert.equal(result.articles[0].provenance.publishedAtQuality, "fallback-invalid");
+    assert.equal(new Date(result.articles[0].publishedAt).toISOString(), result.articles[0].publishedAt);
+    assert.equal(result.sourceMeta.timestampFallbackCount, 1);
+    assert.equal(result.sourceMeta.feedStatus[0].timestampFallbackCount, 1);
+  } finally {
+    global.fetch = originalFetch;
+    resetRssFeedValidationCacheForTests();
+  }
+});

@@ -25,13 +25,25 @@ function emit(level, message, context = {}, scope = DEFAULT_SCOPE) {
     return;
   }
 
+  const sanitizedContext = sanitizeSensitiveData(context);
+  const details = sanitizedContext && typeof sanitizedContext === "object" && !Array.isArray(sanitizedContext)
+    ? { ...sanitizedContext }
+    : {};
+  const contextMessage = details.message;
+  delete details.timestamp;
+  delete details.level;
+  delete details.scope;
+  delete details.message;
   const payload = {
     timestamp: new Date().toISOString(),
     level,
     scope: scope || DEFAULT_SCOPE,
     message,
-    ...sanitizeSensitiveData(context)
+    ...details
   };
+  if (contextMessage !== undefined && payload.errorMessage === undefined && contextMessage !== message) {
+    payload.errorMessage = contextMessage;
+  }
 
   if (level === "warn" || level === "error") {
     recentLogs.push(payload);

@@ -185,3 +185,35 @@ test("map layer service builds dashboard map assets with static and moving seeds
   assert.notEqual(vessel.status, "seeded");
   assert.ok(vessel.linkedArticleCount > 0);
 });
+
+test("map layer service tolerates invalid external article timestamps", async () => {
+  const snapshot = { ...buildStateSnapshot(), signalCorpus: [], news: [] };
+  const service = new MapLayerService({
+    stateManager: {
+      getSnapshot: () => snapshot,
+      getSignalCorpus: () => []
+    }
+  });
+
+  const assets = await service.getDashboardMapAssets({
+    snapshot,
+    signalCorpus: [],
+    rssSnapshot: {
+      items: [
+        {
+          id: "invalid-timestamp-rss",
+          title: "Carrier strike group sighted near Hormuz",
+          description: "Naval patrol activity intensifies in the Gulf.",
+          countryMentions: ["IR"],
+          provider: "rss",
+          publishedAt: "not-a-date",
+          topicTags: ["conflict", "shipping"]
+        }
+      ]
+    }
+  });
+
+  const vessel = assets.movingSeeds.find((asset) => asset.layerId === "naval_vessels");
+  assert.ok(vessel);
+  assert.equal(new Date(vessel.lastEvidenceAt).toISOString(), vessel.lastEvidenceAt);
+});

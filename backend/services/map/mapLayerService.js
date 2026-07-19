@@ -565,8 +565,8 @@ function roundTo(value, digits = 2) {
 }
 
 function toTimestamp(value) {
-  const timestamp = new Date(value || Date.now()).toISOString();
-  return Number.isNaN(new Date(timestamp).getTime()) ? new Date().toISOString() : timestamp;
+  const parsed = new Date(value || Date.now());
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : new Date().toISOString();
 }
 
 function jitter(seed, scale = 0.24) {

@@ -101,6 +101,18 @@ test("rss probe reports quality coverage without returning article bodies", asyn
   assert.equal(duplicateSummary.uniqueArticles, 1);
   assert.equal(duplicateSummary.duplicateArticles, 1);
   assert.equal(duplicateSummary.coveragePct.validPublishedAt, 50);
+
+  const fallbackSummary = buildRssQualitySummary([
+    {
+      title: "Fallback timestamp",
+      url: "https://news.example.test/fallback",
+      publishedAt: new Date(nowMs).toISOString(),
+      provenance: { publishedAtQuality: "fallback-invalid" }
+    }
+  ], { nowMs });
+  assert.equal(fallbackSummary.timestampFallbackArticles, 1);
+  assert.equal(fallbackSummary.coveragePct.validPublishedAt, 0);
+  assert.equal(fallbackSummary.coveragePct.freshWithin48h, 0);
 });
 
 test("rss lab server preloader clears credentials and keeps outbound traffic fail-closed", () => {

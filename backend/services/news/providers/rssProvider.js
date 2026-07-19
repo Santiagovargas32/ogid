@@ -39,6 +39,19 @@ function extractImage(block) {
   return enclosureMatch ? decodeEntities(enclosureMatch[1].trim()) : null;
 }
 
+function resolvePublishedAt(value, fallbackMs) {
+  const candidate = String(value || "").trim();
+  const parsed = candidate ? new Date(candidate) : null;
+  if (parsed && Number.isFinite(parsed.getTime())) {
+    return { value: candidate, quality: "source" };
+  }
+
+  return {
+    value: new Date(fallbackMs).toISOString(),
+    quality: candidate ? "fallback-invalid" : "fallback-missing"
+  };
+}
+
 export function parseFeedArticles(xml = "", feedLabel = "RSS Feed", sourceDefinition = {}) {
   const sourceName = extractTag(xml, "title") || feedLabel;
   const sourceType = sourceDefinition.type || "rss";
@@ -59,11 +72,11 @@ export function parseFeedArticles(xml = "", feedLabel = "RSS Feed", sourceDefini
       urlToImage: imageUrl
     });
     const link = extractTag(item, "link") || extractAtomLink(item);
-    const publishedAt =
+    const rawPublishedAt =
       extractTag(item, "pubDate") ||
       extractTag(item, "published") ||
-      extractTag(item, "updated") ||
-      new Date(Date.now() - index * 60_000).toISOString();
+      extractTag(item, "updated");
+    const publishedAt = resolvePublishedAt(rawPublishedAt, Date.now() - index * 60_000);
 
     return {
       provider: "rss",
@@ -81,14 +94,15 @@ export function parseFeedArticles(xml = "", feedLabel = "RSS Feed", sourceDefini
       url: link,
       urlToImage: sanitized.leadImageUrl,
       leadImageUrl: sanitized.leadImageUrl,
-      publishedAt,
+      publishedAt: publishedAt.value,
       usagePolicy: "headline-only-link-out",
       dataMode: "observed",
       provenance: {
         sourceId: sourceDefinition.sourceId || null,
         sourceType,
         queryProvider: sourceDefinition.queryProvider || null,
-        methodVersion: sourceDefinition.provenance?.methodVersion || "rss-parser-v1"
+        methodVersion: sourceDefinition.provenance?.methodVersion || "rss-parser-v1",
+        publishedAtQuality: publishedAt.quality
       }
     };
   });
@@ -243,12 +257,16 @@ export async function fetchRss({
       }
 
       const parsedArticles = parseFeedArticles(payload, label, feed);
+      const timestampFallbackCount = parsedArticles.filter((article) =>
+        String(article.provenance?.publishedAtQuality || "").startsWith("fallback-")
+      ).length;
       articles.push(...parsedArticles);
       feedStatus.push({
         label,
         url: urlValue,
         status: parsedArticles.length ? "ok" : "empty",
         count: parsedArticles.length,
+        timestampFallbackCount,
         error: null,
         payloadBytes,
         ...responseMeta
@@ -270,6 +288,9 @@ export async function fetchRss({
     sourceMeta: {
       provider: "rss",
       totalResults: articles.length,
+      timestampFallbackCount: articles.filter((article) =>
+        String(article.provenance?.publishedAtQuality || "").startsWith("fallback-")
+      ).length,
       rateLimit: lastRateLimit,
       feedStatus,
       reason: articles.length ? null : "no-valid-rss-feed-results"

@@ -34,7 +34,10 @@ function inferProviderFromLog(entry = {}) {
   }
 
   const scope = String(entry.scope || "").toLowerCase();
-  const message = String(entry.message || entry.details || entry.reason || "").toLowerCase();
+  const message = [entry.message, entry.errorMessage, entry.details, entry.reason]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
   if (scope.includes("twelve") || message.includes("twelve")) {
     return "twelve";
   }
@@ -74,7 +77,7 @@ function buildRecentCycleErrors(limit = 12) {
       cycle: inferCycleFromScope(entry.scope, entry.message),
       provider: inferProviderFromLog(entry),
       code: inferCode(entry),
-      message: entry.message || entry.details || entry.reason || "unknown-error",
+      message: entry.errorMessage || entry.details || entry.reason || entry.message || "unknown-error",
       at: entry.timestamp
     }));
 }

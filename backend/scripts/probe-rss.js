@@ -33,8 +33,14 @@ export function buildRssQualitySummary(articles = [], { nowMs = Date.now() } = {
   const classified = articles.map((article) => classifyRssArticle(article));
   const deduplicated = deduplicateRssArticles(classified, { maxItems: Math.max(1, classified.length) });
   const total = classified.length;
+  const timestampFallbackArticles = classified.filter((article) =>
+    String(article.provenance?.publishedAtQuality || "").startsWith("fallback-")
+  ).length;
   const validTimes = classified
     .map((article) => {
+      if (String(article.provenance?.publishedAtQuality || "").startsWith("fallback-")) {
+        return Number.NaN;
+      }
       const publishedAt = String(article.publishedAt || "").trim();
       return publishedAt ? new Date(publishedAt).getTime() : Number.NaN;
     })
@@ -56,6 +62,7 @@ export function buildRssQualitySummary(articles = [], { nowMs = Date.now() } = {
 
   return {
     rawArticles: total,
+    timestampFallbackArticles,
     uniqueArticles: deduplicated.items.length,
     duplicateArticles: Math.max(0, total - deduplicated.items.length),
     distinctSources: new Set(classified.map((article) => article.sourceName || article.provider).filter(Boolean)).size,
@@ -97,6 +104,7 @@ function feedDiagnostics(feedStatus = []) {
       hostname,
       status: feed.status,
       articles: Number(feed.count || 0),
+      timestampFallbacks: Number(feed.timestampFallbackCount || 0),
       error: feed.error || null
     };
   });
