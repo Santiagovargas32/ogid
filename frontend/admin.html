@@ -92,12 +92,6 @@
                       <div id="market-primary-diagnostics-body" class="diagnostic-list"></div>
                     </section>
                   </div>
-                  <div class="col-12 col-xl-6 col-xxl-4">
-                    <section class="diagnostic-card h-100">
-                      <header class="diagnostic-card-header">Fallback Market Provider</header>
-                      <div id="market-fallback-diagnostics-body" class="diagnostic-list"></div>
-                    </section>
-                  </div>
                   <div class="col-12 col-xl-6 col-xxl-3">
                     <section class="diagnostic-card h-100">
                       <header class="diagnostic-card-header">Router Decision</header>
@@ -128,6 +122,23 @@
                       <div id="recent-cycle-errors-body" class="diagnostic-list"></div>
                     </section>
                   </div>
+                </div>
+              </section>
+            </div>
+          </div>
+
+          <div class="row g-3 mt-1">
+            <div class="col-12">
+              <section class="panel panel-vertical h-100">
+                <header class="panel-header d-flex justify-content-between align-items-center">
+                  <h2 class="panel-title mb-0">API Limits Monitor</h2>
+                  <span id="api-limits-updated" class="small text-light-emphasis">--</span>
+                </header>
+                <div class="table-responsive px-2 py-2">
+                  <table class="table table-sm table-dark align-middle mb-0 market-table">
+                    <thead><tr><th>Provider</th><th>Band</th><th>Used 1m</th><th>Hard 1m</th><th>Budget 1m</th><th>Remain Op 1m</th><th>Used 24h</th><th>Hard 24h</th><th>Budget 24h</th><th>Remain Op 24h</th><th>Reset 1m</th><th>Reset 24h</th><th>Op Status</th><th>Status</th></tr></thead>
+                    <tbody id="api-limits-body"></tbody>
+                  </table>
                 </div>
               </section>
             </div>
@@ -200,40 +211,6 @@
                   <button id="aggregate-news-raw-prev" class="btn btn-sm btn-outline-info" type="button">Prev</button>
                   <span id="aggregate-news-raw-page" class="small text-light-emphasis">Page 1 of 1</span>
                   <button id="aggregate-news-raw-next" class="btn btn-sm btn-outline-info" type="button">Next</button>
-                </div>
-              </section>
-            </div>
-          </div>
-
-          <div class="row g-3 mt-1">
-            <div class="col-12">
-              <section class="panel panel-vertical h-100">
-                <header class="panel-header d-flex justify-content-between align-items-center">
-                  <h2 class="panel-title mb-0">API Limits Monitor</h2>
-                  <span id="api-limits-updated" class="small text-light-emphasis">--</span>
-                </header>
-                <div class="table-responsive px-2 py-2">
-                  <table class="table table-sm table-dark align-middle mb-0 market-table">
-                    <thead>
-                      <tr>
-                        <th>Provider</th>
-                        <th>Band</th>
-                        <th>Used 1m</th>
-                        <th>Hard 1m</th>
-                        <th>Budget 1m</th>
-                        <th>Remain Op 1m</th>
-                        <th>Used 24h</th>
-                        <th>Hard 24h</th>
-                        <th>Budget 24h</th>
-                        <th>Remain Op 24h</th>
-                        <th>Reset 1m</th>
-                        <th>Reset 24h</th>
-                        <th>Op Status</th>
-                        <th>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody id="api-limits-body"></tbody>
-                  </table>
                 </div>
               </section>
             </div>

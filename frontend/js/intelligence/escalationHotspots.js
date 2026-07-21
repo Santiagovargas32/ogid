@@ -1,5 +1,3 @@
-import { SmartPollLoop } from "../smartPollLoop.js";
-
 function escapeHtml(value = "") {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -9,38 +7,62 @@ function escapeHtml(value = "") {
     .replaceAll("'", "&#39;");
 }
 
-export function startEscalationHotspots({ api, rootId = "escalation-hotspots-body" }) {
-  const root = document.getElementById(rootId);
-  if (!root) {
-    return () => {};
+function formatScore(value) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) {
+    return "--";
+  }
+  return Number(value).toFixed(1);
+}
+
+function componentScore(item = {}, key, fallback) {
+  const component = item.components?.[key];
+  return component && typeof component === "object" ? component.score : fallback;
+}
+
+function explanationText(value) {
+  if (Array.isArray(value)) {
+    return value.filter(Boolean).join(" | ");
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  return "";
+}
+
+export function buildEscalationHotspotsHtml(payload = {}) {
+  const hotspots = Array.isArray(payload.hotspots) ? payload.hotspots.slice(0, 5) : [];
+  const corpus = payload.corpus || {};
+  const windowLabel = payload.window?.label || "selected window";
+  if (!hotspots.length) {
+    return '<div class="intel-empty-state">No escalation hotspots matched the active filters.</div>';
   }
 
-  const loop = new SmartPollLoop({
-    intervalMs: 95_000,
-    hiddenIntervalMs: 180_000,
-    task: () => api.getHotspotsV2({}),
-    onData: (payload) => {
-      const hotspots = (payload.hotspots || []).slice(0, 5);
+  const eventLabel = corpus.truncated
+    ? `${Number(corpus.eventCount || 0)} of ${Number(corpus.availableEventCount || 0)} unique events`
+    : `${Number(corpus.eventCount || 0)} unique events`;
 
-      root.innerHTML = `
-        <div class="small text-light-emphasis mb-2">${Number(payload.eventCount || 0)} fused events in current escalation picture</div>
-        ${hotspots
-          .map(
-            (item) => `
-              <div class="intel-metric-row">
-                <span>${escapeHtml(item.country || item.iso2 || "Unknown")}</span>
-                <strong>${Number(item.hotspotScore || 0).toFixed(1)}</strong>
-              </div>
-            `
-          )
-          .join("")}
-      `;
-    },
-    onError: () => {
-      root.innerHTML = '<div class="small text-warning">Escalation hotspots unavailable.</div>';
-    }
-  });
-
-  loop.start();
-  return () => loop.stop();
+  return `
+    <div class="small text-light-emphasis mb-2">${escapeHtml(eventLabel)} &middot; ${escapeHtml(windowLabel)}</div>
+    ${hotspots
+      .map((item) => {
+        const news = componentScore(item, "news", item.newsActivity);
+        const cii = componentScore(item, "cii", item.cii);
+        const geo = componentScore(item, "geo", item.geoConvergence);
+        const military = componentScore(item, "military", item.militaryActivity);
+        const explanation = explanationText(item.explanation);
+        return `
+          <div class="intel-hotspot-item">
+            <div class="intel-metric-row">
+              <span>${escapeHtml(item.country || item.iso2 || "Unknown")}</span>
+              <strong>${formatScore(item.hotspotScore)}</strong>
+            </div>
+            <div class="intel-component-line">
+              News ${formatScore(news)} &middot; CII ${formatScore(cii)} &middot; Geo ${formatScore(geo)} &middot; Military ${formatScore(military)}
+            </div>
+            ${explanation ? `<div class="intel-explanation">${escapeHtml(explanation)}</div>` : ""}
+          </div>
+        `;
+      })
+      .join("")}
+  `;
 }

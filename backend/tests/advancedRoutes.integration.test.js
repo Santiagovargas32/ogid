@@ -73,23 +73,62 @@ test("advanced map and intelligence routes return bounded additive payloads", as
     assert.equal(aggregatePayload.ok, true);
     assert.ok(aggregatePayload.data.meta.catalogSize >= 435);
 
+    const advancedResponse = await fetch(`${baseUrl}/api/intel/advanced-snapshot?countries=UA&windowHours=24`);
+    const advancedPayload = await advancedResponse.json();
+    assert.equal(advancedResponse.status, 200);
+    assert.equal(advancedPayload.ok, true);
+    assert.equal(advancedPayload.data.schemaVersion, "advanced-intelligence-snapshot-v1");
+    assert.equal(advancedPayload.data.methodology.version, "advanced-intelligence-v2");
+    assert.deepEqual(advancedPayload.data.filters.countries, ["UA"]);
+    assert.equal(advancedPayload.data.window.hours, 24);
+    assert.ok(Number.isInteger(advancedPayload.data.corpus.uniqueArticles));
+    assert.equal(advancedPayload.data.hotspots.every((item) => item.iso2 === "UA"), true);
+    assert.equal(advancedPayload.data.countryInstability.ranking.every((item) => item.iso2 === "UA"), true);
+    assert.equal(advancedPayload.data.worldBrief.articles.every((item) => item.countryMentions.includes("UA")), true);
+    assert.equal(advancedPayload.data.severity.sampleSize, advancedPayload.data.corpus.uniqueArticles);
+    assert.ok(["observed", "partial", "insufficient_comparison"].includes(advancedPayload.data.frequentTerms.comparison.status));
+    assert.equal(advancedPayload.data.quality.providers.length, 2);
+    assert.equal(advancedPayload.data.anomalies.window.activeWindowHours, 24);
+    assert.equal(advancedPayload.data.anomalies.window.baselineDays, 7);
+    assert.equal(advancedPayload.data.anomalies.alignedWithSnapshotWindow, true);
+    assert.equal(advancedPayload.data.hotspots.every((item) =>
+      ["news", "cii", "geo", "military"].every((key) => item.components?.[key]) && Array.isArray(item.explanation)
+    ), true);
+
+    const rejectedAdvancedResponse = await fetch(`${baseUrl}/api/intel/advanced-snapshot?unexpected=1`);
+    assert.equal(rejectedAdvancedResponse.status, 404);
+
+    const invalidBaselineResponse = await fetch(`${baseUrl}/api/intel/advanced-snapshot?baselineDays=1`);
+    assert.equal(invalidBaselineResponse.status, 400);
+    const mismatchedWindowResponse = await fetch(`${baseUrl}/api/intel/advanced-snapshot?windowHours=24&activeWindowHours=2`);
+    assert.equal(mismatchedWindowResponse.status, 400);
+
     const ciiResponse = await fetch(`${baseUrl}/api/country-instability`);
     const ciiPayload = await ciiResponse.json();
     assert.equal(ciiResponse.status, 200);
     assert.equal(ciiPayload.ok, true);
     assert.ok(Array.isArray(ciiPayload.data.ranking));
+    assert.equal(ciiPayload.data.ranking.length, 21);
 
     const hotspotsResponse = await fetch(`${baseUrl}/api/intel/hotspots-v2`);
     const hotspotsPayload = await hotspotsResponse.json();
     assert.equal(hotspotsResponse.status, 200);
     assert.equal(hotspotsPayload.ok, true);
     assert.ok(Array.isArray(hotspotsPayload.data.hotspots));
+    assert.equal(hotspotsPayload.data.hotspots.length, 21);
 
+    const historyBeforeRead = structuredClone(runtime.app.locals.signalCorrelator.history);
     const anomaliesResponse = await fetch(`${baseUrl}/api/intel/anomalies`);
     const anomaliesPayload = await anomaliesResponse.json();
     assert.equal(anomaliesResponse.status, 200);
     assert.equal(anomaliesPayload.ok, true);
     assert.ok(Array.isArray(anomaliesPayload.data.items));
+    assert.equal(anomaliesPayload.data.scope.type, "global");
+    assert.deepEqual(runtime.app.locals.signalCorrelator.history, historyBeforeRead);
+    assert.equal(
+      anomaliesPayload.data.items.every((item) => item.status === "ready" || item.anomalyScore === null),
+      true
+    );
   } finally {
     global.fetch = originalFetch;
     await runtime.stop();

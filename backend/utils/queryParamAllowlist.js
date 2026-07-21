@@ -1,7 +1,7 @@
 const ROUTE_QUERY_PARAMS = new Map(
   Object.entries({
     "GET /api/health": [],
-    "GET /api/country-instability": ["countries", "force"],
+    "GET /api/country-instability": ["countries", "force", "windowHours", "maxEvents", "activeWindowHours", "baselineDays"],
 
     "GET /api/admin/api-limits": [],
     "GET /api/admin/news-raw": ["dataset", "page", "pageSize"],
@@ -14,8 +14,10 @@ const ROUTE_QUERY_PARAMS = new Map(
     "GET /api/intel/risks": ["countries", "sources", "limit"],
     "GET /api/intel/news": ["countries", "sources", "limit"],
     "GET /api/intel/insights": ["countries", "sources", "limit"],
-    "GET /api/intel/hotspots-v2": ["countries", "force", "maxEvents"],
-    "GET /api/intel/anomalies": ["activeWindowHours", "baselineDays"],
+    "GET /api/intel/advanced-snapshot": ["countries", "force", "windowHours", "activeWindowHours", "baselineDays"],
+    "GET /api/intel/country-instability": ["countries", "force", "windowHours", "maxEvents", "activeWindowHours", "baselineDays"],
+    "GET /api/intel/hotspots-v2": ["countries", "force", "windowHours", "maxEvents", "activeWindowHours", "baselineDays"],
+    "GET /api/intel/anomalies": ["countries", "windowHours", "maxEvents", "activeWindowHours", "baselineDays"],
 
     "GET /api/map/config": [],
     "GET /api/map/layers": ["layers", "timeWindow", "countries", "bbox", "limit", "preset", "force"],

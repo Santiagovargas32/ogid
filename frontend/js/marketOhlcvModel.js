@@ -49,3 +49,17 @@ export function buildOhlcvChartSeries(values = []) {
     volumes: candles.map((candle) => candle.volume)
   };
 }
+
+export function buildOhlcvSummary(values = []) {
+  const candles = normalizeOhlcvCandles(values);
+  if (!candles.length) {
+    return null;
+  }
+
+  const first = candles[0];
+  const last = candles.at(-1);
+  const low = Math.min(...candles.map((candle) => candle.low));
+  const high = Math.max(...candles.map((candle) => candle.high));
+  const changePct = first.open === 0 ? null : ((last.close - first.open) / first.open) * 100;
+  return { open: first.open, close: last.close, low, high, changePct };
+}

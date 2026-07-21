@@ -14,6 +14,7 @@ import { normalizeNewsQueryPacks } from "./services/news/newsQueryPackService.js
 import { RssAggregatorService } from "./services/news/rssAggregator.js";
 import { NEWS_SOURCE_CATALOG, projectLegacyRssFeeds, validateNewsSourceCatalog } from "./services/news/newsSourceCatalog.js";
 import { SignalCorrelatorService } from "./services/intel/signalCorrelator.js";
+import { AdvancedIntelligenceService } from "./services/intel/advancedIntelligenceService.js";
 import { MapLayerService } from "./services/map/mapLayerService.js";
 import { MarketHistoryStore } from "./services/market/marketHistoryStore.js";
 import { DailyCandleStore } from "./services/market/dailyCandleStore.js";
@@ -742,7 +743,15 @@ export function createAppServer(overrides = {}) {
     persistencePath: config.ai.budgetStateFile
   });
   const aiProvider = createAiProvider(config.ai, overrides.aiProvider);
-  const signalCorrelator = new SignalCorrelatorService();
+  const signalCorrelator = overrides.signalCorrelator || new SignalCorrelatorService({
+    baselineDays: 30,
+    persistencePath: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, "data/intel/signal-history.json")
+  });
+  const advancedIntelligenceService = overrides.advancedIntelligenceService || new AdvancedIntelligenceService({
+    stateManager,
+    rssAggregator,
+    signalCorrelator
+  });
   const mapLayerService = new MapLayerService({
     stateManager,
     rssAggregator
@@ -809,6 +818,7 @@ export function createAppServer(overrides = {}) {
   app.locals.config = config;
   app.locals.rssAggregator = rssAggregator;
   app.locals.signalCorrelator = signalCorrelator;
+  app.locals.advancedIntelligenceService = advancedIntelligenceService;
   app.locals.mapLayerService = mapLayerService;
   app.locals.mediaStreamService = mediaStreamService;
   app.locals.marketHistoryStore = marketHistoryStore;
@@ -830,6 +840,8 @@ export function createAppServer(overrides = {}) {
     socketServer,
     mediaStreamService,
     aiCoordinator,
+    signalCorrelator,
+    advancedIntelligenceService,
     config,
     async start() {
       const hydratedWatchlist = await marketWatchlistService.hydrate();

@@ -43,6 +43,26 @@ test("dashboard keeps map and news contracts without retired admin selectors", a
   assert.match(dashboard, /Choose instruments/);
   assert.doesNotMatch(dashboard, /up to seven|Choose 7/i);
   assert.doesNotMatch(script, /api-limits-panel|panel-webcams|toggleApiLimitsPanel/);
+  assert.match(dashboard, /class="panel panel-vertical market-workspace/);
+  assert.match(dashboard, /id="market-ohlcv-summary"/);
+  assert.match(dashboard, /col-12 col-xl-6 order-2[\s\S]*?id="panel-risk"/);
+  assert.match(dashboard, /col-12 order-1[\s\S]*?id="panel-market"/);
+  assert.match(dashboard, /col-12 col-xl-6 order-3[\s\S]*?id="panel-insights"/);
+  assert.doesNotMatch(script, /\bformatPrice\(/);
+  assert.match(script, /function formatMarketPrice\(/);
+  const analytics = dashboard.slice(dashboard.indexOf("dashboard-analytics-row"), dashboard.indexOf("</main>"));
+  assert.equal((analytics.match(/col-12 col-xl-4/g) || []).length, 3);
+});
+
+test("admin keeps limits near pipeline without redundant fallback diagnostics", async () => {
+  const [admin, adminScript] = await Promise.all([
+    frontendFile("admin.html"),
+    frontendFile("js/admin.js")
+  ]);
+  assert.ok(admin.indexOf("API Limits Monitor") > admin.indexOf("Pipeline Status"));
+  assert.ok(admin.indexOf("API Limits Monitor") < admin.indexOf("AI Enrichments"));
+  assert.doesNotMatch(admin, /Fallback Market Provider|market-fallback-diagnostics-body/);
+  assert.doesNotMatch(adminScript, /No response preview available/);
 });
 
 test("AI enrichment surfaces remain explicitly separated from deterministic content", async () => {

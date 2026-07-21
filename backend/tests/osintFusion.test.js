@@ -54,3 +54,54 @@ test("fusion normalizes events and hotspot escalation ranks convergent countries
   const hotspots = computeHotspotEscalation({ fusedEvents: events, countryInstability });
   assert.ok(hotspots[0].hotspotScore >= 0);
 });
+
+test("fusion deduplicates by article-country-type before enforcing the common window", () => {
+  const now = Date.parse("2026-07-21T12:00:00.000Z");
+  const shared = {
+    id: "pipeline-id",
+    title: "Cyber alert in Washington",
+    url: "https://example.com/shared",
+    publishedAt: "2026-07-21T11:00:00.000Z",
+    countryMentions: ["US"],
+    topicTags: ["cyber"]
+  };
+  const events = normalizeOsintEvents({
+    snapshot: {
+      signalCorpus: [shared],
+      market: { quotes: {} },
+      predictions: { tickers: [] }
+    },
+    aggregateNews: {
+      items: [
+        { ...shared, id: "rss-id" },
+        { ...shared, id: "old", url: "https://example.com/old", publishedAt: "2026-07-18T11:00:00.000Z" }
+      ]
+    },
+    maxEvents: 50,
+    windowHours: 24,
+    now
+  });
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0].country, "US");
+  assert.equal(events[0].event_type, "cyber");
+});
+
+test("fusion preserves distinct article-country event types and normalizes news severity", () => {
+  const now = Date.parse("2026-07-21T12:00:00.000Z");
+  const shared = {
+    title: "Cyber and conflict alert",
+    url: "https://example.com/multi-type",
+    publishedAt: new Date(now).toISOString(),
+    countryMentions: ["US"],
+    topicTags: ["cyber", "conflict"],
+    threatScore: 8
+  };
+  const events = normalizeOsintEvents({
+    snapshot: { signalCorpus: [shared], market: { quotes: {} }, predictions: { tickers: [] } },
+    windowHours: 24,
+    now
+  });
+  assert.deepEqual(events.map((item) => item.event_type).sort(), ["conflict", "cyber"]);
+  assert.equal(events.every((item) => item.severity >= 60 && item.severity <= 100), true);
+});

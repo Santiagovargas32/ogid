@@ -5,12 +5,7 @@ import { SmartPollLoop } from "./smartPollLoop.js";
 import { resolveMarketQuotesPollDelayMs } from "./marketPolling.js";
 import { HotspotMap, getLevelColor } from "./map.js";
 import { mountSituationalWorkspace } from "./media/situationalWorkspace.js";
-import { startWorldBrief } from "./intelligence/worldBrief.js";
-import { startThreatClassifier } from "./intelligence/threatClassifier.js";
-import { startRiskEngine } from "./intelligence/riskEngine.js";
-import { startTrendDetector } from "./intelligence/trendDetector.js";
-import { startEscalationHotspots } from "./intelligence/escalationHotspots.js";
-import { startSignalAnomalies } from "./intelligence/signalAnomalies.js";
+import { startAdvancedIntelligence } from "./intelligence/advancedIntelligence.js";
 import {
   addMarketInstrument,
   marketSelectionIds,
@@ -19,7 +14,7 @@ import {
   resolveSelectedMarketInstruments,
   validateMarketSelection
 } from "./marketWatchlistModel.js";
-import { buildOhlcvChartSeries } from "./marketOhlcvModel.js";
+import { buildOhlcvChartSeries, buildOhlcvSummary } from "./marketOhlcvModel.js";
 
 const LEVEL_RANK = {
   Stable: 1,
@@ -98,6 +93,7 @@ let manualRefreshCooldownEndsAtMs = 0;
 let manualRefreshCooldownTimer = null;
 let newsDrawerInstance = null;
 let currentNewsById = new Map();
+let advancedIntelligenceController = null;
 const teardownHandlers = [];
 
 const elements = {};
@@ -139,6 +135,10 @@ function cacheElements() {
   elements.marketOhlcvInterval = byId("market-ohlcv-interval");
   elements.marketOhlcvStatus = byId("market-ohlcv-status");
   elements.marketOhlcvCanvas = byId("market-ohlcv-chart");
+  elements.marketOhlcvOpen = byId("market-ohlcv-open");
+  elements.marketOhlcvClose = byId("market-ohlcv-close");
+  elements.marketOhlcvRange = byId("market-ohlcv-range");
+  elements.marketOhlcvChange = byId("market-ohlcv-change");
   elements.marketImpactList = byId("market-impact-list");
   elements.aiMarketShell = byId("ai-market-shell");
   elements.aiMarketList = byId("ai-market-list");
@@ -407,6 +407,17 @@ function formatShortTime(value) {
     return "--";
   }
   return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatMarketPrice(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return "--";
+  }
+  return number.toLocaleString([], {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: Math.abs(number) < 1 ? 6 : 2
+  });
 }
 
 function formatDurationMs(value) {
@@ -827,7 +838,6 @@ function renderMeta(meta, market) {
   setPanelMode(elements.panelRisk, dq.news?.mode || "fallback");
   setPanelMode(elements.panelMarket, dq.market?.mode || "fallback");
   setPanelMode(elements.panelInsights, dq.insights?.mode || "fallback");
-  setPanelMode(elements.panelAdvancedIntel, dq.insights?.mode || "fallback");
   setPanelMode(elements.panelSituational, dq.news?.mode || "fallback");
   setPanelMode(elements.panelWebcams, dq.news?.mode || "fallback");
 }
@@ -1699,9 +1709,24 @@ function renderMarketOhlcv(payload, instrument) {
   marketOhlcvChart?.destroy();
   marketOhlcvChart = null;
   if (!series.candles.length) {
+    elements.marketOhlcvOpen.textContent = "--";
+    elements.marketOhlcvClose.textContent = "--";
+    elements.marketOhlcvRange.textContent = "--";
+    elements.marketOhlcvChange.textContent = "--";
+    elements.marketOhlcvChange.className = "";
     elements.marketOhlcvStatus.textContent = `${instrument?.symbol || "Instrument"}: no OHLCV data available.`;
     return;
   }
+  const summary = buildOhlcvSummary(series.candles);
+  elements.marketOhlcvOpen.textContent = formatMarketPrice(summary.open);
+  elements.marketOhlcvClose.textContent = formatMarketPrice(summary.close);
+  elements.marketOhlcvRange.textContent = `${formatMarketPrice(summary.low)} – ${formatMarketPrice(summary.high)}`;
+  elements.marketOhlcvChange.textContent = summary.changePct == null
+    ? "--"
+    : `${summary.changePct >= 0 ? "+" : ""}${summary.changePct.toFixed(2)}%`;
+  elements.marketOhlcvChange.className = summary.changePct == null
+    ? ""
+    : summary.changePct >= 0 ? "market-positive" : "market-negative";
   marketOhlcvChart = new Chart(elements.marketOhlcvCanvas, {
     type: "bar",
     data: { labels: series.labels, datasets: [
@@ -1730,11 +1755,19 @@ async function loadMarketOhlcv() {
   if (!instrument) return;
   const token = ++marketOhlcvRequestToken;
   elements.marketOhlcvStatus.textContent = `Loading ${instrument.symbol} OHLCVâ€¦`;
+  let payload;
   try {
-    const payload = await api.getMarketCandles({ instrumentId, interval: elements.marketOhlcvInterval.value, adjusted: "splits", limit: 240 });
-    if (token === marketOhlcvRequestToken) renderMarketOhlcv(payload, instrument);
+    payload = await api.getMarketCandles({ instrumentId, interval: elements.marketOhlcvInterval.value, adjusted: "splits", limit: 240 });
   } catch (error) {
-    if (token === marketOhlcvRequestToken) elements.marketOhlcvStatus.textContent = `OHLCV unavailable: ${error.message}`;
+    if (token === marketOhlcvRequestToken) elements.marketOhlcvStatus.textContent = `OHLCV request failed: ${error.message}`;
+    return;
+  }
+  if (token !== marketOhlcvRequestToken) return;
+  try {
+    renderMarketOhlcv(payload, instrument);
+  } catch (error) {
+    console.error("Failed to render OHLCV:", error);
+    elements.marketOhlcvStatus.textContent = "OHLCV data loaded, but the chart could not be rendered.";
   }
 }
 
@@ -2261,6 +2294,7 @@ function scheduleAnalyticsRefresh() {
 }
 
 async function requestFilteredSnapshot() {
+  void advancedIntelligenceController?.refresh();
   try {
     latestAnalytics = null;
     latestAnalyticsContext = "";
@@ -2323,11 +2357,13 @@ function mountWebSocket() {
       }
       if (message.type === "snapshot") {
         setSnapshot(message.data);
+        void advancedIntelligenceController?.refresh();
         scheduleAnalyticsRefresh();
         return;
       }
       if (message.type === "update") {
         applyUpdate(message.data);
+        void advancedIntelligenceController?.refresh();
         scheduleAnalyticsRefresh();
         return;
       }
@@ -2382,12 +2418,8 @@ async function bootstrap() {
   hotspotMap = new HotspotMap("hotspot-map");
   hotspotMap.init();
   teardownHandlers.push(mountSituationalWorkspace({ api }));
-  teardownHandlers.push(startWorldBrief({ api }));
-  teardownHandlers.push(startThreatClassifier({ api }));
-  teardownHandlers.push(startRiskEngine({ api }));
-  teardownHandlers.push(startTrendDetector({ api }));
-  teardownHandlers.push(startEscalationHotspots({ api }));
-  teardownHandlers.push(startSignalAnomalies({ api }));
+  advancedIntelligenceController = startAdvancedIntelligence({ api, getCountries: selectedCountryQueryValue });
+  teardownHandlers.push(() => advancedIntelligenceController?.stop());
   initRiskChart();
   initImpactTimelineChart();
   initSectorBreakdownChart();

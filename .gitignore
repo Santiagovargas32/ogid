@@ -5,4 +5,5 @@ backend/backend/data/market/
 backend/data/market-credit-state.json
 backend/data/provider-quota-state.json
 backend/data/ai/
+backend/data/intel/
 *.log

@@ -1,4 +1,9 @@
-import { SmartPollLoop } from "../smartPollLoop.js";
+const DRIVER_LABELS = Object.freeze({
+  news: "News",
+  cii: "CII",
+  geo: "Geo",
+  military: "Military"
+});
 
 function escapeHtml(value = "") {
   return String(value)
@@ -9,47 +14,79 @@ function escapeHtml(value = "") {
     .replaceAll("'", "&#39;");
 }
 
-export function startWorldBrief({ api, rootId = "world-brief-body" }) {
-  const root = document.getElementById(rootId);
-  if (!root) {
-    return () => {};
+function formatScore(value) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) {
+    return "--";
   }
+  return Number(value).toFixed(1);
+}
 
-  const loop = new SmartPollLoop({
-    intervalMs: 90_000,
-    hiddenIntervalMs: 180_000,
-    task: async () => {
-      const [news, hotspots] = await Promise.all([api.getAggregateNews({ limit: 8 }), api.getHotspotsV2({})]);
-      return { news, hotspots };
-    },
-    onData: ({ news, hotspots }) => {
-      const topHotspot = hotspots.hotspots?.[0];
-      const topNews = (news.items || []).slice(0, 3);
+function formatPublishedAt(value) {
+  if (!value) {
+    return "";
+  }
+  const timestamp = new Date(value);
+  return Number.isFinite(timestamp.getTime())
+    ? timestamp.toLocaleString([], { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" })
+    : "";
+}
 
-      root.innerHTML = `
-        <div class="intel-card-body">
-          <p class="intel-brief-summary">
-            ${topHotspot ? `${escapeHtml(topHotspot.country)} leads escalation monitoring with hotspot score ${Number(topHotspot.hotspotScore || 0).toFixed(1)}.` : "No active escalation clusters detected."}
-          </p>
-          ${topNews
-            .map(
-              (item) => `
-                <article class="intel-brief-item">
-                  <strong>${escapeHtml(item.title || "Headline")}</strong>
-                  <div class="small text-light-emphasis">${escapeHtml(item.sourceName || "Source")} | ${escapeHtml(item.threatLevel || "monitoring")}</div>
-                  <div class="small text-light-emphasis mt-1">${escapeHtml(item.excerpt || item.summary || "")}</div>
-                </article>
-              `
-            )
-            .join("")}
-        </div>
-      `;
-    },
-    onError: () => {
-      root.innerHTML = '<div class="small text-warning">World brief unavailable.</div>';
-    }
-  });
+function safeHttpUrl(value) {
+  try {
+    const url = new URL(String(value || ""), globalThis.location?.origin || "http://localhost");
+    return ["http:", "https:"].includes(url.protocol) ? url.href : "";
+  } catch {
+    return "";
+  }
+}
 
-  loop.start();
-  return () => loop.stop();
+export function buildWorldBriefHtml(payload = {}) {
+  const brief = payload.worldBrief || {};
+  const leader = brief.leader || null;
+  const articles = Array.isArray(brief.articles) ? brief.articles : [];
+  const drivers = Array.isArray(brief.drivers) ? brief.drivers : [];
+  const windowLabel = payload.window?.label || (brief.windowHours ? `last ${brief.windowHours}h` : "selected window");
+
+  const driverHtml = drivers.length
+    ? `<div class="intel-topic-list intel-driver-list">${drivers
+        .map((driver) => {
+          const key = String(driver.key || "signal").toLowerCase();
+          const detail = `weight ${(Number(driver.weight || 0) * 100).toFixed(0)}% | contribution ${formatScore(driver.contribution)}`;
+          return `<span class="driver-pill" title="${escapeHtml(detail)}">${escapeHtml(DRIVER_LABELS[key] || key)} ${formatScore(driver.score)} <small>+${formatScore(driver.contribution)}</small></span>`;
+        })
+        .join("")}</div>`
+    : "";
+
+  const articlesHtml = articles.length
+    ? articles
+        .map((item) => {
+          const meta = [item.sourceName || "Source", item.threatLevel || "low", formatPublishedAt(item.publishedAt)]
+            .filter(Boolean)
+            .join(" | ");
+          const articleUrl = safeHttpUrl(item.url);
+          const title = escapeHtml(item.title || "Headline");
+          return `
+            <article class="intel-brief-item">
+              <strong>${articleUrl ? `<a href="${escapeHtml(articleUrl)}" target="_blank" rel="noopener noreferrer">${title}</a>` : title}</strong>
+              <div class="small text-light-emphasis">${escapeHtml(meta)}</div>
+              ${item.excerpt ? `<div class="small text-light-emphasis mt-1">${escapeHtml(item.excerpt)}</div>` : ""}
+            </article>
+          `;
+        })
+        .join("")
+    : `<div class="intel-empty-state">${
+        leader
+          ? `No related headlines matched ${escapeHtml(leader.country || leader.iso2 || "the leading hotspot")} in ${escapeHtml(windowLabel)}.`
+          : "No active escalation clusters detected in the selected window."
+      }</div>`;
+
+  return `
+    <div class="intel-card-body">
+      <p class="intel-brief-summary">${escapeHtml(
+        brief.summary || "No active escalation clusters detected in the selected window."
+      )}</p>
+      ${driverHtml}
+      ${articlesHtml}
+    </div>
+  `;
 }

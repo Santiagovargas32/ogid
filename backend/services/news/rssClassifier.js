@@ -35,6 +35,14 @@ const THREAT_LEVELS = Object.freeze([
   { id: "low", minScore: 0 }
 ]);
 
+export const RULE_BASED_NEWS_SEVERITY_METHODOLOGY = Object.freeze({
+  version: "rule-based-news-severity-v1",
+  languageScope: "English rules plus Advanced Intelligence multilingual topic aliases",
+  thresholds: Object.freeze({ critical: 8, elevated: 5, monitoring: 2, low: 0 }),
+  topicWeights: Object.freeze({ conflict: 3, cyber: 2, sanctions: 2, civil_unrest: 2, humanitarian: 1 }),
+  phraseWeights: Object.freeze({ ballisticMissile: 3, missileStrike: 3, airstrikeOrTroopDeployment: 2 })
+});
+
 function normalizeText(value = "") {
   return ` ${String(value).toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim()} `;
 }

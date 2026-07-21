@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildOhlcvChartSeries, normalizeOhlcvCandles } from "../../frontend/js/marketOhlcvModel.js";
+import { buildOhlcvChartSeries, buildOhlcvSummary, normalizeOhlcvCandles } from "../../frontend/js/marketOhlcvModel.js";
 
 test("OHLCV model sorts, deduplicates and rejects malformed candles", () => {
   const candles = normalizeOhlcvCandles([
@@ -23,4 +23,16 @@ test("OHLCV model builds aligned chart series", () => {
   assert.deepEqual(series.closes, [9]);
   assert.deepEqual(series.volumes, [80]);
   assert.equal(series.labels[0], "2026-07-14T00:00:00.000Z");
+});
+
+test("OHLCV model summarizes the displayed period", () => {
+  const summary = buildOhlcvSummary([
+    { openTime: "2026-07-14T00:00:00Z", open: 100, high: 112, low: 98, close: 110, volume: 80 },
+    { openTime: "2026-07-15T00:00:00Z", open: 110, high: 115, low: 105, close: 105, volume: 90 }
+  ]);
+  assert.deepEqual(summary, { open: 100, close: 105, low: 98, high: 115, changePct: 5 });
+  assert.equal(buildOhlcvSummary([]), null);
+  assert.equal(buildOhlcvSummary([
+    { openTime: "2026-07-14T00:00:00Z", open: 0, high: 1, low: 0, close: 1, volume: 1 }
+  ]).changePct, null);
 });

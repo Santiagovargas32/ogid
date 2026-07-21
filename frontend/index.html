@@ -75,6 +75,7 @@
         <section id="panel-advanced-intel" class="panel panel-vertical h-100">
           <header class="panel-header">
             <h2 class="panel-title mb-0">Advanced Intelligence Panels</h2>
+            <div id="advanced-intel-meta" class="intel-panel-meta" aria-live="polite">Loading advanced intelligence snapshot...</div>
           </header>
           <div class="intel-grid intel-grid-advanced">
             <article class="intel-card">
@@ -82,15 +83,15 @@
               <div id="world-brief-body"></div>
             </article>
             <article class="intel-card">
-              <h3>Strategic Risk Score</h3>
+              <h3>Country Instability Index</h3>
               <div id="strategic-risk-body"></div>
             </article>
             <article class="intel-card">
-              <h3>Threat Classification</h3>
+              <h3>Rule-based News Severity</h3>
               <div id="threat-classifier-body"></div>
             </article>
             <article class="intel-card">
-              <h3>Trending Keywords</h3>
+              <h3>Frequent Headline Terms</h3>
               <div id="trend-detector-body"></div>
             </article>
             <article class="intel-card">
@@ -116,7 +117,7 @@
     </div>
 
     <div class="row g-3 mt-1 dashboard-row dashboard-market-row">
-      <div class="col-12 col-xl-4">
+      <div class="col-12 col-xl-6 order-2">
         <section id="panel-risk" class="panel panel-vertical metrics-panel h-100">
           <header class="panel-header">
             <h2 class="panel-title mb-2">Country Risk Metrics</h2>
@@ -133,8 +134,8 @@
         </section>
       </div>
 
-      <div class="col-12 col-xl-4">
-        <section id="panel-market" class="panel panel-vertical h-100">
+      <div class="col-12 order-1">
+        <section id="panel-market" class="panel panel-vertical market-workspace h-100">
           <header class="panel-header d-flex justify-content-between align-items-center">
             <div class="d-flex align-items-center gap-2">
               <h2 class="panel-title mb-0">Market Quotes</h2>
@@ -182,6 +183,12 @@
           <div class="market-ohlcv-chart-wrap px-2 py-2">
             <canvas id="market-ohlcv-chart" aria-label="Selected instrument OHLCV chart" role="img"></canvas>
           </div>
+          <div id="market-ohlcv-summary" class="market-ohlcv-summary" aria-live="polite">
+            <div><span>Open</span><strong id="market-ohlcv-open">--</strong></div>
+            <div><span>Close</span><strong id="market-ohlcv-close">--</strong></div>
+            <div><span>Range</span><strong id="market-ohlcv-range">--</strong></div>
+            <div><span>Period</span><strong id="market-ohlcv-change">--</strong></div>
+          </div>
           <div class="panel-subheader px-3 py-2">
             <div class="d-flex justify-content-between align-items-center">
               <h3 class="panel-subtitle mb-0">Geo-Market Impact</h3>
@@ -196,7 +203,7 @@
         </section>
       </div>
 
-      <div class="col-12 col-xl-4">
+      <div class="col-12 col-xl-6 order-3">
         <section id="panel-insights" class="panel panel-vertical h-100">
           <header class="panel-header d-flex justify-content-between align-items-center">
             <h2 class="panel-title mb-0">Deterministic Insights & Heuristic Scenarios</h2>

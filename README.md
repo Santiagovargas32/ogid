@@ -117,6 +117,12 @@ Supported Yahoo intervals are `5min`, `15min`, `30min`, `1h` and `1day`; the int
 
 News-to-Price Coupling v2 is calculated locally from normalized news and persisted canonical candles. It reports temporal association and observed returns, never causality; optional benchmarks must be supplied as verified `instrumentId` values.
 
+Advanced Intelligence Panels consume one deterministic snapshot from `GET /api/intel/advanced-snapshot`. The snapshot fixes one `generatedAt`, country filter and active analysis window for World Brief, Country Instability Index, rule-based severity, frequent terms and escalation hotspots; signal anomalies use that same active window by default plus an explicit historical baseline. Methodology `advanced-intelligence-v2` deduplicates RSS and selected-pipeline articles, applies a common 24-hour window, and normalizes hotspot activity with hourly rates and logarithmic scaling. Each hotspot includes its News/CII/Geo/Military components, weights, contributions and explanation. Headline-term deltas compare against the immediately preceding equal-length window when observed corpus coverage exists, and expose `partial` or `insufficient_comparison` otherwise.
+
+Signal baselines are aggregated into UTC hourly buckets and persisted locally under `backend/data/intel/` for up to 30 days. An anomaly score remains `null` until at least 24 baseline buckets spanning 23 hours exist. The persisted files contain counts by signal and country, not article content.
+
+The advanced endpoint accepts active windows from 6 to 48 hours; `activeWindowHours` must match `windowHours`, and historical baselines are explicitly 7 or 30 days. Geo convergence means convergence of independently typed signals at the configured country centroid, not verified subnational geolocation. Formula weights, thresholds, references and sub-method versions are returned in `methodology` for auditability.
+
 ## Run Locally
 
 1. Install Node.js 24 LTS (`.nvmrc` and `.node-version` pin the supported baseline to 24; Node 22-26 is accepted by the package manifest).
@@ -181,6 +187,7 @@ Before promoting a new source into the canonical catalog, validate its HTTP/XML 
 - `GET /api/intel/risks?countries=US,IL,IR`
 - `GET /api/intel/news?countries=US,IL,IR&limit=50&sources=newsapi,gnews`
 - `GET /api/intel/insights?countries=US,IL,IR`
+- `GET /api/intel/advanced-snapshot?countries=US,IL,IR&windowHours=24&baselineDays=7`
 - `GET /api/market/quotes?tickers=GD,BA,NOC`
 - `GET /api/market/instruments/search?q=Microsoft&limit=10`
 - `GET /api/market/watchlist`

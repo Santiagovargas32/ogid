@@ -29,6 +29,7 @@ async function request(path, params = {}, options = {}) {
   const response = await fetch(buildPath(path, params), {
     method,
     headers,
+    cache: options.cache || "default",
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined
   });
 
@@ -50,6 +51,7 @@ async function request(path, params = {}, options = {}) {
 export const api = {
   getHealth: () => request("/api/health"),
   getSnapshot: (params = {}) => request("/api/intel/snapshot", params),
+  getAdvancedIntelligenceSnapshot: (params = {}) => request("/api/intel/advanced-snapshot", params, { cache: "no-store" }),
   refreshIntel: (payload = {}) => request("/api/intel/refresh", {}, { method: "POST", body: payload }),
   getHotspotsV2: (params = {}) => request("/api/intel/hotspots-v2", params),
   getNews: (params = {}) => request("/api/intel/news", params),
@@ -62,7 +64,7 @@ export const api = {
   getMarketInstrumentSearch: (params = {}) => request("/api/market/instruments/search", params),
   getMarketWatchlist: () => request("/api/market/watchlist"),
   updateMarketWatchlist: (instrumentIds) => request("/api/market/watchlist", {}, { method: "PUT", body: { instrumentIds } }),
-  getMarketCandles: (params = {}) => request("/api/market/candles", params),
+  getMarketCandles: (params = {}) => request("/api/market/candles", params, { cache: "no-store" }),
   getMarketAnalytics: (params = {}) => request("/api/market/analytics", params),
   getApiLimits: () => request("/api/admin/api-limits"),
   getPipelineStatus: () => request("/api/admin/pipeline-status"),

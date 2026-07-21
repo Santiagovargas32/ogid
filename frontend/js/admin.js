@@ -24,7 +24,6 @@ function cacheElements() {
   elements.pipelineStatusBody = byId("pipeline-status-body");
   elements.pipelineDiagnosticsBody = byId("pipeline-diagnostics-body");
   elements.marketPrimaryDiagnosticsBody = byId("market-primary-diagnostics-body");
-  elements.marketFallbackDiagnosticsBody = byId("market-fallback-diagnostics-body");
   elements.marketRouterDiagnosticsBody = byId("market-router-diagnostics-body");
   elements.marketTransportDiagnosticsBody = byId("market-transport-diagnostics-body");
   elements.rssFeedStatusBody = byId("rss-feed-status-body");
@@ -559,17 +558,15 @@ function renderMarketProviderDiagnostics(target, market = {}, slot = {}, emptyLa
     `
   ];
 
-  cards.push(
-    `
+  if (slot.errorMessage || slot.responsePreview) cards.push(`
       <article class="diagnostic-item">
         <div class="diagnostic-item-header">
           <strong>Response</strong>
           <span class="diagnostic-item-meta">${escapeHtml(slot.errorCode || "--")}</span>
         </div>
-        <div class="diagnostic-item-meta">${escapeHtml(slot.errorMessage || slot.responsePreview || "No response preview available.")}</div>
+        <div class="diagnostic-item-meta">${escapeHtml(slot.errorMessage || slot.responsePreview)}</div>
       </article>
-    `
-  );
+    `);
 
   if (sampleQuotes.length) {
     cards.push(
@@ -741,7 +738,6 @@ function renderPipelineDiagnostics(news = {}, market = {}) {
     elements.rssFeedStatusBody.innerHTML =
       '<div class="diagnostic-item diagnostic-item-meta">No RSS diagnostics available.</div>';
     renderMarketProviderDiagnostics(elements.marketPrimaryDiagnosticsBody, market, market.providerSlots?.[0] || {}, "primary");
-    renderMarketProviderDiagnostics(elements.marketFallbackDiagnosticsBody, market, market.providerSlots?.[1] || {}, "fallback");
     renderMarketRouterDiagnostics(market);
     renderMarketTransportDiagnostics(market);
     return;
@@ -763,7 +759,6 @@ function renderPipelineDiagnostics(news = {}, market = {}) {
     .join("");
 
   renderMarketProviderDiagnostics(elements.marketPrimaryDiagnosticsBody, market, market.providerSlots?.[0] || {}, "primary");
-  renderMarketProviderDiagnostics(elements.marketFallbackDiagnosticsBody, market, market.providerSlots?.[1] || {}, "fallback");
   renderMarketRouterDiagnostics(market);
   renderMarketTransportDiagnostics(market);
 }
