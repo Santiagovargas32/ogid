@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
 import { createLogger } from "../../utils/logger.js";
-import { BASELINE_COUNTRIES, buildBaselineCountryMap } from "../../utils/countryCatalog.js";
+import { BASELINE_COUNTRIES, buildCountryCatalogMap } from "../../utils/countryCatalog.js";
 import { BoundedCache } from "../shared/boundedCache.js";
 import { getMapLayerDefinition, getMapPreset, getMapTimeWindow, listMapLayers, listMapPresets, listMapTimeWindows } from "./mapLayerRegistry.js";
 import { buildMapThemeConfig } from "./mapThemeService.js";
 
 const log = createLogger("backend/services/map/mapLayerService");
-const countryIndex = buildBaselineCountryMap();
+const countryIndex = buildCountryCatalogMap();
 
 const STATIC_POINTS = Object.freeze({
   military_bases: [
@@ -212,13 +212,13 @@ const STATIC_POINTS = Object.freeze({
   ],
   strategic_ports: [
     { id: "port-singapore", name: "Port of Singapore", lat: 1.2644, lng: 103.8408, country: "SG" },
-    { id: "port-jebel-ali", name: "Jebel Ali", lat: 25.0113, lng: 55.0605, country: "IR" },
-    { id: "port-rotterdam", name: "Port of Rotterdam", lat: 51.9475, lng: 4.1333, country: "UA" },
+    { id: "port-jebel-ali", name: "Jebel Ali", lat: 25.0113, lng: 55.0605, country: "AE" },
+    { id: "port-rotterdam", name: "Port of Rotterdam", lat: 51.9475, lng: 4.1333, country: "NL" },
     { id: "port-houston", name: "Port Houston", lat: 29.7304, lng: -95.2629, country: "US" },
     { id: "port-busan", name: "Port of Busan", lat: 35.1017, lng: 129.0403, country: "KR" }
   ],
   airports: [
-    { id: "apt-heathrow", name: "Heathrow", lat: 51.47, lng: -0.4543, country: "UA" },
+    { id: "apt-heathrow", name: "Heathrow", lat: 51.47, lng: -0.4543, country: "GB" },
     { id: "apt-incheon", name: "Incheon", lat: 37.4602, lng: 126.4407, country: "KR" },
     { id: "apt-dxb", name: "Dubai Intl", lat: 25.2532, lng: 55.3657, country: "AE" },
     { id: "apt-jfk", name: "JFK", lat: 40.6413, lng: -73.7781, country: "US" },
@@ -226,7 +226,7 @@ const STATIC_POINTS = Object.freeze({
   ],
   refineries: [
     { id: "ref-jamnagar", name: "Jamnagar Refinery", lat: 22.4707, lng: 70.0577, country: "IN" },
-    { id: "ref-ras-tanura", name: "Ras Tanura", lat: 26.6431, lng: 50.1596, country: "IR" },
+    { id: "ref-ras-tanura", name: "Ras Tanura", lat: 26.6431, lng: 50.1596, country: "SA" },
     { id: "ref-houston", name: "Houston Refining Belt", lat: 29.7604, lng: -95.3698, country: "US" }
   ],
   power_plants: [
@@ -240,15 +240,33 @@ const STATIC_POINTS = Object.freeze({
     { id: "ss-dallas", name: "Dallas Grid Node", lat: 32.7767, lng: -96.797, country: "US" }
   ],
   critical_minerals: [
-    { id: "cm-katanga", name: "Katanga Copper Belt", lat: -11.6647, lng: 27.4794, country: "SD" },
-    { id: "cm-lithium-triangle", name: "Lithium Triangle", lat: -23.6509, lng: -66.049, country: "VE" },
+    { id: "cm-katanga", name: "Katanga Copper Belt", lat: -11.6647, lng: 27.4794, country: "CD" },
+    {
+      id: "cm-lithium-triangle",
+      name: "Lithium Triangle",
+      lat: -23.6509,
+      lng: -66.049,
+      country: "AR",
+      countries: ["AR", "BO", "CL"],
+      approximate: true,
+      geoPrecision: "regional"
+    },
     { id: "cm-mp", name: "Rare Earth Corridor", lat: 40.8436, lng: 97.623, country: "CN" }
   ],
   shipping_chokepoints: [
     { id: "chk-hormuz", name: "Strait of Hormuz", lat: 26.5667, lng: 56.25, country: "IR" },
     { id: "chk-bab-el-mandeb", name: "Bab el-Mandeb", lat: 12.5856, lng: 43.3333, country: "YE" },
-    { id: "chk-malacca", name: "Strait of Malacca", lat: 2.5, lng: 101.5, country: "CN" },
-    { id: "chk-suez", name: "Suez Canal", lat: 30.4167, lng: 32.35, country: "IL" }
+    {
+      id: "chk-malacca",
+      name: "Strait of Malacca",
+      lat: 2.5,
+      lng: 101.5,
+      country: "MY",
+      countries: ["MY", "SG", "ID"],
+      approximate: true,
+      geoPrecision: "regional"
+    },
+    { id: "chk-suez", name: "Suez Canal", lat: 30.4167, lng: 32.35, country: "EG" }
   ],
   air_defense: [
     { id: "ad-negev", name: "Negev Air Defense Belt", lat: 31.252, lng: 34.7915, country: "IL" },
@@ -256,8 +274,8 @@ const STATIC_POINTS = Object.freeze({
     { id: "ad-kyiv", name: "Kyiv Air Defense Ring", lat: 50.4501, lng: 30.5234, country: "UA" }
   ],
   strategic_chokepoints: [
-    { id: "sk-suez", name: "Suez Canal Corridor", lat: 30.4167, lng: 32.35, country: "IL" },
-    { id: "sk-panama", name: "Panama Canal", lat: 9.080, lng: -79.680, country: "US" },
+    { id: "sk-suez", name: "Suez Canal Corridor", lat: 30.4167, lng: 32.35, country: "EG" },
+    { id: "sk-panama", name: "Panama Canal", lat: 9.080, lng: -79.680, country: "PA" },
     { id: "sk-bosphorus", name: "Bosphorus", lat: 41.125, lng: 29.1, country: "TR" }
   ],
   ports_congestion: [
@@ -266,7 +284,7 @@ const STATIC_POINTS = Object.freeze({
     { id: "pc-singapore", name: "Singapore Queue", lat: 1.2644, lng: 103.8408, country: "SG" }
   ],
   space_assets: [
-    { id: "sa-baikonur", name: "Baikonur Launch Complex", lat: 45.965, lng: 63.305, country: "RU" },
+    { id: "sa-baikonur", name: "Baikonur Launch Complex", lat: 45.965, lng: 63.305, country: "KZ" },
     { id: "sa-vandenberg", name: "Vandenberg", lat: 34.742, lng: -120.5724, country: "US" },
     { id: "sa-jiuquan", name: "Jiuquan", lat: 40.9606, lng: 100.2983, country: "CN" }
   ]
@@ -282,7 +300,7 @@ const STATIC_LINES = Object.freeze({
         [-32, 47],
         [-0.1276, 51.5072]
       ],
-      countries: ["US", "UA"]
+      countries: ["US", "GB"]
     },
     {
       id: "cable-mena-europe",
@@ -292,7 +310,7 @@ const STATIC_LINES = Object.freeze({
         [32.35, 30.4167],
         [14.2681, 40.8518]
       ],
-      countries: ["IR", "IL", "UA"]
+      countries: ["AE", "EG", "IT"]
     }
   ],
   pipelines: [
@@ -314,7 +332,7 @@ const STATIC_LINES = Object.freeze({
         [55.0605, 25.0113],
         [54.3773, 24.4539]
       ],
-      countries: ["IR"]
+      countries: ["SA", "AE"]
     }
   ],
   trade_routes: [
@@ -336,7 +354,7 @@ const STATIC_LINES = Object.freeze({
         [-50, 35],
         [4.1333, 51.9475]
       ],
-      countries: ["US", "UA"]
+      countries: ["US", "NL"]
     }
   ],
   supply_chain: [
@@ -551,6 +569,14 @@ function normalizePhrase(value = "") {
   return String(value).toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
 }
 
+function normalizeGeoToken(value = "") {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replaceAll("_", "-")
+    .replace(/\s+/g, "-");
+}
+
 function hashValue(value = "") {
   return createHash("sha1").update(String(value || "")).digest("hex").slice(0, 12);
 }
@@ -576,8 +602,23 @@ function jitter(seed, scale = 0.24) {
 }
 
 function numericOrNull(value) {
+  if (typeof value !== "number" && typeof value !== "string") {
+    return null;
+  }
+  if (typeof value === "string" && !value.trim()) {
+    return null;
+  }
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : null;
+}
+
+function normalizeCoordinatePair(latValue, lngValue) {
+  const lat = numericOrNull(latValue);
+  const lng = numericOrNull(lngValue);
+  if (lat === null || lng === null || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    return { lat: null, lng: null };
+  }
+  return { lat, lng };
 }
 
 function listToUpper(items = []) {
@@ -602,6 +643,41 @@ function sameCoordinates(left, right, epsilon = 0.06) {
   }
 
   return Math.abs(Number(left.lat) - Number(right.lat)) <= epsilon && Math.abs(Number(left.lng) - Number(right.lng)) <= epsilon;
+}
+
+function resolveArticleGeoMetadata(article = {}, { lat = null, lng = null, primaryCountry = null } = {}) {
+  const hasCoordinates = lat !== null && lng !== null;
+  const declaredPrecision = normalizeGeoToken(article.geoPrecision || article.location?.precision || "");
+  const declaredMethod = normalizeGeoToken(article.locationMethod || article.location?.method || "");
+  const nonPointPrecision = new Set([
+    "approximate",
+    "country",
+    "country-centroid",
+    "country-level",
+    "none",
+    "region",
+    "region-centroid",
+    "regional",
+    "synthetic"
+  ]);
+  const unusablePrecision = new Set(["none", "synthetic"]);
+  const useReportedCoordinates = hasCoordinates && !unusablePrecision.has(declaredPrecision);
+  const inferredCountryLocation =
+    hasCoordinates && (nonPointPrecision.has(declaredPrecision) || sameCoordinates({ lat, lng }, primaryCountry));
+  const directGeo = useReportedCoordinates && !inferredCountryLocation;
+
+  return {
+    directGeo,
+    useReportedCoordinates,
+    geoPrecision: !hasCoordinates
+      ? "none"
+      : inferredCountryLocation
+        ? declaredPrecision || "country-level"
+        : declaredPrecision || "point",
+    locationMethod: !hasCoordinates
+      ? "none"
+      : declaredMethod || (inferredCountryLocation ? "country-inference" : "article-coordinate")
+  };
 }
 
 function haversineKm(lat1, lng1, lat2, lng2) {
@@ -751,10 +827,9 @@ function buildDashboardCorpus(snapshot = {}, signalCorpus = [], rssSnapshot = {}
       ...(article.countries || []),
       article.country || null
     ]);
-    const lat = numericOrNull(article.lat);
-    const lng = numericOrNull(article.lng);
+    const { lat, lng } = normalizeCoordinatePair(article.lat ?? article.location?.lat, article.lng ?? article.location?.lng);
     const primaryCountry = countries.length ? resolveCountryCoordinates(countries[0]) : null;
-    const directGeo = lat !== null && lng !== null && !sameCoordinates({ lat, lng }, primaryCountry);
+    const geoMetadata = resolveArticleGeoMetadata(article, { lat, lng, primaryCountry });
     const topicTags = [...new Set((article.topicTags || []).map((item) => normalizePhrase(item)).filter(Boolean))];
     const sourceName = article.sourceName || article.provider || "unknown";
     const item = {
@@ -766,7 +841,9 @@ function buildDashboardCorpus(snapshot = {}, signalCorpus = [], rssSnapshot = {}
       countries,
       lat,
       lng,
-      directGeo,
+      directGeo: geoMetadata.directGeo,
+      geoPrecision: geoMetadata.geoPrecision,
+      locationMethod: geoMetadata.locationMethod,
       topicTags,
       sourceName,
       provider: article.provider || sourceName,
@@ -842,6 +919,8 @@ function evaluateSeedEvidence(candidate, { countries = [], aliases = [], rule = 
     lat: candidate.lat,
     lng: candidate.lng,
     directGeo: candidate.directGeo,
+    geoPrecision: candidate.geoPrecision,
+    locationMethod: candidate.locationMethod,
     score: roundTo(score, 3),
     confidence: clamp(
       candidate.credibility +
@@ -851,7 +930,12 @@ function evaluateSeedEvidence(candidate, { countries = [], aliases = [], rule = 
       0.2,
       0.99
     ),
-    status: candidate.directGeo && aliasMatches.length ? "confirmed" : countryMatch ? "country-inferred" : "seeded"
+    status: candidate.directGeo && aliasMatches.length ? "confirmed" : countryMatch ? "country-inferred" : "seeded",
+    verificationStatus: candidate.directGeo && aliasMatches.length
+      ? "source-reported-location-match"
+      : countryMatch
+        ? "country-correlation"
+        : "keyword-correlation"
   };
 }
 
@@ -861,6 +945,16 @@ function summarizeEvidence(evidence = []) {
     .map((item) => item.title)
     .filter(Boolean);
   return recent.length ? recent : [];
+}
+
+function buildEvidenceBasis(evidence = []) {
+  return {
+    directCoordinateCount: evidence.filter((item) => item.directGeo).length,
+    countryInferredCount: evidence.filter((item) => !item.directGeo && item.verificationStatus === "country-correlation").length,
+    keywordOnlyCount: evidence.filter((item) => item.verificationStatus === "keyword-correlation").length,
+    articleIds: evidence.map((item) => item.id).filter(Boolean),
+    sourceNames: [...new Set(evidence.map((item) => item.sourceName).filter(Boolean))]
+  };
 }
 
 function weightedAverageCoordinates(evidence = []) {
@@ -934,10 +1028,10 @@ function buildDashboardStaticPointAssets(snapshot = {}, signalCorpus = [], rssSn
       const countries = resolveAssetCountries(item);
       const hostCountryName = countryIndex[hostCountry]?.country || hostCountry;
       const aliases = buildSeedAliases(item.name, item.aliases || []);
-      const evidence = candidatePoolForAsset([hostCountry], rule, corpus)
+      const evidence = candidatePoolForAsset(countries, rule, corpus)
         .map((candidate) =>
           evaluateSeedEvidence(candidate, {
-            countries: [hostCountry],
+            countries,
             aliases,
             rule,
             nowMs
@@ -947,6 +1041,7 @@ function buildDashboardStaticPointAssets(snapshot = {}, signalCorpus = [], rssSn
         .sort((left, right) => right.score - left.score)
         .slice(0, 5);
       const topEvidence = evidence[0] || null;
+      const evidenceBasis = buildEvidenceBasis(evidence);
 
       return {
         id: `static:${layerId}:${item.id}`,
@@ -961,13 +1056,17 @@ function buildDashboardStaticPointAssets(snapshot = {}, signalCorpus = [], rssSn
         hostCountry,
         hostCountryName,
         facilityType: item.facilityType || null,
-        approximate: item.approximate === true,
+        approximate: item.approximate !== false,
         alwaysVisible: layerId === "military_bases",
         lat: Number(item.lat),
         lng: Number(item.lng),
         baseLat: Number(item.lat),
         baseLng: Number(item.lng),
         status: topEvidence?.status || "seeded",
+        verificationStatus: topEvidence?.verificationStatus || "catalog-only",
+        geoPrecision: item.geoPrecision || "approximate",
+        locationMethod: item.locationMethod || "seed-catalog",
+        evidenceBasis,
         confidence: resolveEvidenceConfidence(evidence, 0.34),
         activityScore: resolveActivityScore(evidence),
         linkedArticleCount: evidence.length,
@@ -1030,6 +1129,7 @@ function buildDashboardMovingSeedAssets(snapshot = {}, signalCorpus = [], rssSna
         rule.maxDriftKm
       );
       const topEvidence = evidence[0] || null;
+      const evidenceBasis = buildEvidenceBasis(evidence);
       const finalPoint = topEvidence ? clampedPoint : syntheticPoint;
       const heading =
         bearingDegrees({ lat: Number(item.lat), lng: Number(item.lng) }, finalPoint) ?? syntheticHeading(item.id, phase);
@@ -1048,6 +1148,14 @@ function buildDashboardMovingSeedAssets(snapshot = {}, signalCorpus = [], rssSna
         baseLat: Number(item.lat),
         baseLng: Number(item.lng),
         status: topEvidence?.status || "seeded",
+        verificationStatus: topEvidence?.verificationStatus || "synthetic-seed",
+        geoPrecision: geoEvidence.length ? "approximate" : topEvidence ? "country-level" : "synthetic",
+        locationMethod: geoEvidence.length
+          ? "seed-to-reported-coordinate-blend"
+          : topEvidence
+            ? "seed-to-country-centroid-blend"
+            : "synthetic-jitter",
+        evidenceBasis,
         confidence: resolveEvidenceConfidence(evidence, 0.42),
         activityScore: resolveActivityScore(evidence),
         linkedArticleCount: evidence.length,
@@ -1143,7 +1251,10 @@ function buildStaticPointFeatures(layerId, now) {
         hostCountry: resolveAssetHostCountry(item),
         facilityType: item.facilityType || null,
         iconKey: item.iconKey || layerId,
-        approximate: item.approximate === true,
+        approximate: item.approximate !== false,
+        geoPrecision: item.geoPrecision || "approximate",
+        locationMethod: item.locationMethod || "seed-catalog",
+        verificationStatus: "catalog-only",
         severity: "monitoring",
         source: "seeded-map-catalog",
         synthetic: false,
@@ -1163,6 +1274,9 @@ function buildStaticLineFeatures(layerId, now) {
       item.coordinates,
       {
         countries: item.countries || [],
+        geoPrecision: "regional",
+        locationMethod: "seed-catalog",
+        verificationStatus: "catalog-only",
         severity: "monitoring",
         source: "seeded-map-catalog",
         synthetic: false,
@@ -1187,6 +1301,9 @@ function buildMovingFeatures(layerId, now) {
       {
         country: item.country,
         countries: [item.country],
+        geoPrecision: "synthetic",
+        locationMethod: "synthetic-jitter",
+        verificationStatus: "synthetic-seed",
         severity: "elevated",
         source: "seeded-moving-layer",
         synthetic: true,
@@ -1216,6 +1333,9 @@ function buildConflictFeatures(snapshot = {}, now) {
           score: hotspot.score,
           metrics: hotspot.metrics || {},
           topTags: hotspot.topTags || [],
+          geoPrecision: "country-level",
+          locationMethod: "risk-country-centroid",
+          verificationStatus: "derived-score",
           source: "state-hotspots",
           synthetic: false,
           dataMode: "derived"
@@ -1236,6 +1356,9 @@ function buildScaffoldFeatures(layerId, now) {
       {
         country: country.iso2,
         countries: [country.iso2],
+        geoPrecision: "synthetic",
+        locationMethod: "synthetic-scaffold",
+        verificationStatus: "synthetic-scaffold",
         severity: "monitoring",
         source: "registry-scaffold",
         synthetic: true,
@@ -1297,15 +1420,18 @@ function articleToFeatures(layerId, article = {}) {
   const mentions = [...new Set(article.countryMentions || article.countries || [])];
   const timestamp = article.publishedAt || article.timestamp || new Date().toISOString();
   const features = [];
+  const { lat, lng } = normalizeCoordinatePair(article.lat ?? article.location?.lat, article.lng ?? article.location?.lng);
+  const primaryCountry = mentions.length ? resolveCountryCoordinates(mentions[0]) : null;
+  const geoMetadata = resolveArticleGeoMetadata(article, { lat, lng, primaryCountry });
 
-  if (Number.isFinite(article.lat) && Number.isFinite(article.lng)) {
+  if (geoMetadata.useReportedCoordinates) {
     features.push(
       pointFeature(
         layerId,
         article.id || hashValue(`${layerId}:${article.title}:${timestamp}`),
         article.title || layerId,
-        article.lat,
-        article.lng,
+        lat,
+        lng,
         {
           country: article.country || mentions[0] || null,
           countries: mentions,
@@ -1315,6 +1441,9 @@ function articleToFeatures(layerId, article = {}) {
           credibilityScore: Number(article.credibilityScore || 0.55),
           threatLevel: article.threatLevel || "low",
           topicTags: article.topicTags || [],
+          geoPrecision: geoMetadata.geoPrecision,
+          locationMethod: geoMetadata.locationMethod,
+          verificationStatus: geoMetadata.directGeo ? "source-reported" : "source-reported-approximate",
           synthetic: Boolean(article.synthetic),
           dataMode: article.synthetic ? "synthetic" : "derived"
         },
@@ -1346,6 +1475,9 @@ function articleToFeatures(layerId, article = {}) {
           credibilityScore: Number(article.credibilityScore || 0.55),
           threatLevel: article.threatLevel || "low",
           topicTags: article.topicTags || [],
+          geoPrecision: "country-level",
+          locationMethod: "country-inference",
+          verificationStatus: "country-correlation",
           synthetic: Boolean(article.synthetic),
           dataMode: article.synthetic ? "synthetic" : "derived"
         },

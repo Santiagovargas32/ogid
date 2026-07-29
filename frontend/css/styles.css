@@ -2115,3 +2115,324 @@ body {
 .ai-evidence-list a {
   color: var(--bs-info);
 }
+
+.awareness-inbox-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.04rem;
+  text-transform: uppercase;
+}
+
+.awareness-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.awareness-toolbar {
+  padding: 0.55rem 0.8rem;
+  border-bottom: 1px solid var(--border-main);
+  background: var(--bg-panel);
+}
+
+.awareness-tabs {
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0.2rem;
+  border: 1px solid var(--border-main);
+  border-radius: 0.45rem;
+  background: var(--bg-secondary);
+}
+
+.awareness-tabs button {
+  padding: 0.38rem 0.68rem;
+  border: 0;
+  border-radius: 0.3rem;
+  color: var(--text-muted);
+  background: transparent;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.04rem;
+}
+
+.awareness-tabs button:hover,
+.awareness-tabs button:focus-visible,
+.awareness-tabs button.active {
+  color: var(--text-main);
+  background: var(--bg-panel-soft);
+  outline: 1px solid var(--border-main);
+}
+
+.awareness-agenda {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-height: 400px;
+}
+
+.awareness-agenda-column {
+  min-width: 0;
+  padding: 0.8rem;
+}
+
+.awareness-agenda-column + .awareness-agenda-column {
+  border-left: 1px solid var(--border-main);
+}
+
+.awareness-agenda-column > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.65rem;
+}
+
+.awareness-agenda-column > header h3 {
+  margin: 0;
+  font-size: 0.86rem;
+}
+
+.awareness-agenda-column > header span {
+  color: var(--text-muted);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+}
+
+.awareness-event-list {
+  display: grid;
+  align-content: start;
+  gap: 0.55rem;
+  max-height: 540px;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.awareness-event-list::-webkit-scrollbar {
+  width: 10px;
+}
+
+.awareness-event-list::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+.awareness-event-list::-webkit-scrollbar-thumb {
+  border: 2px solid var(--bg-secondary);
+  border-radius: 999px;
+  background: var(--border-main);
+}
+
+.awareness-event-card {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border-main);
+  border-left: 3px solid var(--accent-cyan);
+  border-radius: 0.42rem;
+  background: var(--bg-secondary);
+}
+
+.awareness-event-card.is-read {
+  opacity: 0.66;
+  border-left-color: var(--border-main);
+}
+
+.awareness-event-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.awareness-event-heading h4 {
+  margin: 0.4rem 0 0;
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+
+.awareness-event-card p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.awareness-event-badges,
+.awareness-event-scope,
+.awareness-event-source,
+.awareness-event-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.awareness-badge,
+.awareness-event-scope span,
+.awareness-read-state {
+  padding: 0.18rem 0.38rem;
+  border: 1px solid var(--border-main);
+  border-radius: 999px;
+  color: var(--text-muted);
+  background: var(--bg-panel-soft);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.59rem;
+  letter-spacing: 0.03rem;
+  text-transform: uppercase;
+}
+
+.awareness-importance-high,
+.awareness-toast-high {
+  border-color: color-mix(in srgb, var(--critical) 68%, var(--border-main));
+  color: var(--critical);
+}
+
+.awareness-importance-medium,
+.awareness-claim-source_asserted,
+.awareness-badge-stale,
+.awareness-toast-medium {
+  border-color: color-mix(in srgb, var(--monitoring) 62%, var(--border-main));
+  color: var(--monitoring);
+}
+
+.awareness-badge-official,
+.awareness-claim-corroborated {
+  border-color: color-mix(in srgb, var(--stable) 65%, var(--border-main));
+  color: var(--stable);
+}
+
+.awareness-event-time {
+  display: grid;
+  grid-template-columns: minmax(6rem, auto) 1fr 1fr;
+  gap: 0.45rem;
+  align-items: center;
+  color: var(--text-muted);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.63rem;
+}
+
+.awareness-event-time strong {
+  color: var(--text-main);
+  font-variant-numeric: tabular-nums;
+}
+
+.awareness-event-source {
+  color: var(--text-muted);
+  font-size: 0.67rem;
+}
+
+.awareness-source-link {
+  color: var(--text-main);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.awareness-event-actions {
+  justify-content: flex-end;
+}
+
+.awareness-empty-state {
+  padding: 1.25rem;
+  border: 1px dashed var(--border-main);
+  border-radius: 0.42rem;
+  color: var(--text-muted);
+  text-align: center;
+  font-size: 0.75rem;
+}
+
+.awareness-toast-region {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 1085;
+  display: grid;
+  gap: 0.55rem;
+  width: min(380px, calc(100vw - 2rem));
+  pointer-events: none;
+}
+
+.awareness-toast {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border-main);
+  border-left-width: 3px;
+  border-radius: 0.45rem;
+  background: var(--surface-strong);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.42);
+  pointer-events: auto;
+}
+
+.awareness-toast-copy {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.awareness-toast-copy strong {
+  font-size: 0.8rem;
+}
+
+.awareness-toast-copy span,
+.awareness-toast-copy a,
+.awareness-toast-kicker {
+  color: var(--text-muted);
+  font-size: 0.65rem;
+}
+
+.awareness-toast-copy a {
+  color: var(--text-main);
+}
+
+.awareness-toast > button {
+  border: 0;
+  color: var(--text-muted);
+  background: transparent;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+@media (max-width: 991.98px) {
+  .awareness-agenda {
+    grid-template-columns: 1fr;
+  }
+
+  .awareness-agenda-column + .awareness-agenda-column {
+    border-top: 1px solid var(--border-main);
+    border-left: 0;
+  }
+
+  .awareness-event-time {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .awareness-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .awareness-tabs button {
+    padding-inline: 0.35rem;
+  }
+
+  .awareness-event-heading {
+    display: grid;
+  }
+
+  .awareness-event-actions {
+    justify-content: stretch;
+  }
+
+  .awareness-event-actions .btn {
+    flex: 1;
+  }
+}

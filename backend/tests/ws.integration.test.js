@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import WebSocket from "ws";
 import { createAppServer } from "../server.js";
+import { validateWebSocketUpgradeOrigin } from "../websocket/socketServer.js";
 
 function waitForMessage(socket, expectedType, timeoutMs = 8_000) {
   return new Promise((resolve, reject) => {
@@ -37,6 +38,77 @@ function closeSocket(socket) {
     socket.close(1000, "test-complete");
   });
 }
+
+function expectUpgradeRejected(url, options = {}, timeoutMs = 4_000) {
+  return new Promise((resolve, reject) => {
+    const socket = new WebSocket(url, options);
+    let settled = false;
+    const finish = (callback) => (...values) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      callback(...values);
+    };
+    const timer = setTimeout(
+      finish(() => {
+        socket.terminate();
+        reject(new Error("Timed out waiting for rejected WebSocket upgrade"));
+      }),
+      timeoutMs
+    );
+
+    socket.once(
+      "unexpected-response",
+      finish((_request, response) => {
+        response.resume();
+        socket.terminate();
+        resolve(response.statusCode);
+      })
+    );
+    socket.once(
+      "open",
+      finish(() => {
+        socket.close();
+        reject(new Error("Cross-origin WebSocket upgrade was accepted"));
+      })
+    );
+    socket.once("error", finish(reject));
+  });
+}
+
+test("WebSocket origin policy requires same-origin or an originless loopback client", () => {
+  const request = (headers, remoteAddress = "203.0.113.20") => ({ headers, socket: { remoteAddress } });
+
+  assert.deepEqual(
+    validateWebSocketUpgradeOrigin(request({ host: "dashboard.example:8080", origin: "http://dashboard.example:8080" })),
+    { allowed: true, reason: "same-origin" }
+  );
+  assert.equal(
+    validateWebSocketUpgradeOrigin(request({ host: "dashboard.example:8080", origin: "https://cross-origin.example" })).allowed,
+    false
+  );
+  assert.deepEqual(validateWebSocketUpgradeOrigin(request({ host: "dashboard.example:8080" })), {
+    allowed: false,
+    reason: "origin-required"
+  });
+  assert.deepEqual(validateWebSocketUpgradeOrigin(request({ host: "127.0.0.1:8080" }, "127.0.0.1")), {
+    allowed: true,
+    reason: "originless-loopback"
+  });
+  assert.deepEqual(
+    validateWebSocketUpgradeOrigin(
+      request({ host: "dashboard.example:8080", "x-forwarded-for": "198.51.100.8" }, "127.0.0.1")
+    ),
+    { allowed: false, reason: "origin-required" }
+  );
+  assert.deepEqual(
+    validateWebSocketUpgradeOrigin(
+      request({ host: "rebinding.example:8080", origin: "http://rebinding.example:8080" }, "127.0.0.1")
+    ),
+    { allowed: false, reason: "untrusted-loopback-host" }
+  );
+  assert.equal(validateWebSocketUpgradeOrigin(request({ host: "dashboard.example:8080", origin: "null" })).allowed, false);
+});
 
 test("WebSocket emits snapshot and update envelopes", async () => {
   const originalFetch = global.fetch;
@@ -86,10 +158,24 @@ test("WebSocket emits snapshot and update envelopes", async () => {
   await runtime.orchestrator.runCycle("test-bootstrap");
 
   const address = runtime.server.address();
-  const socket = new WebSocket(`ws://127.0.0.1:${address.port}/ws`, {
+  const wsUrl = `ws://127.0.0.1:${address.port}/ws`;
+  assert.equal(
+    await expectUpgradeRejected(wsUrl, { headers: { origin: "https://cross-origin.example" } }),
+    403
+  );
+
+  const originlessSocket = new WebSocket(wsUrl);
+  try {
+    const originlessSnapshot = await waitForMessage(originlessSocket, "snapshot");
+    assert.equal(originlessSnapshot.type, "snapshot");
+  } finally {
+    await closeSocket(originlessSocket);
+  }
+
+  const socket = new WebSocket(wsUrl, {
     headers: {
       "user-agent": "OGID WS Integration Test/1.0",
-      origin: "http://127.0.0.1"
+      origin: `http://127.0.0.1:${address.port}`
     }
   });
 
@@ -122,7 +208,7 @@ test("WebSocket emits snapshot and update envelopes", async () => {
     assert.equal(healthPayload.data.websocket.activeConnections.length, 1);
     assert.equal(healthPayload.data.websocket.lastConnection.clientIp, "127.0.0.1");
     assert.equal(healthPayload.data.websocket.lastConnection.userAgent, "OGID WS Integration Test/1.0");
-    assert.equal(healthPayload.data.websocket.lastConnection.origin, "http://127.0.0.1");
+    assert.equal(healthPayload.data.websocket.lastConnection.origin, `http://127.0.0.1:${address.port}`);
 
     const updatePromise = waitForMessage(socket, "update");
     await runtime.orchestrator.runCycle("test-websocket-update");

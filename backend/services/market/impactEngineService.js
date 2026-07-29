@@ -62,6 +62,11 @@ function getConflictWeightNorm(article) {
   return Math.min(5, Number((raw / 4).toFixed(2)));
 }
 
+function getFinancialImportanceWeight(article) {
+  const raw = Number(article?.financialImportanceScore ?? article?.financial?.importance?.score ?? 0);
+  return Number.isFinite(raw) ? Math.min(4, Number((raw / 20).toFixed(2))) : 0;
+}
+
 function normalizeSector(instrument = {}) {
   const metadata = normalizeText(`${instrument.sector || ""} ${instrument.industry || ""} ${instrument.displayName || ""}`);
   if (["defense", "aerospace", "weapon", "military"].some((value) => metadata.includes(` ${value} `))) return "defense";
@@ -97,7 +102,8 @@ export function buildArticleInstrumentLinks(article, { tickers = [], instruments
 
   for (const [ticker, instrument] of instrumentsByTicker) {
     const sector = normalizeSector(instrument);
-    const directField = matchingInstrumentField(instrument, text);
+    const explicitlyLinked = (article.instrumentIds || []).includes(instrument.instrumentId);
+    const directField = explicitlyLinked ? "instrumentIds" : matchingInstrumentField(instrument, text);
     let relation = null;
     let evidenceField = null;
     if (directField) {
@@ -138,6 +144,10 @@ function inferTickersForArticle(article, instrumentsByTicker) {
 
 function shouldIncludeArticle(article, countryFilterSet) {
   if (!countryFilterSet.size) {
+    return true;
+  }
+
+  if ((article.domains || []).includes("financial") || article.financial?.isFinancial === true || (article.instrumentIds || []).length > 0) {
     return true;
   }
 
@@ -247,7 +257,8 @@ export function computeMarketImpact({ articles = [], countries = {}, marketQuote
     const levelWeight = LEVEL_WEIGHT[level] || 1;
     const sentimentWeight = getSentimentWeight(article);
     const conflictWeightNorm = getConflictWeightNorm(article);
-    const articleWeight = Number((levelWeight + sentimentWeight + conflictWeightNorm).toFixed(2));
+    const financialImportanceWeight = getFinancialImportanceWeight(article);
+    const articleWeight = Number((levelWeight + sentimentWeight + conflictWeightNorm + financialImportanceWeight).toFixed(2));
     const matchedTickers = inferTickersForArticle(article, instrumentsByTicker);
 
     for (const ticker of matchedTickers) {

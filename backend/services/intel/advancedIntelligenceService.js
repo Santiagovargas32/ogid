@@ -44,6 +44,33 @@ const STOPWORDS = new Set([
   "uma", "uns", "das", "dos", "com", "para", "por", "sobre", "apos"
 ]);
 
+const MARKET_AWARENESS_DOMAINS = new Set(["financial", "macro", "market", "corporate", "regulatory"]);
+
+function isMarketAwarenessEvent(event = {}) {
+  return (event.domains || []).some((domain) => MARKET_AWARENESS_DOMAINS.has(String(domain || "").toLowerCase()));
+}
+
+export function buildMarketAwarenessProjection(awareness = {}, generatedAt = null) {
+  const upcoming = (awareness.upcoming || []).filter(isMarketAwarenessEvent);
+  const recent = (awareness.recent || []).filter(isMarketAwarenessEvent);
+  const events = [...upcoming, ...recent];
+  return {
+    schemaVersion: "market-awareness-v1",
+    revision: awareness.revision || 0,
+    generatedAt: awareness.generatedAt || generatedAt,
+    mode: awareness.mode || "off",
+    upcoming,
+    recent,
+    quality: {
+      total: events.length,
+      scheduled: events.filter((event) => event.status === "scheduled").length,
+      released: events.filter((event) => event.status === "released").length,
+      unlocated: events.filter((event) => !Number.isFinite(event.location?.lat) || !Number.isFinite(event.location?.lng)).length,
+      stale: events.filter((event) => event.dataMode === "stale" || event.provenance?.stale).length
+    }
+  };
+}
+
 const MULTILINGUAL_COUNTRY_ALIASES = Object.freeze({
   US: ["estados unidos", "etats unis", "vereinigte staaten"],
   RU: ["rusia", "russie", "russland"],
@@ -413,7 +440,11 @@ export class AdvancedIntelligenceService {
     const resolvedActiveWindowHours = activeWindowHours === null || activeWindowHours === undefined
       ? Math.min(48, resolvedWindowHours)
       : Math.max(1, Math.min(48, Number(activeWindowHours || 2)));
-    const stateRevision = this.stateManager.getSnapshot()?.meta?.lastRefreshAt || null;
+    const currentState = this.stateManager.getSnapshot();
+    const stateRevision = {
+      news: currentState?.meta?.lastRefreshAt || null,
+      awareness: Number(currentState?.awareness?.revision || 0)
+    };
     const key = JSON.stringify({
       countries: resolvedCountries,
       windowHours: resolvedWindowHours,
@@ -551,6 +582,7 @@ export class AdvancedIntelligenceService {
         scoringUsesCompleteWindow: true
       },
       quality,
+      marketAwareness: buildMarketAwarenessProjection(stateSnapshot.awareness, generatedAt),
       worldBrief: buildWorldBrief(hotspots, corpus.articles, windowHours),
       countryInstability: {
         generatedAt,

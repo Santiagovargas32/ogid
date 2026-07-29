@@ -6,6 +6,7 @@ import { resolveMarketQuotesPollDelayMs } from "./marketPolling.js";
 import { HotspotMap, getLevelColor } from "./map.js";
 import { mountSituationalWorkspace } from "./media/situationalWorkspace.js";
 import { startAdvancedIntelligence } from "./intelligence/advancedIntelligence.js";
+import { mountAwarenessCenter } from "./awareness.js";
 import {
   addMarketInstrument,
   marketSelectionIds,
@@ -94,6 +95,7 @@ let manualRefreshCooldownTimer = null;
 let newsDrawerInstance = null;
 let currentNewsById = new Map();
 let advancedIntelligenceController = null;
+let awarenessController = null;
 const teardownHandlers = [];
 
 const elements = {};
@@ -2307,6 +2309,7 @@ async function requestFilteredSnapshot() {
       limit: 100
     });
     setSnapshot(snapshot);
+    awarenessController?.syncCompact(snapshot?.awareness);
     await refreshAnalytics();
   } catch (error) {
     console.error("Failed to refresh filtered snapshot:", error);
@@ -2357,18 +2360,24 @@ function mountWebSocket() {
       }
       if (message.type === "snapshot") {
         setSnapshot(message.data);
+        awarenessController?.syncCompact(message.data?.awareness);
         void advancedIntelligenceController?.refresh();
         scheduleAnalyticsRefresh();
         return;
       }
       if (message.type === "update") {
         applyUpdate(message.data);
+        awarenessController?.syncCompact(message.data?.awareness);
         void advancedIntelligenceController?.refresh();
         scheduleAnalyticsRefresh();
         return;
       }
       if (message.type === "ai:update:v1") {
         applyUpdate(message.data || {});
+        return;
+      }
+      if (message.type === "awareness:update:v1") {
+        awarenessController?.applyRealtime(message.data || {});
         return;
       }
       if (message.type === "media:streams:updated") {
@@ -2417,9 +2426,14 @@ async function bootstrap() {
   renderAnalyticsWindowSelector();
   hotspotMap = new HotspotMap("hotspot-map");
   hotspotMap.init();
+  const handleAwarenessMapEvents = (event) => hotspotMap?.setAwarenessEvents(event.detail?.events || []);
+  window.addEventListener("awareness:map-events:v1", handleAwarenessMapEvents);
+  teardownHandlers.push(() => window.removeEventListener("awareness:map-events:v1", handleAwarenessMapEvents));
   teardownHandlers.push(mountSituationalWorkspace({ api }));
   advancedIntelligenceController = startAdvancedIntelligence({ api, getCountries: selectedCountryQueryValue });
   teardownHandlers.push(() => advancedIntelligenceController?.stop());
+  awarenessController = mountAwarenessCenter({ api });
+  teardownHandlers.push(() => awarenessController?.stop());
   initRiskChart();
   initImpactTimelineChart();
   initSectorBreakdownChart();
@@ -2451,6 +2465,7 @@ async function bootstrap() {
   try {
     const snapshot = await api.getSnapshot({ countries: selectedCountryQueryValue(), limit: 100 });
     setSnapshot(snapshot);
+    awarenessController?.syncCompact(snapshot?.awareness);
     await refreshAnalytics();
   } catch (error) {
     console.error("Failed to fetch initial snapshot:", error);

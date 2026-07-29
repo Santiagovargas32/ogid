@@ -52,6 +52,7 @@ export const api = {
   getHealth: () => request("/api/health"),
   getSnapshot: (params = {}) => request("/api/intel/snapshot", params),
   getAdvancedIntelligenceSnapshot: (params = {}) => request("/api/intel/advanced-snapshot", params, { cache: "no-store" }),
+  getAwarenessSnapshot: () => request("/api/intel/awareness-snapshot", {}, { cache: "no-store" }),
   refreshIntel: (payload = {}) => request("/api/intel/refresh", {}, { method: "POST", body: payload }),
   getHotspotsV2: (params = {}) => request("/api/intel/hotspots-v2", params),
   getNews: (params = {}) => request("/api/intel/news", params),

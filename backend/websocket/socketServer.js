@@ -1,5 +1,5 @@
 import { WebSocket, WebSocketServer } from "ws";
-import { resolveClientIp } from "../utils/clientIp.js";
+import { normalizeIp, resolveClientIp } from "../utils/clientIp.js";
 import { createLogger } from "../utils/logger.js";
 
 const log = createLogger("backend/websocket/socketServer");
@@ -21,6 +21,79 @@ function normalizeHeader(value = "") {
   }
 
   return String(value || "").trim();
+}
+
+function isLoopbackAddress(value = "") {
+  const normalized = normalizeIp(value);
+  return normalized === "127.0.0.1" || normalized === "::1";
+}
+
+function hasForwardingHeaders(request = {}) {
+  return ["forwarded", "x-forwarded-for", "x-forwarded-host", "x-forwarded-proto", "x-real-ip"].some(
+    (name) => Boolean(normalizeHeader(request.headers?.[name]))
+  );
+}
+
+function isLoopbackHost(host = "", protocol = "http") {
+  try {
+    const hostname = new URL(`${protocol}://${host}`).hostname;
+    return hostname === "localhost" || isLoopbackAddress(hostname);
+  } catch {
+    return false;
+  }
+}
+
+function resolveRequestProtocol(request = {}) {
+  const forwarded = normalizeHeader(request.headers?.["x-forwarded-proto"])
+    .split(",")[0]
+    .trim()
+    .toLowerCase();
+  if (forwarded === "http" || forwarded === "https") {
+    return forwarded;
+  }
+  return request.socket?.encrypted ? "https" : "http";
+}
+
+export function validateWebSocketUpgradeOrigin(request = {}) {
+  const origin = normalizeHeader(request.headers?.origin);
+  const remoteAddress = resolveClientIp(request).remoteAddress;
+  const host = normalizeHeader(request.headers?.host);
+  const protocol = resolveRequestProtocol(request);
+  const directLoopback = isLoopbackAddress(remoteAddress) && isLoopbackHost(host, protocol) && !hasForwardingHeaders(request);
+  if (!origin) {
+    return {
+      allowed: directLoopback,
+      reason: directLoopback ? "originless-loopback" : "origin-required"
+    };
+  }
+
+  if (!host) {
+    return { allowed: false, reason: "host-required" };
+  }
+
+  try {
+    const expectedOrigin = new URL(`${protocol}://${host}`).origin;
+    const presentedOrigin = new URL(origin);
+    const validProtocol = presentedOrigin.protocol === "http:" || presentedOrigin.protocol === "https:";
+    const sameOrigin = validProtocol && presentedOrigin.origin === expectedOrigin;
+    if (sameOrigin && isLoopbackAddress(remoteAddress) && !hasForwardingHeaders(request) && !isLoopbackHost(host, protocol)) {
+      return { allowed: false, reason: "untrusted-loopback-host" };
+    }
+    return {
+      allowed: sameOrigin,
+      reason: sameOrigin ? "same-origin" : "origin-mismatch"
+    };
+  } catch {
+    return { allowed: false, reason: "invalid-origin" };
+  }
+}
+
+function rejectUpgrade(socket, statusCode = 403, statusText = "Forbidden") {
+  if (!socket || socket.destroyed) {
+    return;
+  }
+  socket.write(`HTTP/1.1 ${statusCode} ${statusText}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
+  socket.destroy();
 }
 
 function buildConnectionInfo(request = {}, path = "/ws") {
@@ -127,7 +200,18 @@ export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000,
       return;
     }
 
-    request.wsConnectionInfo = buildConnectionInfo(request, path);
+    const connectionInfo = buildConnectionInfo(request, path);
+    const originValidation = validateWebSocketUpgradeOrigin(request);
+    if (!originValidation.allowed) {
+      log.warn("ws_upgrade_rejected", {
+        reason: originValidation.reason,
+        ...connectionInfo
+      });
+      rejectUpgrade(socket);
+      return;
+    }
+
+    request.wsConnectionInfo = connectionInfo;
     wss.handleUpgrade(request, socket, head, (client) => {
       wss.emit("connection", client, request);
     });

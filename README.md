@@ -15,6 +15,7 @@ OGID is a local web app for monitoring geopolitical OSINT signals and their pote
   - Canonical RSS catalog prioritizes validated official feeds, with bounded rotation and per-feed diagnostics
   - Final fallback: deterministic local feed
 - Adaptive quota-aware scheduling for news and market refresh intervals.
+- Feature-flagged awareness branch for official macro calendars, financial releases, security communiques and maritime alerts; defaults to zero upstream traffic.
 - Manual user-triggered refresh (`POST /api/intel/refresh`) with cooldown and per-client limits.
 - Country risk scoring with deterministic engine.
 - Country watchlist default: `US, IL, IR`.
@@ -80,6 +81,16 @@ NEWS_ANALYZE_LIMIT=80
 NEWS_CANDIDATE_WINDOW_HOURS=36
 NEWS_MAX_PER_SOURCE=3
 NEWS_MAX_SIMILAR_HEADLINE=2
+AWARENESS_MODE=off
+AWARENESS_TIMEOUT_MS=9000
+AWARENESS_USER_AGENT=OGID-awareness/1.0 (+https://localhost; contact: local-operator)
+AWARENESS_GLOBAL_CONCURRENCY=2
+AWARENESS_HOST_CONCURRENCY=1
+AWARENESS_PERSISTENT_403_THRESHOLD=3
+AWARENESS_403_COOLDOWN_MS=3600000
+AWARENESS_STATE_FILE=data/intel/awareness-events.json
+AWARENESS_AUDIT_FILE=data/intel/awareness-events.jsonl
+AWARENESS_POLL_AUDIT_FILE=data/intel/awareness-polls.jsonl
 WATCHLIST_COUNTRIES=US,IL,IR
 REFRESH_INTERVAL_MS=30000
 WS_HEARTBEAT_MS=15000
@@ -99,11 +110,24 @@ MARKET_STALE_TTL_MS=14400000
 MARKET_REQUEST_RESERVE=1
 MARKET_ACTIVE_INTERVAL_MS=300000
 MARKET_OFFHOURS_INTERVAL_MS=1800000
+MARKET_INTRADAY_CANDLES_MAX_INSTRUMENTS=6
 IMPACT_WINDOW_MIN=120
 LOG_LEVEL=info
 ```
 
-The versioned backend source catalog is the default inventory: 68 RSS entries (67 enabled and one retained as disabled) plus 435 explicitly typed generated searches. `NEWS_RSS_FEEDS` and `NEWS_RSS_DISABLED_FEEDS` are optional complete overrides; leave them empty to use the catalog.
+The versioned backend source catalog is the default inventory: 66 enabled RSS entries plus 435 explicitly typed generated searches. `NEWS_RSS_FEEDS` and `NEWS_RSS_DISABLED_FEEDS` are optional complete overrides; leave them empty to use the catalog.
+
+The awareness branch is separate from the geopolitical RSS selector. `AWARENESS_MODE=off` is the default and performs no awareness requests; global `shadow` ingests and audits without exposing events to public REST/WebSocket clients; `visible` exposes only source-level `active` events to the in-app calendar, market feed, inbox and conservative official-release map layer. Every catalog source has an explicit admission state: `probing` is lab-only, `shadow` is scheduled but unpublished, `active` is scheduled and publishable, and `blocked` cannot be called by either the scheduler or the admission lab. Runtime health (`unknown`, `polling`, `healthy`, `degraded`, `unhealthy` or `blocked`) remains a separate field.
+
+The initial active set is the official Federal Reserve calendar/RSS, BLS ICS/RSS and BEA schedule. Reviewed transports start in source-level shadow: ECB and BIS RSS, U.S. Defense Releases, DVIDS distribution for U.S. Central Command Public Affairs (strictly filtered to `/news/`), and USGS significant-event GeoJSON. The CENTCOM and MARAD HTML endpoints are blocked after repeated HTTP 403 responses; the IDF page remains blocked because it serves a challenge instead of a stable server-side feed; none are bypassed or replaced by X. The official MARAD RSS transport remains `probing` because it returned both 200 and Akamai 403 results during admission. Treasury and OFAC also remain `probing` until dedicated selectors remove navigation/category false positives. SEC EDGAR watchlist ingestion remains blocked until an instrument-to-CIK contract exists.
+
+`fallbackFor` and `coverageRole` are audit metadata, not automatic failover or corroboration. DVIDS and Defense retain their own publisher identity and remain unpublished in `shadow`; cross-source correlation/deduplication must be validated before either can be promoted to `active` as redundant coverage.
+
+Polling uses HTTPS host allowlisting, conditional requests, a 9-second timeout, 1 MB response cap, global concurrency 2 and per-host concurrency 1. `AWARENESS_USER_AGENT` is backend-only and should identify the local operator because some official hosts reject anonymous/generic clients. A 403 receives a dedicated one-hour exponential cooldown; the third consecutive 403 persistently changes the source to `blocked`, clears its next eligible time and prevents a fourth request across restarts. Only allowlisted response headers, content type, request ID, byte count and a SHA-256 hash are retained for diagnostics; response bodies and cookies are never stored.
+
+`GET /api/intel/awareness-snapshot` accepts `domain`, `kinds`, `status`, `countries`, `instrumentIds`, `from`, `to` and `limit`. Its additive `awareness-v1` response contains `upcoming`, `recent`, source health and quality. WebSocket bootstrap snapshots add the same projection, while later changes use `awareness:update:v1` with monotonic revisions. Financial-only events feed market awareness and never country military-risk scoring; scheduled events provide timing/countdown only, and market-reaction studies continue to use `publishedAt` rather than `scheduledAt`. Events use an atomic JSON snapshot plus a twelve-month JSONL revision audit. Poll results use the separate `AWARENESS_POLL_AUDIT_FILE` JSONL, are compacted daily to a rolling seven-day window and expose only aggregates/last diagnostics through the admin endpoint.
+
+Deploy awareness for seven days in `shadow` before promotion. Promote a source only after verifying stable structure and attribution, correct event times, at least 95% successful polls and no false coordinates. Then use `visible` with calendar/releases and one hot 15-minute instrument; expand to three and six only after 48 healthy hours at each stage. Roll back immediately with `AWARENESS_MODE=off` and `MARKET_INTRADAY_CANDLES_ENABLED=0`; the legacy geopolitical pipeline and its persisted contracts remain available without a data migration.
 
 `MARKET_TICKERS` is an optional initial selection. The Market Quotes dialog discovers candidates with one Yahoo search by symbol or company. A selected candidate is verified once with a Yahoo quote when the watchlist is saved, then persisted with its metadata. Only that selection feeds quotes, OHLCV, predictions and news-impact analysis. Accepted search result types are equities, ETFs, mutual funds, indices, currencies, cryptocurrencies and futures. Provider symbols preserve Yahoo notation (for example `NQ=F`, `^GSPC`, `EURUSD=X`, `BTC-USD` and `BRK.B`) and selected symbols survive restart in `data/market/watchlist-selection.json`.
 
@@ -113,7 +137,7 @@ Search is limited server-side to 30 requests per client per minute; this is an i
 
 OHLCV uses Yahoo `chart()` server-side and is normalized to UTC `{symbol, source, timestamp, open, high, low, close, volume}`. Data is upserted under `data/market/candles`; daily cache TTL is six hours and intraday TTL is 15–60 minutes. The public candle route preserves its existing contract and adds `status: fresh|partial|stale|stored|empty` plus a sanitized degradation error when applicable. Historical `from` and `to` boundaries must be supplied together; incomplete provider coverage is persisted but never promoted to a fresh cache hit.
 
-Supported Yahoo intervals are `5min`, `15min`, `30min`, `1h` and `1day`; the internal module also supports `1wk` and `1mo`. Long intraday combinations are rejected before any upstream request. Scheduled intraday ingestion remains feature-flagged with `MARKET_INTRADAY_CANDLES_ENABLED=1`.
+Supported Yahoo intervals are `5min`, `15min`, `30min`, `1h` and `1day`; the internal module also supports `1wk` and `1mo`. Long intraday combinations are rejected before any upstream request. Scheduled intraday ingestion remains feature-flagged with `MARKET_INTRADAY_CANDLES_ENABLED=1` and is capped at six selected hot instruments through `MARKET_INTRADAY_CANDLES_MAX_INSTRUMENTS`.
 
 News-to-Price Coupling v2 is calculated locally from normalized news and persisted canonical candles. It reports temporal association and observed returns, never causality; optional benchmarks must be supplied as verified `instrumentId` values.
 
@@ -177,6 +201,19 @@ The command runs sequentially and writes sanitized JSON and Markdown reports und
 The dated remediation report in `backend/reports/rss-catalog-remediation-2026-07-19.md` records the baseline failures, repaired URLs, replacements and intentionally retired sources. Audit results are a point-in-time health check; rerun the command before promoting later catalog changes.
 
 Before promoting a new source into the canonical catalog, validate its HTTP/XML stability, publishing cadence, timestamp quality, topical relevance, duplicate rate, metadata coverage and publisher terms in small batches. Clear the local selection after the session with `Remove-Item Env:NEWS_RSS_FEEDS`.
+
+## Awareness Admission Lab
+
+The awareness lab probes disabled candidates without starting Express, the scheduler, persistence or publication. It accepts one to ten catalog IDs, runs sequentially, performs one logical attempt per source with zero retries, and permits only credential-free HTTPS requests and declared redirect hosts. It resolves the same sanitized backend user-agent and overlays the persisted runtime block list read-only. A blocked source is rejected before network access; register a reviewed replacement as `probing` instead of re-calling a blocked transport.
+
+From `backend/`, test all current probing candidates or an explicit batch:
+
+```powershell
+npm run awareness:lab -- --all-probing --output-prefix=awareness-admission-latest
+npm run awareness:lab -- --sources=awareness-ecb-rss,awareness-bis-rss --output-prefix=awareness-central-banks
+```
+
+Sanitized JSON and Markdown reports are written under `backend/reports/`. They contain response classification, allowlisted headers, request ID, content type, byte count, SHA-256, parser counts and time/location coverage, but never response bodies, event titles, cookies or credentials. `candidate-for-shadow` is the maximum recommendation; the command never changes the catalog or promotes a source automatically. The reports dated `2026-07-29` record the initial bounded admission run and should be treated as point-in-time evidence, not a substitute for the seven-day gate.
 
 ## API Endpoints
 

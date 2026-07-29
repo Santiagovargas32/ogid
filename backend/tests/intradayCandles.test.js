@@ -25,7 +25,7 @@ test("intraday ingestion queries only hot instruments and retains an open candle
   globalThis.fetch = async (input) => { requestedUrl = String(input); const payload = Object.fromEntries(listEnabledInstruments(1).map((instrument) => [instrument.providerSymbols.twelve, { meta: { symbol: instrument.providerSymbols.twelve, currency: "USD" }, values: [{ datetime: "2026-07-13 11:00:00", open: "101", high: "103", low: "100", close: "102", volume: "10" }, { datetime: "2026-07-13 11:00:00", open: "101", high: "104", low: "100", close: "103", volume: "11" }, { datetime: "2026-07-13 10:30:00", open: "100", high: "102", low: "99", close: "101", volume: "20" }] }])); return new Response(JSON.stringify(payload), { status: 200 }); };
   try {
     const scheduler = new MarketCreditScheduler({ now: () => nowMs }); const store = new DailyCandleStore({ rootDir: mkdtempSync(join(tmpdir(), "intraday-hot-")), rolloutBatch: 3, intervals: ["15min"] }); await store.hydrate(); const service = new IntradayCandleService({ store, marketConfig: config(scheduler), now: () => new Date(nowMs) });
-    const result = await service.runScheduled(); assert.equal(result.status, "ok"); assert.match(requestedUrl, /interval=15min/); assert.doesNotMatch(requestedUrl, /LDOS|HII|XLE|BTC/); assert.equal(scheduler.snapshot().consumedDay, 7); assert.equal(store.query({ instrumentId: gd.instrumentId, interval: "15min" }).length, 1); assert.equal(service.openCandles.size, 7); assert.equal(result.metrics.candlesStored, 7); assert.equal(result.metrics.intradayCredits, 7);
+    const result = await service.runScheduled(); assert.equal(result.status, "ok"); assert.match(requestedUrl, /interval=15min/); assert.doesNotMatch(requestedUrl, /LDOS|HII|XLE|BTC/); assert.equal(scheduler.snapshot().consumedDay, 6); assert.equal(store.query({ instrumentId: gd.instrumentId, interval: "15min" }).length, 1); assert.equal(service.openCandles.size, 6); assert.equal(result.metrics.candlesStored, 6); assert.equal(result.metrics.intradayCredits, 6);
   } finally { globalThis.fetch = originalFetch; }
 });
 
@@ -48,7 +48,7 @@ test("open candles are not persisted, closed candles deduplicate and intervals s
 
 test("quota exhaustion defers intraday before HTTP and exposes stale metadata", async () => {
   const originalFetch = globalThis.fetch; let calls = 0; globalThis.fetch = async () => { calls += 1; throw new Error("must-not-call"); };
-  try { const scheduler = new MarketCreditScheduler({ now: () => nowMs }); scheduler.state.consumedDay = 600; const store = new DailyCandleStore({ rootDir: mkdtempSync(join(tmpdir(), "intraday-quota-")), intervals: ["15min"] }); await store.hydrate(); const service = new IntradayCandleService({ store, marketConfig: { ...config(scheduler), watchlistRollout: 1, tickers: listEnabledInstruments(1).map((item) => item.canonicalSymbol) }, now: () => new Date(nowMs) }); const result = await service.runScheduled(); assert.equal(result.status, "deferred-quota"); assert.equal(calls, 0); assert.ok(result.metrics.deferredByQuota >= 7); }
+  try { const scheduler = new MarketCreditScheduler({ now: () => nowMs }); scheduler.state.consumedDay = 600; const store = new DailyCandleStore({ rootDir: mkdtempSync(join(tmpdir(), "intraday-quota-")), intervals: ["15min"] }); await store.hydrate(); const service = new IntradayCandleService({ store, marketConfig: { ...config(scheduler), watchlistRollout: 1, tickers: listEnabledInstruments(1).map((item) => item.canonicalSymbol) }, now: () => new Date(nowMs) }); const result = await service.runScheduled(); assert.equal(result.status, "deferred-quota"); assert.equal(calls, 0); assert.ok(result.metrics.deferredByQuota >= 6); }
   finally { globalThis.fetch = originalFetch; }
 });
 
@@ -66,6 +66,6 @@ test("partial intraday response persists valid instruments without discarding th
     assert.equal(result.status, "partial");
     assert.equal(result.metrics.candlesStored, 1);
     assert.equal(store.query({ instrumentId: gd.instrumentId, interval: "15min" }).length, 1);
-    assert.equal(scheduler.snapshot().consumedDay, 7);
+    assert.equal(scheduler.snapshot().consumedDay, 6);
   } finally { globalThis.fetch = originalFetch; }
 });

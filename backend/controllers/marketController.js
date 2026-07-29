@@ -323,7 +323,7 @@ export function getImpact(req, res) {
     min: 10,
     max: 1_440
   });
-  const analysisArticles = stateManager.getSignalCorpus();
+  const analysisArticles = stateManager.getMarketSignalCorpus();
 
   const impact = computeMarketImpact({
     articles: analysisArticles,
@@ -443,7 +443,7 @@ export function getAnalytics(req, res) {
     min: 10,
     max: 1_440
   });
-  const analysisArticles = stateManager.getSignalCorpus();
+  const analysisArticles = stateManager.getMarketSignalCorpus();
 
   const impact = computeMarketImpact({
     articles: analysisArticles,

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { MapLayerService } from "../services/map/mapLayerService.js";
+import { getCountryByIso2 } from "../utils/countryCatalog.js";
 
 function buildStateSnapshot() {
   const now = new Date().toISOString();
@@ -117,22 +118,68 @@ test("map layer service resolves live and seeded bundles without hitting the net
   assert.ok(bundle.layers.find((layer) => layer.id === "military_bases")?.featureCount > 0);
 });
 
-test("map seeds use confirmed country codes and never label synthetic scaffolds as live", async () => {
+test("map seeds use catalog-backed country codes and never label synthetic scaffolds as live", async () => {
   const service = new MapLayerService({
     stateManager: { getSnapshot: () => ({ ...buildStateSnapshot(), signalCorpus: [], news: [] }) },
     rssAggregator: { getSnapshot: async () => ({ items: [], meta: {} }) }
   });
-  const bundle = await service.getLayerBundle({ layerIds: ["datacenters", "strategic_ports", "airports", "ports_congestion", "protests"], timeWindow: "24h" });
+  const bundle = await service.getLayerBundle({
+    layerIds: [
+      "datacenters",
+      "strategic_ports",
+      "airports",
+      "refineries",
+      "critical_minerals",
+      "shipping_chokepoints",
+      "strategic_chokepoints",
+      "space_assets",
+      "undersea_cables",
+      "pipelines",
+      "trade_routes",
+      "ports_congestion",
+      "protests"
+    ],
+    timeWindow: "24h"
+  });
+  const featureByTitle = (layerId, title) =>
+    bundle.layers.find((layer) => layer.id === layerId).features.find((feature) => feature.title === title);
   const datacenters = bundle.layers.find((layer) => layer.id === "datacenters");
   const countriesByName = Object.fromEntries(datacenters.features.map((feature) => [feature.title, feature.properties.country]));
   assert.equal(countriesByName["London Exchange Cluster"], "GB");
   assert.equal(countriesByName["Frankfurt IX Hub"], "DE");
   assert.equal(countriesByName["Singapore Digital Hub"], "SG");
   assert.equal(countriesByName["Dubai Cloud Corridor"], "AE");
-  assert.equal(bundle.layers.find((layer) => layer.id === "strategic_ports").features.find((feature) => feature.title === "Port of Singapore").properties.country, "SG");
-  assert.equal(bundle.layers.find((layer) => layer.id === "airports").features.find((feature) => feature.title === "Dubai Intl").properties.country, "AE");
+  assert.equal(featureByTitle("strategic_ports", "Port of Singapore").properties.country, "SG");
+  assert.equal(featureByTitle("strategic_ports", "Jebel Ali").properties.country, "AE");
+  assert.equal(featureByTitle("strategic_ports", "Port of Rotterdam").properties.country, "NL");
+  assert.equal(featureByTitle("airports", "Heathrow").properties.country, "GB");
+  assert.equal(featureByTitle("airports", "Dubai Intl").properties.country, "AE");
+  assert.equal(featureByTitle("refineries", "Ras Tanura").properties.country, "SA");
+  assert.equal(featureByTitle("critical_minerals", "Katanga Copper Belt").properties.country, "CD");
+  const lithiumTriangle = featureByTitle("critical_minerals", "Lithium Triangle");
+  assert.equal(lithiumTriangle.properties.country, "AR");
+  assert.deepEqual(lithiumTriangle.properties.countries, ["AR", "BO", "CL"]);
+  assert.equal(lithiumTriangle.properties.geoPrecision, "regional");
+  assert.equal(lithiumTriangle.properties.approximate, true);
+  assert.equal(featureByTitle("shipping_chokepoints", "Suez Canal").properties.country, "EG");
+  const malacca = featureByTitle("shipping_chokepoints", "Strait of Malacca");
+  assert.equal(malacca.properties.country, "MY");
+  assert.deepEqual(malacca.properties.countries, ["MY", "SG", "ID"]);
+  assert.equal(featureByTitle("strategic_chokepoints", "Suez Canal Corridor").properties.country, "EG");
+  assert.equal(featureByTitle("strategic_chokepoints", "Panama Canal").properties.country, "PA");
+  assert.equal(featureByTitle("space_assets", "Baikonur Launch Complex").properties.country, "KZ");
+  assert.deepEqual(featureByTitle("undersea_cables", "Transatlantic Fiber Arc").properties.countries, ["US", "GB"]);
+  assert.deepEqual(featureByTitle("undersea_cables", "MENA-Europe Cable").properties.countries, ["AE", "EG", "IT"]);
+  assert.deepEqual(featureByTitle("pipelines", "Gulf Export Corridor").properties.countries, ["SA", "AE"]);
+  assert.deepEqual(featureByTitle("trade_routes", "Atlantic Shipping Arc").properties.countries, ["US", "NL"]);
   assert.equal(bundle.layers.find((layer) => layer.id === "ports_congestion").features.find((feature) => feature.title === "Singapore Queue").properties.country, "SG");
   assert.ok(datacenters.features.every((feature) => feature.properties.dataMode === "seeded"));
+  assert.ok(
+    bundle.layers
+      .flatMap((layer) => layer.features)
+      .flatMap((feature) => feature.properties?.countries || [])
+      .every((iso2) => getCountryByIso2(iso2))
+  );
   assert.equal(bundle.layers.find((layer) => layer.id === "protests").implementation, "synthetic");
 });
 
@@ -184,6 +231,134 @@ test("map layer service builds dashboard map assets with static and moving seeds
   assert.ok(vessel);
   assert.notEqual(vessel.status, "seeded");
   assert.ok(vessel.linkedArticleCount > 0);
+  assert.equal(vessel.verificationStatus, "source-reported-location-match");
+  assert.equal(vessel.geoPrecision, "approximate");
+  assert.equal(vessel.locationMethod, "seed-to-reported-coordinate-blend");
+  assert.ok(vessel.evidenceBasis.directCoordinateCount > 0);
+});
+
+test("null article coordinates remain country-level evidence instead of becoming zero-zero", async () => {
+  const now = new Date().toISOString();
+  const snapshot = {
+    ...buildStateSnapshot(),
+    meta: { lastRefreshAt: now },
+    signalCorpus: [
+      {
+        id: "null-coordinate-vessel",
+        title: "Carrier strike group sighted near Hormuz",
+        description: "Naval patrol activity continues in the Gulf.",
+        countryMentions: ["IR"],
+        sourceName: "Test Wire",
+        provider: "rss",
+        publishedAt: now,
+        lat: null,
+        lng: null,
+        topicTags: ["conflict", "shipping"],
+        credibilityScore: 0.9
+      }
+    ],
+    news: []
+  };
+  const service = new MapLayerService({
+    stateManager: {
+      getSnapshot: () => snapshot,
+      getSignalCorpus: () => snapshot.signalCorpus
+    },
+    rssAggregator: { getSnapshot: async () => ({ items: [], meta: {} }) }
+  });
+
+  const assets = await service.getDashboardMapAssets({ snapshot, signalCorpus: snapshot.signalCorpus });
+  const vessel = assets.movingSeeds.find((asset) => asset.layerId === "naval_vessels");
+
+  assert.ok(vessel);
+  assert.equal(vessel.status, "country-inferred");
+  assert.equal(vessel.verificationStatus, "country-correlation");
+  assert.equal(vessel.positionMode, "country-inferred");
+  assert.equal(vessel.geoPrecision, "country-level");
+  assert.equal(vessel.locationMethod, "seed-to-country-centroid-blend");
+  assert.equal(vessel.evidenceBasis.directCoordinateCount, 0);
+  assert.equal(vessel.evidenceBasis.countryInferredCount, 1);
+});
+
+test("regional nested coordinates remain approximate and cannot confirm a moving seed", async () => {
+  const now = new Date().toISOString();
+  const regionalLocation = { lat: 26.65, lng: 56.05, precision: "region", method: "source-region" };
+  const snapshot = {
+    ...buildStateSnapshot(),
+    signalCorpus: [
+      {
+        id: "regional-vessel",
+        title: "Carrier strike group sighted near Hormuz",
+        countryMentions: ["IR"],
+        publishedAt: now,
+        location: regionalLocation,
+        topicTags: ["conflict", "shipping"]
+      },
+      {
+        id: "regional-protest",
+        title: "Protest reported near Hormuz",
+        countryMentions: ["IR"],
+        publishedAt: now,
+        location: regionalLocation
+      }
+    ],
+    news: []
+  };
+  const service = new MapLayerService({
+    stateManager: {
+      getSnapshot: () => snapshot,
+      getSignalCorpus: () => snapshot.signalCorpus
+    },
+    rssAggregator: { getSnapshot: async () => ({ items: [], meta: {} }) }
+  });
+
+  const assets = await service.getDashboardMapAssets({ snapshot, signalCorpus: snapshot.signalCorpus });
+  const vessel = assets.movingSeeds.find((asset) => asset.layerId === "naval_vessels");
+  assert.equal(vessel.status, "country-inferred");
+  assert.equal(vessel.positionMode, "country-inferred");
+  assert.equal(vessel.evidenceBasis.directCoordinateCount, 0);
+
+  const bundle = await service.getLayerBundle({ layerIds: ["protests"], timeWindow: "24h" });
+  const protest = bundle.layers[0].features.find((feature) => feature.title === "Protest reported near Hormuz");
+  assert.deepEqual(protest.geometry.coordinates, [regionalLocation.lng, regionalLocation.lat]);
+  assert.equal(protest.properties.geoPrecision, "region");
+  assert.equal(protest.properties.locationMethod, "source-region");
+  assert.equal(protest.properties.verificationStatus, "source-reported-approximate");
+});
+
+test("out-of-range article coordinates fall back to an explicit country centroid", async () => {
+  const snapshot = {
+    ...buildStateSnapshot(),
+    signalCorpus: [
+      {
+        id: "invalid-coordinate-protest",
+        title: "Protest reported in Iran",
+        countryMentions: ["IR"],
+        publishedAt: new Date().toISOString(),
+        lat: 95,
+        lng: 220,
+        conflict: { totalWeight: 1, tags: [] }
+      }
+    ],
+    news: []
+  };
+  const service = new MapLayerService({
+    stateManager: {
+      getSnapshot: () => snapshot,
+      getSignalCorpus: () => snapshot.signalCorpus
+    },
+    rssAggregator: { getSnapshot: async () => ({ items: [], meta: {} }) }
+  });
+
+  const bundle = await service.getLayerBundle({ layerIds: ["protests"], timeWindow: "24h" });
+  const feature = bundle.layers[0].features.find((item) => item.title === "Protest reported in Iran");
+
+  assert.ok(feature);
+  assert.equal(feature.properties.country, "IR");
+  assert.equal(feature.properties.geoPrecision, "country-level");
+  assert.equal(feature.properties.locationMethod, "country-inference");
+  assert.ok(feature.geometry.coordinates[0] >= -180 && feature.geometry.coordinates[0] <= 180);
+  assert.ok(feature.geometry.coordinates[1] >= -90 && feature.geometry.coordinates[1] <= 90);
 });
 
 test("map layer service tolerates invalid external article timestamps", async () => {

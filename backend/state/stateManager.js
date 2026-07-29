@@ -105,6 +105,25 @@ function buildInitialAiState() {
   };
 }
 
+function buildInitialAwarenessState() {
+  return {
+    schemaVersion: "awareness-v1",
+    revision: 0,
+    generatedAt: null,
+    mode: "off",
+    upcoming: [],
+    recent: [],
+    sourceStatus: [],
+    quality: {
+      total: 0,
+      scheduled: 0,
+      released: 0,
+      unlocated: 0,
+      stale: 0
+    }
+  };
+}
+
 function resolveInputMode(newsMode, marketMode) {
   if (newsMode === "live" && marketMode === "live") {
     return "live";
@@ -223,6 +242,8 @@ class StateManager {
       },
       news: [],
       signalCorpus: [],
+      marketSignalCorpus: [],
+      awareness: buildInitialAwarenessState(),
       countries,
       hotspots: toHotspots(countries),
       insights: [],
@@ -286,7 +307,7 @@ class StateManager {
   }
 
   getSnapshot() {
-    const { signalCorpus: _signalCorpus, admin: _admin, ...snapshot } = this.state;
+    const { signalCorpus: _signalCorpus, marketSignalCorpus: _marketSignalCorpus, admin: _admin, ...snapshot } = this.state;
     return structuredClone(snapshot);
   }
 
@@ -375,6 +396,28 @@ class StateManager {
     return structuredClone(this.state.signalCorpus || []);
   }
 
+  getMarketSignalCorpus() {
+    return structuredClone(this.state.marketSignalCorpus || this.state.signalCorpus || []);
+  }
+
+  setAwareness(nextValue = {}) {
+    this.state = {
+      ...this.state,
+      awareness: {
+        ...buildInitialAwarenessState(),
+        ...(nextValue || {}),
+        upcoming: Array.isArray(nextValue?.upcoming) ? nextValue.upcoming : [],
+        recent: Array.isArray(nextValue?.recent) ? nextValue.recent : [],
+        sourceStatus: Array.isArray(nextValue?.sourceStatus) ? nextValue.sourceStatus : [],
+        quality: {
+          ...buildInitialAwarenessState().quality,
+          ...(nextValue?.quality || {})
+        }
+      }
+    };
+    return structuredClone(this.state.awareness);
+  }
+
   getAdminIntelRawNews() {
     return structuredClone(this.state.admin?.intelRawNews || buildInitialAdminState().intelRawNews);
   }
@@ -442,6 +485,7 @@ class StateManager {
     market,
     impact,
     signalCorpus,
+    marketSignalCorpus,
     sourceMode,
     sourceMeta,
     newsSourceMode,
@@ -453,6 +497,7 @@ class StateManager {
     const nextCountries = countries || this.state.countries;
     const nextNews = news ?? this.state.news;
     const nextSignalCorpus = signalCorpus ?? this.state.signalCorpus ?? nextNews;
+    const nextMarketSignalCorpus = marketSignalCorpus ?? this.state.marketSignalCorpus ?? nextSignalCorpus;
     const nextMarket = market ?? this.state.market;
     const nextImpact = impact ?? this.state.impact;
 
@@ -481,6 +526,7 @@ class StateManager {
       ...this.state,
       news: nextNews,
       signalCorpus: nextSignalCorpus,
+      marketSignalCorpus: nextMarketSignalCorpus,
       countries: nextCountries,
       hotspots: hotspots ?? toHotspots(nextCountries),
       insights: insights ?? this.state.insights,

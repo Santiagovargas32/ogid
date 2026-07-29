@@ -27,6 +27,7 @@ function cacheElements() {
   elements.marketRouterDiagnosticsBody = byId("market-router-diagnostics-body");
   elements.marketTransportDiagnosticsBody = byId("market-transport-diagnostics-body");
   elements.rssFeedStatusBody = byId("rss-feed-status-body");
+  elements.awarenessSourceStatusBody = byId("awareness-source-status-body");
   elements.recentCycleErrorsBody = byId("recent-cycle-errors-body");
   elements.aiDiagnosticsBody = byId("ai-diagnostics-body");
   elements.aiEnrichmentsUpdated = byId("ai-enrichments-updated");
@@ -375,6 +376,18 @@ function renderPipelineStatus(payload = {}) {
   const market = payload.market || {};
   const news = payload.news || {};
   const ai = payload.ai || {};
+  const awareness = payload.awareness || {};
+  const awarenessSources = awareness.sourceStatus || [];
+  const awarenessEnabled = awarenessSources.filter((source) => ["active", "shadow"].includes(source.admissionState));
+  const awarenessErrors = awarenessEnabled.filter((source) => ["degraded", "unhealthy"].includes(source.status));
+  const awarenessRuntimeBlocked = awarenessSources.filter((source) => source.runtimeBlocked === true);
+  const awarenessAdmissionCounts = awarenessSources.reduce((counts, source) => {
+    const state = String(source.admissionState || "unknown");
+    counts[state] = Number(counts[state] || 0) + 1;
+    return counts;
+  }, {});
+  const awarenessNext = awarenessEnabled.map((source) => Date.parse(source.nextEligibleAt || "")).filter(Number.isFinite).sort((left, right) => left - right)[0];
+  const awarenessLast = awarenessEnabled.map((source) => Date.parse(source.lastAttemptAt || "")).filter(Number.isFinite).sort((left, right) => right - left)[0];
   elements.pipelineGeneratedAt.textContent = `Generated: ${formatDate(payload.generatedAt)}`;
   const rows = [
     {
@@ -412,6 +425,17 @@ function renderPipelineStatus(payload = {}) {
       mode: `queue:${Number(ai.queue?.depth || 0)}`,
       provider: ai.activeProvider || ai.configuredProvider || "none",
       lastError: ai.lastError?.code || "--"
+    },
+    {
+      pipeline: "awareness",
+      band: String(awareness.mode || "off").toUpperCase(),
+      nextRun: Number.isFinite(awarenessNext) ? formatShortTime(new Date(awarenessNext).toISOString()) : "--",
+      lastRun: Number.isFinite(awarenessLast) ? formatShortTime(new Date(awarenessLast).toISOString()) : "--",
+      duration: formatDurationMs(Math.max(0, ...awarenessEnabled.map((source) => Number(source.latencyMs || 0)))),
+      status: awarenessErrors.length || awarenessRuntimeBlocked.length ? "degraded" : awareness.mode === "off" ? "disabled" : "ok",
+      mode: `rev:${Number(awareness.revision || 0)}`,
+      provider: `active:${Number(awarenessAdmissionCounts.active || 0)} shadow:${Number(awarenessAdmissionCounts.shadow || 0)} probing:${Number(awarenessAdmissionCounts.probing || 0)} blocked:${Number(awarenessAdmissionCounts.blocked || 0)}`,
+      lastError: [...awarenessErrors, ...awarenessRuntimeBlocked].map((source) => `${source.sourceId}:${source.error || source.blockedReason || source.status}`).join(", ") || "--"
     }
   ];
 
@@ -434,8 +458,39 @@ function renderPipelineStatus(payload = {}) {
     .join("");
 
   renderPipelineDiagnostics(news, market);
+  renderAwarenessDiagnostics(awareness);
   renderAiDiagnostics(ai);
   renderRecentCycleErrors(payload.recentCycleErrors || []);
+}
+
+function renderAwarenessDiagnostics(awareness = {}) {
+  if (!elements.awarenessSourceStatusBody) return;
+  const quality = awareness.quality || {};
+  const sources = awareness.sourceStatus || [];
+  const totalEvents = Number(quality.total || 0);
+  const unlocatedEvents = Number(quality.unlocated || 0);
+  const unlocatedRate = totalEvents ? `${((unlocatedEvents / totalEvents) * 100).toFixed(1)}%` : "--";
+  const summary = `<article class="diagnostic-item"><div class="diagnostic-item-header"><strong>${escapeHtml(awareness.mode || "off")}</strong><span class="diagnostic-pill ${awareness.mode === "visible" ? "ok" : "idle"}">rev ${Number(awareness.revision || 0)}</span></div><div class="diagnostic-item-meta">events: ${totalEvents} | scheduled: ${Number(quality.scheduled || 0)} | released: ${Number(quality.released || 0)}</div><div class="diagnostic-item-meta">unlocated: ${unlocatedEvents} (${unlocatedRate}) | stale: ${Number(quality.stale || 0)}</div></article>`;
+  const cards = sources.map((source) => {
+    const rawStatus = String(source.status || (source.enabled === false ? "disabled" : "idle")).toLowerCase();
+    const admissionState = String(source.admissionState || source.catalogAdmissionState || (source.enabled === false ? "blocked" : "active")).toLowerCase();
+    const statusClass = admissionState === "blocked" || ["degraded", "unhealthy"].includes(rawStatus) ? "error" : admissionState === "active" && rawStatus === "healthy" ? "ok" : "idle";
+    const attempts = Number(source.attempts || 0);
+    const successes = Number(source.successes || 0);
+    const cumulativeRate = attempts ? `${((successes / attempts) * 100).toFixed(1)}%` : "--";
+    const window7d = source.window7d || {};
+    const rollingRate = window7d.successRate !== null && window7d.successRate !== undefined && Number.isFinite(Number(window7d.successRate))
+      ? `${(Number(window7d.successRate) * 100).toFixed(1)}%`
+      : "--";
+    const diagnostic = source.lastDiagnostic || {};
+    const diagnosticHash = diagnostic.bodySha256 ? String(diagnostic.bodySha256).slice(0, 16) : "--";
+    const edge = diagnostic.headers?.server || diagnostic.headers?.via || diagnostic.headers?.["cf-ray"] || diagnostic.headers?.["akamai-grn"] || "--";
+    const diagnosticLine = diagnostic.contentType || diagnostic.requestId || diagnostic.bodySha256
+      ? `<div class="diagnostic-item-meta">diagnostic: ${escapeHtml(diagnostic.contentType || "--")} | request: ${escapeHtml(diagnostic.requestId || "--")} | edge: ${escapeHtml(edge)}</div><div class="diagnostic-item-meta">body: ${escapeHtml(String(diagnostic.bodyBytes ?? "--"))} B | sha256: ${escapeHtml(diagnosticHash)}</div>`
+      : "";
+    return `<article class="diagnostic-item"><div class="diagnostic-item-header"><strong>${escapeHtml(source.name || source.sourceId || "official source")}</strong><span class="diagnostic-pill ${statusClass}">${escapeHtml(admissionState)}</span></div><div class="diagnostic-item-meta">health: ${escapeHtml(rawStatus)} | catalog: ${escapeHtml(source.catalogAdmissionState || admissionState)}${source.runtimeBlocked ? " | runtime blocked" : ""}</div><div class="diagnostic-item-meta">attempt: ${escapeHtml(formatDate(source.lastAttemptAt))} | success: ${escapeHtml(formatDate(source.lastSuccessAt))}</div><div class="diagnostic-item-meta">cumulative polls: ${attempts} | successful: ${successes} | rate: ${cumulativeRate}</div><div class="diagnostic-item-meta">7d polls: ${Number(window7d.attempts || 0)} | successful: ${Number(window7d.successes || 0)} | rate: ${rollingRate} | 403: ${Number(window7d.forbidden || 0)}</div><div class="diagnostic-item-meta">last poll: ${escapeHtml(source.lastPoll?.outcome || "--")} | HTTP: ${escapeHtml(String(source.httpStatus ?? "--"))} | latency: ${escapeHtml(formatDurationMs(source.latencyMs))} | lag: ${escapeHtml(formatDurationMs(source.lagMs))}</div><div class="diagnostic-item-meta">parsed: ${Number(source.parsed || 0)} | dedup: ${Number(source.deduplicated || 0)} | rejected: ${Number(source.rejected || 0)} | unlocated: ${Number(source.unlocated || 0)}</div><div class="diagnostic-item-meta">ETag: ${source.etag ? "yes" : "no"} | Last-Modified: ${source.lastModified ? "yes" : "no"} | stale: ${source.stale ? "yes" : "no"}</div>${diagnosticLine}<div class="diagnostic-item-meta">${escapeHtml(source.error || source.blockedReason || source.disabledReason || "--")}</div></article>`;
+  });
+  elements.awarenessSourceStatusBody.innerHTML = [summary, ...cards].join("");
 }
 
 function renderAiDiagnostics(ai = {}) {

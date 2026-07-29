@@ -27,6 +27,11 @@
         </nav>
       </div>
       <div class="status-strip d-flex align-items-center gap-2">
+        <button id="awareness-inbox-button" class="btn btn-sm btn-outline-light awareness-inbox-button" type="button"
+          aria-controls="panel-awareness">
+          Awareness
+          <span id="awareness-unread-badge" class="badge text-bg-light d-none">0</span>
+        </button>
         <span id="source-mode-badge" class="badge text-bg-secondary">Source: initializing</span>
         <span id="market-mode-badge" class="badge text-bg-secondary">Market: initializing</span>
         <span id="ws-status-badge" class="badge text-bg-warning">WS: connecting</span>
@@ -66,6 +71,53 @@
             <div id="country-filter-bar" class="filter-bar"></div>
           </header>
           <div id="news-feed" class="news-feed"></div>
+        </section>
+      </div>
+    </div>
+
+    <div class="row g-3 mt-1 dashboard-row dashboard-awareness-row">
+      <div class="col-12">
+        <section id="panel-awareness" class="panel panel-vertical awareness-panel">
+          <header class="panel-header awareness-header">
+            <div>
+              <div class="d-flex flex-wrap align-items-center gap-2">
+                <h2 class="panel-title mb-0">Awareness Center</h2>
+                <span id="awareness-inbox-badge" class="badge text-bg-secondary" aria-live="polite">0 sin leer</span>
+              </div>
+              <div id="awareness-meta" class="small text-light-emphasis mt-1" aria-live="polite">
+                Cargando agenda financiera y geopolítica...
+              </div>
+            </div>
+            <button id="awareness-mark-all-read" class="btn btn-sm btn-outline-light" type="button" disabled>
+              Marcar todo leído
+            </button>
+          </header>
+          <div class="awareness-toolbar">
+            <div id="awareness-tabs" class="awareness-tabs" role="tablist" aria-label="Rama de awareness">
+              <button type="button" role="tab" aria-selected="false" tabindex="-1"
+                data-awareness-tab="geopolitical">Geopolítica</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1"
+                data-awareness-tab="markets">Mercados</button>
+              <button class="active" type="button" role="tab" aria-selected="true"
+                data-awareness-tab="all">Todos</button>
+            </div>
+          </div>
+          <div class="awareness-agenda">
+            <section class="awareness-agenda-column" aria-labelledby="awareness-upcoming-title">
+              <header>
+                <h3 id="awareness-upcoming-title">Próximos</h3>
+                <span>Agenda programada</span>
+              </header>
+              <div id="awareness-upcoming-list" class="awareness-event-list"></div>
+            </section>
+            <section class="awareness-agenda-column" aria-labelledby="awareness-recent-title">
+              <header>
+                <h3 id="awareness-recent-title">Recientes</h3>
+                <span>Publicaciones y actualizaciones</span>
+              </header>
+              <div id="awareness-recent-list" class="awareness-event-list"></div>
+            </section>
+          </div>
         </section>
       </div>
     </div>
@@ -318,6 +370,8 @@
       </a>
     </div>
   </div>
+
+  <div id="awareness-toast-region" class="awareness-toast-region" aria-live="assertive" aria-atomic="false"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
     integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"

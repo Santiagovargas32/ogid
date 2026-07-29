@@ -289,6 +289,16 @@ export function getPipelineStatus(_req, res) {
   const marketEnabled = config.market?.enabled !== false;
   const marketDisabledReason = config.market?.disabledReason || "market-provider-empty";
   const marketSnapshot = intelSnapshot?.market || {};
+  const awarenessSnapshot = res.app.locals.awarenessService?.getAdminSnapshot?.() || {
+    schemaVersion: "awareness-v1",
+    revision: 0,
+    generatedAt: null,
+    mode: config.awareness?.mode || "off",
+    upcoming: [],
+    recent: [],
+    sourceStatus: [],
+    quality: { total: 0, scheduled: 0, released: 0, unlocated: 0, stale: 0 }
+  };
   const marketSourceMeta = marketSnapshot?.sourceMeta || {};
   const marketCoverageByMode = marketEnabled
     ? normalizeCoverageByMode(marketSourceMeta?.coverageByMode || buildCoverageByMode(marketSnapshot?.quotes || {}))
@@ -396,6 +406,16 @@ export function getPipelineStatus(_req, res) {
         rssFeedStatus: intelSnapshot?.meta?.sourceMeta?.rssFeedStatus || [],
         queryLengthByProvider: intelSnapshot?.meta?.sourceMeta?.queryLengthByProvider || {},
         snapshots: newsProviderSnapshots
+      },
+      awareness: {
+        schemaVersion: awarenessSnapshot.schemaVersion,
+        mode: awarenessSnapshot.mode,
+        revision: awarenessSnapshot.revision,
+        generatedAt: awarenessSnapshot.generatedAt,
+        quality: awarenessSnapshot.quality,
+        upcomingCount: awarenessSnapshot.upcoming?.length || 0,
+        recentCount: awarenessSnapshot.recent?.length || 0,
+        sourceStatus: awarenessSnapshot.sourceStatus || []
       },
       ai: res.app.locals.aiCoordinator?.getAdminSnapshot?.() || {
         enabled: false,

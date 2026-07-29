@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fetchRss, resetRssFeedValidationCacheForTests } from "../services/news/providers/rssProvider.js";
+import { fetchRss, parseFeedArticles, resetRssFeedValidationCacheForTests } from "../services/news/providers/rssProvider.js";
 import { providerRuntime } from "../services/providers/providerRuntime.js";
 
 test("rss provider marks html pages as invalid feeds and caches the invalid result", async () => {
@@ -191,4 +191,21 @@ test("rss provider replaces invalid publication dates and exposes timestamp fall
     global.fetch = originalFetch;
     resetRssFeedValidationCacheForTests();
   }
+});
+
+test("RSS parser preserves official Dublin Core and central-bank publication dates", () => {
+  const [dcArticle] = parseFeedArticles(`<?xml version="1.0"?><rss><channel><item>
+    <title>BIS press release</title><link>https://www.bis.org/press/p260729.htm</link>
+    <dc:date>2026-07-29T10:30:00Z</dc:date>
+    <cb:occurrenceDate>2026-07-28T10:30:00Z</cb:occurrenceDate>
+  </item></channel></rss>`);
+  assert.equal(dcArticle.publishedAt, "2026-07-29T10:30:00Z");
+  assert.equal(dcArticle.provenance.publishedAtQuality, "source");
+
+  const [cbArticle] = parseFeedArticles(`<?xml version="1.0"?><rss><channel><item>
+    <title>Central bank release</title><link>https://example.test/release</link>
+    <cb:publicationDate>2026-07-27T09:00:00Z</cb:publicationDate>
+  </item></channel></rss>`);
+  assert.equal(cbArticle.publishedAt, "2026-07-27T09:00:00Z");
+  assert.equal(cbArticle.provenance.publishedAtQuality, "source");
 });

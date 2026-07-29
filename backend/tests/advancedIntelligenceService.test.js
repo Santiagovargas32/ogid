@@ -3,10 +3,27 @@ import assert from "node:assert/strict";
 import {
   AdvancedIntelligenceService,
   buildAdvancedCorpus,
-  buildFrequentTerms
+  buildFrequentTerms,
+  buildMarketAwarenessProjection
 } from "../services/intel/advancedIntelligenceService.js";
 
 const NOW = Date.parse("2026-07-21T12:00:00.000Z");
+
+test("market awareness projection excludes pure security releases and keeps hybrids", () => {
+  const projection = buildMarketAwarenessProjection({
+    revision: 4,
+    mode: "visible",
+    upcoming: [{ eventId: "macro", status: "scheduled", domains: ["financial", "macro"], location: null }],
+    recent: [
+      { eventId: "security", status: "released", domains: ["geopolitical", "security"], location: null },
+      { eventId: "hybrid", status: "released", domains: ["geopolitical", "financial"], location: { lat: 1, lng: 1 } }
+    ]
+  }, "2026-07-21T12:00:00.000Z");
+
+  assert.deepEqual(projection.upcoming.map((event) => event.eventId), ["macro"]);
+  assert.deepEqual(projection.recent.map((event) => event.eventId), ["hybrid"]);
+  assert.deepEqual(projection.quality, { total: 2, scheduled: 1, released: 1, unlocated: 1, stale: 0 });
+});
 
 function article(id, title, topicTags, overrides = {}) {
   return {

@@ -1,0 +1,220 @@
+{
+  "schemaVersion": 1,
+  "mode": "awareness-admission-lab",
+  "generatedAt": "2026-07-29T17:39:01.393Z",
+  "requestPolicy": {
+    "sourceCount": 4,
+    "maximumSources": 10,
+    "concurrency": 1,
+    "retries": 0,
+    "timeoutMs": 9000,
+    "maxResponseBytes": 1000000,
+    "maxRedirects": 2,
+    "httpsOnly": true,
+    "redirectAllowlist": "selected-source-hosts",
+    "backgroundRefresh": false,
+    "persistence": false,
+    "publication": false,
+    "credentials": false
+  },
+  "summary": {
+    "selectedSources": 4,
+    "logicalAttempts": 4,
+    "networkRequests": 4,
+    "parsedEvents": 35,
+    "probeResults": {
+      "candidate-for-shadow": 2,
+      "transient-timeout": 2
+    },
+    "candidatesForShadow": 2,
+    "automaticPromotions": 0
+  },
+  "sources": [
+    {
+      "sourceId": "awareness-centcom-dvids",
+      "name": "DVIDS / U.S. Central Command Public Affairs",
+      "hostname": "www.dvidshub.net",
+      "adapter": "rss",
+      "catalogAdmissionState": "probing",
+      "logicalAttempts": 1,
+      "retries": 0,
+      "probeResult": "candidate-for-shadow",
+      "recommendation": {
+        "maximumState": "shadow",
+        "automaticPromotion": false,
+        "manualReviewRequired": true,
+        "requirements": [
+          "stable-structure",
+          "verified-attribution",
+          "correct-times",
+          "no-false-coordinates",
+          "seven-day-success-gate"
+        ]
+      },
+      "httpStatus": 200,
+      "contentTypeAllowed": true,
+      "responseHeaders": {
+        "content-type": "application/rss+xml",
+        "server": "Apache",
+        "via": "1.1 cbf33f1ce87e15a598a4a078f6825e00.cloudfront.net (CloudFront)",
+        "x-amz-cf-id": "WZtej-bSjLDrJYvEL83w10dTmOQoZg3LMgKxByjsaFcw2cT0us8h3w=="
+      },
+      "responseRequestId": "WZtej-bSjLDrJYvEL83w10dTmOQoZg3LMgKxByjsaFcw2cT0us8h3w==",
+      "bodyBytes": 40235,
+      "bodySha256": "6887367b37e3c8325b6326bf1919fe6299bd167bb8be0480f7bb023710f6fb02",
+      "redirectCount": 0,
+      "networkRequests": 1,
+      "latencyMs": 505,
+      "errorCode": null,
+      "quality": {
+        "parsedEvents": 10,
+        "kinds": {
+          "official_security_release": 10
+        },
+        "statuses": {
+          "released": 10
+        },
+        "locationPrecision": {
+          "country": 4,
+          "none": 6
+        },
+        "eventsWithCanonicalUrl": 10,
+        "eventsWithScheduledAt": 0,
+        "eventsWithPublishedAt": 10,
+        "earliestObservedEventAt": "2026-07-18T17:38:05.000Z",
+        "latestObservedEventAt": "2026-07-29T00:23:52.000Z"
+      }
+    },
+    {
+      "sourceId": "awareness-treasury-releases",
+      "name": "U.S. Treasury Press Releases",
+      "hostname": "home.treasury.gov",
+      "adapter": "generic-official-html",
+      "catalogAdmissionState": "probing",
+      "logicalAttempts": 1,
+      "retries": 0,
+      "probeResult": "transient-timeout",
+      "recommendation": {
+        "maximumState": null,
+        "automaticPromotion": false,
+        "manualReviewRequired": true,
+        "requirements": [
+          "resolve-probe-result-before-shadow"
+        ]
+      },
+      "httpStatus": null,
+      "contentTypeAllowed": false,
+      "responseHeaders": {},
+      "responseRequestId": null,
+      "bodyBytes": null,
+      "bodySha256": null,
+      "redirectCount": 0,
+      "networkRequests": 1,
+      "latencyMs": 9005,
+      "errorCode": "AWARENESS_LAB_TIMEOUT",
+      "quality": {
+        "parsedEvents": 0,
+        "kinds": {},
+        "statuses": {},
+        "locationPrecision": {},
+        "eventsWithCanonicalUrl": 0,
+        "eventsWithScheduledAt": 0,
+        "eventsWithPublishedAt": 0,
+        "earliestObservedEventAt": null,
+        "latestObservedEventAt": null
+      }
+    },
+    {
+      "sourceId": "awareness-ofac-actions",
+      "name": "OFAC Recent Actions",
+      "hostname": "ofac.treasury.gov",
+      "adapter": "generic-official-html",
+      "catalogAdmissionState": "probing",
+      "logicalAttempts": 1,
+      "retries": 0,
+      "probeResult": "transient-timeout",
+      "recommendation": {
+        "maximumState": null,
+        "automaticPromotion": false,
+        "manualReviewRequired": true,
+        "requirements": [
+          "resolve-probe-result-before-shadow"
+        ]
+      },
+      "httpStatus": null,
+      "contentTypeAllowed": false,
+      "responseHeaders": {},
+      "responseRequestId": null,
+      "bodyBytes": null,
+      "bodySha256": null,
+      "redirectCount": 0,
+      "networkRequests": 1,
+      "latencyMs": 9003,
+      "errorCode": "AWARENESS_LAB_TIMEOUT",
+      "quality": {
+        "parsedEvents": 0,
+        "kinds": {},
+        "statuses": {},
+        "locationPrecision": {},
+        "eventsWithCanonicalUrl": 0,
+        "eventsWithScheduledAt": 0,
+        "eventsWithPublishedAt": 0,
+        "earliestObservedEventAt": null,
+        "latestObservedEventAt": null
+      }
+    },
+    {
+      "sourceId": "awareness-bis-rss",
+      "name": "Bank for International Settlements Press Releases",
+      "hostname": "www.bis.org",
+      "adapter": "rss",
+      "catalogAdmissionState": "probing",
+      "logicalAttempts": 1,
+      "retries": 0,
+      "probeResult": "candidate-for-shadow",
+      "recommendation": {
+        "maximumState": "shadow",
+        "automaticPromotion": false,
+        "manualReviewRequired": true,
+        "requirements": [
+          "stable-structure",
+          "verified-attribution",
+          "correct-times",
+          "no-false-coordinates",
+          "seven-day-success-gate"
+        ]
+      },
+      "httpStatus": 200,
+      "contentTypeAllowed": true,
+      "responseHeaders": {
+        "content-type": "application/rss+xml",
+        "etag": "\"750f-6554c8e799cf3-br\"",
+        "last-modified": "Sun, 28 Jun 2026 08:59:16 GMT"
+      },
+      "responseRequestId": null,
+      "bodyBytes": 29967,
+      "bodySha256": "83b8006149eee22c075d70a61241090129e75fe42ed24c97fb4168a48fa51889",
+      "redirectCount": 0,
+      "networkRequests": 1,
+      "latencyMs": 249,
+      "errorCode": null,
+      "quality": {
+        "parsedEvents": 25,
+        "kinds": {
+          "macro_release": 25
+        },
+        "statuses": {
+          "released": 25
+        },
+        "locationPrecision": {
+          "none": 25
+        },
+        "eventsWithCanonicalUrl": 25,
+        "eventsWithScheduledAt": 0,
+        "eventsWithPublishedAt": 25,
+        "earliestObservedEventAt": "2025-11-27T14:55:00.000Z",
+        "latestObservedEventAt": "2026-06-28T12:39:00.000Z"
+      }
+    }
+  ]
+}

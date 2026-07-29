@@ -74,8 +74,11 @@ export function parseFeedArticles(xml = "", feedLabel = "RSS Feed", sourceDefini
     const link = extractTag(item, "link") || extractAtomLink(item);
     const rawPublishedAt =
       extractTag(item, "pubDate") ||
+      extractTag(item, "dc:date") ||
       extractTag(item, "published") ||
-      extractTag(item, "updated");
+      extractTag(item, "updated") ||
+      extractTag(item, "cb:occurrenceDate") ||
+      extractTag(item, "cb:publicationDate");
     const publishedAt = resolvePublishedAt(rawPublishedAt, Date.now() - index * 60_000);
 
     return {
@@ -83,8 +86,16 @@ export function parseFeedArticles(xml = "", feedLabel = "RSS Feed", sourceDefini
       source: {
         name: sourceName,
         sourceId: sourceDefinition.sourceId || null,
-        type: sourceType
+        type: sourceType,
+        role: sourceDefinition.role || null,
+        publisher: sourceDefinition.publisher || null,
+        topics: Array.isArray(sourceDefinition.topics) ? sourceDefinition.topics : [],
+        instrumentIds: Array.isArray(sourceDefinition.instrumentIds) ? sourceDefinition.instrumentIds : []
       },
+      sourceRole: sourceDefinition.role || null,
+      role: sourceDefinition.role || null,
+      topics: Array.isArray(sourceDefinition.topics) ? sourceDefinition.topics : [],
+      instrumentIds: Array.isArray(sourceDefinition.instrumentIds) ? sourceDefinition.instrumentIds : [],
       publisher: sourceType === "generated_search" ? null : sourceDefinition.publisher || sourceName,
       title: sanitized.title,
       description: sanitized.description,

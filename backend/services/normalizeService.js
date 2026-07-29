@@ -17,6 +17,29 @@ function hashId(value) {
   return createHash("sha256").update(value).digest("hex").slice(0, 16);
 }
 
+function normalizeMetadataList(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return [...new Set(value.map((entry) => String(entry || "").trim()).filter(Boolean))];
+}
+
+function normalizeSourceMetadata(rawArticle = {}) {
+  const sourceRole = rawArticle?.sourceRole || rawArticle?.source?.role || rawArticle?.role || null;
+  const role = rawArticle?.role || rawArticle?.source?.role || rawArticle?.sourceRole || null;
+
+  return {
+    sourceId: rawArticle?.sourceId || rawArticle?.source?.sourceId || rawArticle?.provenance?.sourceId || null,
+    role,
+    sourceRole,
+    publisher: rawArticle?.publisher || rawArticle?.source?.publisher || null,
+    topics: normalizeMetadataList(rawArticle?.topics || rawArticle?.source?.topics),
+    instrumentIds: normalizeMetadataList(rawArticle?.instrumentIds || rawArticle?.source?.instrumentIds),
+    provenance: rawArticle?.provenance ? structuredClone(rawArticle.provenance) : null
+  };
+}
+
 function normalizeArticle(rawArticle, index, provider) {
   const sanitized = sanitizeArticleContent(rawArticle);
   const title = sanitized.title;
@@ -38,6 +61,7 @@ function normalizeArticle(rawArticle, index, provider) {
     id: hashId(`${rawArticle?.url || title}-${publishedAt}-${index}`),
     provider: rawArticle?.provider || provider,
     sourceName: rawArticle?.source?.name || rawArticle?.sourceName || "Unknown Source",
+    ...normalizeSourceMetadata(rawArticle),
     title,
     description,
     content,
@@ -74,6 +98,7 @@ function normalizeAdminArticle(rawArticle, index, provider) {
     id: hashId(`${rawArticle?.url || title}-${index}`),
     provider: rawArticle?.provider || provider,
     sourceName: rawArticle?.source?.name || rawArticle?.sourceName || "Unknown Source",
+    ...normalizeSourceMetadata(rawArticle),
     title: String(title).trim() || "Untitled",
     url: rawArticle?.url || `https://local.osint/admin-raw/${index}`,
     publishedAt: toIsoDate(rawArticle?.publishedAt, Date.now() - index * 60_000)

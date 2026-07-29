@@ -145,6 +145,153 @@ const COUNTRY_ROWS = [
     lat: 19.7633,
     lng: 96.0785,
     aliases: ["burma", "naypyidaw", "myanmarese"]
+  },
+  {
+    iso2: "AE",
+    name: "United Arab Emirates",
+    lat: 24.4539,
+    lng: 54.3773,
+    aliases: ["uae", "u.a.e.", "emirati", "abu dhabi", "dubai", "jebel ali"]
+  },
+  {
+    iso2: "NL",
+    name: "Netherlands",
+    lat: 52.3676,
+    lng: 4.9041,
+    aliases: ["dutch", "holland", "amsterdam", "rotterdam"]
+  },
+  {
+    iso2: "GB",
+    name: "United Kingdom",
+    lat: 51.5072,
+    lng: -0.1276,
+    aliases: ["uk", "u.k.", "britain", "great britain", "british", "england", "london", "heathrow"]
+  },
+  {
+    iso2: "SA",
+    name: "Saudi Arabia",
+    lat: 24.7136,
+    lng: 46.6753,
+    aliases: ["saudi", "saudi arabian", "riyadh", "ras tanura"]
+  },
+  {
+    iso2: "CD",
+    name: "Democratic Republic of the Congo",
+    lat: -4.4419,
+    lng: 15.2663,
+    aliases: ["democratic republic of congo", "dr congo", "drc", "congolese", "kinshasa", "katanga"]
+  },
+  {
+    iso2: "AR",
+    name: "Argentina",
+    lat: -34.6037,
+    lng: -58.3816,
+    aliases: ["argentine", "argentinian", "buenos aires", "lithium triangle"]
+  },
+  {
+    iso2: "BO",
+    name: "Bolivia",
+    lat: -16.4897,
+    lng: -68.1193,
+    aliases: ["bolivian", "la paz", "lithium triangle"]
+  },
+  {
+    iso2: "CL",
+    name: "Chile",
+    lat: -33.4489,
+    lng: -70.6693,
+    aliases: ["chilean", "lithium triangle"]
+  },
+  {
+    iso2: "EG",
+    name: "Egypt",
+    lat: 30.0444,
+    lng: 31.2357,
+    aliases: ["egyptian", "cairo", "suez"]
+  },
+  {
+    iso2: "DE",
+    name: "Germany",
+    lat: 52.52,
+    lng: 13.405,
+    aliases: ["german", "berlin", "frankfurt"]
+  },
+  {
+    iso2: "SG",
+    name: "Singapore",
+    lat: 1.3521,
+    lng: 103.8198,
+    aliases: ["singaporean"]
+  },
+  {
+    iso2: "JO",
+    name: "Jordan",
+    lat: 31.9539,
+    lng: 35.9106,
+    aliases: ["jordanian", "amman"]
+  },
+  {
+    iso2: "KW",
+    name: "Kuwait",
+    lat: 29.3759,
+    lng: 47.9774,
+    aliases: ["kuwaiti", "kuwait city"]
+  },
+  {
+    iso2: "BH",
+    name: "Bahrain",
+    lat: 26.2235,
+    lng: 50.5876,
+    aliases: ["bahraini", "manama"]
+  },
+  {
+    iso2: "OM",
+    name: "Oman",
+    lat: 23.588,
+    lng: 58.3829,
+    aliases: ["omani", "muscat", "masirah", "thumrait"]
+  },
+  {
+    iso2: "DJ",
+    name: "Djibouti",
+    lat: 11.5721,
+    lng: 43.1456,
+    aliases: ["djiboutian", "camp lemonnier"]
+  },
+  {
+    iso2: "IT",
+    name: "Italy",
+    lat: 41.9028,
+    lng: 12.4964,
+    aliases: ["italian", "rome", "naples"]
+  },
+  {
+    iso2: "MY",
+    name: "Malaysia",
+    lat: 3.139,
+    lng: 101.6869,
+    aliases: ["malaysian", "kuala lumpur", "malacca"]
+  },
+  {
+    iso2: "ID",
+    name: "Indonesia",
+    lat: -6.2088,
+    lng: 106.8456,
+    aliases: ["indonesian", "jakarta", "malacca strait"]
+  },
+  {
+    iso2: "PA",
+    name: "Panama",
+    lat: 8.9824,
+    lng: -79.5199,
+    aliases: ["panamanian", "panama city", "panama canal"]
+  },
+  {
+    iso2: "KZ",
+    name: "Kazakhstan",
+    lat: 51.1694,
+    lng: 71.4491,
+    aliases: ["kazakh", "kazakhstani", "astana", "baikonur"]
   }
 ];
 
@@ -157,24 +304,33 @@ function buildAliases(country) {
   return [...new Set(values.map((value) => normalizeText(value).trim()).filter(Boolean))];
 }
 
-export const BASELINE_COUNTRIES = Object.freeze(
-  COUNTRY_ROWS.map((country) => Object.freeze({ ...country, aliases: [...country.aliases] }))
+const BASELINE_ISO2 = new Set([
+  "US", "RU", "CN", "UA", "IL", "IR", "SY", "IQ", "AF", "KP", "KR", "TW", "IN", "PK", "TR", "YE", "SD", "ET", "VE", "CO", "MM"
+]);
+
+const AMBIGUOUS_DETECTION_ALIASES = Object.freeze({
+  JO: new Set(["jordan"]),
+  CD: new Set(["congolese"])
+});
+
+export const COUNTRY_CATALOG = Object.freeze(
+  COUNTRY_ROWS.map((country) => Object.freeze({ ...country, aliases: Object.freeze([...country.aliases]) }))
 );
 
-const ISO2_SET = new Set(BASELINE_COUNTRIES.map((country) => country.iso2));
+export const BASELINE_COUNTRIES = Object.freeze(COUNTRY_CATALOG.filter((country) => BASELINE_ISO2.has(country.iso2)));
 
-const COUNTRY_ALIASES = BASELINE_COUNTRIES.map((country) => ({
+const COUNTRY_ALIASES = COUNTRY_CATALOG.map((country) => ({
   iso2: country.iso2,
-  aliases: buildAliases(country)
+  aliases: buildAliases(country).filter((alias) => !AMBIGUOUS_DETECTION_ALIASES[country.iso2]?.has(alias))
 }));
 
 export function getCountryByIso2(iso2) {
-  return BASELINE_COUNTRIES.find((country) => country.iso2 === String(iso2 || "").toUpperCase()) ?? null;
+  return COUNTRY_CATALOG.find((country) => country.iso2 === String(iso2 || "").toUpperCase()) ?? null;
 }
 
-export function buildBaselineCountryMap() {
+function buildCountryMap(countries) {
   return Object.fromEntries(
-    BASELINE_COUNTRIES.map((country) => [
+    countries.map((country) => [
       country.iso2,
       {
         iso2: country.iso2,
@@ -184,6 +340,14 @@ export function buildBaselineCountryMap() {
       }
     ])
   );
+}
+
+export function buildBaselineCountryMap() {
+  return buildCountryMap(BASELINE_COUNTRIES);
+}
+
+export function buildCountryCatalogMap() {
+  return buildCountryMap(COUNTRY_CATALOG);
 }
 
 export function detectCountryMentions(text = "") {

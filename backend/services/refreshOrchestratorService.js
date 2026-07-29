@@ -12,6 +12,11 @@ import { isMarketOpenEt, resolveMarketIntervalMs } from "./market/marketSessionS
 import { resolveVerifiedInstrumentReferences } from "./market/instrumentRegistry.js";
 import { resolveBandByProviderSnapshots, resolveNewsPolicy } from "./refreshPolicyService.js";
 import { buildIntelNewsSelection } from "./news/newsSelectionService.js";
+import {
+  buildFinancialNewsSelection,
+  buildNewsLaneRotation,
+  partitionNewsArticles
+} from "./news/financialNewsService.js";
 
 const log = createLogger("backend/services/refreshOrchestratorService");
 
@@ -65,6 +70,16 @@ function isAutomatedMarketTrigger(trigger = "") {
   return normalized === "startup-market" || normalized.startsWith("interval-market");
 }
 
+function mergeArticleCorpora(...corpora) {
+  const seen = new Set();
+  return corpora.flat().filter((article) => {
+    const key = String(article?.id || article?.url || article?.title || "").trim().toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 class RefreshOrchestratorService {
   constructor({
     stateManager,
@@ -76,7 +91,8 @@ class RefreshOrchestratorService {
     marketHistoryStore = null,
     dailyCandleService = null,
     intradayCandleService = null,
-    aiCoordinator = null
+    aiCoordinator = null,
+    awarenessService = null
   }) {
     this.stateManager = stateManager;
     this.socketServer = socketServer;
@@ -88,6 +104,7 @@ class RefreshOrchestratorService {
     this.dailyCandleService = dailyCandleService;
     this.intradayCandleService = intradayCandleService;
     this.aiCoordinator = aiCoordinator;
+    this.awarenessService = awarenessService;
     this.newsInFlight = false;
     this.marketInFlight = false;
     this.manualRefreshInFlight = false;
@@ -97,6 +114,8 @@ class RefreshOrchestratorService {
     this.newsBackoffMs = 0;
     this.newsCycleTelemetry = createCycleTelemetry();
     this.marketCycleTelemetry = createCycleTelemetry();
+    this.newsLaneOffset = 0;
+    this.financialQueryPackOffset = 0;
     if (!this.isMarketEnabled()) {
       this.markMarketTelemetryDisabled();
     }
@@ -181,7 +200,8 @@ class RefreshOrchestratorService {
       market: snapshot.market,
       impact: snapshot.impact,
       impactHistory: snapshot.impactHistory,
-      ai: snapshot.ai
+      ai: snapshot.ai,
+      awareness: snapshot.awareness
     };
   }
 
@@ -351,32 +371,89 @@ class RefreshOrchestratorService {
       const countryFilter = options.countries?.length ? options.countries : this.config.watchlistCountries;
       const policy = this.resolveCurrentNewsPolicy();
       const pageSize = options.forcePageSize || policy.pageSize;
+      const awarenessMode = this.awarenessService?.mode || "off";
+      const awarenessCollectionEnabled = awarenessMode === "shadow" || awarenessMode === "visible";
+      const awarenessVisible = awarenessMode === "visible";
+      const queryLane = awarenessCollectionEnabled
+        ? buildNewsLaneRotation({ slots: 1, offset: this.newsLaneOffset })[0] || "geopolitical"
+        : "legacy";
+      if (awarenessCollectionEnabled) this.newsLaneOffset = (this.newsLaneOffset + 1) % 10;
+      const financialPackKeys = ["macro", "market", "corporate-watchlist", "regulatory"];
+      const financialQueryPackKey = financialPackKeys[this.financialQueryPackOffset % financialPackKeys.length];
+      if (queryLane === "financial") this.financialQueryPackOffset += 1;
       const newsResult = await fetchRawNews({
         ...this.config.news,
         pageSize,
         countries: countryFilter,
+        queryLane,
+        financialQueryPackKey,
         allowExhaustedProviders: options.allowExhaustedProviders === true
       });
       const normalizedNews = normalizeArticles(newsResult.articles, newsResult.sourceMeta?.provider || "aggregated");
+      const newsBranches = awarenessCollectionEnabled
+        ? partitionNewsArticles(normalizedNews)
+        : { geopolitical: normalizedNews, financial: [], hybrid: [] };
       const rawIntelNews = normalizeAdminArticles(newsResult.rawArticles || [], newsResult.sourceMeta?.provider || "aggregated");
-      const selection = buildIntelNewsSelection({
-        articles: normalizedNews,
-        previousArticles: previousSnapshot.news || [],
-        watchlistCountries: countryFilter,
-        analyzeLimit: this.config.news?.analyzeLimit || 80,
-        candidateWindowHours: this.config.news?.candidateWindowHours || 36,
-        maxPerSource: this.config.news?.maxPerSource || 3,
-        maxSimilarHeadline: this.config.news?.maxSimilarHeadline || 2
-      });
-      const signalCorpus = selection.signalCorpus || normalizedNews;
+      const geopoliticalAwareness = this.awarenessService?.getGeopoliticalArticles?.() || [];
+      const shadowFinancialCycle = awarenessMode === "shadow" && queryLane === "financial";
+      const selection = shadowFinancialCycle
+        ? {
+            signalCorpus: this.stateManager.getSignalCorpus(),
+            displaySelection: previousSnapshot.news || [],
+            selectionMeta: previousSnapshot.meta?.sourceMeta || {}
+          }
+        : buildIntelNewsSelection({
+            articles: mergeArticleCorpora(
+              awarenessVisible ? newsBranches.geopolitical : normalizedNews,
+              geopoliticalAwareness
+            ),
+            previousArticles: previousSnapshot.news || [],
+            watchlistCountries: countryFilter,
+            analyzeLimit: this.config.news?.analyzeLimit || 80,
+            candidateWindowHours: this.config.news?.candidateWindowHours || 36,
+            maxPerSource: this.config.news?.maxPerSource || 3,
+            maxSimilarHeadline: this.config.news?.maxSimilarHeadline || 2
+          });
+      const signalCorpus = selection.signalCorpus || (awarenessVisible ? newsBranches.geopolitical : normalizedNews);
       const selectedNews = selection.displaySelection || [];
+      const financialSelection = buildFinancialNewsSelection({
+        articles: awarenessCollectionEnabled
+          ? mergeArticleCorpora(newsBranches.financial, awarenessVisible ? this.stateManager.getMarketSignalCorpus() : [])
+          : [],
+        candidateWindowHours: Math.max(36, this.config.news?.candidateWindowHours || 36),
+        analyzeLimit: this.config.news?.analyzeLimit || 80,
+        displayLimit: 40,
+        maxPerSource: 4
+      });
+      if (awarenessCollectionEnabled) {
+        this.awarenessService?.ingestFinancialArticles?.(financialSelection.items || [], {
+          backfill: trigger === "startup-news",
+          trigger
+        });
+      }
+      const marketSignalCorpus = awarenessVisible
+        ? mergeArticleCorpora(
+            signalCorpus,
+            financialSelection.signalCorpus || [],
+            this.awarenessService?.getMarketArticles?.() || []
+          )
+        : signalCorpus;
       const newsSourceMeta = {
         ...(newsResult.sourceMeta || {}),
         selectedCountByProvider: countByProvider(selectedNews, this.config.news?.providers || []),
         signalCountByProvider: countByProvider(signalCorpus, this.config.news?.providers || []),
         selectionBySourceName: selection.selectionMeta?.selectionBySourceName || [],
         latestSelectedArticleAgeMin: selection.selectionMeta?.latestSelectedArticleAgeMin ?? null,
-        selectionConfig: selection.selectionMeta?.selectionConfig || null
+        selectionConfig: selection.selectionMeta?.selectionConfig || null,
+        queryLane,
+        awarenessMode,
+        financialQueryPackKey: queryLane === "financial" ? financialQueryPackKey : null,
+        branchCounts: {
+          geopolitical: newsBranches.geopolitical.length,
+          financial: newsBranches.financial.length,
+          hybrid: newsBranches.hybrid.length
+        },
+        financialSelection: financialSelection.diagnostics
       };
       this.stateManager.setAdminIntelRawNews({
         generatedAt: new Date().toISOString(),
@@ -399,7 +476,7 @@ class RefreshOrchestratorService {
       const inputMode = resolveInputMode(newsResult.sourceMode, previousSnapshot.market?.sourceMode);
       const selectedMarketInstruments = this.config.market.watchlistService?.selectedInstruments?.() || [];
       const impact = computeMarketImpact({
-        articles: signalCorpus,
+        articles: marketSignalCorpus,
         countries: riskResult.countries,
         marketQuotes: previousSnapshot.market?.quotes || {},
         tickers: this.config.market.tickers,
@@ -411,7 +488,7 @@ class RefreshOrchestratorService {
         predictionScores: previousSnapshot.predictions?.predictionScoreByTicker || {}
       });
       const predictions = generatePredictions({
-        articles: signalCorpus,
+        articles: marketSignalCorpus,
         countries: riskResult.countries,
         marketQuotes: previousSnapshot.market?.quotes || {},
         tickers: this.config.market.tickers,
@@ -432,6 +509,7 @@ class RefreshOrchestratorService {
         predictions,
         impact,
         signalCorpus,
+        marketSignalCorpus,
         newsSourceMode: newsResult.sourceMode,
         newsSourceMeta,
         watchlistCountries: this.config.watchlistCountries
@@ -591,7 +669,7 @@ class RefreshOrchestratorService {
       const selectedMarketInstruments = this.config.market.watchlistService?.selectedInstruments?.() || [];
 
       const predictions = generatePredictions({
-        articles: this.stateManager.getSignalCorpus(),
+        articles: mergeArticleCorpora(this.stateManager.getMarketSignalCorpus(), this.awarenessService?.getMarketArticles?.() || []),
         countries: previousSnapshot.countries,
         marketQuotes: marketState.quotes,
         tickers: this.config.market.tickers,
@@ -599,7 +677,7 @@ class RefreshOrchestratorService {
         inputMode
       });
       const impact = computeMarketImpact({
-        articles: this.stateManager.getSignalCorpus(),
+        articles: mergeArticleCorpora(this.stateManager.getMarketSignalCorpus(), this.awarenessService?.getMarketArticles?.() || []),
         countries: previousSnapshot.countries,
         marketQuotes: marketState.quotes,
         tickers: this.config.market.tickers,

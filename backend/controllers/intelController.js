@@ -16,6 +16,28 @@ function mapResponse(data) {
   };
 }
 
+function parseCsv(value) {
+  return [...new Set(String(value || "").split(",").map((entry) => entry.trim()).filter(Boolean))];
+}
+
+const AWARENESS_DOMAINS = new Set(["financial", "macro", "market", "corporate", "regulatory", "geopolitical", "security"]);
+const AWARENESS_KINDS = new Set(["macro_scheduled", "macro_release", "market_moving_news", "regulatory_filing", "official_security_release", "maritime_alert"]);
+const AWARENESS_STATUSES = new Set(["scheduled", "live", "released", "updated", "cancelled"]);
+
+function validateAwarenessValues(values, allowed, name) {
+  if (values.length > 50 || values.some((value) => value.length > 128 || (allowed && !allowed.has(value.toLowerCase())))) {
+    throw new AppError(`${name} contains an unsupported value.`, 400, "INVALID_AWARENESS_FILTER");
+  }
+  return values;
+}
+
+function parseOptionalDate(value, name) {
+  if (!value) return null;
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) throw new AppError(`${name} must be a valid ISO date.`, 400, "INVALID_AWARENESS_DATE");
+  return new Date(timestamp).toISOString();
+}
+
 function withActiveFilters(meta, countries, sources) {
   return {
     ...meta,
@@ -190,6 +212,34 @@ export function getInsights(req, res) {
       )
     })
   );
+}
+
+export function getAwarenessSnapshot(req, res) {
+  const service = res.app.locals.awarenessService;
+  const limit = parsePositiveInt(req.query.limit, 100, { min: 1, max: 500 });
+  const filters = {
+    domains: validateAwarenessValues(parseCsv(req.query.domain), AWARENESS_DOMAINS, "domain").map((value) => value.toLowerCase()),
+    kinds: validateAwarenessValues(parseCsv(req.query.kinds), AWARENESS_KINDS, "kinds").map((value) => value.toLowerCase()),
+    statuses: validateAwarenessValues(parseCsv(req.query.status), AWARENESS_STATUSES, "status").map((value) => value.toLowerCase()),
+    countries: validateAwarenessValues(parseCsv(req.query.countries).map((value) => value.toUpperCase()), null, "countries")
+      .filter((value) => {
+        if (!/^[A-Z]{2}$/.test(value)) throw new AppError("countries contains an unsupported value.", 400, "INVALID_AWARENESS_FILTER");
+        return true;
+      }),
+    instrumentIds: validateAwarenessValues(parseCsv(req.query.instrumentIds), null, "instrumentIds")
+      .filter((value) => {
+        if (!/^[A-Za-z0-9._:^=/-]+$/.test(value)) throw new AppError("instrumentIds contains an unsupported value.", 400, "INVALID_AWARENESS_FILTER");
+        return true;
+      }),
+    from: parseOptionalDate(req.query.from, "from"),
+    to: parseOptionalDate(req.query.to, "to"),
+    limit
+  };
+  if (filters.from && filters.to && Date.parse(filters.from) > Date.parse(filters.to)) {
+    throw new AppError("from must be earlier than or equal to to.", 400, "INVALID_AWARENESS_WINDOW");
+  }
+  const snapshot = service?.getSnapshot?.(filters, { publicView: true }) || stateManager.getSnapshot().awareness;
+  res.json(mapResponse(snapshot));
 }
 
 function mapRefreshError(outcome) {

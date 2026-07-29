@@ -63,6 +63,16 @@ const appState = {
     scatterPoints: []
   },
   impactHistory: [],
+  awareness: {
+    schemaVersion: "awareness-v1",
+    revision: 0,
+    generatedAt: null,
+    mode: "off",
+    upcoming: [],
+    recent: [],
+    sourceStatus: [],
+    quality: { total: 0, scheduled: 0, released: 0, unlocated: 0, stale: 0 }
+  },
   ai: {
     schemaVersion: "ai-projection-v1",
     mode: "off",
@@ -98,6 +108,27 @@ function mergeMarketPayload(previousMarket = {}, nextMarket = {}) {
     };
   }
 
+  return merged;
+}
+
+function mergeAwarenessPayload(previousAwareness = {}, nextAwareness = {}) {
+  const merged = {
+    ...previousAwareness,
+    ...nextAwareness
+  };
+  if (!Array.isArray(nextAwareness.upcoming)) {
+    merged.upcoming = previousAwareness.upcoming || [];
+  }
+  if (!Array.isArray(nextAwareness.recent)) {
+    merged.recent = previousAwareness.recent || [];
+  }
+  if (!Array.isArray(nextAwareness.sourceStatus)) {
+    merged.sourceStatus = previousAwareness.sourceStatus || [];
+  }
+  merged.quality = {
+    ...(previousAwareness.quality || {}),
+    ...(nextAwareness.quality || {})
+  };
   return merged;
 }
 
@@ -141,6 +172,9 @@ function applyPayload(payload = {}) {
   }
   if (Array.isArray(payload.impactHistory)) {
     appState.impactHistory = payload.impactHistory;
+  }
+  if (payload.awareness && typeof payload.awareness === "object") {
+    appState.awareness = mergeAwarenessPayload(appState.awareness, payload.awareness);
   }
   if (payload.ai && typeof payload.ai === "object") {
     appState.ai = payload.ai;

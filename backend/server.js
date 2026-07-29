@@ -37,6 +37,8 @@ import { AiBudgetService } from "./services/ai/aiBudgetService.js";
 import { AiEnrichmentStore } from "./services/ai/aiEnrichmentStore.js";
 import { AiEnrichmentCoordinator } from "./services/ai/aiEnrichmentCoordinator.js";
 import { createAiProvider } from "./services/ai/aiProviders.js";
+import { AwarenessStore } from "./services/awareness/awarenessStore.js";
+import { AwarenessService, normalizeAwarenessMode } from "./services/awareness/awarenessService.js";
 
 const log = createLogger("backend/server");
 
@@ -378,6 +380,18 @@ function readConfig(overrides = {}) {
       countries: watchlistCountries,
       marketTickers
     },
+    awareness: {
+      mode: normalizeAwarenessMode(process.env.AWARENESS_MODE || "off"),
+      timeoutMs: toPositiveInt(process.env.AWARENESS_TIMEOUT_MS, 9_000),
+      userAgent: process.env.AWARENESS_USER_AGENT || "OGID-awareness/1.0 (+https://localhost; contact: local-operator)",
+      globalConcurrency: toPositiveInt(process.env.AWARENESS_GLOBAL_CONCURRENCY, 2),
+      hostConcurrency: toPositiveInt(process.env.AWARENESS_HOST_CONCURRENCY, 1),
+      persistent403Threshold: Math.min(10, toPositiveInt(process.env.AWARENESS_PERSISTENT_403_THRESHOLD, 3)),
+      forbiddenCooldownMs: toPositiveInt(process.env.AWARENESS_403_COOLDOWN_MS, 3_600_000),
+      snapshotPath: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, process.env.AWARENESS_STATE_FILE || "data/intel/awareness-events.json"),
+      auditPath: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, process.env.AWARENESS_AUDIT_FILE || "data/intel/awareness-events.jsonl"),
+      pollAuditPath: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, process.env.AWARENESS_POLL_AUDIT_FILE || "data/intel/awareness-polls.jsonl")
+    },
     ai: {
       provider: normalizeAiProvider(process.env.AI_PROVIDER),
       mode: normalizeAiMode(process.env.AI_MODE),
@@ -459,7 +473,8 @@ function readConfig(overrides = {}) {
         enabled: toBool(process.env.MARKET_INTRADAY_CANDLES_ENABLED, false),
         interval: ["5min", "15min", "30min", "1h"].includes(process.env.MARKET_INTRADAY_CANDLES_INTERVAL) ? process.env.MARKET_INTRADAY_CANDLES_INTERVAL : "15min",
         pollIntervalMs: toPositiveInt(process.env.MARKET_INTRADAY_CANDLES_POLL_MS, 900_000),
-        adjustmentMode: ["splits", "none"].includes(process.env.MARKET_INTRADAY_CANDLES_ADJUSTMENT) ? process.env.MARKET_INTRADAY_CANDLES_ADJUSTMENT : "splits"
+        adjustmentMode: ["splits", "none"].includes(process.env.MARKET_INTRADAY_CANDLES_ADJUSTMENT) ? process.env.MARKET_INTRADAY_CANDLES_ADJUSTMENT : "splits",
+        maxInstruments: Math.min(6, toPositiveInt(process.env.MARKET_INTRADAY_CANDLES_MAX_INSTRUMENTS, 6))
       }
     },
     apiLimits: {
@@ -557,6 +572,11 @@ function readConfig(overrides = {}) {
       ...config.ai,
       ...(overrides.ai || {}),
       features: overrides.ai?.features || config.ai.features
+    },
+    awareness: {
+      ...config.awareness,
+      ...(overrides.awareness || {}),
+      mode: normalizeAwarenessMode(overrides.awareness?.mode || config.awareness.mode)
     },
     apiLimits: {
       ...config.apiLimits,
@@ -781,6 +801,23 @@ export function createAppServer(overrides = {}) {
     heartbeatMs: config.wsHeartbeatMs,
     stateManager
   });
+  const awarenessStore = overrides.awarenessStore || new AwarenessStore({
+    snapshotPath: config.awareness.snapshotPath,
+    auditPath: config.awareness.auditPath,
+    pollAuditPath: config.awareness.pollAuditPath
+  });
+  const awarenessService = overrides.awarenessService || new AwarenessService({
+    mode: config.awareness.mode,
+    store: awarenessStore,
+    stateManager,
+    socketServer,
+    timeoutMs: config.awareness.timeoutMs,
+    userAgent: config.awareness.userAgent,
+    globalConcurrency: config.awareness.globalConcurrency,
+    hostConcurrency: config.awareness.hostConcurrency,
+    persistent403Threshold: config.awareness.persistent403Threshold,
+    forbiddenCooldownMs: config.awareness.forbiddenCooldownMs
+  });
   const aiCoordinator = new AiEnrichmentCoordinator({
     config: config.ai,
     provider: aiProvider,
@@ -803,7 +840,8 @@ export function createAppServer(overrides = {}) {
     marketHistoryStore,
     dailyCandleService,
     intradayCandleService,
-    aiCoordinator
+    aiCoordinator,
+    awarenessService
   });
   const manualRefreshService = new ManualRefreshService({
     orchestrator,
@@ -831,6 +869,8 @@ export function createAppServer(overrides = {}) {
   app.locals.marketDataService = marketDataService;
   app.locals.marketSearchRateLimiter = marketSearchRateLimiter;
   app.locals.aiCoordinator = aiCoordinator;
+  app.locals.awarenessService = awarenessService;
+  app.locals.awarenessStore = awarenessStore;
 
   return {
     app,
@@ -842,6 +882,7 @@ export function createAppServer(overrides = {}) {
     aiCoordinator,
     signalCorrelator,
     advancedIntelligenceService,
+    awarenessService,
     config,
     async start() {
       const hydratedWatchlist = await marketWatchlistService.hydrate();
@@ -894,10 +935,12 @@ export function createAppServer(overrides = {}) {
         aiProvider: config.ai?.provider,
         aiMode: config.ai?.mode,
         aiFeatures: config.ai?.features,
+        awarenessMode: config.awareness?.mode,
         nvidiaStructuredOutputMode: config.ai?.structuredOutputMode,
         nvidiaApiKeyConfigured: isRealKey(config.ai?.apiKey)
       });
       if (!config.runtime.disableBackgroundRefresh) {
+        void awarenessService.start().catch((error) => log.warn("awareness_start_failed", { message: error.message }));
         orchestrator.start();
         mediaStreamService.start();
       }
@@ -905,6 +948,7 @@ export function createAppServer(overrides = {}) {
     },
     async stop() {
       orchestrator.stop();
+      awarenessService.stop();
       mediaStreamService.stop();
       await aiCoordinator.stop();
       socketServer.close();

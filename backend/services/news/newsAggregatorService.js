@@ -1,6 +1,6 @@
 import apiQuotaTracker from "../admin/apiQuotaTrackerService.js";
 import { createLogger } from "../../utils/logger.js";
-import { normalizeNewsQueryPacks } from "./newsQueryPackService.js";
+import { buildFinancialNewsQueryPacks, normalizeNewsQueryPacks } from "./newsQueryPackService.js";
 import { fetchGdelt } from "./providers/gdeltProvider.js";
 import { fetchGnews } from "./providers/gnewsProvider.js";
 import { fetchMediastack } from "./providers/mediastackProvider.js";
@@ -198,6 +198,11 @@ function matchesKeywordFilter(article, keywordTokens = []) {
   return keywordTokens.some((token) => text.includes(token));
 }
 
+function isOfficialArticle(article = {}) {
+  const role = String(article.sourceRole || article.role || article.source?.role || "").trim().toLowerCase();
+  return role === "official";
+}
+
 function matchesSourceAllowlist(article, allowlist = []) {
   if (!allowlist.length) {
     return true;
@@ -225,7 +230,7 @@ function applyEditorialFilters(articles = [], { sourceAllowlist = [], domainAllo
   const normalizedDomains = normalizeAllowlist(domainAllowlist);
 
   return articles.filter((article) => {
-    if (!matchesKeywordFilter(article, keywordTokens)) {
+    if (!isOfficialArticle(article) && !matchesKeywordFilter(article, keywordTokens)) {
       return false;
     }
     if (!matchesSourceAllowlist(article, normalizedSources)) {
@@ -372,11 +377,13 @@ function trimQueryToLimit(query = "", maxLength = GNEWS_MAX_QUERY_LENGTH) {
   return (lastBoundary > 0 ? sliced.slice(0, lastBoundary) : sliced).trim();
 }
 
-function resolveProviderQuery(providerName, { baseQuery, composedQuery, queryPacks }) {
+function resolveProviderQuery(providerName, { baseQuery, composedQuery, queryPacks, queryLane = "legacy", financialQuery = "" }) {
+  const selectedBaseQuery = queryLane === "financial" ? financialQuery : baseQuery;
+  const selectedPacks = queryLane === "financial" ? {} : queryPacks;
   if (providerName === "newsapi") {
     const boundedQuery = composeNewsQueryWithinLimit({
-      query: baseQuery,
-      queryPacks,
+      query: selectedBaseQuery,
+      queryPacks: selectedPacks,
       maxLength: NEWSAPI_MAX_QUERY_LENGTH
     });
     return {
@@ -386,7 +393,7 @@ function resolveProviderQuery(providerName, { baseQuery, composedQuery, queryPac
   }
 
   if (providerName === "gnews" || providerName === "gdelt") {
-    const normalizedBaseQuery = String(baseQuery || "").trim();
+    const normalizedBaseQuery = String(selectedBaseQuery || "").trim();
     if (!normalizedBaseQuery) {
       return {
         query: "",
@@ -409,7 +416,7 @@ function resolveProviderQuery(providerName, { baseQuery, composedQuery, queryPac
     };
   }
 
-  const providerQuery = composedQuery || baseQuery;
+  const providerQuery = queryLane === "financial" ? financialQuery : composedQuery || baseQuery;
   return {
     query: providerQuery,
     skipReason: null,
@@ -440,6 +447,9 @@ export async function fetchAggregatedNews({
   rssFeeds = [],
   query,
   queryPacks = {},
+  queryPackGroups = null,
+  queryLane = "legacy",
+  financialQueryPackKey = "macro",
   marketTickers = [],
   language,
   pageSize,
@@ -451,17 +461,38 @@ export async function fetchAggregatedNews({
 }) {
   const normalizedProviders = normalizeProviders(providers);
   const normalizedQueryPacks = resolveNormalizedQueryPacks(queryPacks, marketTickers);
+  const financialQueryPacks = buildFinancialNewsQueryPacks({ marketTickers });
+  const normalizedLane = ["geopolitical", "financial"].includes(queryLane) ? queryLane : "legacy";
+  const geopoliticalQueryPacks = normalizedLane === "geopolitical" && queryPackGroups?.editorial
+    ? resolveNormalizedQueryPacks(queryPackGroups.editorial, marketTickers)
+    : normalizedQueryPacks;
   const providerResolution = resolveProviderOrder(normalizedProviders, allowExhaustedProviders);
   const attempts = [];
   const aggregatedArticles = [];
-  const keywordTokens = buildKeywordTokens(query, normalizedQueryPacks);
+  const keywordTokens = buildKeywordTokens(
+    query,
+    normalizedLane === "financial"
+      ? financialQueryPacks
+      : normalizedLane === "geopolitical"
+        ? geopoliticalQueryPacks
+        : normalizedQueryPacks
+  );
   const baseQuery = String(query || "").trim();
-  const composedQuery = composeNewsQuery({ query, queryPacks: normalizedQueryPacks }) || baseQuery;
+  const composedQuery = composeNewsQuery({ query, queryPacks: geopoliticalQueryPacks }) || baseQuery;
   const rateLimitsByProvider = {};
   const providerRequests = Object.fromEntries(
     normalizedProviders.map((providerName) => [
       providerName,
-      resolveProviderQuery(providerName, { baseQuery, composedQuery, queryPacks: normalizedQueryPacks })
+      resolveProviderQuery(providerName, {
+        baseQuery,
+        composedQuery,
+        queryPacks: normalizedLane === "geopolitical" ? geopoliticalQueryPacks : normalizedQueryPacks,
+        queryLane: normalizedLane,
+        financialQuery: (buildFinancialNewsQueryPacks({
+          marketTickers,
+          maxQueryLength: providerName === "newsapi" ? NEWSAPI_MAX_QUERY_LENGTH : GNEWS_MAX_QUERY_LENGTH
+        })[financialQueryPackKey] || financialQueryPacks.macro)
+      })
     ])
   );
   const upstreamRawArticles = [];
@@ -677,7 +708,9 @@ export async function fetchAggregatedNews({
         queryLengthByProvider,
         queryOriginalLengthByProvider,
         queryTruncatedByProvider,
-        rssFeedStatus
+        rssFeedStatus,
+        queryLane: normalizedLane,
+        financialQueryPackKey: normalizedLane === "financial" ? financialQueryPackKey : null
       }
     };
   }
@@ -708,7 +741,9 @@ export async function fetchAggregatedNews({
       queryLengthByProvider,
       queryOriginalLengthByProvider,
       queryTruncatedByProvider,
-      rssFeedStatus
+      rssFeedStatus,
+      queryLane: normalizedLane,
+      financialQueryPackKey: normalizedLane === "financial" ? financialQueryPackKey : null
     }
   };
 }

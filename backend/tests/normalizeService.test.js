@@ -28,3 +28,38 @@ test("normalizeArticles strips html, derives excerpt/fullText and prefers embedd
   assert.equal(articles[0].leadImageUrl, "https://example.com/thumb.png");
   assert.equal(articles[0].imageUrl, "https://example.com/thumb.png");
 });
+
+test("normalizeArticles preserves additive source metadata and provenance", () => {
+  const provenance = {
+    sourceId: "rss-federal-reserve-press-releases",
+    sourceType: "rss",
+    methodVersion: "rss-parser-v1",
+    publishedAtQuality: "observed"
+  };
+  const [article] = normalizeArticles([
+    {
+      provider: "rss",
+      source: {
+        name: "Federal Reserve Press Releases",
+        sourceId: "rss-federal-reserve-press-releases",
+        role: "official"
+      },
+      publisher: "Board of Governors of the Federal Reserve System",
+      topics: ["macro", "monetary-policy"],
+      instrumentIds: ["us-index-sp500"],
+      provenance,
+      title: "Federal Reserve issues FOMC statement",
+      url: "https://www.federalreserve.gov/newsevents/pressreleases/example.htm",
+      publishedAt: "2026-07-29T18:00:00.000Z"
+    }
+  ], "rss");
+
+  assert.equal(article.sourceId, "rss-federal-reserve-press-releases");
+  assert.equal(article.role, "official");
+  assert.equal(article.sourceRole, "official");
+  assert.equal(article.publisher, "Board of Governors of the Federal Reserve System");
+  assert.deepEqual(article.topics, ["macro", "monetary-policy"]);
+  assert.deepEqual(article.instrumentIds, ["us-index-sp500"]);
+  assert.deepEqual(article.provenance, provenance);
+  assert.notEqual(article.provenance, provenance);
+});

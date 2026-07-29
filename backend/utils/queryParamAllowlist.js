@@ -14,6 +14,7 @@ const ROUTE_QUERY_PARAMS = new Map(
     "GET /api/intel/risks": ["countries", "sources", "limit"],
     "GET /api/intel/news": ["countries", "sources", "limit"],
     "GET /api/intel/insights": ["countries", "sources", "limit"],
+    "GET /api/intel/awareness-snapshot": ["domain", "kinds", "status", "countries", "instrumentIds", "from", "to", "limit"],
     "GET /api/intel/advanced-snapshot": ["countries", "force", "windowHours", "activeWindowHours", "baselineDays"],
     "GET /api/intel/country-instability": ["countries", "force", "windowHours", "maxEvents", "activeWindowHours", "baselineDays"],
     "GET /api/intel/hotspots-v2": ["countries", "force", "windowHours", "maxEvents", "activeWindowHours", "baselineDays"],

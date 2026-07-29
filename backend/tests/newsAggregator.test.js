@@ -382,3 +382,45 @@ test("news aggregator bounds NewsAPI ticker clauses from an unlimited watchlist"
     global.fetch = originalFetch;
   }
 });
+
+test("financial query lane sends bounded provider-specific packs without the geopolitical base query", async () => {
+  apiQuotaTracker.reset({ newsapiDailyLimit: 10, gnewsDailyLimit: 10 });
+  const originalFetch = global.fetch;
+  const captured = {};
+  global.fetch = async (url) => {
+    const requestUrl = new URL(String(url));
+    const provider = requestUrl.hostname.includes("gnews") ? "gnews" : "newsapi";
+    captured[provider] = requestUrl.searchParams.get("q") || "";
+    const body = provider === "gnews"
+      ? { articles: [{ source: { name: "Markets" }, title: "NVDA earnings guidance", description: "Quarterly results", url: "https://example.test/gnews-financial", publishedAt: new Date().toISOString() }] }
+      : { totalResults: 1, articles: [{ source: { name: "Markets" }, title: "NVDA earnings guidance", description: "Quarterly results", url: "https://example.test/newsapi-financial", publishedAt: new Date().toISOString() }] };
+    return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  try {
+    const result = await fetchAggregatedNews({
+      providers: ["newsapi", "gnews"],
+      newsApiKey: "test-key",
+      gnewsApiKey: "test-key",
+      newsApiBaseUrl: "https://newsapi.example/v2",
+      gnewsBaseUrl: "https://gnews.example/v4",
+      query: "geopolitics OR military",
+      queryLane: "financial",
+      financialQueryPackKey: "corporate-watchlist",
+      marketTickers: ["NVDA", "AAPL", "MSFT"],
+      language: "en",
+      pageSize: 10,
+      timeoutMs: 1_000
+    });
+    assert.ok(captured.newsapi.length <= 500);
+    assert.ok(captured.gnews.length <= 180);
+    assert.match(captured.newsapi, /NVDA/);
+    assert.match(captured.gnews, /NVDA/);
+    assert.match(captured.newsapi, /earnings/);
+    assert.match(captured.gnews, /earnings/);
+    assert.doesNotMatch(captured.newsapi, /geopolitics|military/);
+    assert.equal(result.sourceMeta.queryLane, "financial");
+    assert.equal(result.sourceMeta.financialQueryPackKey, "corporate-watchlist");
+  } finally {
+    global.fetch = originalFetch;
+  }
+});

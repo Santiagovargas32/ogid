@@ -6,6 +6,7 @@ const LEVEL_COLORS = {
 };
 
 const EVENT_COLOR = "#d9dddf";
+const OFFICIAL_RELEASE_COLOR = "#7dd3fc";
 const WATCHLIST_COLOR = "#f3f4f4";
 const STATIC_SEED_COLOR = "#9a9fa6";
 const MOVING_SEED_COLOR = "#c49a73";
@@ -50,6 +51,15 @@ function formatTimestamp(value) {
     return "--";
   }
   return new Date(value).toLocaleString();
+}
+
+function safeHttpUrl(value = "") {
+  try {
+    const url = new URL(String(value || ""));
+    return ["http:", "https:"].includes(url.protocol) ? url.href : "";
+  } catch {
+    return "";
+  }
 }
 
 function stableHash(value = "") {
@@ -364,11 +374,13 @@ export class HotspotMap {
     this.baseLayer = null;
     this.hotspotLayer = null;
     this.eventLayer = null;
+    this.awarenessLayer = null;
     this.watchlistLayer = null;
     this.seedStaticLayer = null;
     this.seedMovingLayer = null;
     this.countryIndex = new Map();
     this.eventPoints = [];
+    this.awarenessEvents = [];
     this.lastFitSignature = null;
     this.legendElement = null;
     this.controlsElement = null;
@@ -376,6 +388,7 @@ export class HotspotMap {
     this.visibility = {
       hotspots: true,
       newsSignals: true,
+      officialReleases: true,
       watchlist: true
     };
     this.lastContext = {
@@ -432,6 +445,7 @@ export class HotspotMap {
     this.seedStaticLayer = L.layerGroup().addTo(this.map);
     this.seedMovingLayer = L.layerGroup().addTo(this.map);
     this.eventLayer = L.layerGroup().addTo(this.map);
+    this.awarenessLayer = L.layerGroup().addTo(this.map);
     this.hotspotLayer = L.layerGroup().addTo(this.map);
 
     this.ensureControls();
@@ -518,6 +532,7 @@ export class HotspotMap {
         <span class="map-overlay-chip always-on">Moving Seeds</span>
         ${toggleButton("hotspots", "Hotspots")}
         ${toggleButton("newsSignals", "News Signals")}
+        ${toggleButton("officialReleases", "Official Releases")}
         ${toggleButton("watchlist", "Watchlist")}
       </div>
     `;
@@ -546,6 +561,10 @@ export class HotspotMap {
         <span class="map-legend-pill">
           <span class="map-legend-swatch" style="background:${EVENT_COLOR}"></span>
           <span>News Signals</span>
+        </span>
+        <span class="map-legend-pill">
+          <span class="map-legend-swatch" style="background:${OFFICIAL_RELEASE_COLOR}"></span>
+          <span>Official Releases</span>
         </span>
           <span class="map-legend-pill">
             <span class="map-legend-swatch" style="background:${WATCHLIST_COLOR}"></span>
@@ -804,6 +823,59 @@ export class HotspotMap {
     }
   }
 
+  setAwarenessEvents(events = []) {
+    this.awarenessEvents = (Array.isArray(events) ? events : []).filter((event) => {
+      const lat = event?.location?.lat;
+      const lng = event?.location?.lng;
+      return lat !== null && lat !== undefined && lng !== null && lng !== undefined &&
+        Number.isFinite(Number(lat)) && Number.isFinite(Number(lng)) &&
+        !(Number(lat) === 0 && Number(lng) === 0) &&
+        Math.abs(Number(lat)) <= 90 && Math.abs(Number(lng)) <= 180 &&
+        event.location?.precision !== "none";
+    });
+    this.renderAwarenessLayer();
+  }
+
+  renderAwarenessLayer() {
+    if (!this.awarenessLayer) return;
+    this.awarenessLayer.clearLayers();
+    if (!this.visibility.officialReleases) return;
+    for (const event of this.awarenessEvents.slice(0, 180)) {
+      const lat = Number(event.location.lat);
+      const lng = Number(event.location.lng);
+      const exact = event.location.precision === "exact";
+      const stale = event.stale === true || event.dataMode === "stale";
+      const marker = L.circleMarker([lat, lng], {
+        radius: event.importance === "high" ? 8 : 6,
+        color: OFFICIAL_RELEASE_COLOR,
+        fillColor: OFFICIAL_RELEASE_COLOR,
+        fillOpacity: stale ? 0.12 : exact ? 0.72 : 0.3,
+        opacity: stale ? 0.55 : 0.96,
+        dashArray: stale ? "2 5" : exact ? null : "4 3",
+        weight: exact ? 2 : 1.4
+      });
+      const canonicalUrl = safeHttpUrl(event.canonicalUrl);
+      const sourceLink = canonicalUrl
+        ? `<a href="${escapeHtml(canonicalUrl)}" target="_blank" rel="noopener noreferrer">Open official source</a>`
+        : "Official source link unavailable";
+      marker.bindPopup(`
+        <div class="small">
+          <strong>Official release</strong><br/>
+          ${escapeHtml(event.title || "Untitled release")}<br/>
+          Source: ${escapeHtml(event.source?.name || "Official source")}<br/>
+          Claim: ${escapeHtml(event.claimStatus || "source_asserted")}<br/>
+          Status: ${escapeHtml(event.status || "released")}${stale ? " (stale)" : ""}<br/>
+          Location: ${escapeHtml(event.location?.label || "--")}<br/>
+          Precision: <strong>${escapeHtml(event.location?.precision || "none")}</strong><br/>
+          Method: ${escapeHtml(event.location?.method || "unknown")}<br/>
+          Published: ${formatTimestamp(event.publishedAt || event.scheduledAt)}<br/>
+          ${sourceLink}
+        </div>
+      `);
+      marker.addTo(this.awarenessLayer);
+    }
+  }
+
   renderSeedAssets(layer, items = []) {
     if (!layer) {
       return;
@@ -877,6 +949,7 @@ export class HotspotMap {
     this.renderSeedLayers(mapAssets);
     this.eventPoints = this.buildEventPoints(news);
     this.renderEventLayer();
+    this.renderAwarenessLayer();
     this.renderHotspots(hotspots, watchlist);
   }
 

@@ -266,7 +266,8 @@ export function renderGeneratedSearchUrl(entry) {
 function legacyFeed(entry) {
   const url = entry.type === "generated_search" ? renderGeneratedSearchUrl(entry) : entry.url;
   return {
-    sourceId: entry.sourceId, type: entry.type, label: entry.name, publisher: entry.publisher, url,
+    sourceId: entry.sourceId, type: entry.type, label: entry.name, publisher: entry.publisher, role: entry.role,
+    topics: [...(entry.topics || [])], instrumentIds: [...(entry.instrumentIds || [])], url,
     disabled: !entry.enabled, reason: entry.disabledReason || (!entry.enabled ? entry.status : null),
     generated: entry.type === "generated_search", priority: entry.priority,
     minPollIntervalMs: entry.expectedCadence.minPollIntervalMs, queryDefinition: entry.queryDefinition || null,
