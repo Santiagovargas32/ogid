@@ -32,6 +32,7 @@ const ROUTE_QUERY_PARAMS = new Map(
     "GET /api/market/indicators": ["instrumentId", "interval", "adjusted"],
     "GET /api/market/impact": ["tickers", "countries", "windowMin", "couplingInterval", "couplingWindows", "benchmarkInstrumentId"],
     "GET /api/market/analytics": ["tickers", "countries", "windowMin", "couplingInterval", "couplingWindows", "benchmarkInstrumentId"],
+    "GET /api/market/conditions": ["windowMin", "countries"],
 
     "GET /api/media/streams": ["force", "resolve", "ids"],
     "GET /api/media/streams/health": [],

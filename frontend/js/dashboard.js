@@ -16,6 +16,16 @@ import {
   validateMarketSelection
 } from "./marketWatchlistModel.js";
 import { buildOhlcvChartSeries, buildOhlcvSummary } from "./marketOhlcvModel.js";
+import {
+  DEFAULT_MARKET_CONDITIONS_WINDOW_MIN,
+  MARKET_CONDITIONS_WINDOWS,
+  availabilityReasonDetails,
+  inputStatusLabel,
+  normalizeInputStatus,
+  normalizeMarketConditions,
+  scoreAriaLabel,
+  scoreDisplay
+} from "./marketConditionsModel.js";
 
 const LEVEL_RANK = {
   Stable: 1,
@@ -24,44 +34,11 @@ const LEVEL_RANK = {
   Critical: 4
 };
 
-const ANALYTICS_WINDOW_OPTIONS = [
-  { label: "2h", minutes: 120 },
-  { label: "6h", minutes: 360 },
-  { label: "12h", minutes: 720 },
-  { label: "24h", minutes: 1440 }
-];
-const CHART_COLORS = ["#f3f4f4", "#d9dddf", "#bdc2c5", "#a2a8ac", "#878e93", "#6d747a", "#555c62"];
 const NEWS_PLACEHOLDER_SRC = "/assets/news-placeholder.svg";
-const DIRECTION_COLORS = {
-  Bullish: "#38c172",
-  Bearish: "#ff4d4f",
-  Volatile: "#ff8c42",
-  Sideways: "#a2a8ac"
-};
-const MODE_BORDER_COLORS = {
-  live: "#f3f4f4",
-  "web-delayed": "#bdc2c5",
-  "historical-eod": "#9faebd",
-  "router-stale": "#f4c542",
-  "synthetic-fallback": "#ffb36b",
-  stale: "#f4c542",
-  fallback: "#ffb36b"
-};
-const MODE_POINT_STYLE = {
-  live: "circle",
-  "web-delayed": "rectRounded",
-  "historical-eod": "rectRot",
-  "router-stale": "rectRounded",
-  "synthetic-fallback": "triangle",
-  stale: "rectRounded",
-  fallback: "triangle"
-};
+const MARKET_CONDITIONS_WINDOW_MINUTES = new Set(MARKET_CONDITIONS_WINDOWS.map((option) => option.minutes));
 
 let hotspotMap;
 let riskChart;
-let impactTimelineChart;
-let sectorBreakdownChart;
-let impactScatterChart;
 let socket;
 let selectedCountries = new Set();
 let currentWatchlist = [];
@@ -76,15 +53,12 @@ let marketOhlcvChart = null;
 let marketOhlcvRequestToken = 0;
 let watchlistInitialized = false;
 let marketProviderPoller = null;
-let analyticsRefreshTimer = null;
-let latestAnalytics = null;
-let latestAnalyticsContext = "";
-let latestAnalyticsError = "";
-let latestAnalyticsWindowMin = 120;
-let analyticsRequestToken = 0;
-let selectedCouplingTickers = [];
-let couplingSelectionTouched = false;
-let selectedAnalyticsWindowMin = 120;
+let marketConditionsRefreshTimer = null;
+let latestMarketConditions = null;
+let latestMarketConditionsContext = "";
+let latestMarketConditionsError = "";
+let marketConditionsRequestToken = 0;
+let selectedMarketConditionsWindowMin = DEFAULT_MARKET_CONDITIONS_WINDOW_MIN;
 let marketQuotesPoller = null;
 let marketQuotesPollerStarted = false;
 let manualRefreshPendingId = null;
@@ -114,12 +88,7 @@ function cacheElements() {
   elements.marketProviderStatusText = byId("market-provider-status-text");
   elements.newsCount = byId("news-count");
   elements.newsFeed = byId("news-feed");
-  elements.predictionsList = byId("predictions-list");
-  elements.insightsList = byId("insights-list");
   elements.riskChart = byId("risk-chart");
-  elements.impactTimelineChart = byId("impact-timeline-chart");
-  elements.sectorBreakdownChart = byId("sector-breakdown-chart");
-  elements.impactScatterChart = byId("impact-scatter-chart");
   elements.distCritical = byId("dist-critical");
   elements.distElevated = byId("dist-elevated");
   elements.distMonitoring = byId("dist-monitoring");
@@ -141,26 +110,28 @@ function cacheElements() {
   elements.marketOhlcvClose = byId("market-ohlcv-close");
   elements.marketOhlcvRange = byId("market-ohlcv-range");
   elements.marketOhlcvChange = byId("market-ohlcv-change");
-  elements.marketImpactList = byId("market-impact-list");
   elements.aiMarketShell = byId("ai-market-shell");
   elements.aiMarketList = byId("ai-market-list");
   elements.aiCountryShell = byId("ai-country-shell");
   elements.aiCountryList = byId("ai-country-list");
+  elements.marketConditionsInputBadge = byId("market-conditions-input-badge");
+  elements.marketConditionsUpdated = byId("market-conditions-updated");
+  elements.marketConditionsStatus = byId("market-conditions-status");
+  elements.marketConditionsWindowSelector = byId("market-conditions-window-selector");
+  elements.marketConditionsGeneral = byId("market-conditions-general");
+  elements.marketConditionsSymbols = byId("market-conditions-symbols");
+  elements.marketConditionsCountries = byId("market-conditions-countries");
+  elements.marketConditionsLimitations = byId("market-conditions-limitations");
   elements.qualityHotspotsBadge = byId("quality-hotspots-badge");
   elements.qualityNewsBadge = byId("quality-news-badge");
   elements.qualityMarketBadge = byId("quality-market-badge");
-  elements.qualityImpactBadge = byId("quality-impact-badge");
-  elements.qualityInsightsBadge = byId("quality-insights-badge");
   elements.panelHotspots = byId("panel-hotspots");
   elements.panelNews = byId("panel-news");
   elements.panelRisk = byId("panel-risk");
   elements.panelMarket = byId("panel-market");
-  elements.panelInsights = byId("panel-insights");
+  elements.panelMarketConditions = byId("panel-market-conditions");
   elements.panelAdvancedIntel = byId("panel-advanced-intel");
   elements.panelSituational = byId("panel-situational");
-  elements.analyticsStatus = byId("analytics-status");
-  elements.analyticsWindowSelector = byId("analytics-window-selector");
-  elements.couplingTickerSelector = byId("coupling-ticker-selector");
   elements.refreshNewsBtn = byId("refresh-news-btn");
   elements.refreshNewsStatus = byId("refresh-news-status");
   elements.newsDrawer = byId("news-detail-drawer");
@@ -222,7 +193,15 @@ function buildNewsParagraphs(article = {}) {
   return excerpt ? [excerpt] : [];
 }
 
+function isAiVisible(ai = {}) {
+  const provider = String(ai.provider || ai.activeProvider || "none").trim().toLowerCase();
+  return ai.enabled === true && ai.mode === "visible" && !["none", "off", "disabled"].includes(provider);
+}
+
 function articleAiEntry(articleId, ai = getState().ai || {}) {
+  if (!isAiVisible(ai)) {
+    return null;
+  }
   return ai?.articleSummaries?.[String(articleId || "")] || null;
 }
 
@@ -302,100 +281,30 @@ function openNewsDrawer(articleId = "") {
   newsDrawerInstance?.show();
 }
 
-function ensureChartOverlay(canvas) {
-  if (!canvas?.parentElement) {
-    return null;
+function renderMarketConditionsStatus(message = "", { error = false } = {}) {
+  if (!elements.marketConditionsStatus) {
+    return;
   }
-
-  let overlay = canvas.parentElement.querySelector(".chart-overlay");
-  if (!overlay) {
-    overlay = document.createElement("div");
-    overlay.className = "chart-overlay";
-    canvas.parentElement.appendChild(overlay);
-  }
-
-  return overlay;
+  elements.marketConditionsStatus.textContent = message;
+  elements.marketConditionsStatus.classList.toggle("is-error", error);
 }
 
-function setChartOverlay(canvas, message = "") {
-  const overlay = ensureChartOverlay(canvas);
-  if (!overlay) {
+function renderMarketConditionsWindowSelector() {
+  if (!elements.marketConditionsWindowSelector) {
     return;
   }
 
-  if (!message) {
-    overlay.classList.remove("visible");
-    overlay.textContent = "";
-    return;
-  }
-
-  overlay.textContent = message;
-  overlay.classList.add("visible");
-}
-
-function renderAnalyticsStatus(message = "") {
-  if (!elements.analyticsStatus) {
-    return;
-  }
-
-  if (!message) {
-    elements.analyticsStatus.classList.add("d-none");
-    elements.analyticsStatus.textContent = "";
-    return;
-  }
-
-  elements.analyticsStatus.textContent = message;
-  elements.analyticsStatus.classList.remove("d-none");
-}
-
-function renderAnalyticsWindowSelector() {
-  if (!elements.analyticsWindowSelector) {
-    return;
-  }
-
-  elements.analyticsWindowSelector.innerHTML = `
-    <div class="chart-selector-help small text-light-emphasis">Analytics window</div>
-    <div class="chart-selector-chips">
-      ${ANALYTICS_WINDOW_OPTIONS.map((option) => {
-    const activeClass = option.minutes === selectedAnalyticsWindowMin ? "active" : "";
-    return `<button class="chart-selector-chip ${activeClass}" type="button" data-action="set-analytics-window" data-window-min="${option.minutes}">${option.label}</button>`;
+  elements.marketConditionsWindowSelector.innerHTML = `
+    <div class="chart-selector-help small text-light-emphasis">Analysis window</div>
+    <div class="chart-selector-chips" role="group" aria-label="Market conditions analysis window">
+      ${MARKET_CONDITIONS_WINDOWS.map((option) => {
+    const activeClass = option.minutes === selectedMarketConditionsWindowMin ? "active" : "";
+    const pressed = option.minutes === selectedMarketConditionsWindowMin ? "true" : "false";
+    return `<button class="chart-selector-chip ${activeClass}" type="button" data-action="set-market-conditions-window" data-window-min="${option.minutes}" aria-pressed="${pressed}">${option.label}</button>`;
   }).join("")}
     </div>
   `;
 }
-
-const tickerBubbleLabelPlugin = {
-  id: "tickerBubbleLabelPlugin",
-  afterDatasetsDraw(chart) {
-    if (chart.canvas?.id !== "sector-breakdown-chart") {
-      return;
-    }
-
-    const ctx = chart.ctx;
-    ctx.save();
-    ctx.font = '600 10px "IBM Plex Sans", sans-serif';
-    ctx.textAlign = "center";
-    ctx.textBaseline = "bottom";
-
-    chart.data.datasets.forEach((dataset, datasetIndex) => {
-      const meta = chart.getDatasetMeta(datasetIndex);
-      meta.data.forEach((element, index) => {
-        const point = dataset.data?.[index];
-        if (!point?.ticker) {
-          return;
-        }
-
-        const shortMode = marketModeShortLabel(point.dataMode);
-        const suffix = shortMode ? ` ${shortMode}` : "";
-        ctx.fillStyle = "#eef6ff";
-        ctx.fillText(`${point.ticker}${suffix}`, element.x, element.y - (point.r || 6) - 6);
-      });
-    });
-    ctx.restore();
-  }
-};
-
-Chart.register(tickerBubbleLabelPlugin);
 
 function formatDate(value) {
   if (!value) {
@@ -472,23 +381,6 @@ function marketModeLabel(mode = "synthetic") {
     return "STALE";
   }
   return "SIM";
-}
-
-function marketModeShortLabel(mode = "synthetic") {
-  const normalized = normalizeMarketDataMode(mode);
-  if (normalized === "web-delayed") {
-    return "W";
-  }
-  if (normalized === "historical-eod") {
-    return "E";
-  }
-  if (normalized === "stale") {
-    return "C";
-  }
-  if (normalized === "synthetic") {
-    return "S";
-  }
-  return "";
 }
 
 function marketModeClass(mode = "synthetic") {
@@ -832,14 +724,11 @@ function renderMeta(meta, market) {
   setQualityBadge(elements.qualityHotspotsBadge, "Hotspots", dq.news || {});
   setQualityBadge(elements.qualityNewsBadge, "News", dq.news || {});
   setQualityBadge(elements.qualityMarketBadge, "Market", dq.market || {});
-  setQualityBadge(elements.qualityImpactBadge, "Impact", dq.impact || {});
-  setQualityBadge(elements.qualityInsightsBadge, "AI", dq.insights || {});
 
   setPanelMode(elements.panelHotspots, dq.news?.mode || "fallback");
   setPanelMode(elements.panelNews, dq.news?.mode || "fallback");
   setPanelMode(elements.panelRisk, dq.news?.mode || "fallback");
   setPanelMode(elements.panelMarket, dq.market?.mode || "fallback");
-  setPanelMode(elements.panelInsights, dq.insights?.mode || "fallback");
   setPanelMode(elements.panelSituational, dq.news?.mode || "fallback");
   setPanelMode(elements.panelWebcams, dq.news?.mode || "fallback");
 }
@@ -1011,29 +900,6 @@ function showAllCountries() {
   requestFilteredSnapshot();
 }
 
-function toggleCouplingTicker(ticker) {
-  const normalizedTicker = String(ticker || "").trim().toUpperCase();
-  if (!normalizedTicker) {
-    return;
-  }
-
-  const alreadySelected = selectedCouplingTickers.includes(normalizedTicker);
-  couplingSelectionTouched = true;
-
-  if (alreadySelected) {
-    if (selectedCouplingTickers.length <= 1) {
-      return;
-    }
-    selectedCouplingTickers = selectedCouplingTickers.filter((candidate) => candidate !== normalizedTicker);
-  } else if (selectedCouplingTickers.length >= 4) {
-    selectedCouplingTickers = [...selectedCouplingTickers.slice(1), normalizedTicker];
-  } else {
-    selectedCouplingTickers = [...selectedCouplingTickers, normalizedTicker];
-  }
-
-  renderDashboard(getState());
-}
-
 function handleActionClick(event) {
   const trigger = event.target.closest("[data-action]");
   if (!trigger) {
@@ -1046,72 +912,21 @@ function handleActionClick(event) {
     return;
   }
 
-  if (trigger.dataset.action === "toggle-coupling-ticker") {
-    event.preventDefault();
-    toggleCouplingTicker(trigger.dataset.ticker);
-    return;
-  }
-
   if (trigger.dataset.action === "open-news") {
     event.preventDefault();
     openNewsDrawer(trigger.dataset.newsId);
     return;
   }
 
-  if (trigger.dataset.action === "set-analytics-window") {
+  if (trigger.dataset.action === "set-market-conditions-window") {
     event.preventDefault();
     const windowMin = Number.parseInt(trigger.dataset.windowMin || "", 10);
-    if (Number.isFinite(windowMin) && windowMin > 0 && windowMin !== selectedAnalyticsWindowMin) {
-      selectedAnalyticsWindowMin = windowMin;
-      renderAnalyticsWindowSelector();
-      refreshAnalytics();
+    if (MARKET_CONDITIONS_WINDOW_MINUTES.has(windowMin) && windowMin !== selectedMarketConditionsWindowMin) {
+      selectedMarketConditionsWindowMin = windowMin;
+      renderMarketConditionsWindowSelector();
+      refreshMarketConditions();
     }
   }
-}
-
-function hasPositiveCountryScores(countries = {}) {
-  return Object.values(countries || {}).some((country) => Number(country?.score || 0) > 0);
-}
-
-function resolveInsightsEmptyReason(rawState, filteredState) {
-  if ((filteredState.insights || []).length) {
-    return null;
-  }
-
-  if (!selectedIncludesAll()) {
-    if (!hasPositiveCountryScores(rawState.countries || {})) {
-      return `Watchlist focus is active. No country insights were produced for ${selectedCountryQueryValue()}. Switch to ALL to inspect broader country signals.`;
-    }
-    return `Watchlist focus is active. No country insights matched ${selectedCountryQueryValue()}. Switch to ALL to inspect broader country signals.`;
-  }
-
-  if (!hasPositiveCountryScores(rawState.countries || {})) {
-    return "No country-level risk signals survived the current news selection.";
-  }
-
-  return rawState.meta?.emptyStates?.insights || "No country insights available for the current filters.";
-}
-
-function resolveImpactEmptyReason(rawState, filteredState) {
-  if ((filteredState.impact?.items || []).length) {
-    return null;
-  }
-
-  if (!(filteredState.news || []).length) {
-    return !selectedIncludesAll()
-      ? `Watchlist focus is active. No intelligence items matched ${selectedCountryQueryValue()}. Switch to ALL to inspect broader signals.`
-      : "No intelligence items available for the current filters.";
-  }
-
-  if (!selectedIncludesAll()) {
-    return `Watchlist focus is active. No linked news-to-ticker signals matched ${selectedCountryQueryValue()} in the current event window. Switch to ALL to inspect broader market linkage.`;
-  }
-
-  return (
-    rawState.impact?.emptyReason ||
-    rawState.meta?.emptyStates?.impact ||
-    "No linked news-to-ticker signals were found in the current event window."
-  );
 }
 
 function renderNews(news = [], countries = {}, ai = {}) {
@@ -1235,123 +1050,6 @@ function initRiskChart() {
   });
 }
 
-function initImpactTimelineChart() {
-  impactTimelineChart = new Chart(elements.impactTimelineChart.getContext("2d"), {
-    type: "bar",
-    data: {
-      labels: [],
-      datasets: [
-        {
-          label: "Prediction Score",
-          data: [],
-          backgroundColor: [],
-          borderRadius: 8,
-          borderSkipped: false
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
-      indexAxis: "y",
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label(context) {
-              const confidence = context.dataset.confidenceMap?.[context.dataIndex] ?? "--";
-              return `score: ${context.raw} | signal strength: ${confidence}%`;
-            }
-          }
-        }
-      },
-      scales: chartAxesOptions()
-    }
-  });
-}
-
-function initSectorBreakdownChart() {
-  sectorBreakdownChart = new Chart(elements.sectorBreakdownChart.getContext("2d"), {
-    type: "bubble",
-    data: {
-      datasets: [
-        {
-          label: "Ticker Outlook Matrix",
-          data: [],
-          pointRadius(context) {
-            return context.raw?.r || 6;
-          },
-          pointHoverRadius(context) {
-            return (context.raw?.r || 6) + 2;
-          }
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label(context) {
-              const raw = context.raw || {};
-              return `${raw.ticker || "N/A"} | ${raw.direction || "Sideways"} | score: ${raw.predictionScore || 0} | mode: ${marketModeLabel(
-                normalizeMarketDataMode(raw.dataMode || "synthetic-fallback")
-              )}`;
-            }
-          }
-        }
-      },
-      scales: {
-        x: {
-          ...chartAxesOptions().x,
-          min: 0,
-          suggestedMax: 10,
-          title: { display: true, text: "Event Score", color: "#c7d4e2" }
-        },
-        y: {
-          ...chartAxesOptions().y,
-          suggestedMax: 100,
-          title: { display: true, text: "Predicted Confidence", color: "#c7d4e2" }
-        }
-      }
-    }
-  });
-}
-
-function initImpactScatterChart() {
-  impactScatterChart = new Chart(elements.impactScatterChart.getContext("2d"), {
-    type: "line",
-    data: { labels: [], datasets: [] },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
-      interaction: {
-        mode: "index",
-        intersect: false
-      },
-      plugins: { legend: { labels: { color: "#c7d4e2" } } },
-      scales: {
-        x: { ...chartAxesOptions().x, title: { display: true, text: "Time", color: "#c7d4e2" } },
-        yImpact: {
-          ...chartAxesOptions().y,
-          title: { display: true, text: "Impact Score", color: "#c7d4e2" }
-        },
-        yPrice: {
-          ...chartAxesOptions().y,
-          position: "right",
-          title: { display: true, text: "Price Reaction %", color: "#c7d4e2" },
-          grid: { drawOnChartArea: false, color: "rgba(151, 169, 190, 0.12)" }
-        }
-      }
-    }
-  });
-}
-
 function renderRiskChart(countries) {
   const topCountries = Object.values(countries || {})
     .sort((a, b) => b.score - a.score)
@@ -1363,130 +1061,249 @@ function renderRiskChart(countries) {
   riskChart.update();
 }
 
-function renderPredictions(predictions = { tickers: [], sectors: [] }, market = { quotes: {} }) {
-  const tickerPredictions = [...(predictions.tickers || [])].sort(
-    (left, right) => Number(right.predictionScore || 0) - Number(left.predictionScore || 0)
-  );
-
-  if (tickerPredictions.length) {
-    elements.predictionsList.innerHTML = tickerPredictions
-      .map((prediction) => {
-        const quote = market.quotes?.[prediction.ticker] || {};
-        const direction = prediction.direction || "Sideways";
-        const marketDataMode = normalizeMarketDataMode(
-          prediction.marketDataMode || quote.dataMode || (quote.synthetic ? "synthetic-fallback" : "live")
-        );
-        const quoteFreshnessMin = deriveQuoteAgeMin(quote);
-        const quoteFreshness = Number.isFinite(quoteFreshnessMin) ? `${quoteFreshnessMin}m` : "--";
-        const changePct = Number(quote.changePct || 0);
-        const changeLabel = Number.isFinite(changePct) ? `${changePct >= 0 ? "+" : ""}${changePct.toFixed(2)}%` : "--";
-
-        return `
-          <article class="prediction-item prediction-item-ticker">
-            <div class="title-row">
-              <div class="prediction-title-stack">
-                <strong>${escapeHtml(prediction.ticker || "N/A")}</strong>
-                <div class="prediction-kicker">${escapeHtml((prediction.sector || "unknown").toUpperCase())}</div>
-              </div>
-              <div class="prediction-badges">
-                <span class="badge ${qualityBadgeClass(prediction.inputMode || "fallback")}">${escapeHtml(direction)}</span>
-                <span class="market-mode-pill ${marketModeClass(marketDataMode)}">${escapeHtml(marketModeLabel(marketDataMode))}</span>
-              </div>
-            </div>
-            <div class="prediction-grid">
-              <div class="prediction-meta">Signal strength: ${escapeHtml(String(prediction.signalStrength ?? prediction.confidence ?? "--"))}%</div>
-              <div class="prediction-meta">Score: ${escapeHtml(String(prediction.predictionScore ?? "--"))}</div>
-              <div class="prediction-meta">Horizon: ${escapeHtml(String(prediction.horizonHours ?? "--"))}h</div>
-              <div class="prediction-meta">Quote freshness: ${escapeHtml(quoteFreshness)}</div>
-              <div class="prediction-meta">Source: ${escapeHtml(quote.sourceDetail || quote.source || "--")}</div>
-              <div class="prediction-meta">Price move: ${escapeHtml(changeLabel)}</div>
-            </div>
-            <div class="insight-drivers mt-1">
-              ${(prediction.drivers || [])
-                .map((driver) => `<span class="driver-pill">${escapeHtml(driver)}</span>`)
-                .join("")}
-            </div>
-          </article>
-        `;
-      })
-      .join("");
-    return;
+function formatConditionMetric(value, { digits = 1, suffix = "", signed = false } = {}) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) {
+    return "--";
   }
-
-  const sectors = predictions.sectors || [];
-  if (!sectors.length) {
-    elements.predictionsList.innerHTML = '<div class="p-3 small text-light-emphasis">No predictions available.</div>';
-    return;
-  }
-
-  elements.predictionsList.innerHTML = sectors
-    .map(
-      (prediction) => `
-      <article class="prediction-item">
-        <div class="title-row">
-          <strong>${escapeHtml(prediction.sector.toUpperCase())}</strong>
-          <span class="badge ${qualityBadgeClass(prediction.inputMode || "fallback")}">${escapeHtml(
-        prediction.direction
-      )}</span>
-        </div>
-        <div class="prediction-meta">
-          Signal strength: ${prediction.signalStrength ?? prediction.confidence}% | Horizon: ${prediction.horizonHours}h | Tickers: ${prediction.tickers?.join(", ") || "N/A"
-        }
-        </div>
-        <div class="insight-drivers mt-1">
-          ${(prediction.drivers || [])
-          .map((driver) => `<span class="driver-pill">${escapeHtml(driver)}</span>`)
-          .join("")}
-        </div>
-      </article>
-    `
-    )
-    .join("");
+  const number = Number(value);
+  const prefix = signed && number > 0 ? "+" : "";
+  return `${prefix}${number.toFixed(digits)}${suffix}`;
 }
 
-function renderInsights(insights = [], emptyReason = "") {
-  if (!insights.length) {
-    elements.insightsList.innerHTML = renderEmptyStateCard(
-      emptyReason || "No insights available.",
+function marketConditionAvailabilityView(symbol) {
+  const availability = symbol.availability || {};
+  const details = availabilityReasonDetails(availability.primaryReason, { analyzable: availability.analyzable });
+  const statusClass = details.code || "available";
+  const retainedScore = symbol.operabilityScore !== null || symbol.directionScore !== null;
+  const messageParts = [];
+  if (details.code) messageParts.push(details.message);
+  if (details.code === "stale_local_data" && retainedScore) {
+    messageParts.push("Retained scores remain visible but cannot be presented as favorable conditions.");
+  } else if (!availability.analyzable && retainedScore) {
+    messageParts.push("Displayed values are retained from the latest eligible observations.");
+  }
+  if (availability.availableClosedCandles !== null) {
+    messageParts.push(`${availability.availableClosedCandles} of ${availability.requiredClosedCandles} required closed candles are available.`);
+  }
+  if (details.code === "stale_local_data" && availability.lastCandleAt) {
+    messageParts.push(`Last local candle: ${formatDate(availability.lastCandleAt)}.`);
+  }
+  if (details.code === "stale_local_data" && availability.expectedLatestCandleAt) {
+    messageParts.push(`Expected coverage through: ${formatDate(availability.expectedLatestCandleAt)}.`);
+  }
+  if (availability.ingestionState === "unsupported") {
+    messageParts.push("Automatic 5-minute ingestion is not supported for this session policy.");
+  } else if (availability.ingestionState === "disabled") {
+    messageParts.push("Scheduled intraday ingestion is disabled.");
+  } else if (availability.ingestionState === "not_scheduled") {
+    messageParts.push("This instrument is not scheduled for intraday collection.");
+  }
+  if (availability.nextEligibleAt) {
+    messageParts.push(`Next eligible session: ${formatDate(availability.nextEligibleAt)}.`);
+  }
+  return {
+    className: statusClass,
+    label: details.label,
+    message: messageParts.join(" "),
+    unavailableAria: `${symbol.ticker} score unavailable. ${details.message}`
+  };
+}
+
+function renderMarketConditionsGeneral(snapshot) {
+  const score = snapshot.market.stabilityScore;
+  const band = snapshot.market.band;
+  const scoreEmpty = score === null;
+  const scoreStyle = scoreEmpty ? "" : ` style="--gauge-value: ${score}"`;
+  const coverage = snapshot.quality.coveragePct === null ? "--" : `${Math.round(snapshot.quality.coveragePct)}%`;
+  const latestNewsAge = snapshot.quality.latestNewsAgeMin === null ? "--" : `${Math.round(snapshot.quality.latestNewsAgeMin)}m`;
+  const latestCandleAge = snapshot.quality.latestCandleAgeMin === null ? "--" : `${Math.round(snapshot.quality.latestCandleAgeMin)}m`;
+  const sourceLabels = snapshot.sourceSummary
+    .map((entry) => {
+      if (typeof entry === "string") return entry;
+      const label = entry?.sourceName || entry?.provider || entry?.source || "source";
+      const count = Number.isFinite(Number(entry?.count)) ? ` (${Number(entry.count)})` : "";
+      return `${label}${count}`;
+    })
+    .filter(Boolean)
+    .slice(0, 5);
+  const factorHtml = snapshot.market.components.length
+    ? snapshot.market.components.map((component) => `
+      <div class="market-condition-factor">
+        <div class="market-condition-factor-head">
+          <strong>${escapeHtml(component.label)}</strong>
+          <strong>${escapeHtml(scoreDisplay(component.score))}</strong>
+        </div>
+        <div class="market-condition-factor-track" aria-hidden="true"><span style="--factor-value: ${component.score ?? 0}"></span></div>
+        ${component.summary ? `<div class="market-condition-meta mt-1">${escapeHtml(component.summary)}</div>` : ""}
+      </div>
+    `).join("")
+    : renderEmptyStateCard("No factor breakdown is available for this window.");
+  const driverHtml = snapshot.market.drivers.length
+    ? snapshot.market.drivers.map((driver) => `
+      <div class="market-condition-driver">
+        <strong>${escapeHtml(driver.label)}</strong>
+        <div class="market-condition-meta mt-1">Direction: ${escapeHtml(driver.direction)}${driver.evidenceCount === null ? "" : ` | evidence: ${driver.evidenceCount}`}</div>
+      </div>
+    `).join("")
+    : "";
+
+  elements.marketConditionsGeneral.innerHTML = `
+    <div class="market-condition-score-row">
+      <div class="market-condition-donut band-${escapeHtml(band)} ${scoreEmpty ? "is-empty" : ""}"${scoreStyle} role="img" aria-label="${escapeHtml(scoreAriaLabel("Market stability", score, band))}">
+        <div class="market-condition-donut-content"><strong>${escapeHtml(scoreDisplay(score))}</strong><span>stability index</span></div>
+      </div>
+      <div class="market-condition-band">
+        <strong>${escapeHtml(band)}</strong>
+        <span>Coverage ${escapeHtml(coverage)}</span>
+        <span>News age ${escapeHtml(latestNewsAge)}</span>
+        <span>Candle age ${escapeHtml(latestCandleAge)}</span>
+        <span>Window ${escapeHtml(snapshot.window.label)}</span>
+        <span>Bars ${escapeHtml(snapshot.window.indicatorInterval || "--")}</span>
+      </div>
+    </div>
+    ${sourceLabels.length ? `<div class="market-condition-meta">Top sources: ${escapeHtml(sourceLabels.join(", "))}</div>` : ""}
+    <div class="market-condition-factor-list">${factorHtml}</div>
+    ${driverHtml ? `<div class="market-condition-driver-list">${driverHtml}</div>` : ""}
+  `;
+}
+
+function renderMarketConditionSymbol(symbol) {
+  const operabilityEmpty = symbol.operabilityScore === null;
+  const directionEmpty = symbol.directionScore === null || !symbol.pressure;
+  const availabilityView = marketConditionAvailabilityView(symbol);
+  const operabilityStyle = operabilityEmpty ? "" : ` style="--gauge-value: ${symbol.operabilityScore}"`;
+  const subtitle = [symbol.displayName !== symbol.ticker ? symbol.displayName : "", symbol.sector, symbol.assetType]
+    .filter(Boolean)
+    .join(" | ");
+  const drivers = symbol.drivers.length
+    ? `<div class="market-condition-driver-pills">${symbol.drivers.map((driver) => {
+      const strength = driver.strength === null ? "" : ` ${Math.round(Math.abs(driver.strength))}`;
+      return `<span class="driver-pill">${escapeHtml(driver.label)} | ${escapeHtml(driver.direction)}${strength}</span>`;
+    }).join("")}</div>`
+    : "";
+  const pressureStyle = symbol.pressure
+    ? `--pressure-positive: ${symbol.pressure.positiveEnd}; --pressure-neutral: ${symbol.pressure.neutralEnd}`
+    : "";
+  const directionStyle = directionEmpty ? "" : ` style="${pressureStyle}"`;
+  const operabilityAria = operabilityEmpty
+    ? availabilityView.unavailableAria.replace("score", "operability")
+    : scoreAriaLabel(`${symbol.ticker} operability`, symbol.operabilityScore, symbol.operabilityBand);
+  const directionAria = symbol.pressure
+    ? `${scoreAriaLabel(`${symbol.ticker} direction`, symbol.directionScore, symbol.directionBand, { signed: true })}. Pressure distribution: ${symbol.pressure.positive} percent positive, ${symbol.pressure.neutral} percent neutral, ${symbol.pressure.negative} percent negative.`
+    : directionEmpty
+      ? availabilityView.unavailableAria.replace("score", "direction")
+      : scoreAriaLabel(`${symbol.ticker} direction`, symbol.directionScore, symbol.directionBand, { signed: true });
+
+  return `
+    <article class="market-condition-symbol" role="listitem">
+      <div class="market-condition-symbol-header">
+        <div class="market-condition-symbol-title">
+          <strong>${escapeHtml(symbol.ticker)}</strong>
+          <span title="${escapeHtml(subtitle)}">${escapeHtml(subtitle || "Observed instrument")}</span>
+        </div>
+        <div class="market-condition-symbol-badges" aria-label="Availability and input quality">
+          <span class="badge availability-status-${escapeHtml(availabilityView.className)}" aria-label="Availability: ${escapeHtml(availabilityView.label)}">${escapeHtml(availabilityView.label)}</span>
+          <span class="badge input-status-${escapeHtml(symbol.quality.status)}" aria-label="Input quality: ${escapeHtml(symbol.quality.status)}">Quality: ${escapeHtml(symbol.quality.status)}</span>
+        </div>
+      </div>
+      ${availabilityView.message ? `<div class="market-condition-availability-message" role="note"><strong>${escapeHtml(availabilityView.label)}.</strong> ${escapeHtml(availabilityView.message)}</div>` : ""}
+      <div class="market-condition-symbol-gauges">
+        <div class="market-condition-mini-gauge">
+          <div class="market-condition-mini-donut band-${escapeHtml(symbol.operabilityBand)} ${operabilityEmpty ? "is-empty" : ""}"${operabilityStyle} role="img" aria-label="${escapeHtml(operabilityAria)}"><strong>${escapeHtml(scoreDisplay(symbol.operabilityScore))}</strong></div>
+          <div class="market-condition-mini-label"><span>Operability</span><strong>${escapeHtml(symbol.operabilityBand)}</strong></div>
+        </div>
+        <div class="market-condition-mini-gauge">
+          <div class="market-condition-mini-donut is-pressure ${directionEmpty ? "is-empty" : ""}"${directionStyle} role="img" aria-label="${escapeHtml(directionAria)}"><strong>${escapeHtml(scoreDisplay(symbol.directionScore, { signed: true }))}</strong></div>
+          <div class="market-condition-mini-label"><span>Direction</span><strong>${escapeHtml(symbol.directionBand)}</strong>${symbol.pressure ? `<span>+${symbol.pressure.positive}% | =${symbol.pressure.neutral}% | -${symbol.pressure.negative}%</span>` : ""}</div>
+        </div>
+      </div>
+      <div class="market-condition-metric-grid">
+        <span>Return ${escapeHtml(formatConditionMetric(symbol.metrics.windowReturnPct, { digits: 2, suffix: "%", signed: true }))}</span>
+        <span>RSI ${escapeHtml(formatConditionMetric(symbol.metrics.rsi))}</span>
+        <span>ATR ${escapeHtml(formatConditionMetric(symbol.metrics.atrPct, { suffix: "%" }))}</span>
+        <span>Vol ${escapeHtml(formatConditionMetric(symbol.metrics.realizedVolatilityPct, { suffix: "%" }))}</span>
+        <span>Linked news ${escapeHtml(formatConditionMetric(symbol.metrics.linkedNewsCount, { digits: 0 }))}</span>
+        <span>Observed coupling ${escapeHtml(formatConditionMetric(symbol.metrics.couplingCount, { digits: 0 }))}</span>
+        <span>Candle age ${symbol.quality.latestCandleAgeMin === null ? "--" : `${Math.round(symbol.quality.latestCandleAgeMin)}m`}</span>
+      </div>
+      ${drivers}
+    </article>
+  `;
+}
+
+function renderMarketConditionsSymbols(snapshot) {
+  elements.marketConditionsSymbols.innerHTML = snapshot.symbols.length
+    ? snapshot.symbols.map(renderMarketConditionSymbol).join("")
+    : renderEmptyStateCard("No observed instrument has sufficient local inputs for this window.");
+}
+
+function renderMarketConditionsCountries(snapshot) {
+  const trendGlyph = { Escalating: "^", "De-escalating": "v", Flat: "-" };
+  const context = snapshot.countryContext;
+  if (!context.items.length) {
+    elements.marketConditionsCountries.innerHTML = renderEmptyStateCard(
+      "No country context is available for the current geopolitical cycle.",
       selectedIncludesAll() ? "" : "View ALL countries"
     );
     return;
   }
 
-  const trendGlyph = {
-    Escalating: "^",
-    "De-escalating": "v",
-    Flat: "-"
-  };
+  elements.marketConditionsCountries.innerHTML = context.items.map((country) => `
+    <article class="market-condition-country" role="listitem">
+      <div class="market-condition-country-header">
+        <div class="market-condition-country-title">
+          <strong>${escapeHtml(country.country)}</strong>
+          <span>${escapeHtml(country.iso2)} | ${escapeHtml(context.contextWindow)}</span>
+        </div>
+        <span class="badge ${levelBadgeClass(country.level)}">${escapeHtml(country.level)}</span>
+      </div>
+      <p>${escapeHtml(country.summary)}</p>
+      <div class="market-condition-country-meta">Trend: ${trendGlyph[country.trend] || "-"} ${escapeHtml(country.trend)}</div>
+      ${country.drivers.length ? `<div class="market-condition-driver-pills">${country.drivers.map((driver) => `<span class="driver-pill">${escapeHtml(driver)}</span>`).join("")}</div>` : ""}
+    </article>
+  `).join("");
+}
 
-  const filterNotice = !selectedIncludesAll() && insights.length < Math.min(4, currentWatchlist.length) ? `<div class="filter-notice small"><strong>Watchlist filter active.</strong> You are viewing a narrowed country set. <button class="btn btn-sm btn-outline-info mt-2" type="button" data-action="show-all-countries">View ALL</button></div>` : "";
+function renderMarketConditions(snapshot = null, { error = "" } = {}) {
+  if (!snapshot) {
+    const message = error || "Loading deterministic market conditions...";
+    elements.marketConditionsInputBadge.className = "badge input-status-insufficient";
+    elements.marketConditionsInputBadge.textContent = "Inputs: insufficient";
+    elements.marketConditionsUpdated.textContent = "--";
+    elements.marketConditionsGeneral.innerHTML = renderEmptyStateCard(message);
+    elements.marketConditionsSymbols.innerHTML = renderEmptyStateCard(message);
+    elements.marketConditionsCountries.innerHTML = renderEmptyStateCard(message);
+    elements.marketConditionsLimitations.textContent = "";
+    renderMarketConditionsStatus(message, { error: Boolean(error) });
+    setPanelMode(elements.panelMarketConditions, "fallback");
+    return;
+  }
 
-  elements.insightsList.innerHTML = filterNotice + insights
-    .map(
-      (insight) => `
-      <article class="insight-item">
-        <div class="insight-header">
-          <h3 class="insight-title mb-0">${escapeHtml(insight.country)}</h3>
-          <span class="badge ${levelBadgeClass(insight.level)}">${escapeHtml(insight.level)}</span>
-        </div>
-        <p class="insight-summary">${escapeHtml(insight.summary)}</p>
-        <div class="small text-light-emphasis mb-2">
-          Trend: ${trendGlyph[insight.trend] || "-"} ${escapeHtml(insight.trend)} | Signal strength: ${insight.signalStrength ?? insight.confidence}%
-        </div>
-        <div class="insight-drivers">
-          ${(insight.drivers || []).map((driver) => `<span class="driver-pill">${escapeHtml(driver)}</span>`).join("")}
-        </div>
-      </article>
-    `
-    )
-    .join("");
+  const normalized = normalizeMarketConditions(snapshot);
+  const inputStatus = normalizeInputStatus(normalized.quality.status);
+  elements.marketConditionsInputBadge.className = `badge input-status-${inputStatus}`;
+  elements.marketConditionsInputBadge.textContent = inputStatusLabel(inputStatus);
+  elements.marketConditionsInputBadge.title = normalized.quality.limitations.join(" ");
+  elements.marketConditionsUpdated.textContent = normalized.generatedAt ? `Generated: ${formatDate(normalized.generatedAt)}` : "Generated: --";
+  setPanelMode(elements.panelMarketConditions, inputStatus === "partial" ? "mixed" : ["stale", "insufficient"].includes(inputStatus) ? "fallback" : "live");
+  renderMarketConditionsGeneral(normalized);
+  renderMarketConditionsSymbols(normalized);
+  renderMarketConditionsCountries(normalized);
+  const limitations = [...new Set([...normalized.quality.limitations, ...normalized.limitations])];
+  elements.marketConditionsLimitations.textContent = limitations.length ? `Limitations: ${limitations.join(" ")}` : "";
+  const statusParts = [
+    `${normalized.window.label} analysis`,
+    `${normalized.symbols.length} instrument${normalized.symbols.length === 1 ? "" : "s"}`,
+    normalized.methodVersion
+  ];
+  renderMarketConditionsStatus(statusParts.join(" | "));
 }
 
 function renderAiCountryInsights(ai = {}) {
   if (!elements.aiCountryShell || !elements.aiCountryList) return;
   const allowed = selectedIncludesAll() ? null : new Set(activeCountryList());
   const entries = Object.entries(ai.countryInsights || {}).filter(([iso2]) => !allowed || allowed.has(iso2));
-  elements.aiCountryShell.classList.toggle("d-none", ai.mode !== "visible" || entries.length === 0);
+  elements.aiCountryShell.classList.toggle("d-none", !isAiVisible(ai) || entries.length === 0);
   elements.aiCountryList.innerHTML = entries.map(([iso2, entry]) => {
     const output = entry.output;
     return `<article class="ai-enrichment-card">
@@ -1502,7 +1319,7 @@ function renderAiMarketExplanations(ai = {}) {
   if (!elements.aiMarketShell || !elements.aiMarketList) return;
   const allowed = new Set(selectedMarketSymbols || []);
   const entries = Object.entries(ai.marketExplanations || {}).filter(([, entry]) => !allowed.size || allowed.has(entry.ticker));
-  elements.aiMarketShell.classList.toggle("d-none", ai.mode !== "visible" || entries.length === 0);
+  elements.aiMarketShell.classList.toggle("d-none", !isAiVisible(ai) || entries.length === 0);
   elements.aiMarketList.innerHTML = entries.map(([instrumentId, entry]) => {
     const output = entry.output;
     return `<article class="ai-enrichment-card">
@@ -1701,7 +1518,7 @@ async function saveMarketWatchlist() {
       : `${marketWatchlistDraft.length}/${marketWatchlistModel.maxSelected} selected Â· saved`;
     renderMarketQuotes(getState().market || { quotes: {} });
     marketQuotesPoller?.trigger(0);
-    await refreshAnalytics();
+    await refreshMarketConditions();
   } catch (error) { elements.marketWatchlistStatus.textContent = `Save failed: ${error.message}`; }
   finally { elements.marketWatchlistSave.disabled = false; }
 }
@@ -1790,7 +1607,7 @@ function applyMarketPayload(payload = {}) {
   }
 
   applyUpdate(payload);
-  scheduleAnalyticsRefresh();
+  scheduleMarketConditionsRefresh();
   return true;
 }
 
@@ -1831,419 +1648,19 @@ function startMarketQuotesPolling() {
   return marketQuotesPoller;
 }
 
-function renderImpact(impact = { items: [] }) {
-  const items = (impact.items || []).filter(
-    (item) => Number(item?.eventScore || 0) > 0 || Number(item?.impactScore || 0) > 0
-  );
-  if (!items.length) {
-    elements.marketImpactList.innerHTML = renderEmptyStateCard(
-      impact.emptyReason || "No impact signals available for current filters.",
-      impact.showAllAction ? "View ALL countries" : ""
-    );
-    return;
-  }
-
-  elements.marketImpactList.innerHTML = items
-    .slice(0, 20)
-    .map((item) => {
-      const quoteMode = normalizeMarketDataMode(item.quote?.dataMode || (item.quote?.synthetic ? "synthetic-fallback" : "live"));
-      const quoteAgeMin = deriveQuoteAgeMin(item.quote || {});
-      const quoteAgeLabel = Number.isFinite(quoteAgeMin) ? `${quoteAgeMin}m` : "--";
-      return `
-      <article class="impact-item">
-        <div class="impact-header">
-          <span><strong>${escapeHtml(item.ticker)}</strong> <span class="text-light-emphasis">(${escapeHtml(
-        item.level
-      )})</span></span>
-          <span class="impact-score">${item.impactScore.toFixed(2)}</span>
-        </div>
-        <div class="impact-meta">
-          mode: ${escapeHtml(item.inputMode || "live")} | eventScore: ${item.eventScore.toFixed(
-        2
-      )} | priceReaction: ${item.priceReaction.toFixed(2)}% | countries: ${(item.linkedCountries || []).join(", ") || "N/A"}
-        </div>
-        <div class="impact-meta">
-          quote: ${escapeHtml(marketModeLabel(quoteMode))} | source: ${escapeHtml(item.quote?.source || "unknown")} | age: ${escapeHtml(quoteAgeLabel)}
-        </div>
-      </article>
-    `;
-    })
-    .join("");
-}
-
-function visibleTickersForCharts(state, analytics = {}) {
-  const fromImpact = (analytics.impactItems || state.impact?.items || []).map((item) => item.ticker);
-  if (fromImpact.length) {
-    return new Set(fromImpact);
-  }
-  return new Set(Object.keys(state.market?.quotes || {}));
-}
-
-function hasActiveImpactSignals(items = []) {
-  return (items || []).some((item) => Number(item?.eventScore || 0) > 0 || Number(item?.impactScore || 0) > 0);
-}
-
-function fallbackDataModesByTicker(market = { quotes: {} }) {
-  return Object.fromEntries(
-    Object.entries(market.quotes || {}).map(([ticker, quote]) => [
-      ticker,
-      {
-        dataMode: normalizeMarketDataMode(quote?.dataMode || (quote?.synthetic ? "synthetic-fallback" : "live")),
-        synthetic: Boolean(quote?.synthetic),
-        source: quote?.source || "unknown",
-        quoteOriginStage: quote?.quoteOriginStage || "unknown",
-        quoteAgeMin: deriveQuoteAgeMin(quote)
-      }
-    ])
-  );
-}
-
-function resolveCouplingSelection(couplingSeries = [], visibleTickers = new Set()) {
-  const availableSeries = (couplingSeries || []).filter((series) => visibleTickers.has(series.ticker));
-  const availableTickers = availableSeries.map((series) => series.ticker);
-  const maxSelection = Math.min(4, availableTickers.length);
-
-  selectedCouplingTickers = selectedCouplingTickers.filter((ticker) => availableTickers.includes(ticker));
-
-  if (!selectedCouplingTickers.length && maxSelection > 0) {
-    selectedCouplingTickers = availableTickers.slice(0, maxSelection);
-    couplingSelectionTouched = false;
-  } else if (!couplingSelectionTouched && selectedCouplingTickers.length < maxSelection) {
-    for (const ticker of availableTickers) {
-      if (selectedCouplingTickers.length >= maxSelection) {
-        break;
-      }
-      if (!selectedCouplingTickers.includes(ticker)) {
-        selectedCouplingTickers.push(ticker);
-      }
-    }
-  } else if (selectedCouplingTickers.length > maxSelection) {
-    selectedCouplingTickers = selectedCouplingTickers.slice(-maxSelection);
-  }
-
-  const selectedTickers = [...selectedCouplingTickers];
-  const selectedSeries = availableSeries
-    .filter((series) => selectedTickers.includes(series.ticker))
-    .sort((left, right) => selectedTickers.indexOf(left.ticker) - selectedTickers.indexOf(right.ticker));
-
-  return {
-    availableSeries,
-    selectedSeries,
-    selectedTickers
-  };
-}
-
-function renderCouplingTickerSelector(availableSeries = [], selectedTickers = []) {
-  if (!elements.couplingTickerSelector) {
-    return;
-  }
-
-  if ((availableSeries || []).length <= 4) {
-    elements.couplingTickerSelector.classList.add("d-none");
-    elements.couplingTickerSelector.innerHTML = "";
-    return;
-  }
-
-  const selectedSet = new Set(selectedTickers);
-  elements.couplingTickerSelector.classList.remove("d-none");
-  elements.couplingTickerSelector.innerHTML = `
-    <div class="chart-selector-help small text-light-emphasis">Showing up to 4 ticker histories at once.</div>
-    <div class="chart-selector-chips">
-      ${(availableSeries || [])
-      .map((series) => {
-        const activeClass = selectedSet.has(series.ticker) ? "active" : "";
-        return `<button class="chart-selector-chip ${activeClass}" type="button" data-action="toggle-coupling-ticker" data-ticker="${escapeHtml(
-          series.ticker
-        )}">${escapeHtml(series.ticker)}</button>`;
-      })
-      .join("")}
-    </div>
-  `;
-}
-
-function applyDeterministicMatrixJitter(points = []) {
-  const groups = new Map();
-  points.forEach((point) => {
-    const key = `${Number(point.x || 0).toFixed(2)}|${Math.round(Number(point.y || 0))}`;
-    if (!groups.has(key)) {
-      groups.set(key, []);
-    }
-    groups.get(key).push(point);
-  });
-
-  return [...groups.values()].flatMap((group) => {
-    if (group.length === 1) {
-      return group;
-    }
-
-    const ordered = [...group].sort((left, right) => String(left.ticker).localeCompare(String(right.ticker)));
-    return ordered.map((point, index) => {
-      const centeredIndex = index - (ordered.length - 1) / 2;
-      return {
-        ...point,
-        x: Number((point.x + centeredIndex * 0.28).toFixed(2)),
-        y: Number((point.y + centeredIndex * 1.15).toFixed(2))
-      };
-    });
-  });
-}
-
-function analyticsMatchesCurrentContext() {
-  return (
-    latestAnalyticsContext === selectedCountryQueryValue() &&
-    latestAnalyticsWindowMin === selectedAnalyticsWindowMin &&
-    (latestAnalytics?.predictedSectorDirection || latestAnalytics?.tickerOutlookMatrix || latestAnalytics?.couplingSeries)
-  );
-}
-
-function resolveAnalyticsPayload(rawState) {
-  if (analyticsMatchesCurrentContext()) {
-    return latestAnalytics;
-  }
-
-  const predictedSectorDirection = (rawState.predictions?.sectors || []).map((sector) => ({
-    sector: sector.sector,
-    direction: sector.direction,
-    confidence: sector.signalStrength ?? sector.confidence,
-    score: sector.score,
-    inputMode: sector.inputMode
-  }));
-
-  const tickerOutlookMatrix = (rawState.predictions?.tickers || []).map((prediction) => {
-    const impact = (rawState.impact?.items || []).find((item) => item.ticker === prediction.ticker) || {};
-    const quote = rawState.market?.quotes?.[prediction.ticker] || {};
-    const impactScore = Number(impact.impactScore || 0);
-    const changePct = Number(quote.changePct || 0);
-    return {
-      ticker: prediction.ticker,
-      sector: prediction.sector,
-      direction: prediction.direction,
-      eventScore: impact.eventScore || 0,
-      impactScore,
-      predictedConfidence: prediction.signalStrength || prediction.predictedConfidence || prediction.confidence || 0,
-      predictionScore: prediction.predictionScore || 0,
-      changePct,
-      radius: Math.max(4, Math.min(20, 4 + Math.abs(changePct) * 1.5 + Math.min(8, impactScore / 5))),
-      dataMode: normalizeMarketDataMode(quote.dataMode || (quote.synthetic ? "synthetic-fallback" : "live"))
-    };
-  });
-
-  const couplingSeries = rawState.impact?.couplingSeries || [];
-  const impactItems = rawState.impact?.items || [];
-  const hasCurrentSignals = hasActiveImpactSignals(rawState.impact?.items || []);
-  const usesHistoricalOnly =
-    !hasCurrentSignals && couplingSeries.some((series) => (series.points || []).length >= 2);
-
-  return {
-    predictedSectorDirection,
-    tickerOutlookMatrix,
-    impactItems,
-    couplingSeries,
-    hasCurrentSignals,
-    usesHistoricalOnly,
-    dataModesByTicker: fallbackDataModesByTicker(rawState.market || { quotes: {} }),
-    signalWindow: {
-      requestedWindowMin: selectedAnalyticsWindowMin,
-      latestSelectedArticleAgeMin: Number.isFinite(rawState.meta?.sourceMeta?.latestSelectedArticleAgeMin)
-        ? rawState.meta.sourceMeta.latestSelectedArticleAgeMin
-        : null,
-      hasCurrentSignals,
-      usesHistoricalOnly
-    },
-    emptyReason: hasCurrentSignals
-      ? null
-      : usesHistoricalOnly
-        ? "Current window has no linked news-to-ticker signals; showing historical coupling only."
-        : "No linked news-to-ticker signals in the current event window."
-  };
-}
-
-function buildAnalyticsStatusMessage(analytics = {}) {
-  if (latestAnalyticsError) {
-    return latestAnalyticsError;
-  }
-
-  const signalWindow = analytics.signalWindow || {};
-  if (analytics.hasCurrentSignals) {
-    return "";
-  }
-
-  const latestAge = Number.isFinite(signalWindow.latestSelectedArticleAgeMin)
-    ? `${signalWindow.latestSelectedArticleAgeMin}m`
-    : "--";
-  const windowLabel = formatWindowLabel(signalWindow.requestedWindowMin || selectedAnalyticsWindowMin);
-  return analytics.usesHistoricalOnly
-    ? `Window ${windowLabel} has no linked current signals. Latest selected article age: ${latestAge}. Showing historical coupling only.`
-    : `Window ${windowLabel} has no linked current signals. Latest selected article age: ${latestAge}.`;
-}
-
-function resolveRenderedImpact(rawState, filteredState, analytics = {}) {
-  if (analyticsMatchesCurrentContext() && Array.isArray(analytics.impactItems)) {
-    return {
-      ...(rawState.impact || {}),
-      items: analytics.impactItems,
-      emptyReason: analytics.emptyReason || resolveImpactEmptyReason(rawState, filteredState),
-      signalWindow: analytics.signalWindow,
-      showAllAction: !selectedIncludesAll()
-    };
-  }
-
-  return {
-    ...(filteredState.impact || { items: [] }),
-    emptyReason: resolveImpactEmptyReason(rawState, filteredState),
-    showAllAction: !selectedIncludesAll()
-  };
-}
-
-function renderPredictedSectorDirection(items = [], overlayMessage = "") {
-  impactTimelineChart.data.labels = items.map(
-    (item) => `${String(item.sector || "unknown").toUpperCase()} (${Number(item.confidence || 0)}%)`
-  );
-  impactTimelineChart.data.datasets[0].data = items.map((item) => Number(item.score || 0));
-  impactTimelineChart.data.datasets[0].backgroundColor = items.map(
-    (item) => DIRECTION_COLORS[item.direction] || "#a2a8ac"
-  );
-  impactTimelineChart.data.datasets[0].confidenceMap = items.map((item) => Number(item.confidence || 0));
-  impactTimelineChart.update();
-  setChartOverlay(
-    elements.impactTimelineChart,
-    latestAnalyticsError || (!items.length ? overlayMessage || "No prediction bands available." : "")
-  );
-}
-
-function renderTickerOutlookMatrix(items = [], visibleTickers = new Set(), analytics = {}) {
-  const points = applyDeterministicMatrixJitter(
-    items
-      .filter((item) => visibleTickers.has(item.ticker))
-      .map((item) => ({
-        x: Number(item.eventScore || 0),
-        y: Number(item.predictedConfidence || 0),
-        r: Number(item.radius || 6),
-        ticker: item.ticker,
-        direction: item.direction,
-        predictionScore: Number(item.predictionScore || 0),
-        changePct: Number(item.changePct || 0),
-        dataMode: normalizeMarketDataMode(item.dataMode || analytics.dataModesByTicker?.[item.ticker]?.dataMode || "synthetic-fallback")
-      }))
-  );
-
-  sectorBreakdownChart.data.datasets[0].data = points;
-  sectorBreakdownChart.data.datasets[0].pointBackgroundColor = points.map(
-    (point) => DIRECTION_COLORS[point.direction] || "#a2a8ac"
-  );
-  sectorBreakdownChart.data.datasets[0].pointBorderColor = points.map(
-    (point) => MODE_BORDER_COLORS[point.dataMode] || MODE_BORDER_COLORS["synthetic-fallback"]
-  );
-  sectorBreakdownChart.data.datasets[0].pointBorderWidth = points.map((point) => (point.dataMode === "live" ? 1.2 : 2.6));
-  sectorBreakdownChart.data.datasets[0].pointStyle = points.map(
-    (point) => MODE_POINT_STYLE[point.dataMode] || MODE_POINT_STYLE["synthetic-fallback"]
-  );
-  sectorBreakdownChart.options.scales.x.suggestedMax = Math.max(
-    2,
-    Math.ceil(Math.max(0, ...points.map((point) => Number(point.x || 0))) + 1)
-  );
-  sectorBreakdownChart.update();
-  setChartOverlay(
-    elements.sectorBreakdownChart,
-    latestAnalyticsError || (!points.length ? analytics.emptyReason || "No ticker outlook points available for the current filters." : "")
-  );
-}
-
-function renderNewsPriceCoupling(selectedSeries = [], analytics = {}) {
-  const selectedWithPoints = (selectedSeries || []).filter((series) => (series.points || []).length >= 2);
-  if (!selectedWithPoints.length) {
-    impactScatterChart.data.labels = [];
-    impactScatterChart.data.datasets = [];
-    impactScatterChart.update();
-    setChartOverlay(
-      elements.impactScatterChart,
-      latestAnalyticsError || analytics.emptyReason || "No coupling history available for the current filters."
-    );
-    return;
-  }
-
-  const labels = [...new Set(selectedWithPoints.flatMap((series) => (series.points || []).map((point) => point.timestamp)))]
-    .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
-    .map((timestamp) => formatShortTime(timestamp));
-
-  const datasets = [];
-  selectedWithPoints.forEach((series, index) => {
-    const rawPoints = series.points || [];
-    const map = new Map(rawPoints.map((point) => [formatShortTime(point.timestamp), point]));
-    const color = CHART_COLORS[index % CHART_COLORS.length];
-    const dataMode = normalizeMarketDataMode(analytics.dataModesByTicker?.[series.ticker]?.dataMode || "synthetic-fallback");
-    const borderColor = dataMode === "live" ? color : MODE_BORDER_COLORS[dataMode] || color;
-
-    datasets.push({
-      label: `${series.ticker} impact [${String(dataMode).toUpperCase()}]`,
-      data: labels.map((label) => Number(map.get(label)?.impactScore ?? null)),
-      borderColor,
-      backgroundColor: borderColor,
-      borderWidth: 2.4,
-      pointRadius: 2.5,
-      tension: 0.25,
-      yAxisID: "yImpact"
-    });
-    datasets.push({
-      label: `${series.ticker} priceReaction`,
-      data: labels.map((label) => Number(map.get(label)?.priceReaction ?? null)),
-      borderColor: color,
-      backgroundColor: color,
-      borderDash: [5, 5],
-      borderWidth: 1.9,
-      pointRadius: 2,
-      tension: 0.25,
-      yAxisID: "yPrice"
-    });
-
-    if (Number.isFinite(series.predictionScore) && index === 0) {
-      datasets.push({
-        label: `${series.ticker} predictionScore`,
-        data: labels.map(() => Number(series.predictionScore || 0)),
-        borderColor: "#f4c542",
-        backgroundColor: "#f4c542",
-        borderDash: [2, 3],
-        pointRadius: 0,
-        tension: 0,
-        yAxisID: "yImpact"
-      });
-    }
-  });
-
-  impactScatterChart.data.labels = labels;
-  impactScatterChart.data.datasets = datasets;
-  impactScatterChart.update();
-  setChartOverlay(elements.impactScatterChart, latestAnalyticsError || "");
-}
-
-function renderCharts(rawState, filteredState, analytics = resolveAnalyticsPayload(rawState)) {
-  const visibleTickers = visibleTickersForCharts(filteredState, analytics);
-  const couplingSelection = resolveCouplingSelection(analytics.couplingSeries || [], visibleTickers);
-  const predictionOverlay =
-    latestAnalyticsError && !(analytics.predictedSectorDirection || []).length
-      ? "Live analytics refresh failed. Showing snapshot-only view."
-      : latestAnalyticsError;
-  renderAnalyticsStatus(buildAnalyticsStatusMessage(analytics));
-  renderCouplingTickerSelector(couplingSelection.availableSeries, couplingSelection.selectedTickers);
-  renderPredictedSectorDirection(analytics.predictedSectorDirection || [], predictionOverlay);
-  renderTickerOutlookMatrix(analytics.tickerOutlookMatrix || [], visibleTickers, analytics);
-  renderNewsPriceCoupling(couplingSelection.selectedSeries, analytics);
-}
-
 function renderDashboard(rawState) {
   const state = filterStateBySelection(rawState);
-  const analytics = resolveAnalyticsPayload(rawState);
   renderMeta(rawState.meta, rawState.market || {});
   renderNews(state.news, state.countries, rawState.ai || {});
   renderDistribution(state.countries);
   renderRiskChart(state.countries);
-  renderPredictions(rawState.predictions || {}, rawState.market || {});
-  renderInsights(state.insights, resolveInsightsEmptyReason(rawState, state));
   renderAiCountryInsights(rawState.ai || {});
   renderMarketQuotes(rawState.market || {});
-  renderImpact(resolveRenderedImpact(rawState, state, analytics));
   renderAiMarketExplanations(rawState.ai || {});
-  renderCharts(rawState, state, analytics);
+  renderMarketConditions(
+    marketConditionsMatchesCurrentContext() ? latestMarketConditions : null,
+    { error: latestMarketConditionsError }
+  );
   hotspotMap.render(state.hotspots, state.news, currentWatchlist, state.mapAssets || { staticPoints: [], movingSeeds: [] });
 }
 
@@ -2259,58 +1676,63 @@ function selectedCountryQueryValue() {
   return activeCountryList().join(",");
 }
 
-async function refreshAnalytics() {
-  const requestToken = ++analyticsRequestToken;
+function marketConditionsContextKey() {
+  return `${selectedCountryQueryValue()}|${selectedMarketConditionsWindowMin}|${[...selectedMarketSymbols].sort().join(",")}`;
+}
+
+function marketConditionsMatchesCurrentContext() {
+  return Boolean(latestMarketConditions) && latestMarketConditionsContext === marketConditionsContextKey();
+}
+
+async function refreshMarketConditions() {
+  const requestToken = ++marketConditionsRequestToken;
   const countryKey = selectedCountryQueryValue();
+  const contextKey = marketConditionsContextKey();
+  renderMarketConditionsStatus(`Loading ${formatWindowLabel(selectedMarketConditionsWindowMin)} market conditions...`);
   try {
-    const payload = await api.getMarketAnalytics({
+    const payload = await api.getMarketConditions({
       countries: countryKey,
-      windowMin: selectedAnalyticsWindowMin
+      windowMin: selectedMarketConditionsWindowMin
     });
-    if (requestToken !== analyticsRequestToken) {
+    if (requestToken !== marketConditionsRequestToken) {
       return;
     }
-    latestAnalytics = payload;
-    latestAnalyticsContext = countryKey;
-    latestAnalyticsWindowMin = selectedAnalyticsWindowMin;
-    latestAnalyticsError = "";
+    latestMarketConditions = payload;
+    latestMarketConditionsContext = contextKey;
+    latestMarketConditionsError = "";
     renderDashboard(getState());
   } catch (error) {
-    if (requestToken !== analyticsRequestToken) {
+    if (requestToken !== marketConditionsRequestToken) {
       return;
     }
-    latestAnalytics = null;
-    latestAnalyticsContext = "";
-    latestAnalyticsWindowMin = selectedAnalyticsWindowMin;
-    latestAnalyticsError = "Live analytics refresh failed. Displaying snapshot-derived charts.";
-    console.error("Failed to refresh analytics:", error);
+    latestMarketConditions = null;
+    latestMarketConditionsContext = contextKey;
+    latestMarketConditionsError = "Market conditions are unavailable. Existing quotes and country risk remain unchanged.";
+    console.error("Failed to refresh market conditions:", error);
     renderDashboard(getState());
   }
 }
 
-function scheduleAnalyticsRefresh() {
-  clearTimeout(analyticsRefreshTimer);
-  analyticsRefreshTimer = setTimeout(() => {
-    refreshAnalytics();
+function scheduleMarketConditionsRefresh() {
+  clearTimeout(marketConditionsRefreshTimer);
+  marketConditionsRefreshTimer = setTimeout(() => {
+    refreshMarketConditions();
   }, 500);
 }
 
 async function requestFilteredSnapshot() {
   void advancedIntelligenceController?.refresh();
   try {
-    latestAnalytics = null;
-    latestAnalyticsContext = "";
-    latestAnalyticsWindowMin = selectedAnalyticsWindowMin;
-    latestAnalyticsError = "";
-    selectedCouplingTickers = [];
-    couplingSelectionTouched = false;
+    latestMarketConditions = null;
+    latestMarketConditionsContext = "";
+    latestMarketConditionsError = "";
     const snapshot = await api.getSnapshot({
       countries: selectedCountryQueryValue(),
       limit: 100
     });
     setSnapshot(snapshot);
     awarenessController?.syncCompact(snapshot?.awareness);
-    await refreshAnalytics();
+    await refreshMarketConditions();
   } catch (error) {
     console.error("Failed to refresh filtered snapshot:", error);
   }
@@ -2362,14 +1784,14 @@ function mountWebSocket() {
         setSnapshot(message.data);
         awarenessController?.syncCompact(message.data?.awareness);
         void advancedIntelligenceController?.refresh();
-        scheduleAnalyticsRefresh();
+        scheduleMarketConditionsRefresh();
         return;
       }
       if (message.type === "update") {
         applyUpdate(message.data);
         awarenessController?.syncCompact(message.data?.awareness);
         void advancedIntelligenceController?.refresh();
-        scheduleAnalyticsRefresh();
+        scheduleMarketConditionsRefresh();
         return;
       }
       if (message.type === "ai:update:v1") {
@@ -2378,6 +1800,7 @@ function mountWebSocket() {
       }
       if (message.type === "awareness:update:v1") {
         awarenessController?.applyRealtime(message.data || {});
+        scheduleMarketConditionsRefresh();
         return;
       }
       if (message.type === "media:streams:updated") {
@@ -2423,7 +1846,7 @@ function syncWatchlistFromState(state) {
 async function bootstrap() {
   cacheElements();
   initNewsDrawer();
-  renderAnalyticsWindowSelector();
+  renderMarketConditionsWindowSelector();
   hotspotMap = new HotspotMap("hotspot-map");
   hotspotMap.init();
   const handleAwarenessMapEvents = (event) => hotspotMap?.setAwarenessEvents(event.detail?.events || []);
@@ -2435,9 +1858,6 @@ async function bootstrap() {
   awarenessController = mountAwarenessCenter({ api });
   teardownHandlers.push(() => awarenessController?.stop());
   initRiskChart();
-  initImpactTimelineChart();
-  initSectorBreakdownChart();
-  initImpactScatterChart();
 
   elements.countryFilterBar.addEventListener("click", handleFilterClick);
   elements.countryFilterBar.addEventListener("change", handleCountryPickerChange);
@@ -2466,7 +1886,7 @@ async function bootstrap() {
     const snapshot = await api.getSnapshot({ countries: selectedCountryQueryValue(), limit: 100 });
     setSnapshot(snapshot);
     awarenessController?.syncCompact(snapshot?.awareness);
-    await refreshAnalytics();
+    await refreshMarketConditions();
   } catch (error) {
     console.error("Failed to fetch initial snapshot:", error);
     elements.newsFeed.innerHTML =
@@ -2481,7 +1901,7 @@ async function bootstrap() {
     socket?.close();
     marketQuotesPoller?.stop();
     clearInterval(marketProviderPoller);
-    clearTimeout(analyticsRefreshTimer);
+    clearTimeout(marketConditionsRefreshTimer);
     clearTimeout(marketSearchTimer);
     marketOhlcvChart?.destroy();
     clearInterval(manualRefreshCooldownTimer);

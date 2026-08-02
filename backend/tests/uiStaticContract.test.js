@@ -33,9 +33,12 @@ test("dashboard and admin share valid branding and primary navigation", async ()
 });
 
 test("dashboard keeps map and news contracts without retired admin selectors", async () => {
-  const [dashboard, script] = await Promise.all([
+  const [dashboard, script, styles, apiScript, conditionsModel] = await Promise.all([
     frontendFile("index.html"),
-    frontendFile("js/dashboard.js")
+    frontendFile("js/dashboard.js"),
+    frontendFile("css/styles.css"),
+    frontendFile("js/api.js"),
+    frontendFile("js/marketConditionsModel.js")
   ]);
 
   assert.match(dashboard, /id="hotspot-map"/);
@@ -45,13 +48,47 @@ test("dashboard keeps map and news contracts without retired admin selectors", a
   assert.doesNotMatch(script, /api-limits-panel|panel-webcams|toggleApiLimitsPanel/);
   assert.match(dashboard, /class="panel panel-vertical market-workspace/);
   assert.match(dashboard, /id="market-ohlcv-summary"/);
-  assert.match(dashboard, /col-12 col-xl-6 order-2[\s\S]*?id="panel-risk"/);
-  assert.match(dashboard, /col-12 order-1[\s\S]*?id="panel-market"/);
-  assert.match(dashboard, /col-12 col-xl-6 order-3[\s\S]*?id="panel-insights"/);
+  assert.match(dashboard, /col-12 order-1[\s\S]*?id="panel-risk"/);
+  assert.match(dashboard, /col-12 order-2[\s\S]*?id="panel-market"/);
+  assert.match(dashboard, /col-12 order-3[\s\S]*?id="panel-market-conditions"/);
+  assert.ok(dashboard.indexOf('id="panel-risk"') < dashboard.indexOf('id="panel-market"'));
+  assert.ok(dashboard.indexOf('id="panel-market"') < dashboard.indexOf('id="panel-market-conditions"'));
   assert.doesNotMatch(script, /\bformatPrice\(/);
   assert.match(script, /function formatMarketPrice\(/);
-  const analytics = dashboard.slice(dashboard.indexOf("dashboard-analytics-row"), dashboard.indexOf("</main>"));
-  assert.equal((analytics.match(/col-12 col-xl-4/g) || []).length, 3);
+  assert.equal((dashboard.match(/class="market-conditions-column"/g) || []).length, 3);
+  assert.match(dashboard, /id="market-conditions-window-selector"/);
+  assert.match(dashboard, /id="market-conditions-general"/);
+  assert.match(dashboard, /id="market-conditions-symbols"/);
+  assert.match(dashboard, /id="market-conditions-countries"/);
+  assert.match(dashboard, /Inputs: initializing/);
+  assert.doesNotMatch(dashboard, /dashboard-analytics-row|market-impact-list|impact-timeline-chart|sector-breakdown-chart|impact-scatter-chart/);
+  assert.doesNotMatch(script, /getMarketAnalytics|initImpactTimelineChart|initSectorBreakdownChart|initImpactScatterChart/);
+  assert.match(apiScript, /getMarketConditions: \(params = \{\}\) => request\("\/api\/market\/conditions"/);
+  assert.match(apiScript, /getMarketAnalytics: \(params = \{\}\) => request\("\/api\/market\/analytics"/);
+  assert.match(script, /message\.type === "awareness:update:v1"[\s\S]*?scheduleMarketConditionsRefresh\(\)/);
+  assert.match(script, /await refreshMarketConditions\(\)/);
+  assert.match(conditionsModel, /DEFAULT_MARKET_CONDITIONS_WINDOW_MIN = 240/);
+  assert.match(conditionsModel, /minutes: 15/);
+  assert.match(conditionsModel, /minutes: 60/);
+  assert.match(conditionsModel, /minutes: 240/);
+  assert.match(conditionsModel, /minutes: 1440/);
+  assert.match(conditionsModel, /primaryReason/);
+  assert.match(conditionsModel, /market_closed/);
+  assert.match(conditionsModel, /stale_local_data/);
+  assert.match(conditionsModel, /no_5m_history/);
+  assert.match(conditionsModel, /outside_intraday_limit/);
+  assert.match(script, /aria-label="Availability:/);
+  assert.match(script, /Input quality:/);
+  assert.match(script, /market-condition-availability-message/);
+  assert.doesNotMatch(script, /--gauge-value: \$\{symbol\.operabilityScore \?\? 0\}/);
+  assert.match(styles, /\.availability-status-market_closed/);
+  assert.match(styles, /\.availability-status-stale_local_data/);
+  assert.match(styles, /\.availability-status-no_5m_history/);
+  assert.match(styles, /\.availability-status-outside_intraday_limit/);
+  assert.match(styles, /\.availability-status-warming_up/);
+  assert.match(styles, /\.market-conditions-grid\s*\{[\s\S]*?grid-template-columns: repeat\(3/);
+  assert.match(styles, /@media \(max-width: 1199\.98px\)[\s\S]*?\.market-conditions-grid\s*\{[\s\S]*?repeat\(2/);
+  assert.match(styles, /@media \(max-width: 767\.98px\)[\s\S]*?\.market-conditions-grid\s*\{[\s\S]*?minmax\(0, 1fr\)/);
 });
 
 test("admin keeps limits near pipeline without redundant fallback diagnostics", async () => {
@@ -78,6 +115,9 @@ test("AI enrichment surfaces remain explicitly separated from deterministic cont
   assert.match(admin, /id="ai-diagnostics-body"/);
   assert.match(admin, /id="ai-enrichments-body"/);
   assert.match(script, /renderAiEvidence/);
+  assert.match(script, /ai\.enabled === true && ai\.mode === "visible"/);
+  assert.match(script, /\["none", "off", "disabled"\]\.includes\(provider\)/);
+  assert.doesNotMatch(`${dashboard}\n${script}`, /AI:\s*live/i);
   assert.match(adminScript, /const storedCounts = ai\.store\?\.counts \|\| \{\}/);
   assert.match(adminScript, /stored ready:/);
 });

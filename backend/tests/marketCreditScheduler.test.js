@@ -53,6 +53,25 @@ test("equity respects market session while crypto remains 24/7", () => {
   assert.equal(isInstrumentSessionEligible(instrument("btc", "hot", { assetType: "crypto", sessionPolicy: "24x7" }), saturday), true);
 });
 
+test("dynamic cash instruments use their exchange timezone while unsupported futures remain explicit", () => {
+  const duringNewYorkSession = new Date("2026-07-13T15:00:00.000Z");
+  assert.equal(isInstrumentSessionEligible(instrument("spy", "hot", {
+    assetType: "etf",
+    sessionPolicy: "exchange-hours",
+    timezone: "America/New_York"
+  }), duringNewYorkSession), true);
+  assert.equal(isInstrumentSessionEligible(instrument("nikkei", "hot", {
+    assetType: "index",
+    sessionPolicy: "exchange-hours",
+    timezone: "Asia/Tokyo"
+  }), duringNewYorkSession), false);
+  assert.equal(isInstrumentSessionEligible(instrument("future", "hot", {
+    assetType: "future",
+    sessionPolicy: "exchange-hours",
+    timezone: "America/New_York"
+  }), duringNewYorkSession), false);
+});
+
 test("Retry-After blocks new leases until the indicated time", () => {
   let now = monday; const scheduler = new MarketCreditScheduler({ now: () => now });
   const lease = scheduler.acquireLease({ symbols: ["A"], nowMs: now }); scheduler.commitLease(lease.lease.leaseId, { status: "rate-limited", headers: { "retry-after": "5" } });

@@ -139,6 +139,10 @@ OHLCV uses Yahoo `chart()` server-side and is normalized to UTC `{symbol, source
 
 Supported Yahoo intervals are `5min`, `15min`, `30min`, `1h` and `1day`; the internal module also supports `1wk` and `1mo`. Long intraday combinations are rejected before any upstream request. Scheduled intraday ingestion remains feature-flagged with `MARKET_INTRADAY_CANDLES_ENABLED=1` and is capped at six selected hot instruments through `MARKET_INTRADAY_CANDLES_MAX_INSTRUMENTS`.
 
+Deterministic Market Conditions uses only normalized news, public `active` Awareness events, the dynamic watchlist, quotes and locally persisted closed candles. Its `market-conditions-v1.1` index is decision support rather than a probability, price forecast or Buy/Sell/Hold recommendation. The four analysis windows are 15 minutes, 1 hour, 4 hours and 24 hours. Stored 5-minute candles are rolled up locally for the longer windows; the endpoint never contacts a market or news provider. Missing inputs remain `null`, synthetic inputs do not produce scores, and partial or stale inputs cannot be presented as favorable conditions. Each symbol exposes additive `availability` diagnostics, separate from `quality`, so a closed session, stale local data, absent 5-minute history and the six-instrument limit remain distinguishable without fabricating a score. Existing market impact, analytics, prediction and WebSocket contracts remain available for rollback.
+
+For rollout, explicitly set `MARKET_INTRADAY_CANDLES_ENABLED=1` and `MARKET_INTRADAY_CANDLES_INTERVAL=5min`. The first enabled intraday cycle performs a bounded bootstrap of at most 500 candles per hot instrument, then returns to the existing 15-minute polling cadence. Keep the initial selection to one or two hot instruments, observe coverage and gaps for 48 hours, and expand gradually to the existing six-instrument cap.
+
 News-to-Price Coupling v2 is calculated locally from normalized news and persisted canonical candles. It reports temporal association and observed returns, never causality; optional benchmarks must be supplied as verified `instrumentId` values.
 
 Advanced Intelligence Panels consume one deterministic snapshot from `GET /api/intel/advanced-snapshot`. The snapshot fixes one `generatedAt`, country filter and active analysis window for World Brief, Country Instability Index, rule-based severity, frequent terms and escalation hotspots; signal anomalies use that same active window by default plus an explicit historical baseline. Methodology `advanced-intelligence-v2` deduplicates RSS and selected-pipeline articles, applies a common 24-hour window, and normalizes hotspot activity with hourly rates and logarithmic scaling. Each hotspot includes its News/CII/Geo/Military components, weights, contributions and explanation. Headline-term deltas compare against the immediately preceding equal-length window when observed corpus coverage exists, and expose `partial` or `insufficient_comparison` otherwise.
@@ -235,6 +239,7 @@ Sanitized JSON and Markdown reports are written under `backend/reports/`. They c
 - `POST /api/market/candles/backfill` (authenticated mutation)
 - `GET /api/market/impact?tickers=GD,BA,NOC&countries=US,IL,IR&windowMin=120`
 - `GET /api/market/analytics?tickers=GD,BA,NOC&countries=US,IL,IR&windowMin=120`
+- `GET /api/market/conditions?windowMin=240&countries=US,IL,IR`
 - `GET /api/admin/api-limits`
 - `GET /api/admin/pipeline-status`
 - `GET /api/admin/ai-enrichments?status=ready&kind=article_summary&page=1&pageSize=50`

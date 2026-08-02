@@ -25,7 +25,63 @@ test("intraday ingestion queries only hot instruments and retains an open candle
   globalThis.fetch = async (input) => { requestedUrl = String(input); const payload = Object.fromEntries(listEnabledInstruments(1).map((instrument) => [instrument.providerSymbols.twelve, { meta: { symbol: instrument.providerSymbols.twelve, currency: "USD" }, values: [{ datetime: "2026-07-13 11:00:00", open: "101", high: "103", low: "100", close: "102", volume: "10" }, { datetime: "2026-07-13 11:00:00", open: "101", high: "104", low: "100", close: "103", volume: "11" }, { datetime: "2026-07-13 10:30:00", open: "100", high: "102", low: "99", close: "101", volume: "20" }] }])); return new Response(JSON.stringify(payload), { status: 200 }); };
   try {
     const scheduler = new MarketCreditScheduler({ now: () => nowMs }); const store = new DailyCandleStore({ rootDir: mkdtempSync(join(tmpdir(), "intraday-hot-")), rolloutBatch: 3, intervals: ["15min"] }); await store.hydrate(); const service = new IntradayCandleService({ store, marketConfig: config(scheduler), now: () => new Date(nowMs) });
-    const result = await service.runScheduled(); assert.equal(result.status, "ok"); assert.match(requestedUrl, /interval=15min/); assert.doesNotMatch(requestedUrl, /LDOS|HII|XLE|BTC/); assert.equal(scheduler.snapshot().consumedDay, 6); assert.equal(store.query({ instrumentId: gd.instrumentId, interval: "15min" }).length, 1); assert.equal(service.openCandles.size, 6); assert.equal(result.metrics.candlesStored, 6); assert.equal(result.metrics.intradayCredits, 6);
+    const result = await service.runScheduled(); assert.equal(result.status, "ok"); assert.match(requestedUrl, /interval=15min/); assert.match(requestedUrl, /outputsize=500/); assert.doesNotMatch(requestedUrl, /LDOS|HII|XLE|BTC/); assert.equal(scheduler.snapshot().consumedDay, 6); assert.equal(store.query({ instrumentId: gd.instrumentId, interval: "15min" }).length, 1); assert.equal(service.openCandles.size, 6); assert.equal(result.metrics.candlesStored, 6); assert.equal(result.metrics.intradayCredits, 6); assert.equal(result.metrics.bootstrapInstruments, 6);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("bootstrap uses 500 candles once and subsequent polling returns to the bounded request", async () => {
+  const originalFetch = globalThis.fetch; let currentMs = nowMs; const requestedUrls = [];
+  globalThis.fetch = async (input) => {
+    requestedUrls.push(String(input));
+    const payload = Object.fromEntries(listEnabledInstruments(1).map((instrument) => [instrument.providerSymbols.twelve, { meta: { symbol: instrument.providerSymbols.twelve, currency: "USD" }, values: [{ datetime: "2026-07-13 10:30:00", open: "100", high: "102", low: "99", close: "101", volume: "20" }] }]));
+    return new Response(JSON.stringify(payload), { status: 200 });
+  };
+  try {
+    const scheduler = new MarketCreditScheduler({ now: () => currentMs }); const store = new DailyCandleStore({ rootDir: mkdtempSync(join(tmpdir(), "intraday-bootstrap-")), rolloutBatch: 1, intervals: ["15min"] }); await store.hydrate(); const service = new IntradayCandleService({ store, marketConfig: { ...config(scheduler), watchlistRollout: 1, tickers: listEnabledInstruments(1).map((item) => item.canonicalSymbol) }, now: () => new Date(currentMs) });
+    assert.equal((await service.runScheduled()).status, "ok");
+    currentMs += service.projection.effectivePollIntervalMs;
+    assert.equal((await service.runScheduled()).status, "ok");
+    assert.match(requestedUrls[0], /outputsize=500/);
+    assert.doesNotMatch(requestedUrls[1], /outputsize=500/);
+    assert.ok(Number(new URL(requestedUrls[1]).searchParams.get("outputsize")) <= 100);
+    assert.equal(service.getMetrics().bootstrapInstruments, 6);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("a newly selected instrument bootstraps separately from regular polling", async () => {
+  const originalFetch = globalThis.fetch; let currentMs = nowMs; const requestedUrls = []; const available = listEnabledInstruments(1).filter((instrument) => instrument.refreshTier === "hot"); let selected = available.slice(0, 1);
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input)); requestedUrls.push(url); const symbols = url.searchParams.get("symbol").split(","); const payload = Object.fromEntries(symbols.map((symbol) => [symbol, { meta: { symbol, currency: "USD" }, values: [{ datetime: "2026-07-13 10:30:00", open: "100", high: "102", low: "99", close: "101", volume: "20" }] }])); return new Response(JSON.stringify(payload), { status: 200 });
+  };
+  try {
+    const scheduler = new MarketCreditScheduler({ now: () => currentMs }); const store = new DailyCandleStore({ rootDir: mkdtempSync(join(tmpdir(), "intraday-new-selection-")), rolloutBatch: 1, intervals: ["15min"] }); await store.hydrate(); const watchlistService = { selectedInstruments: () => selected, applySelection: (values) => values }; const service = new IntradayCandleService({ store, marketConfig: { ...config(scheduler), watchlistService }, now: () => new Date(currentMs) });
+    assert.equal((await service.runScheduled()).status, "ok");
+    selected = available.slice(0, 2); currentMs += service.projection.effectivePollIntervalMs;
+    assert.equal((await service.runScheduled()).status, "ok");
+    assert.equal(requestedUrls.length, 3);
+    assert.ok(Number(requestedUrls[1].searchParams.get("outputsize")) <= 100);
+    assert.equal(requestedUrls[1].searchParams.get("symbol"), available[0].providerSymbols.twelve);
+    assert.equal(requestedUrls[2].searchParams.get("outputsize"), "500");
+    assert.equal(requestedUrls[2].searchParams.get("symbol"), available[1].providerSymbols.twelve);
+    assert.equal(service.getMetrics().bootstrapInstruments, 2);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("failed bootstrap remains pending and retries at the next eligible cycle", async () => {
+  const originalFetch = globalThis.fetch; let currentMs = nowMs; const requestedUrls = []; let calls = 0; const selected = listEnabledInstruments(1).filter((instrument) => instrument.refreshTier === "hot").slice(0, 1);
+  globalThis.fetch = async (input) => {
+    requestedUrls.push(new URL(String(input))); calls += 1;
+    if (calls === 1) return new Response(JSON.stringify({}), { status: 200 });
+    const symbol = selected[0].providerSymbols.twelve; return new Response(JSON.stringify({ [symbol]: { meta: { symbol, currency: "USD" }, values: [{ datetime: "2026-07-13 10:30:00", open: "100", high: "102", low: "99", close: "101" }] } }), { status: 200 });
+  };
+  try {
+    const scheduler = new MarketCreditScheduler({ now: () => currentMs }); const store = new DailyCandleStore({ rootDir: mkdtempSync(join(tmpdir(), "intraday-bootstrap-retry-")), rolloutBatch: 1, intervals: ["15min"] }); await store.hydrate(); const watchlistService = { selectedInstruments: () => selected, applySelection: (values) => values }; const service = new IntradayCandleService({ store, marketConfig: { ...config(scheduler), watchlistService }, now: () => new Date(currentMs) });
+    assert.equal((await service.runScheduled()).status, "partial");
+    assert.equal(service.getMetrics().bootstrapInstruments, 0);
+    currentMs += service.projection.effectivePollIntervalMs;
+    assert.equal((await service.runScheduled()).status, "ok");
+    assert.deepEqual(requestedUrls.map((url) => url.searchParams.get("outputsize")), ["500", "500"]);
+    assert.equal(service.getMetrics().bootstrapInstruments, 1);
   } finally { globalThis.fetch = originalFetch; }
 });
 

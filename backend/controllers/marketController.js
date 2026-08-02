@@ -7,10 +7,12 @@ import { SUPPORTED_CANDLE_INTERVALS } from "../services/market/canonicalCandle.j
 import { MarketDataValidationError } from "../services/marketData/normalizer.js";
 import { isRetryableYahooError, isYahooRateLimitError, SlidingWindowRateLimiter, yahooRetryAfterMs } from "../services/marketData/rateLimit.js";
 import { normalizeNewsQueryPacks } from "../services/news/newsQueryPackService.js";
+import { MARKET_CONDITIONS_WINDOWS } from "../services/market/marketConditionsService.js";
 import { createLogger } from "../utils/logger.js";
 
 const log = createLogger("backend/controllers/marketController");
 const fallbackInstrumentSearchLimiter = new SlidingWindowRateLimiter();
+const MARKET_CONDITION_WINDOWS_MIN = new Set(MARKET_CONDITIONS_WINDOWS);
 
 function mapResponse(data) {
   return {
@@ -295,6 +297,30 @@ export async function getCandles(req, res, next) {
 }
 
 export function getCandleMetrics(_req, res) { return res.json(mapResponse({ intraday: res.app.locals.intradayCandleService?.getMetrics?.() || null })); }
+
+export async function getConditions(req, res, next) {
+  try {
+    const rawWindow = req.query.windowMin == null ? 240 : Number(req.query.windowMin);
+    if (!Number.isInteger(rawWindow) || !MARKET_CONDITION_WINDOWS_MIN.has(rawWindow)) {
+      return res.status(400).json({
+        ok: false,
+        error: {
+          code: "INVALID_MARKET_CONDITIONS_WINDOW",
+          message: "windowMin must be one of 15, 60, 240 or 1440."
+        }
+      });
+    }
+
+    const countries = parseCountries(req.query.countries, res.app.locals.config.watchlistCountries);
+    const conditions = await res.app.locals.marketConditionsService.getSnapshot({
+      windowMin: rawWindow,
+      countries
+    });
+    return res.json(mapResponse(conditions));
+  } catch (error) {
+    return next(error);
+  }
+}
 
 export function getTechnicalIndicators(req, res) {
   const instrumentId = String(req.query.instrumentId || ""); const instrument = getInstrumentById(instrumentId);

@@ -23,6 +23,7 @@ import { IntradayCandleService } from "./services/market/intradayCandleService.j
 import { TechnicalIndicatorService } from "./services/market/technicalIndicatorService.js";
 import { NewsPriceCouplingService } from "./services/market/newsPriceCouplingService.js";
 import { MarketWatchlistService } from "./services/market/marketWatchlistService.js";
+import { MarketConditionsService } from "./services/market/marketConditionsService.js";
 import { MarketDataService, MarketDataStoreAdapter, YahooClient } from "./services/marketData/index.js";
 import { SlidingWindowRateLimiter } from "./services/marketData/rateLimit.js";
 import { resolveRolloutBatch, resolveVerifiedInstrumentReferences } from "./services/market/instrumentRegistry.js";
@@ -818,6 +819,16 @@ export function createAppServer(overrides = {}) {
     persistent403Threshold: config.awareness.persistent403Threshold,
     forbiddenCooldownMs: config.awareness.forbiddenCooldownMs
   });
+  const marketConditionsService = overrides.marketConditionsService || new MarketConditionsService({
+    stateManager,
+    candleStore: dailyCandleStore,
+    marketWatchlistService,
+    newsPriceCouplingService,
+    awarenessService,
+    maxInstruments: config.market.intradayCandles.maxInstruments,
+    pollIntervalMs: config.market.intradayCandles.pollIntervalMs,
+    intradayCandlesEnabled: config.market.intradayCandles.enabled
+  });
   const aiCoordinator = new AiEnrichmentCoordinator({
     config: config.ai,
     provider: aiProvider,
@@ -871,6 +882,7 @@ export function createAppServer(overrides = {}) {
   app.locals.aiCoordinator = aiCoordinator;
   app.locals.awarenessService = awarenessService;
   app.locals.awarenessStore = awarenessStore;
+  app.locals.marketConditionsService = marketConditionsService;
 
   return {
     app,
@@ -883,6 +895,7 @@ export function createAppServer(overrides = {}) {
     signalCorrelator,
     advancedIntelligenceService,
     awarenessService,
+    marketConditionsService,
     config,
     async start() {
       const hydratedWatchlist = await marketWatchlistService.hydrate();

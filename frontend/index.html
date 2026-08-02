@@ -169,7 +169,7 @@
     </div>
 
     <div class="row g-3 mt-1 dashboard-row dashboard-market-row">
-      <div class="col-12 col-xl-6 order-2">
+      <div class="col-12 order-1">
         <section id="panel-risk" class="panel panel-vertical metrics-panel h-100">
           <header class="panel-header">
             <h2 class="panel-title mb-2">Country Risk Metrics</h2>
@@ -186,7 +186,7 @@
         </section>
       </div>
 
-      <div class="col-12 order-1">
+      <div class="col-12 order-2">
         <section id="panel-market" class="panel panel-vertical market-workspace h-100">
           <header class="panel-header d-flex justify-content-between align-items-center">
             <div class="d-flex align-items-center gap-2">
@@ -241,13 +241,6 @@
             <div><span>Range</span><strong id="market-ohlcv-range">--</strong></div>
             <div><span>Period</span><strong id="market-ohlcv-change">--</strong></div>
           </div>
-          <div class="panel-subheader px-3 py-2">
-            <div class="d-flex justify-content-between align-items-center">
-              <h3 class="panel-subtitle mb-0">Geo-Market Impact</h3>
-              <span id="quality-impact-badge" class="badge text-bg-secondary">Data: initializing</span>
-            </div>
-          </div>
-          <div id="market-impact-list" class="impact-list"></div>
           <div id="ai-market-shell" class="ai-enrichment-shell d-none">
             <div class="panel-subheader px-3 py-2"><h3 class="panel-subtitle mb-0">AI Market Explanation</h3></div>
             <div id="ai-market-list" class="ai-enrichment-list"></div>
@@ -255,23 +248,46 @@
         </section>
       </div>
 
-      <div class="col-12 col-xl-6 order-3">
-        <section id="panel-insights" class="panel panel-vertical h-100">
-          <header class="panel-header d-flex justify-content-between align-items-center">
-            <h2 class="panel-title mb-0">Deterministic Insights & Heuristic Scenarios</h2>
-            <div class="d-flex align-items-center gap-2">
-              <span id="quality-insights-badge" class="badge text-bg-secondary">Data: initializing</span>
-              <span class="small text-light-emphasis">Deterministic</span>
+      <div class="col-12 order-3">
+        <section id="panel-market-conditions" class="panel panel-vertical market-conditions-panel h-100">
+          <header class="panel-header market-conditions-header">
+            <div>
+              <h2 class="panel-title mb-1">Deterministic Market Conditions</h2>
+              <p class="market-conditions-intro mb-0">Observed news, market reaction and technical context. Indices and pressure bands are not probabilities, price predictions or trade instructions.</p>
+            </div>
+            <div class="market-conditions-header-status">
+              <span id="market-conditions-input-badge" class="badge text-bg-secondary">Inputs: initializing</span>
+              <span id="market-conditions-updated" class="small text-light-emphasis">--</span>
             </div>
           </header>
-          <div class="panel-subheader px-3 py-2">
-            <h3 class="panel-subtitle mb-0">Heuristic Scenarios</h3>
+          <div class="market-conditions-toolbar">
+            <div id="market-conditions-window-selector" class="chart-selector market-conditions-window-selector"></div>
+            <div id="market-conditions-status" class="market-conditions-status small text-light-emphasis" aria-live="polite">Loading market conditions...</div>
           </div>
-          <div id="predictions-list" class="predictions-list"></div>
-          <div class="panel-subheader px-3 py-2">
-            <h3 class="panel-subtitle mb-0">Country Insights</h3>
+          <div class="market-conditions-grid">
+            <section class="market-conditions-column" aria-labelledby="market-conditions-general-title">
+              <header class="market-conditions-column-header">
+                <h3 id="market-conditions-general-title">General conditions</h3>
+                <span>Market stability</span>
+              </header>
+              <div id="market-conditions-general" class="market-conditions-general" tabindex="0" aria-label="General market condition details" aria-live="polite"></div>
+            </section>
+            <section class="market-conditions-column" aria-labelledby="market-conditions-symbols-title">
+              <header class="market-conditions-column-header">
+                <h3 id="market-conditions-symbols-title">Observed instruments</h3>
+                <span>Operability and direction</span>
+              </header>
+              <div id="market-conditions-symbols" class="market-conditions-symbols" role="list" tabindex="0" aria-label="Observed instrument conditions" aria-live="polite"></div>
+            </section>
+            <section class="market-conditions-column" aria-labelledby="market-conditions-countries-title">
+              <header class="market-conditions-column-header">
+                <h3 id="market-conditions-countries-title">Country Insights</h3>
+                <span>Geopolitical context only</span>
+              </header>
+              <div id="market-conditions-countries" class="market-conditions-countries" role="list" tabindex="0" aria-label="Country risk context" aria-live="polite"></div>
+            </section>
           </div>
-          <div id="insights-list" class="insights-list"></div>
+          <div id="market-conditions-limitations" class="market-conditions-limitations small text-light-emphasis"></div>
           <div id="ai-country-shell" class="ai-enrichment-shell d-none">
             <div class="panel-subheader px-3 py-2"><h3 class="panel-subtitle mb-0">AI Country Context</h3></div>
             <div id="ai-country-list" class="ai-enrichment-list"></div>
@@ -280,43 +296,6 @@
       </div>
     </div>
 
-    <div class="row g-3 mt-1 dashboard-row dashboard-analytics-row">
-      <div class="col-12">
-        <div id="analytics-status" class="analytics-status d-none"></div>
-        <div id="analytics-window-selector" class="chart-selector chart-selector-inline mt-2"></div>
-      </div>
-      <div class="col-12 col-xl-4">
-        <section class="panel panel-vertical h-100">
-          <header class="panel-header">
-            <h2 class="panel-title mb-0">Heuristic Sector Direction & Signal Strength</h2>
-          </header>
-          <div class="chart-wrap">
-            <canvas id="impact-timeline-chart"></canvas>
-          </div>
-        </section>
-      </div>
-      <div class="col-12 col-xl-4">
-        <section class="panel panel-vertical h-100">
-          <header class="panel-header">
-            <h2 class="panel-title mb-0">Heuristic Ticker Outlook Matrix</h2>
-          </header>
-          <div class="chart-wrap">
-            <canvas id="sector-breakdown-chart"></canvas>
-          </div>
-        </section>
-      </div>
-      <div class="col-12 col-xl-4">
-        <section class="panel panel-vertical h-100">
-          <header class="panel-header">
-            <h2 class="panel-title mb-0">News-to-Price Coupling</h2>
-          </header>
-          <div id="coupling-ticker-selector" class="chart-selector d-none"></div>
-          <div class="chart-wrap">
-            <canvas id="impact-scatter-chart"></canvas>
-          </div>
-        </section>
-      </div>
-    </div>
   </main>
 
   <div class="modal fade" id="market-watchlist-modal" tabindex="-1" aria-labelledby="market-watchlist-title"

@@ -66,6 +66,7 @@ export const api = {
   getMarketWatchlist: () => request("/api/market/watchlist"),
   updateMarketWatchlist: (instrumentIds) => request("/api/market/watchlist", {}, { method: "PUT", body: { instrumentIds } }),
   getMarketCandles: (params = {}) => request("/api/market/candles", params, { cache: "no-store" }),
+  getMarketConditions: (params = {}) => request("/api/market/conditions", params, { cache: "no-store" }),
   getMarketAnalytics: (params = {}) => request("/api/market/analytics", params),
   getApiLimits: () => request("/api/admin/api-limits"),
   getPipelineStatus: () => request("/api/admin/pipeline-status"),

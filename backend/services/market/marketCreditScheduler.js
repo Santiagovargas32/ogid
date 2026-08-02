@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
-import { isMarketOpenEt } from "./marketSessionService.js";
+import { isExchangeSessionOpen, isMarketOpenEt } from "./marketSessionService.js";
 
 export const TWELVE_BASIC_POLICY = Object.freeze({
   declaredDailyLimit: 800,
@@ -27,6 +27,9 @@ function tierRank(tier) { return { hot: 0, normal: 1, background: 2 }[tier] ?? 1
 export function isInstrumentSessionEligible(instrument, now = new Date()) {
   if (instrument?.assetType === "crypto" || instrument?.sessionPolicy === "24x7") return true;
   if (instrument?.sessionPolicy === "nyse-equities") return isMarketOpenEt(now);
+  if (instrument?.sessionPolicy === "exchange-hours" && ["equity", "etf", "fund", "index"].includes(instrument?.assetType)) {
+    return isExchangeSessionOpen(now, instrument.timezone || "America/New_York");
+  }
   return false;
 }
 

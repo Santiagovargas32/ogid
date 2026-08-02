@@ -44,7 +44,11 @@ function isWithinSession(minutes) {
 }
 
 export function isMarketOpenEt(date = new Date()) {
-  const parts = parseTimeParts(date, NY_TZ);
+  return isExchangeSessionOpen(date, NY_TZ);
+}
+
+export function isExchangeSessionOpen(date = new Date(), timeZone = NY_TZ) {
+  const parts = parseTimeParts(date, timeZone || NY_TZ);
   if (!isWeekday(parts.weekday)) {
     return false;
   }

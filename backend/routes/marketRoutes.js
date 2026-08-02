@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { backfillCandles, getAnalytics, getCandleMetrics, getCandles, getImpact, getProviderStatus, getQuotes, getTechnicalIndicators, getWatchlist, searchInstruments, updateWatchlist } from "../controllers/marketController.js";
+import { backfillCandles, getAnalytics, getCandleMetrics, getCandles, getConditions, getImpact, getProviderStatus, getQuotes, getTechnicalIndicators, getWatchlist, searchInstruments, updateWatchlist } from "../controllers/marketController.js";
 
 const router = Router();
 
@@ -14,5 +14,6 @@ router.get("/indicators", getTechnicalIndicators);
 router.post("/candles/backfill", backfillCandles);
 router.get("/impact", getImpact);
 router.get("/analytics", getAnalytics);
+router.get("/conditions", getConditions);
 
 export default router;
