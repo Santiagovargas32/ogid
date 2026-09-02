@@ -134,6 +134,8 @@ test("market provider router returns deterministic fallback when twelve and yaho
     assert.equal(result.sourceMeta.providerSlots[0].errorCode, "api-key-missing");
     assert.equal(result.sourceMeta.providerSlots[1].provider, "yahoo");
     assert.equal(result.sourceMeta.providerSlots[1].errorCode, "yahoo-quote-missing");
+    assert.equal(result.sourceMeta.providerSlots[1].transport, "server-library");
+    assert.equal(result.sourceMeta.providerSlots[1].configuredBaseUrl, null);
     assert.deepEqual(result.sourceMeta.coverageByMode, {
       live: 0,
       webDelayed: 0,

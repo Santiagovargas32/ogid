@@ -11,6 +11,38 @@ const DEFAULT_YAHOO_LOGGER = Object.freeze({
   debug: () => {},
 });
 
+function sanitizedDiagnosticText(value, maxLength = 240) {
+  const sanitized = sanitizeSensitiveData(String(value || "").trim());
+  return sanitized ? sanitized.slice(0, maxLength) : null;
+}
+
+function yahooErrorCandidates(error) {
+  return [error, error?.cause, error?.details, error?.details?.cause].filter(Boolean);
+}
+
+function yahooValidationIssues(error, maxIssues = 12) {
+  const candidate = yahooErrorCandidates(error).find((value) => Array.isArray(value?.errors));
+  return (candidate?.errors || []).slice(0, maxIssues).map((issue) => ({
+    instancePath: sanitizedDiagnosticText(issue?.instancePath || issue?.dataPath || "", 160) || "",
+    schemaPath: sanitizedDiagnosticText(issue?.schemaPath || "", 160),
+    keyword: sanitizedDiagnosticText(issue?.keyword || "unknown", 80) || "unknown",
+  }));
+}
+
+export function summarizeYahooError(error) {
+  const candidates = yahooErrorCandidates(error);
+  const httpStatus = candidates
+    .flatMap((value) => [value?.status, value?.statusCode, value?.response?.status, value?.code])
+    .map(Number)
+    .find((value) => Number.isInteger(value) && value >= 100 && value <= 599) || null;
+  const named = candidates.find((value) => value?.name) || error;
+  return {
+    errorName: sanitizedDiagnosticText(named?.name || "Error", 120) || "Error",
+    httpStatus,
+    validationIssues: yahooValidationIssues(error),
+  };
+}
+
 function sanitizeLogValue(value) {
   if (!(value instanceof Error)) return sanitizeSensitiveData(value);
   return sanitizeSensitiveData({
@@ -18,7 +50,7 @@ function sanitizeLogValue(value) {
     message: value.message,
     code: value.code,
     status: value.status ?? value.statusCode,
-    stack: value.stack,
+    ...summarizeYahooError(value),
   });
 }
 

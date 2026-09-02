@@ -12,6 +12,8 @@
     "rss:probe": "node scripts/probe-rss.js",
     "rss:audit": "node scripts/audit-rss-catalog.js",
     "awareness:lab": "node scripts/awareness-admission-lab.js",
+    "market:watchlist:inspect": "node scripts/inspect-market-watchlist.js",
+    "smoke:upstreams": "node scripts/smoke-upstreams.js",
     "check": "node scripts/check-source.js",
     "test": "node --require ./tests/testSetup.cjs --test",
     "build": "npm run check"
@@ -26,6 +28,6 @@
     "express": "^5.1.0",
     "helmet": "^8.1.0",
     "ws": "^8.21.0",
-    "yahoo-finance2": "4.0.0"
+    "yahoo-finance2": "4.0.2"
   }
 }
