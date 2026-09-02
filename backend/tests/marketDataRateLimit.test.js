@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createGuardedYahooFetch, createSanitizedYahooLogger, createYahooFinanceClient, YahooClient } from "../services/marketData/yahooClient.js";
+import { createGuardedYahooFetch, createSanitizedYahooLogger, createYahooFinanceClient, summarizeYahooError, YahooClient } from "../services/marketData/yahooClient.js";
 import { SlidingWindowRateLimiter, YahooRequestQueue } from "../services/marketData/rateLimit.js";
 
 test("Yahoo queue deduplicates requests and caps logical concurrency at three", async () => {
@@ -150,6 +150,30 @@ test("Yahoo logger redacts crumb, cookies and sensitive Error messages", () => {
   assert.equal(serialized.includes("url-secret"), false);
   assert.equal(serialized.includes("session-secret"), false);
   assert.equal(serialized.includes("***"), true);
+});
+
+test("Yahoo diagnostics retain only sanitized validation paths and keywords", () => {
+  const error = Object.assign(new Error("Failed Yahoo Schema validation. token=secret-token"), {
+    name: "FailedYahooValidationError",
+    statusCode: 400,
+    errors: [{
+      instancePath: "/quoteResponse/result/0/regularMarketPrice",
+      schemaPath: "#/properties/regularMarketPrice/type",
+      keyword: "type",
+      params: { received: "secret-value" },
+      data: "secret-data",
+    }],
+  });
+  const diagnostics = summarizeYahooError(error);
+  assert.equal(diagnostics.errorName, "FailedYahooValidationError");
+  assert.equal(diagnostics.httpStatus, 400);
+  assert.deepEqual(diagnostics.validationIssues, [{
+    instancePath: "/quoteResponse/result/0/regularMarketPrice",
+    schemaPath: "#/properties/regularMarketPrice/type",
+    keyword: "type",
+  }]);
+  assert.equal(JSON.stringify(diagnostics).includes("secret-value"), false);
+  assert.equal(JSON.stringify(diagnostics).includes("secret-data"), false);
 });
 
 test("sliding window limiter blocks bursts, returns Retry-After and recovers", () => {

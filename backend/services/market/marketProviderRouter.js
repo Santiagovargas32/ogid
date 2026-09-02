@@ -60,6 +60,10 @@ function buildProviderChain(primaryProvider = "", fallbackProvider = "") {
   return [primaryProvider, fallbackProvider].filter(Boolean).join("+") || null;
 }
 
+function configuredBaseUrlFor(provider, config = {}) {
+  return provider === "twelve" ? config.twelveBaseUrl || null : null;
+}
+
 function buildProviderConfig(provider, config = {}, session = null) {
   if (provider === "twelve") {
     return {
@@ -71,8 +75,6 @@ function buildProviderConfig(provider, config = {}, session = null) {
   }
 
   return {
-    baseUrl: config.yahooBaseUrl,
-    userAgent: config.yahooUserAgent,
     marketDataService: config.marketDataService,
     session
   };
@@ -254,6 +256,7 @@ function buildProviderSlot({
   const status = statusOverride || resolveProviderStatus(requestResult, { disabled: marketEnabled === false });
   const result = requestResult || {};
   const errors = Array.isArray(result.errors) ? result.errors : [];
+  const diagnosticError = errors.find((error) => error?.httpStatus || error?.validationIssues?.length) || errors.at(-1) || null;
   const sampleQuotes = buildSampleQuotes(result.quotes || {}, requestedTickers, 5);
   const resolvedQuotaSnapshot = quotaSnapshot || result.quotaSnapshot || apiQuotaTracker.getProviderSnapshot(provider);
 
@@ -261,7 +264,7 @@ function buildProviderSlot({
     role,
     provider,
     transport,
-    configuredBaseUrl,
+    configuredBaseUrl: provider === "yahoo" ? null : configuredBaseUrl,
     status,
     requestMode: result.requestMode || (status === "idle" ? "standby" : "unavailable"),
     returnedTickers: result.returnedTickers || [],
@@ -286,8 +289,10 @@ function buildProviderSlot({
     upstreamPaused: result.upstreamPaused === true,
     requestUrls: result.requestUrls || [],
     httpStatus: Number.isFinite(Number(result.httpStatus)) ? Number(result.httpStatus) : null,
-    errorCode: errors.at(-1)?.code || errors.at(-1)?.reason || null,
-    errorMessage: errors.at(-1)?.message || null,
+    errorCode: diagnosticError?.code || diagnosticError?.reason || null,
+    errorMessage: diagnosticError?.message || null,
+    errorName: diagnosticError?.errorName || null,
+    validationIssues: diagnosticError?.validationIssues || [],
     responsePreview: result.responsePreview || errors.at(-1)?.responsePreview || null,
     sampleQuotes,
     lastAttemptAt: result.lastAttemptAt || null,
@@ -372,7 +377,7 @@ function buildDisabledProviderSlots(config = {}) {
       buildProviderSlot({
         role: "primary",
         provider: config.provider,
-        configuredBaseUrl: config.provider === "twelve" ? config.twelveBaseUrl : config.yahooBaseUrl,
+        configuredBaseUrl: configuredBaseUrlFor(config.provider, config),
         requestedTickers: config.tickers || [],
         marketEnabled: false
       })
@@ -383,7 +388,7 @@ function buildDisabledProviderSlots(config = {}) {
       buildProviderSlot({
         role: "fallback",
         provider: config.fallbackProvider,
-        configuredBaseUrl: config.fallbackProvider === "twelve" ? config.twelveBaseUrl : config.yahooBaseUrl,
+        configuredBaseUrl: configuredBaseUrlFor(config.fallbackProvider, config),
         requestedTickers: config.tickers || [],
         marketEnabled: false
       })
@@ -507,7 +512,7 @@ export async function fetchMarketQuotes(config = {}) {
     }
 
     const role = provider === primaryProvider ? "primary" : "fallback";
-    const configuredBaseUrl = provider === "twelve" ? config.twelveBaseUrl : config.yahooBaseUrl;
+    const configuredBaseUrl = configuredBaseUrlFor(provider, config);
     const availability = provider === "yahoo" ? {
       available: true,
       snapshot: null,
@@ -696,7 +701,7 @@ export async function fetchMarketQuotes(config = {}) {
     providerResults[provider] = buildProviderSlot({
       role,
       provider,
-      configuredBaseUrl: provider === "twelve" ? config.twelveBaseUrl : config.yahooBaseUrl,
+      configuredBaseUrl: configuredBaseUrlFor(provider, config),
       requestedTickers: tickers,
       statusOverride: "idle"
     });

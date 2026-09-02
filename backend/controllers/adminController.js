@@ -155,12 +155,12 @@ function buildProviderChain(provider = "", fallbackProvider = "") {
 }
 
 function buildFallbackSlot({ role, provider, marketConfig = {}, status = "idle", marketSnapshot = {}, quotaSnapshot = null } = {}) {
-  const configuredBaseUrl = provider === "twelve" ? marketConfig.twelveBaseUrl : marketConfig.yahooBaseUrl;
+  const configuredBaseUrl = provider === "twelve" ? marketConfig.twelveBaseUrl : null;
   const resolvedQuotaSnapshot = quotaSnapshot || apiQuotaTracker.getProviderSnapshot(provider);
   return {
     role,
     provider,
-    transport: provider === "twelve" ? "api" : "web",
+    transport: provider === "twelve" ? "api" : "server-library",
     configuredBaseUrl: configuredBaseUrl || null,
     status,
     requestMode: status === "disabled" ? "disabled" : status === "idle" ? "standby" : "unavailable",

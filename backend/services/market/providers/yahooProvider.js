@@ -2,8 +2,11 @@ import apiQuotaTracker from "../../admin/apiQuotaTrackerService.js";
 import { MarketDataService } from "../../marketData/marketDataService.js";
 import { computeProviderScore, normalizeRequestedTickers, summarizeAttempt } from "./providerUtils.js";
 import { sanitizeSensitiveData } from "../../../utils/sanitize.js";
+import { createLogger } from "../../../utils/logger.js";
+import { summarizeYahooError } from "../../marketData/yahooClient.js";
 
 let defaultMarketDataService = null;
+const log = createLogger("market/yahooProvider");
 
 function publicErrorCode(value) {
   const code = String(value || "");
@@ -18,6 +21,7 @@ function getMarketDataService(service) {
 
 function publicProviderError(error, { ticker = null, scope = "provider" } = {}) {
   const code = publicErrorCode(error?.code);
+  const diagnostics = summarizeYahooError(error);
   return {
     provider: "yahoo",
     scope,
@@ -25,8 +29,45 @@ function publicProviderError(error, { ticker = null, scope = "provider" } = {}) 
     reason: code,
     message: sanitizeSensitiveData(String(error?.message || "Yahoo Finance request failed.")),
     ticker: ticker || undefined,
+    errorName: diagnostics.errorName,
+    httpStatus: diagnostics.httpStatus,
+    validationIssues: diagnostics.validationIssues,
     retryable: error?.details?.retryable ?? null,
   };
+}
+
+function logYahooFailure(event, error, { ticker = null, tickerCount = 0 } = {}) {
+  const diagnostics = summarizeYahooError(error);
+  log.warn(event, {
+    provider: "yahoo",
+    ticker,
+    tickerCount,
+    errorName: diagnostics.errorName,
+    httpStatus: diagnostics.httpStatus,
+    validationIssues: diagnostics.validationIssues,
+  });
+}
+
+async function fetchQuotesPerSymbol(service, tickers, { timestamp, errors }) {
+  const settled = await Promise.allSettled(tickers.map((ticker) => service.fetchQuotes([ticker])));
+  const quotes = [];
+  settled.forEach((result, index) => {
+    const ticker = tickers[index];
+    if (result.status === "fulfilled") {
+      quotes.push(...(Array.isArray(result.value) ? result.value : []));
+      apiQuotaTracker.recordCall("yahoo", {
+        status: result.value?.length ? "success" : "empty",
+        fallback: true,
+        timestamp,
+        units: 1,
+      });
+      return;
+    }
+    errors.push(publicProviderError(result.reason, { ticker, scope: "symbol" }));
+    logYahooFailure("yahoo_quote_symbol_fallback_failed", result.reason, { ticker, tickerCount: 1 });
+    apiQuotaTracker.recordCall("yahoo", { status: "error", fallback: true, timestamp, units: 1 });
+  });
+  return quotes;
 }
 
 function mapQuote(quote, { durationMs, score, timestamp, session }) {
@@ -83,8 +124,9 @@ export async function fetchYahooQuotes({
   const startedAt = Date.now();
   const errors = [];
   let normalizedQuotes = [];
+  const service = getMarketDataService(marketDataService);
   try {
-    normalizedQuotes = await getMarketDataService(marketDataService).fetchQuotes(requestedTickers);
+    normalizedQuotes = await service.fetchQuotes(requestedTickers);
     apiQuotaTracker.recordCall("yahoo", {
       status: normalizedQuotes.length ? "success" : "empty",
       fallback: false,
@@ -93,7 +135,11 @@ export async function fetchYahooQuotes({
     });
   } catch (error) {
     errors.push(publicProviderError(error));
+    logYahooFailure("yahoo_quote_batch_failed", error, { tickerCount: requestedTickers.length });
     apiQuotaTracker.recordCall("yahoo", { status: "error", fallback: true, timestamp, units: 1 });
+    if (requestedTickers.length > 1) {
+      normalizedQuotes = await fetchQuotesPerSymbol(service, requestedTickers, { timestamp, errors });
+    }
   }
 
   const durationMs = Date.now() - startedAt;
@@ -132,6 +178,7 @@ export async function fetchYahooQuotes({
     requestedTickers,
     returnedTickers,
     missingTickers,
+    httpStatus: errors.find((error) => error.httpStatus)?.httpStatus || null,
     lastAttemptAt: timestamp,
     lastSuccessAt: returnedTickers.length ? timestamp : null,
     quotaSnapshot: null,

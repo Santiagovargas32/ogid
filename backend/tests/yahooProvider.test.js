@@ -63,6 +63,44 @@ test("Yahoo provider exposes a sanitized service failure through the existing en
   assert.equal(result.errors[0].message, "Yahoo request timed out");
 });
 
+test("Yahoo provider falls back per symbol when a complete batch fails", async () => {
+  const calls = [];
+  const batchFailure = Object.assign(new Error("Failed Yahoo Schema validation. crumb=batch-secret"), {
+    name: "FailedYahooValidationError",
+    status: 400,
+    errors: [{ instancePath: "/quoteResponse/result/1", schemaPath: "#/items/required", keyword: "required", params: { secret: "never-log" } }],
+  });
+  const symbolFailure = Object.assign(new Error("Yahoo request failed with HTTP 400"), {
+    name: "YahooHttpError",
+    status: 400,
+  });
+  const result = await fetchYahooQuotes({
+    tickers: ["GD", "BA"],
+    marketDataService: {
+      fetchQuotes: async (symbols) => {
+        calls.push(symbols);
+        if (symbols.length > 1) throw batchFailure;
+        if (symbols[0] === "GD") return [quote("GD")];
+        throw symbolFailure;
+      },
+    },
+  });
+
+  assert.deepEqual(calls, [["GD", "BA"], ["GD"], ["BA"]]);
+  assert.deepEqual(result.returnedTickers, ["GD"]);
+  assert.deepEqual(result.missingTickers, ["BA"]);
+  assert.equal(result.errors[0].errorName, "FailedYahooValidationError");
+  assert.equal(result.errors[0].httpStatus, 400);
+  assert.deepEqual(result.errors[0].validationIssues, [{
+    instancePath: "/quoteResponse/result/1",
+    schemaPath: "#/items/required",
+    keyword: "required",
+  }]);
+  assert.equal(result.errors.some((error) => error.scope === "symbol" && error.ticker === "BA"), true);
+  assert.equal(JSON.stringify(result.errors).includes("batch-secret"), false);
+  assert.equal(JSON.stringify(result.errors).includes("never-log"), false);
+});
+
 test("Yahoo provider rejects malformed public codes and redacts secret-bearing messages", async () => {
   const failure = Object.assign(new Error("failed https://query2.finance.yahoo.com/quote?crumb=message-secret"), {
     code: "https://example.test/error?token=code-secret",

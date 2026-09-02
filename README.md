@@ -162,6 +162,28 @@ The advanced endpoint accepts active windows from 6 to 48 hours; `activeWindowHo
 
 Administrative routes, mutations and `force=1` requests are allowed from loopback by default. For non-local access, configure `ADMIN_API_TOKEN` and send it as a Bearer token or `X-Admin-Token`. Set `ALLOW_LOCAL_ADMIN=0` to require the token on loopback too.
 
+## Yahoo/BLS Hotfix Operations
+
+Yahoo transport is owned by `yahoo-finance2`; `MARKET_YAHOO_BASE_URL` and `MARKET_YAHOO_USER_AGENT` are legacy diagnostic values and do not override the library transport. Keep result validation enabled. A failed multi-symbol quote request is retried once per symbol so one malformed result cannot discard the rest of the batch; sanitized diagnostics retain only the error name, HTTP status, validation paths and validation keywords.
+
+When `MARKET_TICKERS` is empty, an existing `data/market/watchlist-selection.json` remains the effective selection. Inspect the exact persisted IDs and symbols on the running server without starting the application:
+
+```bash
+cd backend
+npm run market:watchlist:inspect
+```
+
+The production-safe baseline is documented in `backend/.env.production.example`. It assumes no NewsAPI/GNews credentials, so it uses `NEWS_PROVIDERS=rss`; it disables loopback admin bypass; it starts Awareness in `shadow`; and it limits intraday ingestion to one instrument. Inject the real `ADMIN_API_TOKEN` through the server's secret manager before administrative access is needed.
+
+The live upstream smoke probe is opt-in and does not run in the normal test suite. Run it from the production host to exercise that host's DNS, TLS and egress path:
+
+```bash
+cd backend
+RUN_LIVE_UPSTREAM_SMOKE=1 MARKET_SMOKE_TICKERS=SPY npm run smoke:upstreams
+```
+
+The command prints a sanitized JSON result for Yahoo and the BLS PPI RSS endpoint and exits non-zero if either probe fails.
+
 ## Controlled Local RSS Lab
 
 RSS has no single global quota: every publisher or feed host can still throttle or block repeated clients. Running production and a local server against the same feeds is technically valid, but it doubles upstream traffic. Use the bounded lab instead of copying the full production catalog.
