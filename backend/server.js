@@ -474,8 +474,7 @@ function readConfig(overrides = {}) {
         enabled: toBool(process.env.MARKET_INTRADAY_CANDLES_ENABLED, false),
         interval: ["5min", "15min", "30min", "1h"].includes(process.env.MARKET_INTRADAY_CANDLES_INTERVAL) ? process.env.MARKET_INTRADAY_CANDLES_INTERVAL : "15min",
         pollIntervalMs: toPositiveInt(process.env.MARKET_INTRADAY_CANDLES_POLL_MS, 900_000),
-        adjustmentMode: ["splits", "none"].includes(process.env.MARKET_INTRADAY_CANDLES_ADJUSTMENT) ? process.env.MARKET_INTRADAY_CANDLES_ADJUSTMENT : "splits",
-        maxInstruments: Math.min(6, toPositiveInt(process.env.MARKET_INTRADAY_CANDLES_MAX_INSTRUMENTS, 6))
+        adjustmentMode: ["splits", "none"].includes(process.env.MARKET_INTRADAY_CANDLES_ADJUSTMENT) ? process.env.MARKET_INTRADAY_CANDLES_ADJUSTMENT : "splits"
       }
     },
     apiLimits: {
@@ -825,7 +824,7 @@ export function createAppServer(overrides = {}) {
     marketWatchlistService,
     newsPriceCouplingService,
     awarenessService,
-    maxInstruments: config.market.intradayCandles.maxInstruments,
+    intradayCandleService,
     pollIntervalMs: config.market.intradayCandles.pollIntervalMs,
     intradayCandlesEnabled: config.market.intradayCandles.enabled
   });

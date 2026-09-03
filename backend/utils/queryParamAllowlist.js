@@ -28,7 +28,7 @@ const ROUTE_QUERY_PARAMS = new Map(
     "GET /api/market/quotes": ["tickers"],
     "GET /api/market/provider-status": [],
     "GET /api/market/instruments/search": ["q", "limit"],
-    "GET /api/market/candles": ["instrumentId", "interval", "from", "to", "limit", "adjusted"],
+    "GET /api/market/candles": ["instrumentId", "interval", "from", "to", "limit", "adjusted", "force"],
     "GET /api/market/indicators": ["instrumentId", "interval", "adjusted"],
     "GET /api/market/impact": ["tickers", "countries", "windowMin", "couplingInterval", "couplingWindows", "benchmarkInstrumentId"],
     "GET /api/market/analytics": ["tickers", "countries", "windowMin", "couplingInterval", "couplingWindows", "benchmarkInstrumentId"],

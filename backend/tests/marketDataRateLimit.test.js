@@ -60,8 +60,8 @@ test("Yahoo queue does not retry 429 and opens a global fail-fast cooldown", asy
   await assert.rejects(queue.run("limited", async () => {
     calls += 1;
     throw Object.assign(new Error("rate limited"), { status: 429, retryAfterMs: 2_500 });
-  }), (error) => error.status === 429 && error.retryAfterMs === 60_000);
-  await assert.rejects(queue.run("another-request", async () => { calls += 1; }), (error) => (
+  }, { scope: "chart" }), (error) => error.status === 429 && error.retryAfterMs === 60_000);
+  await assert.rejects(queue.run("another-request", async () => { calls += 1; }, { scope: "quote" }), (error) => (
     error.code === "YAHOO_RATE_LIMITED" && error.retryAfterMs === 60_000
   ));
   assert.equal(calls, 1);

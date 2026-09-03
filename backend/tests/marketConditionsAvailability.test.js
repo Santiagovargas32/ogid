@@ -127,16 +127,40 @@ test("exchange availability resolves winter timezone offsets without a provider 
   assert.equal(result.nextEligibleAt, "2026-12-07T14:30:00.000Z");
 });
 
-test("unsupported futures distinguish missing history from ingestion capability", () => {
+test("CL=F uses automatic provider-hours ingestion with an explicit partial session policy", () => {
   const future = { ...spy, instrumentId: "future", canonicalSymbol: "CL=F", assetType: "future" };
   const result = classifyMarketConditionsAvailability({ instrument: future, asOf: AS_OF, automaticIngestionEnabled: true });
 
   assert.equal(result.primaryReason, "no_5m_history");
-  assert.deepEqual(result.reasonCodes, ["no_5m_history", "automatic_ingestion_unsupported"]);
-  assert.equal(result.sessionState, "unsupported");
-  assert.equal(result.ingestionState, "unsupported");
-  assert.equal(result.expectedLatestCandleAt, null);
-  assert.equal(result.nextEligibleAt, null);
+  assert.deepEqual(result.reasonCodes, ["no_5m_history", "market_closed", "session_policy_partial"]);
+  assert.equal(result.sessionState, "closed");
+  assert.equal(result.ingestionState, "session_policy_partial");
+  assert.equal(result.expectedLatestCandleAt, "2026-07-31T21:00:00.000Z");
+  assert.equal(result.nextEligibleAt, "2026-08-02T22:00:00.000Z");
+  assert.ok(!result.reasonCodes.includes("automatic_ingestion_unsupported"));
+});
+
+test("a fresh CL=F series remains analyzable while exposing provisional session interpretation", () => {
+  const future = { ...spy, instrumentId: "future", canonicalSymbol: "CL=F", assetType: "future" };
+  const asOf = "2026-08-03T15:00:00.000Z";
+  const values = [
+    candle(future, "2026-08-03T14:55:00.000Z"),
+    candle(future, asOf)
+  ];
+  const result = classifyMarketConditionsAvailability({
+    instrument: future,
+    baseCandles: values,
+    seriesCandles: values,
+    windowMin: 15,
+    asOf,
+    automaticIngestionEnabled: true
+  });
+
+  assert.equal(result.analyzable, true);
+  assert.equal(result.primaryReason, "session_policy_partial");
+  assert.deepEqual(result.reasonCodes, ["session_policy_partial"]);
+  assert.equal(result.sessionState, "open");
+  assert.equal(result.ingestionState, "session_policy_partial");
 });
 
 test("fresh continuous coverage is analyzable and a single close is warming_up", () => {
@@ -172,6 +196,34 @@ test("fresh continuous coverage is analyzable and a single close is warming_up",
   assert.equal(warming.analyzable, false);
   assert.equal(warming.primaryReason, "warming_up");
   assert.deepEqual(warming.reasonCodes, ["warming_up"]);
+});
+
+test("acquisition lifecycle distinguishes bootstrap and cooldown from absent local history", () => {
+  const pending = classifyMarketConditionsAvailability({
+    instrument: bitcoin,
+    asOf: AS_OF,
+    acquisitionState: { state: "pending_bootstrap", lastAttemptAt: AS_OF },
+    automaticIngestionEnabled: true
+  });
+  assert.equal(pending.primaryReason, "pending_bootstrap");
+  assert.deepEqual(pending.reasonCodes, ["no_5m_history", "pending_bootstrap"]);
+  assert.equal(pending.ingestionState, "pending_bootstrap");
+
+  const values = [candle(bitcoin, "2026-08-02T17:55:00.000Z"), candle(bitcoin, AS_OF)];
+  const cooldown = classifyMarketConditionsAvailability({
+    instrument: bitcoin,
+    baseCandles: values,
+    seriesCandles: values,
+    windowMin: 15,
+    asOf: AS_OF,
+    acquisitionState: { state: "provider_cooldown", lastAttemptAt: AS_OF, retryAfterMs: 60_000 },
+    automaticIngestionEnabled: true
+  });
+  assert.equal(cooldown.analyzable, true);
+  assert.equal(cooldown.primaryReason, "provider_cooldown");
+  assert.deepEqual(cooldown.reasonCodes, ["provider_cooldown"]);
+  assert.equal(cooldown.ingestionState, "provider_cooldown");
+  assert.equal(cooldown.nextEligibleAt, "2026-08-02T18:01:00.000Z");
 });
 
 test("freshness tolerance is max of two polls and three five-minute candles", () => {

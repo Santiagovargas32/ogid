@@ -30,12 +30,13 @@ test("Yahoo candles reject adjusted=none without reporting a fresh empty dataset
   assert.equal(yahooCalled, false);
 });
 
-test("Yahoo candles forward absolute history while Twelve retains adjusted=none", async () => {
+test("Yahoo candles only refresh absolute history when force is explicit while Twelve retains adjusted=none", async () => {
   let yahooOptions = null;
   const yahooReq = { query: {
     instrumentId: instrument.instrumentId,
     interval: "1day",
     adjusted: "splits",
+    force: "1",
     from: "2024-01-01T00:00:00Z",
     to: "2024-02-01T00:00:00Z",
   } };
@@ -48,6 +49,7 @@ test("Yahoo candles forward absolute history while Twelve retains adjusted=none"
   assert.equal(yahooOptions.from.toISOString(), "2024-01-01T00:00:00.000Z");
   assert.equal(yahooOptions.to.toISOString(), "2024-02-01T00:00:00.000Z");
   assert.equal(yahooRes.payload.data.status, "fresh");
+  assert.equal(yahooRes.payload.data.refreshMode, "forced");
 
   let adjustmentMode = null;
   const twelveReq = { query: { instrumentId: instrument.instrumentId, interval: "1day", adjusted: "none" } };
@@ -59,6 +61,21 @@ test("Yahoo candles forward absolute history while Twelve retains adjusted=none"
   assert.equal(twelveRes.statusCode, 200);
   assert.equal(twelveRes.payload.data.status, "stored");
   assert.equal(adjustmentMode, "none");
+});
+
+test("Yahoo candle reads are local-only by default", async () => {
+  let yahooCalled = false;
+  const req = { query: { instrumentId: instrument.instrumentId, interval: "1day" } };
+  const res = response({
+    config: { market: { provider: "yahoo" } },
+    marketDataService: { fetchYahooBars: async () => { yahooCalled = true; } },
+    dailyCandleService: { query: () => [{ instrumentId: instrument.instrumentId }] },
+  });
+
+  await getCandles(req, res, (error) => { throw error; });
+  assert.equal(yahooCalled, false);
+  assert.equal(res.payload.data.status, "stored");
+  assert.equal(res.payload.data.refreshMode, "local");
 });
 
 test("candle history rejects an unbounded single from/to boundary", async () => {
@@ -76,8 +93,8 @@ test("candle history rejects an unbounded single from/to boundary", async () => 
   assert.equal(yahooCalled, false);
 });
 
-test("Yahoo candles expose incomplete provider coverage as partial", async () => {
-  const req = { query: { instrumentId: instrument.instrumentId, interval: "1day" } };
+test("forced Yahoo candles expose incomplete provider coverage as partial", async () => {
+  const req = { query: { instrumentId: instrument.instrumentId, interval: "1day", force: "1" } };
   const res = response({
     config: { market: { provider: "yahoo" } },
     marketDataService: { fetchYahooBars: async () => ({ complete: false, stale: false, error: { code: "YAHOO_INCOMPLETE_DATA" } }) },

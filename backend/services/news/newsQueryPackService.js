@@ -125,20 +125,32 @@ function formatFinancialQueryTerm(value) {
   return /[^A-Za-z0-9]/.test(normalized) ? `"${normalized}"` : normalized;
 }
 
-function buildBoundedOrQuery(terms = [], maxLength = FINANCIAL_QUERY_MAX_LENGTH) {
+function buildBoundedOrQueryPlan(terms = [], maxLength = FINANCIAL_QUERY_MAX_LENGTH) {
   const limit = normalizeFinancialQueryLimit(maxLength);
-  const formatted = [...new Set(terms.map(formatFinancialQueryTerm).filter(Boolean))];
+  const seen = new Set();
+  const formatted = terms.map((term) => ({ term, formatted: formatFinancialQueryTerm(term) })).filter(({ formatted: value }) => {
+    if (!value || seen.has(value)) return false;
+    seen.add(value);
+    return true;
+  });
   const accepted = [];
 
-  for (const term of formatted) {
-    const candidate = [...accepted, term].join(" OR ");
+  for (const entry of formatted) {
+    const candidate = [...accepted.map(({ formatted: value }) => value), entry.formatted].join(" OR ");
     if (candidate.length > limit) {
       continue;
     }
-    accepted.push(term);
+    accepted.push(entry);
   }
 
-  return accepted.join(" OR ");
+  return {
+    query: accepted.map(({ formatted: value }) => value).join(" OR "),
+    acceptedTerms: accepted.map(({ term }) => term)
+  };
+}
+
+function buildBoundedOrQuery(terms = [], maxLength = FINANCIAL_QUERY_MAX_LENGTH) {
+  return buildBoundedOrQueryPlan(terms, maxLength).query;
 }
 
 function normalizeFinancialTickers(tickers = []) {
@@ -147,34 +159,64 @@ function normalizeFinancialTickers(tickers = []) {
     .filter((ticker) => ticker && /^[A-Z0-9.^=:_-]+$/.test(ticker)))];
 }
 
-function buildCorporateWatchlistQuery(tickers, maxLength) {
+function rotateFinancialTickers(tickers, offset = 0) {
+  if (!tickers.length) return [];
+  const parsed = Number.parseInt(String(offset ?? 0), 10);
+  const start = Number.isFinite(parsed) ? ((parsed % tickers.length) + tickers.length) % tickers.length : 0;
+  return [...tickers.slice(start), ...tickers.slice(0, start)];
+}
+
+function buildCorporateWatchlistQueryPlan(tickers, maxLength, tickerOffset = 0) {
   const normalizedTickers = normalizeFinancialTickers(tickers);
+  const rotatedTickers = rotateFinancialTickers(normalizedTickers, tickerOffset);
   const tickerBudget = normalizedTickers.length ? Math.max(16, Math.floor(maxLength * 0.3)) : 0;
-  const tickerQuery = tickerBudget ? buildBoundedOrQuery(normalizedTickers, tickerBudget) : "";
+  const tickerPlan = tickerBudget ? buildBoundedOrQueryPlan(rotatedTickers, tickerBudget) : { query: "", acceptedTerms: [] };
+  const tickerQuery = tickerPlan.query;
+  const queriedTickers = tickerPlan.acceptedTerms;
   const syntaxBudget = tickerQuery ? "() AND ()".length : 2;
   const corporateQuery = buildBoundedOrQuery(FINANCIAL_QUERY_TERMS.corporate, Math.max(1, maxLength - tickerQuery.length - syntaxBudget));
   if (!corporateQuery) {
-    return "";
+    return { query: "", queriedTickers: [], omittedTickers: normalizedTickers, tickerOffset: Number(tickerOffset) || 0 };
   }
 
   const corporateClause = `(${corporateQuery})`;
-  return tickerQuery ? `(${tickerQuery}) AND ${corporateClause}` : corporateClause;
+  return {
+    query: tickerQuery ? `(${tickerQuery}) AND ${corporateClause}` : corporateClause,
+    queriedTickers,
+    omittedTickers: normalizedTickers.filter((ticker) => !queriedTickers.includes(ticker)),
+    tickerOffset: Number(tickerOffset) || 0
+  };
 }
 
-export function buildFinancialNewsQueryPacks(
-  { marketTickers = [], watchlistTickers = [], maxQueryLength = FINANCIAL_QUERY_MAX_LENGTH } = {}
-) {
+export function buildFinancialNewsQueryPlan({
+  marketTickers = [],
+  watchlistTickers = [],
+  maxQueryLength = FINANCIAL_QUERY_MAX_LENGTH,
+  tickerOffset = 0
+} = {}) {
   const boundedLength = normalizeFinancialQueryLimit(maxQueryLength);
   const tickers = Array.isArray(watchlistTickers) && watchlistTickers.length
     ? watchlistTickers
     : marketTickers;
+  const corporate = buildCorporateWatchlistQueryPlan(tickers, boundedLength, tickerOffset);
 
   return {
-    macro: buildBoundedOrQuery(FINANCIAL_QUERY_TERMS.macro, boundedLength),
-    market: buildBoundedOrQuery(FINANCIAL_QUERY_TERMS.market, boundedLength),
-    "corporate-watchlist": buildCorporateWatchlistQuery(tickers, boundedLength),
-    regulatory: buildBoundedOrQuery(FINANCIAL_QUERY_TERMS.regulatory, boundedLength)
+    packs: {
+      macro: buildBoundedOrQuery(FINANCIAL_QUERY_TERMS.macro, boundedLength),
+      market: buildBoundedOrQuery(FINANCIAL_QUERY_TERMS.market, boundedLength),
+      "corporate-watchlist": corporate.query,
+      regulatory: buildBoundedOrQuery(FINANCIAL_QUERY_TERMS.regulatory, boundedLength)
+    },
+    corporateCoverage: {
+      queriedTickers: corporate.queriedTickers,
+      omittedTickers: corporate.omittedTickers,
+      tickerOffset: corporate.tickerOffset
+    }
   };
+}
+
+export function buildFinancialNewsQueryPacks(options = {}) {
+  return buildFinancialNewsQueryPlan(options).packs;
 }
 
 function deriveLegacyEditorialPacks(rawValue = {}) {

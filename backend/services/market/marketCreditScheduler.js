@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
-import { isExchangeSessionOpen, isMarketOpenEt } from "./marketSessionService.js";
+import { sessionPolicyResolver } from "./sessionPolicyResolver.js";
 
 export const TWELVE_BASIC_POLICY = Object.freeze({
   declaredDailyLimit: 800,
@@ -25,12 +25,8 @@ function nextMinuteMs(nowMs) { return (Math.floor(nowMs / 60_000) + 1) * 60_000;
 function nextDayMs(nowMs) { const date = new Date(nowMs); return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + 1); }
 function tierRank(tier) { return { hot: 0, normal: 1, background: 2 }[tier] ?? 1; }
 export function isInstrumentSessionEligible(instrument, now = new Date()) {
-  if (instrument?.assetType === "crypto" || instrument?.sessionPolicy === "24x7") return true;
-  if (instrument?.sessionPolicy === "nyse-equities") return isMarketOpenEt(now);
-  if (instrument?.sessionPolicy === "exchange-hours" && ["equity", "etf", "fund", "index"].includes(instrument?.assetType)) {
-    return isExchangeSessionOpen(now, instrument.timezone || "America/New_York");
-  }
-  return false;
+  const session = sessionPolicyResolver.resolve(instrument, now);
+  return session.automaticIngestionSupported && session.eligible;
 }
 
 export function calculateTwelveCost(symbolCount, policy = TWELVE_BASIC_POLICY) {
@@ -45,7 +41,7 @@ export function calculateMinimumSafeIntervalMs({ symbolCount = 7, sessionMinutes
 export function projectDailyCredits(instruments = [], policy = TWELVE_BASIC_POLICY, { equitySessionMinutes = 390 } = {}) {
   const byInstrument = instruments.map((instrument) => {
     const intervalMinutes = Math.max(1, Number(instrument.minRefreshIntervalMs || 60_000) / 60_000);
-    const activeMinutes = instrument.assetType === "crypto" || instrument.sessionPolicy === "24x7" ? 1_440 : equitySessionMinutes;
+    const activeMinutes = sessionPolicyResolver.projectedActiveMinutes(instrument, { cashSessionMinutes: equitySessionMinutes });
     const cycles = Math.ceil(activeMinutes / intervalMinutes);
     return { instrumentId: instrument.instrumentId, canonicalSymbol: instrument.canonicalSymbol, cycles, credits: cycles * calculateTwelveCost(1, { ...policy, costPerOperation: 0 }) };
   });

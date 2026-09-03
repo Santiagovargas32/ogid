@@ -296,9 +296,11 @@ export class YahooRequestQueue {
     const nowMs = nowMilliseconds(this.now());
     if (scope != null) {
       const normalizedScope = normalizeScope(scope);
-      const remainingMs = Math.max(0, Number(this.cooldowns.get(normalizedScope) || 0) - nowMs);
-      if (remainingMs === 0) this.cooldowns.delete(normalizedScope);
-      return remainingMs;
+      const scopedRemainingMs = Math.max(0, Number(this.cooldowns.get(normalizedScope) || 0) - nowMs);
+      const globalRemainingMs = normalizedScope === "global" ? 0 : Math.max(0, Number(this.cooldowns.get("global") || 0) - nowMs);
+      if (scopedRemainingMs === 0) this.cooldowns.delete(normalizedScope);
+      if (globalRemainingMs === 0 && normalizedScope !== "global") this.cooldowns.delete("global");
+      return Math.max(scopedRemainingMs, globalRemainingMs);
     }
     let maximum = 0;
     for (const key of [...this.cooldowns.keys()]) maximum = Math.max(maximum, this.#cooldownRemainingMs(key));
@@ -311,6 +313,7 @@ export class YahooRequestQueue {
     const normalizedScope = normalizeScope(scope);
     const cooldownUntil = nowMilliseconds(this.now()) + cooldownMs;
     this.cooldowns.set(normalizedScope, Math.max(Number(this.cooldowns.get(normalizedScope) || 0), cooldownUntil));
+    this.cooldowns.set("global", Math.max(Number(this.cooldowns.get("global") || 0), cooldownUntil));
     this.metrics.rateLimited += 1;
     this.#operationMetrics(normalizedScope).rateLimited += 1;
     error.retryAfterMs = Math.max(yahooRetryAfterMs(error), cooldownMs);

@@ -4,6 +4,8 @@ import { aggregateClosedCandles, buildMarketConditionSeries, CANDLE_ROLLUP_METHO
 
 const continuous = { instrumentId: "crypto-test", sessionPolicy: "24x7", timezone: "UTC", exchange: "CCC" };
 const equity = { instrumentId: "equity-test", sessionPolicy: "nyse-equities", timezone: "America/New_York", exchange: "NYSE" };
+const future = { instrumentId: "future-cl", canonicalSymbol: "CL=F", assetType: "future", sessionPolicy: "exchange-hours", timezone: "America/New_York", exchange: "NYMEX" };
+const currency = { instrumentId: "currency-eurusd", canonicalSymbol: "EURUSD=X", assetType: "currency", sessionPolicy: "24x7", timezone: "UTC", exchange: "CCY" };
 
 function candle(openTime, { interval = "5min", instrument = continuous, open = 100, high = 102, low = 99, close = 101, volume = 10, source = "fixture", dataMode = "observed" } = {}) {
   const duration = { "5min": 300_000, "15min": 900_000 }[interval];
@@ -91,6 +93,37 @@ test("overnight exchange closures are not gaps while continuous instruments rema
   assert.deepEqual(detectCandleGaps(exchangeSeries, { interval: "5min", instrument: equity }), []);
   const continuousSeries = [candle("2026-07-13T23:55:00.000Z"), candle("2026-07-14T00:05:00.000Z")];
   assert.equal(detectCandleGaps(continuousSeries, { interval: "5min", instrument: continuous })[0].missingCandles, 1);
+});
+
+test("CL=F provider maintenance and FX weekend closures are not candle gaps", () => {
+  const futuresSeries = [
+    candle("2026-08-03T20:55:00.000Z", { instrument: future }),
+    candle("2026-08-03T22:00:00.000Z", { instrument: future })
+  ];
+  const fxSeries = [
+    candle("2026-08-07T20:55:00.000Z", { instrument: currency }),
+    candle("2026-08-09T21:00:00.000Z", { instrument: currency })
+  ];
+  assert.deepEqual(detectCandleGaps(futuresSeries, { interval: "5min", instrument: future }), []);
+  assert.deepEqual(detectCandleGaps(fxSeries, { interval: "5min", instrument: currency }), []);
+});
+
+test("CL=F rollups exclude provider maintenance and retain partial-policy quality", () => {
+  const beforeBreak = sequence({ start: "2026-08-03T20:45:00.000Z", count: 3, instrument: future });
+  const maintenance = candle("2026-08-03T21:00:00.000Z", { instrument: future });
+  const afterBreak = sequence({ start: "2026-08-03T22:00:00.000Z", count: 3, instrument: future });
+  const result = aggregateClosedCandles([...beforeBreak, maintenance, ...afterBreak], {
+    sourceInterval: "5min",
+    targetInterval: "15min",
+    instrument: future,
+    asOf: "2026-08-03T22:15:00.000Z"
+  });
+  assert.equal(result.candles.length, 2);
+  assert.equal(result.quality.outsideSessionCandles, 1);
+  assert.equal(result.quality.gapDetected, false);
+  assert.equal(result.quality.status, "partial");
+  assert.equal(result.quality.sessionCalendar, "provider_futures_hours_approximation");
+  assert.equal(result.quality.sessionPolicyPartial, true);
 });
 
 test("weekend exchange candles are excluded with an explicit calendar limitation", () => {

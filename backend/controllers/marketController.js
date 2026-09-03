@@ -271,15 +271,17 @@ export async function getCandles(req, res, next) {
   if (yahooBacked && adjustmentMode !== "splits") return res.status(400).json({ ok: false, error: { code: "UNSUPPORTED_ADJUSTMENT", message: "Yahoo candle data supports adjusted=splits only; adjusted=none is unavailable." } });
   const from = req.query.from ? new Date(req.query.from) : null; const to = req.query.to ? new Date(req.query.to) : null;
   if (Boolean(from) !== Boolean(to) || (from && !Number.isFinite(from.getTime())) || (to && !Number.isFinite(to.getTime())) || (from && to && from >= to)) return res.status(400).json({ ok: false, error: { code: "INVALID_RANGE", message: "from/to must define a valid bounded range." } });
+  const forceRefresh = yahooBacked && ["1", "true"].includes(String(req.query.force || "").trim().toLowerCase());
   let marketDataStatus = null;
   let marketDataError = null;
-  if (yahooBacked) {
+  if (forceRefresh) {
     try {
       const dataset = await res.app.locals.marketDataService.fetchYahooBars(instrument.providerSymbols.yahoo, {
         period: resolveCandlePeriod({ interval, from, to, limit }),
         interval: { "1day": "1d", "1h": "1h", "30min": "30m", "15min": "15m", "5min": "5m" }[interval],
         from,
         to,
+        force: true,
         allowStale: true
       });
       marketDataStatus = dataset.stale ? "stale" : dataset.complete === false ? "partial" : "fresh";
@@ -293,7 +295,7 @@ export async function getCandles(req, res, next) {
     }
   }
   const candles = res.app.locals.dailyCandleService.query({ instrumentId, interval, adjustmentMode, from: from?.toISOString(), to: to?.toISOString(), limit });
-  return res.json(mapResponse({ instrumentId, interval, adjusted: adjustmentMode, from: from?.toISOString() || null, to: to?.toISOString() || null, limit, status: marketDataStatus || (candles.length ? "stored" : "empty"), error: marketDataError, candles }));
+  return res.json(mapResponse({ instrumentId, interval, adjusted: adjustmentMode, from: from?.toISOString() || null, to: to?.toISOString() || null, limit, refreshMode: forceRefresh ? "forced" : "local", status: marketDataStatus || (candles.length ? "stored" : "empty"), error: marketDataError, candles }));
 }
 
 export function getCandleMetrics(_req, res) { return res.json(mapResponse({ intraday: res.app.locals.intradayCandleService?.getMetrics?.() || null })); }

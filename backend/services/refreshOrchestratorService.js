@@ -116,6 +116,7 @@ class RefreshOrchestratorService {
     this.marketCycleTelemetry = createCycleTelemetry();
     this.newsLaneOffset = 0;
     this.financialQueryPackOffset = 0;
+    this.financialTickerOffset = 0;
     if (!this.isMarketEnabled()) {
       this.markMarketTelemetryDisabled();
     }
@@ -381,14 +382,24 @@ class RefreshOrchestratorService {
       const financialPackKeys = ["macro", "market", "corporate-watchlist", "regulatory"];
       const financialQueryPackKey = financialPackKeys[this.financialQueryPackOffset % financialPackKeys.length];
       if (queryLane === "financial") this.financialQueryPackOffset += 1;
+      const financialTickerOffset = this.financialTickerOffset;
       const newsResult = await fetchRawNews({
         ...this.config.news,
         pageSize,
         countries: countryFilter,
         queryLane,
         financialQueryPackKey,
+        financialTickerOffset,
         allowExhaustedProviders: options.allowExhaustedProviders === true
       });
+      if (queryLane === "financial" && financialQueryPackKey === "corporate-watchlist") {
+        const tickerCount = Math.max(1, this.config.news?.marketTickers?.length || 0);
+        const coveredCounts = Object.values(newsResult.sourceMeta?.financialTickerCoverageByProvider || {})
+          .map((coverage) => Number(coverage?.queriedTickers?.length || 0))
+          .filter((count) => count > 0);
+        const rotationStep = coveredCounts.length ? Math.min(...coveredCounts) : 1;
+        this.financialTickerOffset = (this.financialTickerOffset + rotationStep) % tickerCount;
+      }
       const normalizedNews = normalizeArticles(newsResult.articles, newsResult.sourceMeta?.provider || "aggregated");
       const newsBranches = awarenessCollectionEnabled
         ? partitionNewsArticles(normalizedNews)
@@ -448,6 +459,7 @@ class RefreshOrchestratorService {
         queryLane,
         awarenessMode,
         financialQueryPackKey: queryLane === "financial" ? financialQueryPackKey : null,
+        financialTickerOffset: queryLane === "financial" && financialQueryPackKey === "corporate-watchlist" ? financialTickerOffset : null,
         branchCounts: {
           geopolitical: newsBranches.geopolitical.length,
           financial: newsBranches.financial.length,

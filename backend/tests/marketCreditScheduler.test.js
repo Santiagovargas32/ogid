@@ -53,7 +53,7 @@ test("equity respects market session while crypto remains 24/7", () => {
   assert.equal(isInstrumentSessionEligible(instrument("btc", "hot", { assetType: "crypto", sessionPolicy: "24x7" }), saturday), true);
 });
 
-test("dynamic cash instruments use their exchange timezone while unsupported futures remain explicit", () => {
+test("SPY uses exchange hours while CL=F remains eligible under provider futures hours", () => {
   const duringNewYorkSession = new Date("2026-07-13T15:00:00.000Z");
   assert.equal(isInstrumentSessionEligible(instrument("spy", "hot", {
     assetType: "etf",
@@ -69,7 +69,33 @@ test("dynamic cash instruments use their exchange timezone while unsupported fut
     assetType: "future",
     sessionPolicy: "exchange-hours",
     timezone: "America/New_York"
-  }), duringNewYorkSession), false);
+  }), duringNewYorkSession), true);
+});
+
+test("BTC-USD stays 24x7 while FX is 24x5 and futures respect the provider maintenance window", () => {
+  const saturday = new Date("2026-08-08T15:00:00.000Z");
+  const mondayMaintenance = new Date("2026-08-03T21:30:00.000Z");
+  const mondayReopen = new Date("2026-08-03T22:30:00.000Z");
+  assert.equal(isInstrumentSessionEligible(instrument("btc", "hot", {
+    canonicalSymbol: "BTC-USD",
+    assetType: "crypto",
+    sessionPolicy: "24x7",
+    timezone: "UTC"
+  }), saturday), true);
+  assert.equal(isInstrumentSessionEligible(instrument("fx", "hot", {
+    canonicalSymbol: "EURUSD=X",
+    assetType: "currency",
+    sessionPolicy: "24x7",
+    timezone: "UTC"
+  }), saturday), false);
+  const future = instrument("future", "hot", {
+    canonicalSymbol: "CL=F",
+    assetType: "future",
+    sessionPolicy: "exchange-hours",
+    timezone: "America/New_York"
+  });
+  assert.equal(isInstrumentSessionEligible(future, mondayMaintenance), false);
+  assert.equal(isInstrumentSessionEligible(future, mondayReopen), true);
 });
 
 test("Retry-After blocks new leases until the indicated time", () => {

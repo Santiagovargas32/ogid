@@ -863,6 +863,8 @@ export async function fetchDailyCandles(config = {}) {
       symbols,
       outputsize: config.outputsize,
       period: config.period,
+      from: config.from,
+      to: config.to,
       adjustmentMode: config.adjustmentMode || "splits",
       interval,
       timeoutMs: config.timeoutMs,

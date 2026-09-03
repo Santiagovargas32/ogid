@@ -25,7 +25,7 @@ test("intraday ingestion queries only hot instruments and retains an open candle
   globalThis.fetch = async (input) => { requestedUrl = String(input); const payload = Object.fromEntries(listEnabledInstruments(1).map((instrument) => [instrument.providerSymbols.twelve, { meta: { symbol: instrument.providerSymbols.twelve, currency: "USD" }, values: [{ datetime: "2026-07-13 11:00:00", open: "101", high: "103", low: "100", close: "102", volume: "10" }, { datetime: "2026-07-13 11:00:00", open: "101", high: "104", low: "100", close: "103", volume: "11" }, { datetime: "2026-07-13 10:30:00", open: "100", high: "102", low: "99", close: "101", volume: "20" }] }])); return new Response(JSON.stringify(payload), { status: 200 }); };
   try {
     const scheduler = new MarketCreditScheduler({ now: () => nowMs }); const store = new DailyCandleStore({ rootDir: mkdtempSync(join(tmpdir(), "intraday-hot-")), rolloutBatch: 3, intervals: ["15min"] }); await store.hydrate(); const service = new IntradayCandleService({ store, marketConfig: config(scheduler), now: () => new Date(nowMs) });
-    const result = await service.runScheduled(); assert.equal(result.status, "ok"); assert.match(requestedUrl, /interval=15min/); assert.match(requestedUrl, /outputsize=500/); assert.doesNotMatch(requestedUrl, /LDOS|HII|XLE|BTC/); assert.equal(scheduler.snapshot().consumedDay, 6); assert.equal(store.query({ instrumentId: gd.instrumentId, interval: "15min" }).length, 1); assert.equal(service.openCandles.size, 6); assert.equal(result.metrics.candlesStored, 6); assert.equal(result.metrics.intradayCredits, 6); assert.equal(result.metrics.bootstrapInstruments, 6);
+    const hotCount = service.enabledInstruments().length; const result = await service.runScheduled(); assert.equal(result.status, "ok"); assert.match(requestedUrl, /interval=15min/); assert.match(requestedUrl, /outputsize=500/); assert.doesNotMatch(requestedUrl, /LDOS|HII|XLE|BTC/); assert.equal(scheduler.snapshot().consumedDay, hotCount); assert.equal(store.query({ instrumentId: gd.instrumentId, interval: "15min" }).length, 1); assert.equal(service.openCandles.size, hotCount); assert.equal(result.metrics.candlesStored, hotCount); assert.equal(result.metrics.intradayCredits, hotCount); assert.equal(result.metrics.bootstrapInstruments, hotCount);
   } finally { globalThis.fetch = originalFetch; }
 });
 
@@ -44,7 +44,7 @@ test("bootstrap uses 500 candles once and subsequent polling returns to the boun
     assert.match(requestedUrls[0], /outputsize=500/);
     assert.doesNotMatch(requestedUrls[1], /outputsize=500/);
     assert.ok(Number(new URL(requestedUrls[1]).searchParams.get("outputsize")) <= 100);
-    assert.equal(service.getMetrics().bootstrapInstruments, 6);
+    assert.equal(service.getMetrics().bootstrapInstruments, service.enabledInstruments().length);
   } finally { globalThis.fetch = originalFetch; }
 });
 
@@ -122,6 +122,6 @@ test("partial intraday response persists valid instruments without discarding th
     assert.equal(result.status, "partial");
     assert.equal(result.metrics.candlesStored, 1);
     assert.equal(store.query({ instrumentId: gd.instrumentId, interval: "15min" }).length, 1);
-    assert.equal(scheduler.snapshot().consumedDay, 6);
+    assert.equal(scheduler.snapshot().consumedDay, service.enabledInstruments().length);
   } finally { globalThis.fetch = originalFetch; }
 });

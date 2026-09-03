@@ -224,6 +224,8 @@ export async function fetchYahooDailyCandles({
   outputsize = 365,
   interval = "1day",
   period = null,
+  from = null,
+  to = null,
   marketDataService = null,
   force = false,
   timestamp = new Date().toISOString(),
@@ -253,6 +255,8 @@ export async function fetchYahooDailyCandles({
   const ensured = await getMarketDataService(marketDataService).ensureMarketData(requestedSymbols, {
     period: resolvedPeriod,
     interval: yahooInterval,
+    from,
+    to,
     force,
     allowStale: true,
   });
