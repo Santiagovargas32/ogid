@@ -1,10 +1,9 @@
 import { candleIntervalMs } from "./canonicalCandle.js";
+import { sessionPolicyResolver } from "./sessionPolicyResolver.js";
 
-export const CANDLE_ROLLUP_METHOD_VERSION = "candle-rollup-v1";
+export const CANDLE_ROLLUP_METHOD_VERSION = "candle-rollup-v2";
 export const MARKET_CONDITION_INTERVALS = Object.freeze({ 15: "5min", 60: "15min", 240: "1h", 1440: "1h" });
 
-const EQUITY_SESSION_OPEN_MINUTE = 9 * 60 + 30;
-const EQUITY_SESSION_CLOSE_MINUTE = 16 * 60;
 const SUPPORTED_ROLLUPS = Object.freeze({ "5min:15min": 3, "15min:1h": 4 });
 
 function finite(value) { return Number.isFinite(Number(value)); }
@@ -17,32 +16,6 @@ function candleStatus(candle) {
   if (candle?.dataMode === "stale" || candle?.quality === "stale-if-error" || candle?.provenance?.stale === true) return "stale";
   if (candle?.dataMode !== "observed" || !["valid", "derived-valid", undefined, null].includes(candle?.quality)) return "partial";
   return "observed";
-}
-
-function localParts(timestamp, timeZone) {
-  try {
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone: timeZone || "UTC",
-      hour12: false,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      weekday: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit"
-    }).formatToParts(new Date(timestamp));
-    const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-    return {
-      date: `${map.year}-${map.month}-${map.day}`,
-      weekday: map.weekday,
-      hour: Number(map.hour) % 24,
-      minute: Number(map.minute),
-      second: Number(map.second)
-    };
-  } catch {
-    return null;
-  }
 }
 
 function validMarketCandle(candle, interval) {
@@ -70,26 +43,21 @@ function normalizeClosedSeries(candles, { interval, asOf }) {
   return { values, rejectedCandles, openCandles, duplicateCandles };
 }
 
-function sessionDescriptor(candle, instrument) {
-  if (instrument?.sessionPolicy === "24x7" || candle?.session === "24x7") return { kind: "24x7", id: "24x7", minute: null };
-  const local = localParts(candle.openTime, instrument?.timezone);
-  if (!local) return null;
-  return { kind: "exchange", id: local.date, minute: local.hour * 60 + local.minute, second: local.second, eligible: ["Mon", "Tue", "Wed", "Thu", "Fri"].includes(local.weekday) };
+function effectiveInstrument(candle, instrument) {
+  if (instrument?.sessionPolicy || instrument?.assetType) return instrument;
+  return { ...(instrument || {}), sessionPolicy: candle?.session || null };
 }
 
 function isSessionCandle(candle, instrument) {
-  const session = sessionDescriptor(candle, instrument);
-  return session?.kind === "24x7" || Boolean(session?.eligible && session.minute >= EQUITY_SESSION_OPEN_MINUTE && session.minute < EQUITY_SESSION_CLOSE_MINUTE);
+  return sessionPolicyResolver.resolveCandle(effectiveInstrument(candle, instrument), candle?.openTime).eligible;
 }
 
 function gapBetween(previous, current, { interval, instrument }) {
-  const expectedMs = candleIntervalMs(interval); if (!expectedMs) return null;
-  const previousSession = sessionDescriptor(previous, instrument); const currentSession = sessionDescriptor(current, instrument);
-  if (!previousSession || !currentSession) return { reason: "session_unresolved", after: previous.closeTime, before: current.openTime, missingCandles: null };
-  if (previousSession.kind === "exchange" && (!previousSession.eligible || !currentSession.eligible || previousSession.id !== currentSession.id)) return null;
-  const delta = Date.parse(current.openTime) - Date.parse(previous.openTime);
-  if (delta <= expectedMs) return null;
-  return { reason: "missing_candles", after: previous.closeTime, before: current.openTime, missingCandles: Math.max(1, Math.round(delta / expectedMs) - 1), session: currentSession.id };
+  const intervalMs = candleIntervalMs(interval); if (!intervalMs) return null;
+  return sessionPolicyResolver.gapBetween(previous, current, {
+    intervalMs,
+    instrument: effectiveInstrument(previous, instrument)
+  });
 }
 
 export function detectCandleGaps(candles = [], { interval = "5min", instrument = null } = {}) {
@@ -101,18 +69,20 @@ export function detectCandleGaps(candles = [], { interval = "5min", instrument =
   return gaps;
 }
 
-function bucketDescriptor(candle, { targetInterval, instrument }) {
-  const openMs = Date.parse(candle.openTime); const targetMs = candleIntervalMs(targetInterval);
-  const session = sessionDescriptor(candle, instrument);
-  if (!session || !targetMs) return null;
-  if (session.kind === "24x7") {
-    const startMs = Math.floor(openMs / targetMs) * targetMs;
-    return { key: `24x7:${startMs}`, startMs, expectedEndMs: startMs + targetMs, expectedMinutes: targetMs / 60_000, sessionId: "24x7", partialSessionBucket: false };
-  }
-  if (!session.eligible || session.minute < EQUITY_SESSION_OPEN_MINUTE || session.minute >= EQUITY_SESSION_CLOSE_MINUTE) return null;
-  const targetMinutes = targetMs / 60_000; const offsetMinutes = session.minute - EQUITY_SESSION_OPEN_MINUTE; const bucketIndex = Math.floor(offsetMinutes / targetMinutes); const bucketStartMinute = EQUITY_SESSION_OPEN_MINUTE + bucketIndex * targetMinutes; const expectedMinutes = Math.min(targetMinutes, EQUITY_SESSION_CLOSE_MINUTE - bucketStartMinute); const minuteRemainder = session.minute - bucketStartMinute;
-  const startMs = openMs - (minuteRemainder * 60 + (session.second || 0)) * 1_000 - new Date(candle.openTime).getUTCMilliseconds();
-  return { key: `${session.id}:${bucketIndex}`, startMs, expectedEndMs: startMs + expectedMinutes * 60_000, expectedMinutes, sessionId: session.id, partialSessionBucket: expectedMinutes < targetMinutes };
+function bucketDescriptor(candle, { sourceInterval, targetInterval, instrument }) {
+  return sessionPolicyResolver.rollupBucket(candle, effectiveInstrument(candle, instrument), {
+    sourceIntervalMs: candleIntervalMs(sourceInterval),
+    targetIntervalMs: candleIntervalMs(targetInterval)
+  });
+}
+
+function sessionQuality(instrument, candles = []) {
+  const effective = effectiveInstrument(candles[0], instrument);
+  const quality = sessionPolicyResolver.quality(effective);
+  return {
+    ...quality,
+    sessionPolicy: instrument?.sessionPolicy || candles[0]?.session || quality.policyId
+  };
 }
 
 function sameSeries(candles) {
@@ -166,14 +136,14 @@ export function aggregateClosedCandles(candles = [], { sourceInterval = "5min", 
   const asOfIso = iso(asOf); if (!asOfIso) throw new TypeError("invalid-candle-rollup-as-of");
   const normalized = normalizeClosedSeries(candles, { interval: sourceInterval, asOf: asOfIso }); const eligibleValues = normalized.values.filter((candle) => isSessionCandle(candle, instrument)); const outsideSessionCandles = normalized.values.length - eligibleValues.length; const baseGaps = detectCandleGaps(eligibleValues, { interval: sourceInterval, instrument }); const buckets = new Map();
   for (const candle of eligibleValues) {
-    const descriptor = bucketDescriptor(candle, { targetInterval, instrument });
+    const descriptor = bucketDescriptor(candle, { sourceInterval, targetInterval, instrument });
     if (!descriptor) continue;
     const current = buckets.get(descriptor.key) || { descriptor, candles: [] }; current.candles.push(candle); buckets.set(descriptor.key, current);
   }
   const derived = []; const incompleteBuckets = [];
   for (const { descriptor, candles: values } of buckets.values()) {
     values.sort((left, right) => Date.parse(left.openTime) - Date.parse(right.openTime));
-    const expectedCount = Math.round(descriptor.expectedMinutes / (candleIntervalMs(sourceInterval) / 60_000)); const expectedOpenTimes = Array.from({ length: expectedCount }, (_, index) => descriptor.startMs + index * candleIntervalMs(sourceInterval)); const actualOpenTimes = new Set(values.map((candle) => Date.parse(candle.openTime))); const missingOpenTimes = expectedOpenTimes.filter((timestamp) => !actualOpenTimes.has(timestamp)); const fullyClosed = descriptor.expectedEndMs <= Date.parse(asOfIso); const compatible = sameSeries(values);
+    const expectedOpenTimes = descriptor.expectedOpenTimes; const expectedCount = expectedOpenTimes.length; const actualOpenTimes = new Set(values.map((candle) => Date.parse(candle.openTime))); const missingOpenTimes = expectedOpenTimes.filter((timestamp) => !actualOpenTimes.has(timestamp)); const fullyClosed = descriptor.expectedEndMs <= Date.parse(asOfIso); const compatible = sameSeries(values);
     if (!fullyClosed || values.length !== expectedCount || missingOpenTimes.length || !compatible) {
       incompleteBuckets.push({
         openTime: new Date(descriptor.startMs).toISOString(),
@@ -188,7 +158,7 @@ export function aggregateClosedCandles(candles = [], { sourceInterval = "5min", 
     }
     derived.push(buildDerivedCandle(values, descriptor, { sourceInterval, targetInterval, instrument }));
   }
-  derived.sort((left, right) => Date.parse(left.openTime) - Date.parse(right.openTime)); const gaps = [...baseGaps, ...incompleteBuckets.filter((bucket) => bucket.reason !== "bucket_open").map((bucket) => ({ reason: bucket.reason, after: bucket.openTime, before: bucket.closeTime, missingCandles: Math.max(0, bucket.expectedCandles - bucket.observedCandles), session: bucket.session }))]; const dataStatus = eligibleValues.length ? worstStatus(eligibleValues.map(candleStatus)) : "insufficient_data"; const status = !derived.length ? "insufficient_data" : gaps.length || normalized.rejectedCandles || outsideSessionCandles ? dataStatus === "observed" ? "partial" : dataStatus : dataStatus;
+  const session = sessionQuality(instrument, normalized.values); derived.sort((left, right) => Date.parse(left.openTime) - Date.parse(right.openTime)); const gaps = [...baseGaps, ...incompleteBuckets.filter((bucket) => bucket.reason !== "bucket_open").map((bucket) => ({ reason: bucket.reason, after: bucket.openTime, before: bucket.closeTime, missingCandles: Math.max(0, bucket.expectedCandles - bucket.observedCandles), session: bucket.session }))]; const dataStatus = eligibleValues.length ? worstStatus(eligibleValues.map(candleStatus)) : "insufficient_data"; const status = !derived.length ? "insufficient_data" : gaps.length || normalized.rejectedCandles || outsideSessionCandles || session.sessionPolicyPartial ? dataStatus === "observed" ? "partial" : dataStatus : dataStatus;
   return {
     methodVersion: CANDLE_ROLLUP_METHOD_VERSION,
     sourceInterval,
@@ -207,9 +177,10 @@ export function aggregateClosedCandles(candles = [], { sourceInterval = "5min", 
       rejectedCandles: normalized.rejectedCandles,
       duplicateCandles: normalized.duplicateCandles,
       outsideSessionCandles,
-      sessionPolicy: instrument?.sessionPolicy || normalized.values[0]?.session || null,
-      sessionCalendar: instrument?.sessionPolicy === "24x7" ? "continuous_utc" : "weekday_exchange_hours_approximation",
-      limitations: instrument?.sessionPolicy === "24x7" ? [] : ["Exchange holidays and early closes require an explicit calendar."]
+      sessionPolicy: session.sessionPolicy,
+      sessionCalendar: session.sessionCalendar,
+      sessionPolicyPartial: session.sessionPolicyPartial,
+      limitations: session.limitations
     }
   };
 }
@@ -218,10 +189,10 @@ export function buildMarketConditionSeries(baseCandles = [], { windowMin = 240, 
   const selectedInterval = MARKET_CONDITION_INTERVALS[Number(windowMin)];
   if (!selectedInterval) throw new TypeError(`unsupported-market-condition-window:${windowMin}`);
   const asOfIso = iso(asOf); if (!asOfIso) throw new TypeError("invalid-market-condition-series-as-of");
-  const normalized = normalizeClosedSeries(baseCandles, { interval: "5min", asOf: asOfIso }); const eligibleValues = normalized.values.filter((candle) => isSessionCandle(candle, instrument)); const outsideSessionCandles = normalized.values.length - eligibleValues.length; const baseGaps = detectCandleGaps(eligibleValues, { interval: "5min", instrument });
+  const normalized = normalizeClosedSeries(baseCandles, { interval: "5min", asOf: asOfIso }); const eligibleValues = normalized.values.filter((candle) => isSessionCandle(candle, instrument)); const outsideSessionCandles = normalized.values.length - eligibleValues.length; const baseGaps = detectCandleGaps(eligibleValues, { interval: "5min", instrument }); const session = sessionQuality(instrument, normalized.values);
   if (selectedInterval === "5min") {
-    const dataStatus = eligibleValues.length ? worstStatus(eligibleValues.map(candleStatus)) : "insufficient_data"; const status = eligibleValues.length && (baseGaps.length || normalized.rejectedCandles || outsideSessionCandles) && dataStatus === "observed" ? "partial" : dataStatus;
-    return { methodVersion: CANDLE_ROLLUP_METHOD_VERSION, windowMin: Number(windowMin), interval: "5min", candles: eligibleValues, gaps: baseGaps, quality: { status, gapDetected: baseGaps.length > 0, inputCandles: baseCandles.length, closedCandles: normalized.values.length, outputCandles: eligibleValues.length, openCandles: normalized.openCandles, rejectedCandles: normalized.rejectedCandles, duplicateCandles: normalized.duplicateCandles, outsideSessionCandles, sessionPolicy: instrument?.sessionPolicy || normalized.values[0]?.session || null, sessionCalendar: instrument?.sessionPolicy === "24x7" ? "continuous_utc" : "weekday_exchange_hours_approximation", limitations: instrument?.sessionPolicy === "24x7" ? [] : ["Exchange holidays and early closes require an explicit calendar."] } };
+    const dataStatus = eligibleValues.length ? worstStatus(eligibleValues.map(candleStatus)) : "insufficient_data"; const status = eligibleValues.length && (baseGaps.length || normalized.rejectedCandles || outsideSessionCandles || session.sessionPolicyPartial) && dataStatus === "observed" ? "partial" : dataStatus;
+    return { methodVersion: CANDLE_ROLLUP_METHOD_VERSION, windowMin: Number(windowMin), interval: "5min", candles: eligibleValues, gaps: baseGaps, quality: { status, gapDetected: baseGaps.length > 0, inputCandles: baseCandles.length, closedCandles: normalized.values.length, outputCandles: eligibleValues.length, openCandles: normalized.openCandles, rejectedCandles: normalized.rejectedCandles, duplicateCandles: normalized.duplicateCandles, outsideSessionCandles, sessionPolicy: session.sessionPolicy, sessionCalendar: session.sessionCalendar, sessionPolicyPartial: session.sessionPolicyPartial, limitations: session.limitations } };
   }
   const fifteenMinute = aggregateClosedCandles(eligibleValues, { sourceInterval: "5min", targetInterval: "15min", instrument, asOf: asOfIso });
   const baseInputQuality = { inputCandles: baseCandles.length, baseClosedCandles: eligibleValues.length, openCandles: normalized.openCandles, rejectedCandles: normalized.rejectedCandles, duplicateCandles: normalized.duplicateCandles, outsideSessionCandles }; const fifteenStatus = outsideSessionCandles && fifteenMinute.quality.status === "observed" ? "partial" : fifteenMinute.quality.status;

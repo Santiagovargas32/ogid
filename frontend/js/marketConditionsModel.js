@@ -26,6 +26,16 @@ const AVAILABILITY_REASON_ALIASES = Object.freeze({
   outside_intraday_limit: "outside_intraday_limit",
   outside_limit: "outside_intraday_limit",
   intraday_limit: "outside_intraday_limit",
+  queued: "queued",
+  acquisition_queued: "queued",
+  pending_bootstrap: "pending_bootstrap",
+  bootstrap_pending: "pending_bootstrap",
+  backfilling: "pending_bootstrap",
+  provider_cooldown: "provider_cooldown",
+  rate_limited: "provider_cooldown",
+  retry_after: "provider_cooldown",
+  session_policy_partial: "session_policy_partial",
+  partial_session_policy: "session_policy_partial",
   warming_up: "warming_up",
   warmup: "warming_up",
   insufficient_closed_candles: "warming_up",
@@ -50,6 +60,22 @@ const AVAILABILITY_REASON_DETAILS = Object.freeze({
   outside_intraday_limit: Object.freeze({
     label: "Outside intraday limit",
     message: "This instrument is outside the configured intraday analysis limit."
+  }),
+  queued: Object.freeze({
+    label: "Queued",
+    message: "This instrument is waiting in the intraday acquisition queue for available provider capacity."
+  }),
+  pending_bootstrap: Object.freeze({
+    label: "Preparing history",
+    message: "Initial local observed 5-minute candle coverage is still being collected for this instrument."
+  }),
+  provider_cooldown: Object.freeze({
+    label: "Provider cooldown",
+    message: "Intraday acquisition is paused temporarily after the market-data provider requested a cooldown."
+  }),
+  session_policy_partial: Object.freeze({
+    label: "Session policy partial",
+    message: "The trading-session policy is only partially known, so freshness and gap interpretation remain provisional."
   }),
   warming_up: Object.freeze({
     label: "Warming up",
@@ -179,6 +205,16 @@ export function normalizeAvailability(value, { quality = {}, symbol = {} } = {})
       not_scheduled: "not_scheduled",
       unscheduled: "not_scheduled",
       outside_intraday_limit: "not_scheduled",
+      queued: "queued",
+      acquisition_queued: "queued",
+      pending_bootstrap: "pending_bootstrap",
+      bootstrap_pending: "pending_bootstrap",
+      backfilling: "pending_bootstrap",
+      provider_cooldown: "provider_cooldown",
+      rate_limited: "provider_cooldown",
+      retry_after: "provider_cooldown",
+      session_policy_partial: "session_policy_partial",
+      partial_session_policy: "session_policy_partial",
       ready: "enabled",
       warming_up: "enabled",
       no_5m_history: "enabled",
@@ -408,7 +444,7 @@ export function normalizeMarketConditions(payload = {}) {
 
   return {
     schemaVersion: text(source.schemaVersion, "market-conditions-snapshot-v1"),
-    methodVersion: text(source.methodVersion, "market-conditions-v1.1"),
+    methodVersion: text(source.methodVersion, "market-conditions-v1.2"),
     generatedAt,
     revisions: isRecord(source.revisions) ? { ...source.revisions } : {},
     window: {

@@ -22,7 +22,7 @@ OGID is a local web app for monitoring geopolitical OSINT signals and their pote
 - WebSocket live updates (`/ws`) for snapshot/update/heartbeat, plus admin-visible connection diagnostics.
 - Market module (`yahoo-finance2 -> router-stale -> synthetic-fallback`):
   - server-side Yahoo quotes, symbol search and OHLCV through pinned `yahoo-finance2@4.0.0`
-  - dynamic persisted watchlist (up to seven instruments); no production symbol catalog is hardcoded
+  - dynamic persisted watchlist without a fixed instrument cap; no production symbol catalog is hardcoded
   - low-concurrency queue, request deduplication, timeout, retry/backoff and stale local data on transient failures
   - Twelve Data remains a backward-compatible optional provider, not the default
   - stale quote reuse before deterministic fallback
@@ -110,7 +110,6 @@ MARKET_STALE_TTL_MS=14400000
 MARKET_REQUEST_RESERVE=1
 MARKET_ACTIVE_INTERVAL_MS=300000
 MARKET_OFFHOURS_INTERVAL_MS=1800000
-MARKET_INTRADAY_CANDLES_MAX_INSTRUMENTS=6
 IMPACT_WINDOW_MIN=120
 LOG_LEVEL=info
 ```
@@ -127,7 +126,7 @@ Polling uses HTTPS host allowlisting, conditional requests, a 9-second timeout, 
 
 `GET /api/intel/awareness-snapshot` accepts `domain`, `kinds`, `status`, `countries`, `instrumentIds`, `from`, `to` and `limit`. Its additive `awareness-v1` response contains `upcoming`, `recent`, source health and quality. WebSocket bootstrap snapshots add the same projection, while later changes use `awareness:update:v1` with monotonic revisions. Financial-only events feed market awareness and never country military-risk scoring; scheduled events provide timing/countdown only, and market-reaction studies continue to use `publishedAt` rather than `scheduledAt`. Events use an atomic JSON snapshot plus a twelve-month JSONL revision audit. Poll results use the separate `AWARENESS_POLL_AUDIT_FILE` JSONL, are compacted daily to a rolling seven-day window and expose only aggregates/last diagnostics through the admin endpoint.
 
-Deploy awareness for seven days in `shadow` before promotion. Promote a source only after verifying stable structure and attribution, correct event times, at least 95% successful polls and no false coordinates. Then use `visible` with calendar/releases and one hot 15-minute instrument; expand to three and six only after 48 healthy hours at each stage. Roll back immediately with `AWARENESS_MODE=off` and `MARKET_INTRADAY_CANDLES_ENABLED=0`; the legacy geopolitical pipeline and its persisted contracts remain available without a data migration.
+Deploy awareness for seven days in `shadow` before promotion. Promote a source only after verifying stable structure and attribution, correct event times, at least 95% successful polls and no false coordinates. Then use `visible` with calendar/releases and expand market coverage through the adaptive acquisition queue while observing provider health. Roll back immediately with `AWARENESS_MODE=off` and `MARKET_INTRADAY_CANDLES_ENABLED=0`; the legacy geopolitical pipeline and its persisted contracts remain available without a data migration.
 
 `MARKET_TICKERS` is an optional initial selection. The Market Quotes dialog discovers candidates with one Yahoo search by symbol or company. A selected candidate is verified once with a Yahoo quote when the watchlist is saved, then persisted with its metadata. Only that selection feeds quotes, OHLCV, predictions and news-impact analysis. Accepted search result types are equities, ETFs, mutual funds, indices, currencies, cryptocurrencies and futures. Provider symbols preserve Yahoo notation (for example `NQ=F`, `^GSPC`, `EURUSD=X`, `BTC-USD` and `BRK.B`) and selected symbols survive restart in `data/market/watchlist-selection.json`.
 
@@ -135,13 +134,15 @@ AI enrichment is an additive consumer of the normalized, selected intelligence c
 
 Search is limited server-side to 30 requests per client per minute; this is an internal abuse guard, not a declared Yahoo quota. Successful identical searches are cached for five minutes. An upstream Yahoo `429` is not retried immediately: it opens a global cooldown (at least 60 seconds), and the search API returns `503 MARKET_SEARCH_PROVIDER_RATE_LIMITED` with `Retry-After`. The UI deduplicates an identical in-flight search and preserves existing results/watchlist entries during the cooldown. An existing schema-v1 watchlist is migrated from the local snapshot and revalidated with Yahoo; failures remain explicit.
 
-OHLCV uses Yahoo `chart()` server-side and is normalized to UTC `{symbol, source, timestamp, open, high, low, close, volume}`. Data is upserted under `data/market/candles`; daily cache TTL is six hours and intraday TTL is 15–60 minutes. The public candle route preserves its existing contract and adds `status: fresh|partial|stale|stored|empty` plus a sanitized degradation error when applicable. Historical `from` and `to` boundaries must be supplied together; incomplete provider coverage is persisted but never promoted to a fresh cache hit.
+OHLCV uses Yahoo `chart()` server-side and is normalized to UTC `{symbol, source, timestamp, open, high, low, close, volume}`. Data is upserted under `data/market/candles`; daily cache TTL is six hours and intraday TTL is 15–60 minutes. The public candle route reads local storage by default and preserves `status: fresh|partial|stale|stored|empty` plus a sanitized degradation error when applicable. An explicit authenticated `force=1` request may refresh Yahoo before reading. Historical `from` and `to` boundaries must be supplied together; incomplete provider coverage is persisted but never promoted to a fresh cache hit.
 
-Supported Yahoo intervals are `5min`, `15min`, `30min`, `1h` and `1day`; the internal module also supports `1wk` and `1mo`. Long intraday combinations are rejected before any upstream request. Scheduled intraday ingestion remains feature-flagged with `MARKET_INTRADAY_CANDLES_ENABLED=1` and is capped at six selected hot instruments through `MARKET_INTRADAY_CANDLES_MAX_INSTRUMENTS`.
+Supported Yahoo intervals are `5min`, `15min`, `30min`, `1h` and `1day`; the internal module also supports `1wk` and `1mo`. Long intraday combinations are rejected before any upstream request. Scheduled intraday ingestion remains feature-flagged with `MARKET_INTRADAY_CANDLES_ENABLED=1`; every selected verified instrument enters the acquisition universe, while provider concurrency, cooldown and session eligibility determine when each one is refreshed.
 
-Deterministic Market Conditions uses only normalized news, public `active` Awareness events, the dynamic watchlist, quotes and locally persisted closed candles. Its `market-conditions-v1.1` index is decision support rather than a probability, price forecast or Buy/Sell/Hold recommendation. The four analysis windows are 15 minutes, 1 hour, 4 hours and 24 hours. Stored 5-minute candles are rolled up locally for the longer windows; the endpoint never contacts a market or news provider. Missing inputs remain `null`, synthetic inputs do not produce scores, and partial or stale inputs cannot be presented as favorable conditions. Each symbol exposes additive `availability` diagnostics, separate from `quality`, so a closed session, stale local data, absent 5-minute history and the six-instrument limit remain distinguishable without fabricating a score. Existing market impact, analytics, prediction and WebSocket contracts remain available for rollback.
+Yahoo quotes remain a multi-symbol request. Yahoo `chart()` accepts one symbol, so an eligible intraday sweep requires at most one physical chart request per selected symbol; those requests share the existing concurrency-three queue, in-flight deduplication, fair ordering and global `429` cooldown. Crypto uses a continuous `24x7` calendar, currencies use `24x5`, and futures use provider-hours semantics. Futures without a verified product calendar remain ingestible but are marked `session_policy_partial`; their common CME-style maintenance window is an explicit approximation.
 
-For rollout, explicitly set `MARKET_INTRADAY_CANDLES_ENABLED=1` and `MARKET_INTRADAY_CANDLES_INTERVAL=5min`. The first enabled intraday cycle performs a bounded bootstrap of at most 500 candles per hot instrument, then returns to the existing 15-minute polling cadence. Keep the initial selection to one or two hot instruments, observe coverage and gaps for 48 hours, and expand gradually to the existing six-instrument cap.
+Deterministic Market Conditions uses only normalized news, public `active` Awareness events, the dynamic watchlist, quotes and locally persisted closed candles. Its `market-conditions-v1.2` index is decision support rather than a probability, price forecast or Buy/Sell/Hold recommendation. The four analysis windows are 15 minutes, 1 hour, 4 hours and 24 hours. Stored 5-minute candles are rolled up locally for the longer windows; the endpoint never contacts a market or news provider. Missing inputs remain `null`, synthetic inputs do not produce scores, and partial or stale inputs cannot be presented as favorable conditions. Every selected symbol is returned with additive `availability` diagnostics, separate from `quality`, so a closed session, provider cooldown, stale local data, absent 5-minute history and an incomplete session policy remain distinguishable without fabricating a score. Existing market impact, analytics, prediction and WebSocket contracts remain available for rollback.
+
+For rollout, explicitly set `MARKET_INTRADAY_CANDLES_ENABLED=1` and `MARKET_INTRADAY_CANDLES_INTERVAL=5min`. The acquisition coordinator bootstraps every selected instrument fairly, then requests only the missing incremental range on the existing 15-minute polling cadence. There is no membership cap: monitor physical Yahoo calls, cooldowns, sweep duration, coverage and gaps while the queue adapts to provider health.
 
 News-to-Price Coupling v2 is calculated locally from normalized news and persisted canonical candles. It reports temporal association and observed returns, never causality; optional benchmarks must be supplied as verified `instrumentId` values.
 
@@ -255,7 +256,7 @@ Sanitized JSON and Markdown reports are written under `backend/reports/`. They c
 - `GET /api/market/instruments/search?q=Microsoft&limit=10`
 - `GET /api/market/watchlist`
 - `PUT /api/market/watchlist` with `{ "instrumentIds": ["..."] }` (authenticated mutation)
-- `GET /api/market/candles?instrumentId=<dynamic-id>&interval=1day&limit=100&adjusted=splits`
+- `GET /api/market/candles?instrumentId=<dynamic-id>&interval=1day&limit=100&adjusted=splits` (local-only by default; authenticated `force=1` refreshes upstream)
 - `GET /api/market/candles/metrics`
 - `GET /api/market/indicators?instrumentId=us-equity-general-dynamics&interval=1day&adjusted=splits`
 - `POST /api/market/candles/backfill` (authenticated mutation)

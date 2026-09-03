@@ -57,7 +57,7 @@ test("server keeps market off-hours strategy and provider budgets from config", 
   assert.equal(runtime.config.apiLimits.yahooDailyBudget, 150);
 });
 
-test("server wires intraday availability settings into Market Conditions", () => {
+test("server wires intraday cadence into Market Conditions without a symbol cap", () => {
   const runtime = createAppServer({
     disableBackgroundRefresh: true,
     market: {
@@ -67,13 +67,12 @@ test("server wires intraday availability settings into Market Conditions", () =>
       intradayCandles: {
         enabled: false,
         interval: "5min",
-        pollIntervalMs: 1_200_000,
-        maxInstruments: 4
+        pollIntervalMs: 1_200_000
       }
     }
   });
 
   assert.equal(runtime.marketConditionsService.intradayCandlesEnabled, false);
   assert.equal(runtime.marketConditionsService.pollIntervalMs, 1_200_000);
-  assert.equal(runtime.marketConditionsService.maxInstruments, 4);
+  assert.equal("maxInstruments" in runtime.marketConditionsService, false);
 });

@@ -116,8 +116,11 @@ test("Yahoo provider rejects malformed public codes and redacts secret-bearing m
 });
 
 test("Yahoo candle adapter maps normalized bars into the legacy candle contract", async () => {
+  let requestedOptions = null;
   const marketDataService = {
-    ensureMarketData: async () => ({
+    ensureMarketData: async (_symbols, options) => {
+      requestedOptions = options;
+      return ({
       data: {
         GD: {
           symbol: "GD",
@@ -128,11 +131,14 @@ test("Yahoo candle adapter maps normalized bars into the legacy candle contract"
         },
       },
       errors: [],
-    }),
+    }); },
   };
-  const result = await fetchYahooDailyCandles({ symbols: ["GD"], interval: "1day", outputsize: 5, marketDataService });
+  const result = await fetchYahooDailyCandles({ symbols: ["GD"], interval: "1day", outputsize: 5, from: "2026-07-14T00:00:00.000Z", to: "2026-07-16T00:00:00.000Z", force: true, marketDataService });
   assert.deepEqual(result.returnedSymbols, ["GD"]);
   assert.equal(result.candlesBySymbol.GD.values[0].close, 11);
   assert.equal(result.persistence.inserted, 1);
   assert.equal(result.errors.length, 0);
+  assert.equal(requestedOptions.from, "2026-07-14T00:00:00.000Z");
+  assert.equal(requestedOptions.to, "2026-07-16T00:00:00.000Z");
+  assert.equal(requestedOptions.force, true);
 });

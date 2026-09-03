@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { sessionPolicyResolver } from "./sessionPolicyResolver.js";
 
 const VERIFIED_AT = "2026-07-16";
 const DEFAULT_ROLLOUT_BATCH = 1;
@@ -71,6 +72,10 @@ export function registerInstrument(rawInstrument = {}) {
     symbol,
     providerSymbols.yahoo
   ].map((value) => String(value || "").trim().toUpperCase()).filter(Boolean))];
+  const sessionPolicy = sessionPolicyResolver.canonicalPolicy({
+    assetType,
+    sessionPolicy: rawInstrument.sessionPolicy || existing?.sessionPolicy || "exchange-hours"
+  });
   const instrument = freezeInstrument({
     ...existing,
     ...rawInstrument,
@@ -88,7 +93,7 @@ export function registerInstrument(rawInstrument = {}) {
     refreshTier: rawInstrument.refreshTier || existing?.refreshTier || "background",
     minRefreshIntervalMs: Number(rawInstrument.minRefreshIntervalMs || existing?.minRefreshIntervalMs) || (assetType === "crypto" ? 14_400_000 : 23_400_000),
     verificationStatus: rawInstrument.verificationStatus || existing?.verificationStatus || "verified",
-    sessionPolicy: rawInstrument.sessionPolicy || existing?.sessionPolicy || (["crypto", "currency"].includes(assetType) ? "24x7" : "exchange-hours"),
+    sessionPolicy,
     providerSymbols,
     aliases,
     metadataSource: rawInstrument.metadataSource || existing?.metadataSource || { provider: "yahoo-finance2", verifiedAt: new Date().toISOString() },
@@ -132,7 +137,14 @@ export function applyHotInstrumentSelection(values = [], selectedInstrumentIds =
     ? { ...instrument, refreshTier: "hot", minRefreshIntervalMs: instrument.sessionPolicy === "24x7" ? 14_400_000 : 300_000 }
     : { ...instrument, refreshTier: "background", minRefreshIntervalMs: instrument.sessionPolicy === "24x7" ? 14_400_000 : 23_400_000 });
 }
-export function resolveInstrumentSession(instrument, marketSession = null) { return instrument?.sessionPolicy === "24x7" ? "24x7" : marketSession?.state || marketSession || null; }
+export function resolveInstrumentSession(instrument, marketSession = null) {
+  const policyId = sessionPolicyResolver.canonicalPolicy(instrument);
+  if (policyId === "24x7") return "24x7";
+  const checkedAt = marketSession?.checkedAt;
+  if (!checkedAt && ["nyse-equities", "exchange-hours"].includes(policyId)) return marketSession?.state || marketSession || null;
+  const resolved = sessionPolicyResolver.resolve(instrument, checkedAt || new Date());
+  return resolved.sessionState === "unknown" ? marketSession?.state || marketSession || null : resolved.sessionState;
+}
 export function resolveEnabledInstruments(references = [], rolloutBatch = resolveRolloutBatch()) {
   const enabledIds = new Set(listEnabledInstruments(rolloutBatch).map((instrument) => instrument.instrumentId)); const resolved = []; const rejected = [];
   for (const reference of references) { const instrument = resolveInstrument(reference); if (!instrument || !enabledIds.has(instrument.instrumentId)) { rejected.push(String(reference || "")); continue; } if (!resolved.some((entry) => entry.instrumentId === instrument.instrumentId)) resolved.push(instrument); }

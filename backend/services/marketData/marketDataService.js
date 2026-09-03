@@ -15,6 +15,7 @@ import { MarketDataStoreAdapter } from "./marketDataStore.js";
 import { YahooClient } from "./yahooClient.js";
 import { BoundedCache } from "../shared/boundedCache.js";
 import { getInstrumentByProviderSymbol, listVerifiedInstruments, serializeInstrument } from "../market/instrumentRegistry.js";
+import { sessionPolicyResolver } from "../market/sessionPolicyResolver.js";
 import { sanitizeSensitiveData } from "../../utils/sanitize.js";
 
 const DEFAULT_TTL_BY_INTERVAL = Object.freeze({ "5m": 15 * 60_000, "15m": 15 * 60_000, "30m": 30 * 60_000, "1h": 60 * 60_000, "1d": 6 * 60 * 60_000, "1wk": 12 * 60 * 60_000, "1mo": 24 * 60 * 60_000 });
@@ -97,27 +98,62 @@ function tagSearchResults(results, meta) {
   return values;
 }
 
+function expectedIntradaySlots(range, instrument, intervalMs) {
+  if (!instrument || !(intervalMs > 0)) return [];
+  const startMs = Math.ceil(range.period1.getTime() / intervalMs) * intervalMs;
+  const endMs = range.period2.getTime();
+  const slots = [];
+  for (let timestamp = startMs; timestamp < endMs; timestamp += intervalMs) {
+    if (sessionPolicyResolver.resolve(instrument, timestamp, { intervalMs }).eligible) slots.push(timestamp);
+  }
+  return slots;
+}
+
+function hasUnexpectedIntradayGap(timestamps, instrument, intervalMs) {
+  if (!instrument || !(intervalMs > 0)) return false;
+  for (let index = 1; index < timestamps.length; index += 1) {
+    const previousMs = timestamps[index - 1];
+    const currentMs = timestamps[index];
+    const gap = sessionPolicyResolver.gapBetween({
+      openTime: new Date(previousMs).toISOString(),
+      closeTime: new Date(previousMs + intervalMs).toISOString()
+    }, {
+      openTime: new Date(currentMs).toISOString(),
+      closeTime: new Date(currentMs + intervalMs).toISOString()
+    }, { intervalMs, instrument });
+    if (gap?.reason === "missing_candles") return true;
+  }
+  return false;
+}
+
 function coversRequestedRange(stored, range, symbol) {
   if (!stored?.bars?.length || !stored.from || !stored.to) return false;
   const intervalMs = INTERVAL_MS[range.interval];
   const durationMs = range.period2.getTime() - range.period1.getTime();
   const instrument = getInstrumentByProviderSymbol("yahoo", symbol);
-  const continuousSession = instrument?.sessionPolicy === "24x7";
-  let expectedSlots = intervalMs ? durationMs / intervalMs : 0;
-  if (["5m", "15m", "30m", "1h"].includes(range.interval) && !continuousSession) expectedSlots *= (5 / 7) * (6.5 / 24);
-  else if (range.interval === "1d" && !continuousSession) expectedSlots *= 5 / 7;
+  const policyId = instrument ? sessionPolicyResolver.canonicalPolicy(instrument) : null;
+  const continuousSession = policyId === "24x7";
+  const intraday = ["5m", "15m", "30m", "1h"].includes(range.interval);
+  const expectedSlotTimes = intraday ? expectedIntradaySlots(range, instrument, intervalMs) : [];
+  let expectedSlotCount = intervalMs ? durationMs / intervalMs : 0;
+  if (intraday && expectedSlotTimes.length) expectedSlotCount = expectedSlotTimes.length;
+  else if (intraday && !continuousSession) expectedSlotCount *= (5 / 7) * (6.5 / 24);
+  else if (range.interval === "1d" && !continuousSession) expectedSlotCount *= 5 / 7;
   const minimumCoverageRatio = continuousSession ? 0.65 : 0.75;
-  const minimumBars = expectedSlots <= 1.5 ? 1 : Math.max(2, Math.ceil(expectedSlots * minimumCoverageRatio));
+  const minimumBars = expectedSlotCount <= 1.5 ? 1 : Math.max(2, Math.ceil(expectedSlotCount * minimumCoverageRatio));
   if (stored.bars.length < minimumBars) return false;
   const timestamps = stored.bars.map((bar) => Date.parse(bar.timestamp)).filter(Number.isFinite).sort((left, right) => left - right);
+  if (intraday && hasUnexpectedIntradayGap(timestamps, instrument, intervalMs)) return false;
   const maxGapMs = MAX_GAP_MS_BY_INTERVAL[range.interval] || Infinity;
-  if (timestamps.some((timestamp, index) => index > 0 && timestamp - timestamps[index - 1] > maxGapMs)) return false;
-  const tolerance = RANGE_TOLERANCE_BY_INTERVAL[range.interval] || 0;
+  if (!intraday && timestamps.some((timestamp, index) => index > 0 && timestamp - timestamps[index - 1] > maxGapMs)) return false;
+  const tolerance = intraday && expectedSlotTimes.length ? intervalMs * 2 : RANGE_TOLERANCE_BY_INTERVAL[range.interval] || 0;
   const fromMs = Date.parse(stored.from);
   const toMs = Date.parse(stored.to);
+  const expectedFromMs = expectedSlotTimes[0] ?? range.period1.getTime();
+  const expectedToMs = expectedSlotTimes.at(-1) ?? range.period2.getTime();
   return Number.isFinite(fromMs) && Number.isFinite(toMs)
-    && fromMs <= range.period1.getTime() + tolerance
-    && toMs >= range.period2.getTime() - tolerance;
+    && fromMs <= expectedFromMs + tolerance
+    && toMs >= expectedToMs - tolerance;
 }
 
 export class MarketDataError extends Error {

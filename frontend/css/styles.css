@@ -2329,13 +2329,17 @@ body {
   background: var(--elevated);
 }
 
-.availability-status-warming_up {
+.availability-status-warming_up,
+.availability-status-queued,
+.availability-status-pending_bootstrap,
+.availability-status-provider_cooldown {
   color: #181103;
   background: var(--elevated);
 }
 
 .availability-status-no_5m_history,
-.availability-status-automatic_ingestion_unsupported {
+.availability-status-automatic_ingestion_unsupported,
+.availability-status-session_policy_partial {
   color: #151104;
   background: var(--monitoring);
 }

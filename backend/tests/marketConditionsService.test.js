@@ -132,7 +132,7 @@ function snapshotInput({ instruments = [instrument(1), instrument(2)], series = 
 }
 
 test("valid windows and public thresholds are exact", () => {
-  assert.equal(MARKET_CONDITIONS_METHOD_VERSION, "market-conditions-v1.1");
+  assert.equal(MARKET_CONDITIONS_METHOD_VERSION, "market-conditions-v1.2");
   assert.deepEqual(MARKET_CONDITIONS_WINDOWS, [15, 60, 240, 1_440]);
   for (const value of MARKET_CONDITIONS_WINDOWS) assert.equal(normalizeMarketConditionsWindow(value), value);
   assert.throws(() => normalizeMarketConditionsWindow(120), { code: "INVALID_MARKET_CONDITIONS_WINDOW" });
@@ -320,21 +320,19 @@ test("rollup gaps and excluded candles reduce coverage even when indicators rema
   assert.equal(result.symbols[0].quality.lastCandleAgeMin, 0);
 });
 
-test("watchlist instruments outside the six-instrument intraday cap remain explicit", () => {
-  const instruments = Array.from({ length: 7 }, (_, index) => instrument(index + 1));
-  const series = Object.fromEntries(instruments.slice(0, 6).map((item) => [item.instrumentId, { interval: "5min", candles: candles(item) }]));
+test("all currently followed instruments are analyzed without an intraday universe cap", () => {
+  const instruments = [
+    instrument(1, { instrumentId: "crypto-btc-usd", canonicalSymbol: "BTC-USD", displayName: "Bitcoin USD" }),
+    instrument(2, { instrumentId: "us-etf-spy", canonicalSymbol: "SPY", displayName: "SPDR S&P 500 ETF Trust", assetType: "etf", timezone: "America/New_York", sessionPolicy: "exchange-hours" }),
+    instrument(3, { instrumentId: "us-future-cl", canonicalSymbol: "CL=F", displayName: "Crude Oil Futures", assetType: "future", timezone: "America/New_York", sessionPolicy: "exchange-hours" })
+  ];
+  const series = Object.fromEntries(instruments.map((item) => [item.instrumentId, { interval: "5min", candles: candles(item) }]));
   const result = buildMarketConditionsSnapshot(snapshotInput({ instruments, series }));
-  assert.equal(result.symbols.length, 7);
-  assert.equal(result.diagnostics.analyzedInstruments, 6);
-  assert.equal(result.diagnostics.selectedInstruments, 7);
-  assert.equal(result.symbols[6].operabilityScore, null);
-  assert.equal(result.symbols[6].directionScore, null);
-  assert.equal(result.symbols[6].quality.status, "insufficient_data");
-  assert.deepEqual(result.symbols[6].quality.limitations, ["outside_intraday_limit"]);
-  assert.equal(result.symbols[6].availability.analyzable, false);
-  assert.equal(result.symbols[6].availability.primaryReason, "outside_intraday_limit");
-  assert.equal(result.symbols[6].availability.ingestionState, "not_scheduled");
-  assert.ok(result.quality.limitations.some((item) => item.includes("first 6")));
+  assert.deepEqual(result.symbols.map((item) => item.ticker), ["BTC-USD", "SPY", "CL=F"]);
+  assert.equal(result.diagnostics.analyzedInstruments, 3);
+  assert.equal(result.diagnostics.selectedInstruments, 3);
+  assert.equal(result.symbols.every((item) => !item.availability.reasonCodes.includes("outside_intraday_limit")), true);
+  assert.equal(result.quality.limitations.some((item) => item.includes("intraday limit")), false);
 });
 
 test("closed exchange sessions disable current operability but retain calculable direction context", () => {
@@ -389,9 +387,60 @@ test("window return uses first and last close inside the selected horizon", () =
   assert.equal(result.symbols[0].metrics.windowReturnPct, Number(expected.toFixed(3)));
 });
 
+test("service resolves the complete current watchlist from local series", () => {
+  const instruments = [
+    instrument(1, { instrumentId: "crypto-btc-usd", canonicalSymbol: "BTC-USD", displayName: "Bitcoin USD" }),
+    instrument(2, { instrumentId: "us-etf-spy", canonicalSymbol: "SPY", displayName: "SPDR S&P 500 ETF Trust", assetType: "etf", timezone: "America/New_York", sessionPolicy: "exchange-hours" }),
+    instrument(3, { instrumentId: "us-future-cl", canonicalSymbol: "CL=F", displayName: "Crude Oil Futures", assetType: "future", timezone: "America/New_York", sessionPolicy: "exchange-hours" })
+  ];
+  const resolved = [];
+  const service = new MarketConditionsService({
+    stateManager: {
+      getSnapshot: () => ({
+        meta: { lastRefreshAt: "news-1", dataQuality: {} },
+        market: {
+          revision: "market-1",
+          quotes: Object.fromEntries(instruments.map((item) => [item.canonicalSymbol, { instrumentId: item.instrumentId, dataMode: "observed" }]))
+        },
+        awareness: { mode: "off", revision: 0 },
+        insights: []
+      }),
+      getMarketSignalCorpus: () => []
+    },
+    candleStore: { query: () => { throw new Error("series-resolver-should-own-local-read"); } },
+    marketWatchlistService: { selectedInstruments: () => instruments },
+    now: () => new Date(AS_OF),
+    seriesResolver: ({ instrument: target }) => {
+      resolved.push(target.instrumentId);
+      return { interval: "5min", candles: candles(target) };
+    },
+    intradayCandleService: {
+      getMetrics: () => ({
+        stateRevision: 4,
+        instrumentStates: [
+          { instrumentId: instruments[0].instrumentId, state: "ready" },
+          { instrumentId: instruments[1].instrumentId, state: "queued" },
+          { instrumentId: instruments[2].instrumentId, state: "provider_cooldown", lastAttemptAt: AS_OF, retryAfterMs: 60_000 }
+        ]
+      })
+    },
+    intradayCandlesEnabled: true
+  });
+
+  const result = service.getSnapshot({ windowMin: 15 });
+  assert.deepEqual(resolved, instruments.map((item) => item.instrumentId));
+  assert.deepEqual(result.symbols.map((item) => item.ticker), ["BTC-USD", "SPY", "CL=F"]);
+  assert.equal(result.diagnostics.analyzedInstruments, instruments.length);
+  assert.equal(result.revisions.ingestion, 4);
+  assert.equal(result.symbols[1].availability.ingestionState, "queued");
+  assert.equal(result.symbols[2].availability.ingestionState, "provider_cooldown");
+  assert.equal(result.quality.status, "partial");
+});
+
 test("service cache is revision-aware, clone-safe and performs zero HTTP", () => {
   const target = instrument(1);
   let marketRevision = "market-1";
+  let ingestionRevision = 1;
   const stateManager = {
     getSnapshot: () => ({
       meta: { lastRefreshAt: "news-1", dataQuality: { news: { synthetic: false }, market: { synthetic: false } } },
@@ -408,6 +457,7 @@ test("service cache is revision-aware, clone-safe and performs zero HTTP", () =>
       stateManager,
       candleStore: { query: () => { throw new Error("series-resolver-should-own-local-read"); } },
       marketWatchlistService: { selectedInstruments: () => [target] },
+      intradayCandleService: { getMetrics: () => ({ stateRevision: ingestionRevision, instrumentStates: [] }) },
       now: () => new Date(AS_OF),
       seriesResolver: () => ({ interval: "5min", candles: candles(target) })
     });
@@ -417,6 +467,9 @@ test("service cache is revision-aware, clone-safe and performs zero HTTP", () =>
     const cached = service.getSnapshot({ windowMin: 15 });
     assert.notStrictEqual(cached, first);
     assert.equal(cached.market.stabilityScore, originalScore);
+    ingestionRevision = 2;
+    const ingestionInvalidated = service.getSnapshot({ windowMin: 15 });
+    assert.equal(ingestionInvalidated.revisions.ingestion, 2);
     marketRevision = "market-2";
     const invalidated = service.getSnapshot({ windowMin: 15 });
     assert.equal(invalidated.revisions.market, "market-2");

@@ -5,7 +5,7 @@ import { calculateNewsPriceCouplingV2 } from "./newsPriceCoupling.js";
 import { calculateTechnicalIndicators } from "./technicalIndicators.js";
 
 export const MARKET_CONDITIONS_SCHEMA_VERSION = "market-conditions-snapshot-v1";
-export const MARKET_CONDITIONS_METHOD_VERSION = "market-conditions-v1.1";
+export const MARKET_CONDITIONS_METHOD_VERSION = "market-conditions-v1.2";
 export const MARKET_CONDITIONS_WINDOWS = Object.freeze([15, 60, 240, 1_440]);
 
 const GLOBAL_COMPONENT_WEIGHTS = Object.freeze({ news: 0.35, price: 0.30, events: 0.20, breadth: 0.15 });
@@ -331,6 +331,10 @@ function symbolQuality({ candles, technical, quote, linkedArticles, directionSco
   if (Number(seriesQuality.outsideSessionCandles || 0) > 0) limitations.push("Candles outside the instrument session were excluded.");
   if (incompleteBuckets.length > 0) limitations.push("Incomplete rollup buckets were excluded.");
   if (["partial", "insufficient_data"].includes(candleStatus) && !gapDetected) limitations.push("Intraday candle coverage is partial.");
+  if (availability?.reasonCodes?.includes("pending_bootstrap")) limitations.push("Initial local 5-minute history is still being prepared.");
+  if (availability?.reasonCodes?.includes("queued")) limitations.push("The next intraday acquisition is queued behind provider capacity.");
+  if (availability?.reasonCodes?.includes("provider_cooldown")) limitations.push("The market-data provider is in cooldown; analysis uses retained local observations.");
+  if (availability?.reasonCodes?.includes("session_policy_partial")) limitations.push("Session-aware freshness and gap checks use an approximate provider calendar.");
   const indicatorCount = Object.values(technical?.indicators || {}).filter((indicator) => indicator?.value != null).length;
   if (indicatorCount < 6) limitations.push("Some technical indicators are unavailable.");
   if (!linkedArticles.length) limitations.push("No symbol-linked news was observed in the selected window.");
@@ -384,11 +388,11 @@ export function buildMarketConditionsSnapshot({
   instruments = [],
   quotes = {},
   seriesByInstrument = {},
+  acquisitionByInstrument = {},
   couplings = [],
   countryInsights = [],
   revisions = {},
   sourceQuality = {},
-  analysisLimit = 6,
   pollIntervalMs = 900_000,
   intradayCandlesEnabled = false
 } = {}) {
@@ -397,11 +401,9 @@ export function buildMarketConditionsSnapshot({
   if (!generatedAt) throw Object.assign(new TypeError("asOf must be a valid timestamp."), { code: "INVALID_MARKET_CONDITIONS_AS_OF" });
   const prepared = corpus || buildMarketConditionsCorpus({ articles, awareness, windowMin: resolvedWindow, countries, asOf: generatedAt });
   const allInstruments = instruments || [];
-  const resolvedAnalysisLimit = Math.min(6, Math.max(1, Number(analysisLimit) || 6));
-  const selectedInstruments = allInstruments.slice(0, resolvedAnalysisLimit);
   const symbolInternals = [];
 
-  for (const instrument of selectedInstruments) {
+  for (const instrument of allInstruments) {
     const instrumentId = instrument.instrumentId;
     const ticker = String(instrument.canonicalSymbol || instrument.symbol || "").toUpperCase();
     const entry = seriesByInstrument instanceof Map ? seriesByInstrument.get(instrumentId) : seriesByInstrument[instrumentId];
@@ -410,6 +412,9 @@ export function buildMarketConditionsSnapshot({
     const seriesQuality = Array.isArray(entry) ? {} : entry?.quality || {};
     const seriesGaps = Array.isArray(entry) ? [] : entry?.gaps || [];
     const incompleteBuckets = Array.isArray(entry) ? [] : entry?.incompleteBuckets || [];
+    const acquisitionState = acquisitionByInstrument instanceof Map
+      ? acquisitionByInstrument.get(instrumentId) || null
+      : acquisitionByInstrument[instrumentId] || null;
     const closedCandles = candles.filter((candle) => Date.parse(candle.closeTime) <= Date.parse(generatedAt)).sort((left, right) => Date.parse(left.openTime) - Date.parse(right.openTime));
     const quote = quotes[ticker] || quotes[instrumentId] || {};
     const availability = classifyMarketConditionsAvailability({
@@ -425,6 +430,7 @@ export function buildMarketConditionsSnapshot({
       asOf: generatedAt,
       pollIntervalMs,
       automaticIngestionEnabled: intradayCandlesEnabled,
+      acquisitionState,
       quote
     });
     const syntheticMarket = closedCandles.some(isSynthetic) || isSynthetic(quote);
@@ -439,9 +445,9 @@ export function buildMarketConditionsSnapshot({
       ? round(clamp(finite(reaction.score) ? Number(technicalResult.score) * 0.75 + Number(reaction.score) * 0.25 : technicalResult.score, -100, 100))
       : null;
     const risk = syntheticMarket ? null : priceRisk({ technical, returnValue, lastClose });
-    const linkedArticles = linkedArticlesForInstrument(prepared.articles.filter((article) => !isSynthetic(article)), instrument, selectedInstruments, quotes);
+    const linkedArticles = linkedArticlesForInstrument(prepared.articles.filter((article) => !isSynthetic(article)), instrument, allInstruments, quotes);
     const informationRisk = linkedArticles.length ? newsPressure(linkedArticles, generatedAt, resolvedWindow) : prepared.articles.some((article) => !isSynthetic(article)) ? 0 : null;
-    symbolInternals.push({ instrument, ticker, candles: closedCandles, quote, technical, returnValue, directionScore, technicalComponents: technicalResult.components, reaction, risk, linkedArticles, informationRisk, availability, seriesQuality, seriesGaps, incompleteBuckets });
+    symbolInternals.push({ instrument, ticker, candles: closedCandles, quote, technical, returnValue, directionScore, technicalComponents: technicalResult.components, reaction, risk, linkedArticles, informationRisk, availability, acquisitionState, seriesQuality, seriesGaps, incompleteBuckets });
   }
 
   const newsRisk = newsPressure(prepared.articles, generatedAt, resolvedWindow);
@@ -463,17 +469,18 @@ export function buildMarketConditionsSnapshot({
   const globalScore = finite(priceStability) ? weightedGlobalScore : null;
   const staleInputs = prepared.articles.some(isStale) || prepared.activeEvents.some(isStale) || symbolInternals.some((item) => item.candles.some(isStale) || isStale(item.quote) || item.seriesQuality?.status === "stale" || (finite(item.risk) && item.availability.reasonCodes.includes("stale_local_data")));
   const partialCandleInputs = symbolInternals.some((item) => item.seriesQuality?.status === "partial" || item.seriesQuality?.gapDetected || item.seriesGaps.length || item.incompleteBuckets.length || item.technical?.quality?.gapDetected);
+  const partialAcquisitionInputs = symbolInternals.some((item) => item.availability.reasonCodes.some((reason) => ["queued", "pending_bootstrap", "provider_cooldown", "session_policy_partial"].includes(reason)));
   const syntheticInputs = prepared.articles.some(isSynthetic) || symbolInternals.some((item) => item.candles.some(isSynthetic) || isSynthetic(item.quote)) || sourceQuality.news?.synthetic === true || sourceQuality.market?.synthetic === true;
   const availableComponents = components.filter((component) => finite(component.score)).length;
   const qualityStatus = !finite(globalScore)
     ? syntheticInputs ? "synthetic" : "insufficient_data"
-    : staleInputs ? "stale" : syntheticInputs || partialCandleInputs || availableComponents < components.length || symbolInternals.some((item) => !finite(item.risk)) ? "partial" : "observed";
+    : staleInputs ? "stale" : syntheticInputs || partialCandleInputs || partialAcquisitionInputs || availableComponents < components.length || symbolInternals.some((item) => !finite(item.risk)) ? "partial" : "observed";
   const qualityLimitations = [];
   if (qualityStatus === "synthetic") qualityLimitations.push("Synthetic inputs are excluded from all scores.");
   if (availableComponents < components.length) qualityLimitations.push("One or more market components lack local observed coverage.");
   if (staleInputs) qualityLimitations.push("Stale local inputs retain their numeric values but cannot produce favorable conditions.");
   if (partialCandleInputs) qualityLimitations.push("Intraday gaps or incomplete rollups reduce market coverage.");
-  if (allInstruments.length > resolvedAnalysisLimit) qualityLimitations.push(`Only the first ${resolvedAnalysisLimit} hot instruments are analyzed; remaining watchlist instruments are reported as outside_intraday_limit.`);
+  if (partialAcquisitionInputs) qualityLimitations.push("One or more symbol universes are still queued, bootstrapping, cooling down or using a provisional session calendar.");
 
   const symbols = symbolInternals.map((item) => {
     const operabilityEntries = [
@@ -534,39 +541,6 @@ export function buildMarketConditionsSnapshot({
       }
     };
   });
-  for (const instrument of allInstruments.slice(resolvedAnalysisLimit)) {
-    const ticker = String(instrument.canonicalSymbol || instrument.symbol || "").toUpperCase();
-    const availability = classifyMarketConditionsAvailability({ instrument, windowMin: resolvedWindow, asOf: generatedAt, pollIntervalMs, automaticIngestionEnabled: intradayCandlesEnabled, outsideIntradayLimit: true });
-    symbols.push({
-      instrumentId: instrument.instrumentId,
-      ticker,
-      displayName: instrument.displayName || ticker,
-      assetType: instrument.assetType || null,
-      sector: instrument.sector || null,
-      operabilityScore: null,
-      operabilityBand: "insufficient",
-      directionScore: null,
-      directionBand: "insufficient",
-      pressure: null,
-      metrics: {
-        windowReturnPct: null,
-        sma: null,
-        ema: null,
-        rsi: null,
-        macdHistogram: null,
-        bollingerPosition: null,
-        atrPct: null,
-        realizedVolatilityPct: null,
-        linkedNewsCount: 0,
-        observedCouplingCount: 0
-      },
-      drivers: [],
-      availability,
-      quality: { status: "insufficient_data", coveragePct: 0, lastCandleAt: null, lastCandleAgeMin: null, limitations: ["outside_intraday_limit"] },
-      evidence: { articleIds: [], couplingArticleIds: [], sources: [] }
-    });
-  }
-
   const marketDrivers = components.filter((component) => finite(component.score)).sort((left, right) => left.score - right.score).slice(0, 4).map((component) => ({
     key: component.key,
     label: component.label,
@@ -585,7 +559,8 @@ export function buildMarketConditionsSnapshot({
       market: revisions.market ?? null,
       awareness: revisions.awareness ?? awareness.revision ?? 0,
       watchlist: revisions.watchlist ?? null,
-      candles: revisions.candles ?? null
+      candles: revisions.candles ?? null,
+      ingestion: revisions.ingestion ?? 0
     },
     window: {
       minutes: resolvedWindow,
@@ -628,7 +603,7 @@ export function buildMarketConditionsSnapshot({
       corpusSize: prepared.articles.length,
       deduplicated: prepared.deduplicated,
       activeAwarenessSources: prepared.activeSourceCount,
-      analyzedInstruments: selectedInstruments.length,
+      analyzedInstruments: allInstruments.length,
       selectedInstruments: allInstruments.length
     }
   };
@@ -654,15 +629,15 @@ function selectedInstrumentsFrom({ marketWatchlistService, snapshot }) {
 }
 
 export class MarketConditionsService {
-  constructor({ stateManager, candleStore, marketWatchlistService, newsPriceCouplingService = null, awarenessService = null, now = () => new Date(), seriesResolver = null, maxInstruments = 6, pollIntervalMs = 900_000, intradayCandlesEnabled = false } = {}) {
+  constructor({ stateManager, candleStore, marketWatchlistService, newsPriceCouplingService = null, awarenessService = null, intradayCandleService = null, now = () => new Date(), seriesResolver = null, pollIntervalMs = 900_000, intradayCandlesEnabled = false } = {}) {
     this.stateManager = stateManager;
     this.candleStore = candleStore;
     this.marketWatchlistService = marketWatchlistService;
     this.newsPriceCouplingService = newsPriceCouplingService;
     this.awarenessService = awarenessService;
+    this.intradayCandleService = intradayCandleService;
     this.now = now;
     this.seriesResolver = seriesResolver;
-    this.maxInstruments = Math.min(6, Math.max(1, Number(maxInstruments) || 6));
     this.pollIntervalMs = Number.isFinite(Number(pollIntervalMs)) && Number(pollIntervalMs) > 0 ? Number(pollIntervalMs) : 900_000;
     this.intradayCandlesEnabled = intradayCandlesEnabled === true;
     this.cache = new Map();
@@ -723,12 +698,13 @@ export class MarketConditionsService {
     const snapshot = this.stateManager?.getSnapshot?.() || {};
     const awareness = this.awarenessService?.getSnapshot?.() || snapshot.awareness || {};
     const instruments = selectedInstrumentsFrom({ marketWatchlistService: this.marketWatchlistService, snapshot });
-    const analyzedInstruments = instruments.slice(0, this.maxInstruments);
+    const intradayMetrics = this.intradayCandleService?.getMetrics?.() || {};
+    const acquisitionByInstrument = Object.fromEntries((intradayMetrics.instrumentStates || []).map((state) => [state.instrumentId, state]));
     const articles = this.stateManager?.getMarketSignalCorpus?.() || [];
     const normalizedCountries = [...new Set((countries || []).map((country) => String(country).trim().toUpperCase()).filter(Boolean))].sort();
     const corpus = buildMarketConditionsCorpus({ articles, awareness, windowMin: resolvedWindow, countries: normalizedCountries, asOf });
-    const seriesByInstrument = Object.fromEntries(analyzedInstruments.map((instrument) => [instrument.instrumentId, this.#resolveSeries(instrument, resolvedWindow, asOf)]));
-    const latestCandleRevision = analyzedInstruments.map((instrument) => `${instrument.instrumentId}:${seriesByInstrument[instrument.instrumentId]?.candles?.at(-1)?.closeTime || "none"}`).join("|");
+    const seriesByInstrument = Object.fromEntries(instruments.map((instrument) => [instrument.instrumentId, this.#resolveSeries(instrument, resolvedWindow, asOf)]));
+    const latestCandleRevision = instruments.map((instrument) => `${instrument.instrumentId}:${seriesByInstrument[instrument.instrumentId]?.candles?.at(-1)?.closeTime || "none"}`).join("|");
     const watchlistRevision = instruments.map((instrument) => instrument.instrumentId).join(",");
     const revisions = {
       news: snapshot.meta?.lastRefreshAt || snapshot.meta?.sourceMeta?.revision || null,
@@ -736,12 +712,13 @@ export class MarketConditionsService {
       awareness: awareness.revision || 0,
       watchlist: watchlistRevision,
       candles: latestCandleRevision,
+      ingestion: intradayMetrics.stateRevision ?? 0,
       countryRisk: snapshot.meta?.lastRefreshAt || null
     };
     const minuteBucket = Math.floor(Date.parse(asOf) / 60_000);
     const cacheKey = [resolvedWindow, normalizedCountries.join(","), ...Object.values(revisions).map(revisionKey), minuteBucket].join("::");
     if (this.cache.has(cacheKey)) return structuredClone(this.cache.get(cacheKey));
-    const couplings = this.#buildCouplings({ corpus, instruments: analyzedInstruments, seriesByInstrument, windowMin: resolvedWindow, asOf });
+    const couplings = this.#buildCouplings({ corpus, instruments, seriesByInstrument, windowMin: resolvedWindow, asOf });
     const result = buildMarketConditionsSnapshot({
       windowMin: resolvedWindow,
       asOf,
@@ -751,11 +728,11 @@ export class MarketConditionsService {
       instruments,
       quotes: snapshot.market?.quotes || {},
       seriesByInstrument,
+      acquisitionByInstrument,
       couplings,
       countryInsights: snapshot.insights || [],
       revisions,
       sourceQuality: snapshot.meta?.dataQuality || {},
-      analysisLimit: this.maxInstruments,
       pollIntervalMs: this.pollIntervalMs,
       intradayCandlesEnabled: this.intradayCandlesEnabled
     });

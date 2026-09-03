@@ -1,6 +1,6 @@
 import apiQuotaTracker from "../admin/apiQuotaTrackerService.js";
 import { createLogger } from "../../utils/logger.js";
-import { buildFinancialNewsQueryPacks, normalizeNewsQueryPacks } from "./newsQueryPackService.js";
+import { buildFinancialNewsQueryPacks, buildFinancialNewsQueryPlan, normalizeNewsQueryPacks } from "./newsQueryPackService.js";
 import { fetchGdelt } from "./providers/gdeltProvider.js";
 import { fetchGnews } from "./providers/gnewsProvider.js";
 import { fetchMediastack } from "./providers/mediastackProvider.js";
@@ -450,6 +450,7 @@ export async function fetchAggregatedNews({
   queryPackGroups = null,
   queryLane = "legacy",
   financialQueryPackKey = "macro",
+  financialTickerOffset = 0,
   marketTickers = [],
   language,
   pageSize,
@@ -461,7 +462,7 @@ export async function fetchAggregatedNews({
 }) {
   const normalizedProviders = normalizeProviders(providers);
   const normalizedQueryPacks = resolveNormalizedQueryPacks(queryPacks, marketTickers);
-  const financialQueryPacks = buildFinancialNewsQueryPacks({ marketTickers });
+  const financialQueryPacks = buildFinancialNewsQueryPacks({ marketTickers, tickerOffset: financialTickerOffset });
   const normalizedLane = ["geopolitical", "financial"].includes(queryLane) ? queryLane : "legacy";
   const geopoliticalQueryPacks = normalizedLane === "geopolitical" && queryPackGroups?.editorial
     ? resolveNormalizedQueryPacks(queryPackGroups.editorial, marketTickers)
@@ -480,6 +481,16 @@ export async function fetchAggregatedNews({
   const baseQuery = String(query || "").trim();
   const composedQuery = composeNewsQuery({ query, queryPacks: geopoliticalQueryPacks }) || baseQuery;
   const rateLimitsByProvider = {};
+  const financialQueryPlansByProvider = Object.fromEntries(
+    normalizedProviders.map((providerName) => [
+      providerName,
+      buildFinancialNewsQueryPlan({
+        marketTickers,
+        tickerOffset: financialTickerOffset,
+        maxQueryLength: providerName === "newsapi" ? NEWSAPI_MAX_QUERY_LENGTH : GNEWS_MAX_QUERY_LENGTH
+      })
+    ])
+  );
   const providerRequests = Object.fromEntries(
     normalizedProviders.map((providerName) => [
       providerName,
@@ -488,10 +499,7 @@ export async function fetchAggregatedNews({
         composedQuery,
         queryPacks: normalizedLane === "geopolitical" ? geopoliticalQueryPacks : normalizedQueryPacks,
         queryLane: normalizedLane,
-        financialQuery: (buildFinancialNewsQueryPacks({
-          marketTickers,
-          maxQueryLength: providerName === "newsapi" ? NEWSAPI_MAX_QUERY_LENGTH : GNEWS_MAX_QUERY_LENGTH
-        })[financialQueryPackKey] || financialQueryPacks.macro)
+        financialQuery: (financialQueryPlansByProvider[providerName]?.packs?.[financialQueryPackKey] || financialQueryPacks.macro)
       })
     ])
   );
@@ -710,7 +718,10 @@ export async function fetchAggregatedNews({
         queryTruncatedByProvider,
         rssFeedStatus,
         queryLane: normalizedLane,
-        financialQueryPackKey: normalizedLane === "financial" ? financialQueryPackKey : null
+        financialQueryPackKey: normalizedLane === "financial" ? financialQueryPackKey : null,
+        financialTickerCoverageByProvider: normalizedLane === "financial" && financialQueryPackKey === "corporate-watchlist"
+          ? Object.fromEntries(normalizedProviders.map((providerName) => [providerName, financialQueryPlansByProvider[providerName].corporateCoverage]))
+          : {}
       }
     };
   }
@@ -743,7 +754,10 @@ export async function fetchAggregatedNews({
       queryTruncatedByProvider,
       rssFeedStatus,
       queryLane: normalizedLane,
-      financialQueryPackKey: normalizedLane === "financial" ? financialQueryPackKey : null
+      financialQueryPackKey: normalizedLane === "financial" ? financialQueryPackKey : null,
+      financialTickerCoverageByProvider: normalizedLane === "financial" && financialQueryPackKey === "corporate-watchlist"
+        ? Object.fromEntries(normalizedProviders.map((providerName) => [providerName, financialQueryPlansByProvider[providerName].corporateCoverage]))
+        : {}
     }
   };
 }

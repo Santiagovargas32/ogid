@@ -1097,9 +1097,18 @@ function marketConditionAvailabilityView(symbol) {
     messageParts.push("Scheduled intraday ingestion is disabled.");
   } else if (availability.ingestionState === "not_scheduled") {
     messageParts.push("This instrument is not scheduled for intraday collection.");
+  } else if (availability.ingestionState === "queued") {
+    messageParts.push("Intraday acquisition is queued and will resume when provider capacity is available.");
+  } else if (availability.ingestionState === "pending_bootstrap") {
+    messageParts.push("The initial local 5-minute history is being prepared.");
+  } else if (availability.ingestionState === "provider_cooldown") {
+    messageParts.push("The provider cooldown is temporary; retained local data remains the only analysis input.");
+  } else if (availability.ingestionState === "session_policy_partial") {
+    messageParts.push("Session-aware freshness checks are provisional for this instrument.");
   }
   if (availability.nextEligibleAt) {
-    messageParts.push(`Next eligible session: ${formatDate(availability.nextEligibleAt)}.`);
+    const nextEligibleLabel = availability.ingestionState === "provider_cooldown" ? "Next provider attempt" : "Next eligible session";
+    messageParts.push(`${nextEligibleLabel}: ${formatDate(availability.nextEligibleAt)}.`);
   }
   return {
     className: statusClass,

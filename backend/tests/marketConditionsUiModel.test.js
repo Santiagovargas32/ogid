@@ -165,6 +165,10 @@ test("availability exposes explicit explanations and blocked states cannot leak 
     stale_local_data: "Stale local data",
     no_5m_history: "No 5m history",
     outside_intraday_limit: "Outside intraday limit",
+    queued: "Queued",
+    pending_bootstrap: "Preparing history",
+    provider_cooldown: "Provider cooldown",
+    session_policy_partial: "Session policy partial",
     warming_up: "Warming up",
     automatic_ingestion_unsupported: "Ingestion unsupported"
   };
@@ -200,6 +204,52 @@ test("availability exposes explicit explanations and blocked states cannot leak 
   assert.equal(result.symbols[0].directionScore, null);
   assert.equal(result.symbols[0].pressure, null);
   assert.equal(scoreDisplay(result.symbols[0].operabilityScore), "--");
+});
+
+test("availability preserves acquisition lifecycle states and legacy intraday-limit aliases", () => {
+  const states = ["queued", "pending_bootstrap", "provider_cooldown", "session_policy_partial"];
+  for (const ingestionState of states) {
+    const availability = normalizeAvailability({
+      analyzable: false,
+      primaryReason: ingestionState,
+      reasonCodes: [ingestionState],
+      ingestionState
+    });
+    assert.equal(availability.primaryReason, ingestionState);
+    assert.equal(availability.ingestionState, ingestionState);
+  }
+
+  const legacy = normalizeAvailability({
+    analyzable: false,
+    reason: "outside-limit",
+    ingestion: "outside_intraday_limit"
+  });
+  assert.equal(legacy.primaryReason, "outside_intraday_limit");
+  assert.equal(legacy.ingestionState, "not_scheduled");
+});
+
+test("analyzable provider cooldown remains visually explicit without hiding retained scores", () => {
+  const result = normalizeMarketConditions(payload({
+    symbols: [{
+      ticker: "BTC-USD",
+      operabilityScore: 68,
+      directionScore: 12,
+      pressure: { positive: 12, neutral: 88, negative: 0 },
+      availability: {
+        analyzable: true,
+        primaryReason: "provider_cooldown",
+        reasonCodes: ["provider_cooldown"],
+        sessionState: "continuous",
+        ingestionState: "provider_cooldown"
+      },
+      quality: { status: "partial", coveragePct: 80 }
+    }]
+  }));
+
+  assert.equal(result.symbols[0].availability.primaryReason, "provider_cooldown");
+  assert.equal(result.symbols[0].availability.analyzable, true);
+  assert.equal(result.symbols[0].operabilityScore, 68);
+  assert.equal(result.symbols[0].directionScore, 12);
 });
 
 test("stale availability retains numeric scores but cannot remain favorable", () => {

@@ -84,9 +84,9 @@ test("dynamic market API searches, persists a selection and serves Yahoo-backed 
     assert.deepEqual(update.data.selectedSymbols, ["TSLA"]);
     assert.equal(update.data.instruments[0].sector, "Consumer Cyclical");
 
-    const candlesResponse = await fetch(`${baseUrl}/api/market/candles?instrumentId=${tsla.instrumentId}&interval=1day&limit=20`);
+    const candlesResponse = await fetch(`${baseUrl}/api/market/candles?instrumentId=${tsla.instrumentId}&interval=1day&limit=20&force=1`);
     const candles = await candlesResponse.json();
-    assert.equal(candlesResponse.status, 200);
+    assert.equal(candlesResponse.status, 200, JSON.stringify(candles));
     assert.equal(candles.data.status, "fresh");
     assert.equal(candles.data.candles[0].close, 318);
   } finally {
