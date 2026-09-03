@@ -6,6 +6,7 @@ import test from "node:test";
 import { DailyCandleStore } from "../services/market/dailyCandleStore.js";
 import { IntradayCandleService, resolveIntradayFetchRange } from "../services/market/intradayCandleService.js";
 import { getInstrumentById, registerInstrument } from "../services/market/instrumentRegistry.js";
+import { sessionPolicyResolver } from "../services/market/sessionPolicyResolver.js";
 import { MarketDataService } from "../services/marketData/marketDataService.js";
 import { MarketDataStoreAdapter } from "../services/marketData/marketDataStore.js";
 import { YahooClient } from "../services/marketData/yahooClient.js";
@@ -57,16 +58,20 @@ const selected = [bitcoin, spy, crude].map((instrument) => ({ ...instrument, ref
 
 function barsForRange(symbol, period1, period2) {
   const first = Math.ceil(period1.getTime() / STEP_MS) * STEP_MS;
-  const availableSlots = Math.max(1, Math.floor((period2.getTime() - first) / STEP_MS));
-  const requestedSlots = Math.min(500, availableSlots);
-  const values = [];
-  for (let index = 0; index < requestedSlots; index += 1) {
-    const slot = requestedSlots === 1 ? 0 : Math.round(index * (availableSlots - 1) / (requestedSlots - 1));
-    const timestamp = first + slot * STEP_MS;
-    const offset = values.length / 100;
-    values.push({ date: new Date(timestamp), open: 100 + offset, high: 102 + offset, low: 99 + offset, close: 101 + offset, volume: 1_000 + values.length, symbol });
+  const instrument = selected.find((entry) => entry.providerSymbols.yahoo === symbol);
+  assert.ok(instrument, `missing fixture instrument for ${symbol}`);
+  const eligibleSlots = [];
+  for (let timestamp = first; timestamp < period2.getTime(); timestamp += STEP_MS) {
+    if (sessionPolicyResolver.resolve(instrument, timestamp, { intervalMs: STEP_MS }).eligible) {
+      eligibleSlots.push(timestamp);
+    }
   }
-  return { quotes: values };
+  return {
+    quotes: eligibleSlots.slice(-500).map((timestamp, index) => {
+      const offset = index / 100;
+      return { date: new Date(timestamp), open: 100 + offset, high: 102 + offset, low: 99 + offset, close: 101 + offset, volume: 1_000 + index, symbol };
+    })
+  };
 }
 
 function yahooConfig(marketDataService) {
