@@ -64,7 +64,7 @@ export class AiBudgetService {
     const lease = this.state.reservations?.[leaseId];
     if (!lease) return this.snapshot();
     delete this.state.reservations[leaseId];
-    const resolved = Number.isFinite(Number(actualTokens)) && Number(actualTokens) >= 0
+    const resolved = actualTokens !== null && Number.isFinite(Number(actualTokens)) && Number(actualTokens) >= 0
       ? Number(actualTokens)
       : conservative ? Number(lease.estimatedTokens || 0) : 0;
     this.state.tokensUsed += Math.max(0, Math.ceil(resolved));

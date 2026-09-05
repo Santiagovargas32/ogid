@@ -22,6 +22,15 @@ function nowIso(now) {
   return new Date(now()).toISOString();
 }
 
+function endpointOrigin(value) {
+  try {
+    const url = new URL(value);
+    return ["http:", "https:"].includes(url.protocol) ? url.origin : null;
+  } catch {
+    return null;
+  }
+}
+
 function publicEntry(record, { status = null, refreshStatus = null } = {}) {
   const accepted = ["ready", "stale"].includes(record.status) && record.output;
   return {
@@ -278,7 +287,8 @@ export class AiEnrichmentCoordinator {
     this.subjectRefs.set(subjectRef.subjectKey, {
       ...subjectRef,
       recordId: record.enrichmentId,
-      fallbackRecordId: previousRecord?.output && ["ready", "stale"].includes(previousRecord.status) ? previousRecord.enrichmentId : null
+      fallbackRecordId: previousRecord?.output && ["ready", "stale"].includes(previousRecord.status)
+        ? previousRecord.enrichmentId : previousRef?.fallbackRecordId || null
     });
     this.queue.push({ job, cacheKey, recordId: record.enrichmentId, priority: job.priority });
     this.queue.sort((left, right) => right.priority - left.priority);
@@ -292,9 +302,9 @@ export class AiEnrichmentCoordinator {
     if (this.stopped) return;
     while (this.active < this.maxConcurrency && this.queue.length) {
       const item = this.queue.shift();
-      this.queuedCacheKeys.delete(item.cacheKey);
       this.active += 1;
       void this.#run(item).finally(() => {
+        this.queuedCacheKeys.delete(item.cacheKey);
         this.active -= 1;
         this.#drain();
       });
@@ -423,6 +433,9 @@ export class AiEnrichmentCoordinator {
       activeProvider: this.provider?.name || "none",
       mode: this.mode,
       structuredOutputMode: this.provider?.structuredOutputMode || null,
+      jsonMode: this.provider?.jsonMode || this.config.jsonMode || null,
+      endpoint: endpointOrigin(this.provider?.baseUrl || this.config.baseUrl),
+      apiKeyConfigured: Boolean(String(this.config.apiKey || "").trim()),
       features: [...this.features],
       models: {
         summary: this.provider?.modelForKind?.("article_summary") || null,

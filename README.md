@@ -32,7 +32,7 @@ OGID is a local web app for monitoring geopolitical OSINT signals and their pote
   - correlates geopolitical news signals with ticker price reaction
 - Optional grounded AI enrichment layer:
   - runs after deterministic news/market snapshots and never blocks ingestion or WebSocket publication
-  - supports NVIDIA NIM through an OpenAI-compatible backend endpoint, with strict JSON validation, evidence references, bounded queue and daily request/token budgets
+  - supports NVIDIA NIM and llama.cpp through OpenAI-compatible backend endpoints, with strict JSON validation, evidence references, bounded queue and daily request/token budgets
   - defaults to `AI_PROVIDER=none` and `AI_MODE=off`, producing zero AI calls
 - Frontend controls:
   - country filter chips
@@ -132,6 +132,8 @@ Deploy awareness for seven days in `shadow` before promotion. Promote a source o
 
 AI enrichment is an additive consumer of the normalized, selected intelligence corpus; it does not change RSS source selection, polling, canonical RSS state or deterministic scoring. Configure `NVIDIA_MODEL_SUMMARY`, `NVIDIA_MODEL_REASONING` and `NVIDIA_API_KEY`, start with `AI_MODE=shadow`, and inspect `/api/admin/ai-enrichments`. `NVIDIA_STRUCTURED_OUTPUT_MODE=guided-json` sends the JSON schema at the top level; use `response-format` only for a verified SGLang backend. The adapter never switches formats silently. Promote to `visible` only after reviewing accepted outputs. `headline-only-link-out` sources send only the headline and deterministic metadata to the model. Valid feature names are `article-summary`, `country-insight` and `market-explanation`; the latter two remain independently opt-in through `AI_FEATURES`. Set `AI_MODE=off` or `AI_PROVIDER=none` and restart for immediate rollback. The former `NVIDIA_SUMMARY_MODEL`, `NVIDIA_REASONING_MODEL`, `AI_REQUEST_DAILY_BUDGET` and `AI_TOKEN_DAILY_BUDGET` names remain accepted as compatibility aliases.
 
+For a llama.cpp server reachable over Tailscale, select `AI_PROVIDER=llamacpp` and configure `LLAMACPP_BASE_URL`, `LLAMACPP_API_KEY`, `LLAMACPP_MODEL_SUMMARY`, `LLAMACPP_MODEL_REASONING`, `LLAMACPP_JSON_MODE` and `LLAMACPP_ALLOW_PRIVATE_HTTP`. This provider uses the same coordinator, budgets, cache, validation, persistence and WebSocket projection. The [llama.cpp deployment guide](docs/llamacpp-deployment.md) includes the complete shadow profile, transport contract, opt-in smoke test, Google Cloud/PM2 commands, verification and rollback. Unknown `AI_PROVIDER` values now fail startup explicitly; `none/off` remain the default and perform zero model requests. Edit an existing `.env` manually rather than replacing it with either example.
+
 Search is limited server-side to 30 requests per client per minute; this is an internal abuse guard, not a declared Yahoo quota. Successful identical searches are cached for five minutes. An upstream Yahoo `429` is not retried immediately: it opens a global cooldown (at least 60 seconds), and the search API returns `503 MARKET_SEARCH_PROVIDER_RATE_LIMITED` with `Retry-After`. The UI deduplicates an identical in-flight search and preserves existing results/watchlist entries during the cooldown. An existing schema-v1 watchlist is migrated from the local snapshot and revalidated with Yahoo; failures remain explicit.
 
 OHLCV uses Yahoo `chart()` server-side and is normalized to UTC `{symbol, source, timestamp, open, high, low, close, volume}`. Data is upserted under `data/market/candles`; daily cache TTL is six hours and intraday TTL is 15–60 minutes. The public candle route reads local storage by default and preserves `status: fresh|partial|stale|stored|empty` plus a sanitized degradation error when applicable. An explicit authenticated `force=1` request may refresh Yahoo before reading. Historical `from` and `to` boundaries must be supplied together; incomplete provider coverage is persisted but never promoted to a fresh cache hit.
@@ -174,7 +176,7 @@ cd backend
 npm run market:watchlist:inspect
 ```
 
-The production-safe baseline is documented in `backend/.env.production.example`. It assumes no NewsAPI/GNews credentials, so it uses `NEWS_PROVIDERS=rss`; it disables loopback admin bypass; it starts Awareness in `shadow`; and it limits intraday ingestion to one instrument. Inject the real `ADMIN_API_TOKEN` through the server's secret manager before administrative access is needed.
+The production example is documented in `backend/.env.production.example`. It assumes no NewsAPI/GNews credentials, so it uses `NEWS_PROVIDERS=rss`; it disables loopback admin bypass; it starts Awareness in `shadow`; and it limits intraday ingestion to one instrument. It also includes an explicit llama.cpp shadow profile with a fictitious Tailscale host and empty key that must be replaced locally before use. Set `HOST=127.0.0.1` and `PORT=3000` behind Nginx. Inject the real `ADMIN_API_TOKEN` and model API key only on the server. The general `.env.example` continues to default to AI `none/off`.
 
 The live upstream smoke probe is opt-in and does not run in the normal test suite. Run it from the production host to exercise that host's DNS, TLS and egress path:
 

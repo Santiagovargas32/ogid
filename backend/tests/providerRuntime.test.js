@@ -71,3 +71,26 @@ test("quota consumption survives restart through an atomic state file", () => {
   const second = new ApiQuotaTrackerService({ persistencePath: file }); second.reset({ newsapiDailyLimit: 100 }, { hydrate: true });
   assert.equal(second.getProviderSnapshot("newsapi").units24h, 3);
 });
+
+test("buffered model responses keep the timeout active after HTTP headers", async () => {
+  const runtime = new ProviderRuntime({ fetchImpl: async (_url, { signal }) => new Response(new ReadableStream({
+    start(controller) {
+      signal.addEventListener("abort", () => controller.error(Object.assign(new Error("aborted body"), { name: "AbortError" })), { once: true });
+    }
+  })) });
+  await assert.rejects(runtime.fetch("llamacpp", "https://model.example/v1/chat/completions", {
+    method: "POST", bufferResponse: true, timeoutMs: 10, retries: 0, quotaTracker: unlimitedQuota
+  }), { code: "timeout" });
+  assert.equal(runtime.getMetrics("llamacpp").errors, 1);
+  assert.equal(runtime.getMetrics("llamacpp").success, 0);
+});
+
+test("one failed model attempt counts once toward the circuit threshold", async () => {
+  const runtime = new ProviderRuntime({ failureThreshold: 3, fetchImpl: async () => ok(503) });
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    await assert.rejects(runtime.fetch("llamacpp", "https://model.example", { method: "POST", throwHttpErrors: true, quotaTracker: unlimitedQuota }), { code: "upstream_5xx" });
+    assert.equal(runtime.getCircuitSnapshot("llamacpp").failures, attempt);
+    assert.equal(runtime.getMetrics("llamacpp").errors, attempt);
+    assert.equal(runtime.getCircuitSnapshot("llamacpp").state, attempt === 3 ? "open" : "closed");
+  }
+});
