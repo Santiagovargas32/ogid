@@ -14,7 +14,7 @@ const FEATURE_KINDS = Object.freeze({
 
 function cacheKeyFor(job, provider, model) {
   return createHash("sha256")
-    .update([job.kind, job.subjectId, job.inputHash, provider, model, job.promptVersion, job.schemaVersion].join("|"))
+    .update([job.kind, job.subjectId, job.cacheInputHash || job.inputHash, provider, model, job.promptVersion, job.schemaVersion].join("|"))
     .digest("hex");
 }
 
@@ -69,6 +69,8 @@ export class AiEnrichmentCoordinator {
     this.maxInputChars = Math.max(1_000, Number(config.maxInputChars) || 6_000);
     this.queue = [];
     this.queuedCacheKeys = new Set();
+    this.marketSubjectsInFlight = new Set();
+    this.marketSubjects = new Map();
     this.active = 0;
     this.stopped = false;
     this.subjectRefs = new Map();
@@ -130,7 +132,7 @@ export class AiEnrichmentCoordinator {
       }
     }
 
-    if (this.features.has("market_explanation") && scheduled < this.maxJobsPerCycle) {
+    if (this.features.has("market_explanation")) {
       scheduled += this.#scheduleMarketJobs(snapshot, instruments, this.maxJobsPerCycle - scheduled);
     }
     if (this.features.has("article_summary") && scheduled < this.maxJobsPerCycle) {
@@ -171,10 +173,27 @@ export class AiEnrichmentCoordinator {
 
   #scheduleMarketJobs(snapshot, instruments, limit) {
     let scheduled = 0;
+    const latest = this.store.latestBySubject("market_explanation");
+    const candidates = [];
+    this.marketSubjects.clear();
+    this.lastEligibility.market = {};
     for (const impactItem of snapshot.impact?.items || []) {
-      if (scheduled >= limit) break;
       const instrument = instruments.find((item) => String(item.canonicalSymbol || item.symbol || "").toUpperCase() === String(impactItem.ticker || "").toUpperCase())
         || { instrumentId: impactItem.ticker, canonicalSymbol: impactItem.ticker, displayName: impactItem.ticker };
+      const subjectRef = {
+        subjectKey: `market:${instrument.instrumentId}`,
+        instrumentId: instrument.instrumentId,
+        ticker: impactItem.ticker
+      };
+      this.marketSubjects.set(instrument.instrumentId, subjectRef);
+      // Restore persisted results even when the cycle allowance is only one.
+      if (!this.subjectRefs.has(subjectRef.subjectKey) && latest.has(instrument.instrumentId)) {
+        const record = latest.get(instrument.instrumentId);
+        const [accepted] = this.store.listAccepted({ kind: "market_explanation", subjectIds: [instrument.instrumentId], limit: 1 });
+        this.subjectRefs.set(subjectRef.subjectKey, {
+          ...subjectRef, recordId: record.enrichmentId, fallbackRecordId: accepted?.enrichmentId || null
+        });
+      }
       const job = buildMarketExplanationJob(impactItem, {
         ...(snapshot.market || {}),
         couplingSeries: snapshot.impact?.couplingSeries || []
@@ -187,12 +206,17 @@ export class AiEnrichmentCoordinator {
         continue;
       }
       this.lastEligibility.market[instrument.instrumentId] = { eligible: true };
-      if (this.#enqueue(job, {
-        subjectKey: `market:${instrument.instrumentId}`,
-        instrumentId: instrument.instrumentId,
-        ticker: impactItem.ticker,
-        articleIds: job.validationContext.allowedArticleIds
-      })) scheduled += 1;
+      candidates.push({ job, subjectRef: { ...subjectRef, articleIds: job.validationContext.allowedArticleIds },
+        lastAttemptAt: Date.parse(latest.get(instrument.instrumentId)?.createdAt || "") || 0 });
+    }
+    // Unattempted subjects first, then the least recently attempted. Failures
+    // also rotate, so one unavailable instrument cannot monopolize each cycle.
+    candidates.sort((left, right) => left.lastAttemptAt - right.lastAttemptAt || right.job.priority - left.job.priority);
+    for (const { job, subjectRef } of candidates) {
+      if (this.#enqueue(job, subjectRef, { allowScheduling: scheduled < limit })) scheduled += 1;
+    }
+    for (const subjectKey of this.subjectRefs.keys()) {
+      if (subjectKey.startsWith("market:") && !this.marketSubjects.has(subjectKey.slice("market:".length))) this.subjectRefs.delete(subjectKey);
     }
     return scheduled;
   }
@@ -238,7 +262,8 @@ export class AiEnrichmentCoordinator {
       }));
   }
 
-  #enqueue(job, subjectRef) {
+  #enqueue(job, subjectRef, { allowScheduling = true } = {}) {
+    if (job.kind === "market_explanation" && this.marketSubjectsInFlight.has(job.subjectId)) return false;
     const model = this.provider.modelForKind(job.kind);
     const cacheKey = cacheKeyFor(job, this.provider.name, model);
     const accepted = this.store.findAcceptedByCacheKey(cacheKey);
@@ -247,6 +272,7 @@ export class AiEnrichmentCoordinator {
       this.subjectRefs.set(subjectRef.subjectKey, { ...subjectRef, recordId: accepted.enrichmentId, fallbackRecordId: null });
       return false;
     }
+    if (!allowScheduling) return false;
     if (this.queuedCacheKeys.has(cacheKey)) return false;
     if (this.queue.length + this.active >= this.maxQueueSize) {
       this.metrics.dropped += 1;
@@ -272,6 +298,7 @@ export class AiEnrichmentCoordinator {
       updatedAt: timestamp,
       generatedAt: null,
       inputHash: job.inputHash,
+      ...(job.cacheInputHash ? { cacheInputHash: job.cacheInputHash } : {}),
       cacheKey,
       usage: null,
       requestId: null,
@@ -293,6 +320,7 @@ export class AiEnrichmentCoordinator {
     this.queue.push({ job, cacheKey, recordId: record.enrichmentId, priority: job.priority });
     this.queue.sort((left, right) => right.priority - left.priority);
     this.queuedCacheKeys.add(cacheKey);
+    if (job.kind === "market_explanation") this.marketSubjectsInFlight.add(job.subjectId);
     this.metrics.queued += 1;
     this.updatedAt = timestamp;
     return true;
@@ -305,8 +333,10 @@ export class AiEnrichmentCoordinator {
       this.active += 1;
       void this.#run(item).finally(() => {
         this.queuedCacheKeys.delete(item.cacheKey);
+        if (item.job.kind === "market_explanation") this.marketSubjectsInFlight.delete(item.job.subjectId);
         this.active -= 1;
         this.#drain();
+        this.syncProjection({ broadcast: true });
       });
     }
   }
@@ -400,6 +430,7 @@ export class AiEnrichmentCoordinator {
       articleSummaries: {},
       countryInsights: {},
       marketExplanations: {},
+      marketExplanationHistory: [],
       status: {
         queueDepth: this.queue.length,
         active: this.active,
@@ -420,9 +451,13 @@ export class AiEnrichmentCoordinator {
       } else if (subjectKey.startsWith("country:")) {
         projection.countryInsights[reference.countryId] = entry;
       } else if (subjectKey.startsWith("market:")) {
+        if (!this.marketSubjects.has(reference.instrumentId)) continue;
         projection.marketExplanations[reference.instrumentId] = { ...entry, ticker: reference.ticker || null };
       }
     }
+    projection.marketExplanationHistory = this.store.listAccepted({
+      kind: "market_explanation", subjectIds: this.marketSubjects.keys(), limit: 3
+    }).map((record) => ({ ...publicEntry(record), ticker: this.marketSubjects.get(record.subjectId)?.ticker || null }));
     return projection;
   }
 

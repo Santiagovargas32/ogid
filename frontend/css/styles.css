@@ -2454,6 +2454,15 @@ body {
   margin: 0.45rem 0;
 }
 
+.ai-market-history-entry summary {
+  cursor: pointer;
+}
+
+.ai-market-history-entry summary .small {
+  display: block;
+  margin-top: 0.25rem;
+}
+
 .ai-evidence-list {
   margin: 0.45rem 0;
   color: var(--bs-secondary-color);

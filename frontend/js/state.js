@@ -82,6 +82,7 @@ const appState = {
     articleSummaries: {},
     countryInsights: {},
     marketExplanations: {},
+    marketExplanationHistory: [],
     status: { queueDepth: 0, active: 0, features: [], counts: {} }
   }
 };

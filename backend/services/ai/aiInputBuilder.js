@@ -179,13 +179,47 @@ function compactCoupling(items = []) {
   }));
 }
 
+function stableObject(value) {
+  if (Array.isArray(value)) return value.map(stableObject);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stableObject(value[key])]));
+}
+
+function marketCacheInput(input) {
+  // Keep the full request/hash for provenance. Refresh bookkeeping is not new
+  // market evidence; source observation times and quality remain significant.
+  const identity = structuredClone(input);
+  const context = identity.deterministicContext;
+  if (context.technicalIndicators) delete context.technicalIndicators.calculatedAt;
+  if (context.quote) {
+    delete context.quote.providerLatencyMs;
+    delete context.quote.providerScore;
+  }
+  if (context.coupling) {
+    const points = [];
+    for (const point of context.coupling.points || []) {
+      const value = { impactScore: point.impactScore, priceReaction: point.priceReaction };
+      const previous = points.at(-1);
+      if (!previous || previous.impactScore !== value.impactScore || previous.priceReaction !== value.priceReaction) points.push(value);
+    }
+    context.coupling.points = points;
+  }
+  identity.evidence.sort((left, right) => left.articleId.localeCompare(right.articleId));
+  for (const article of identity.evidence) {
+    article.countryMentions.sort();
+    article.instrumentLinks.sort((left, right) => String(left.instrumentId).localeCompare(String(right.instrumentId)));
+  }
+  context.couplingV2.sort((left, right) => String(left.newsId).localeCompare(String(right.newsId)));
+  return stableObject({ cacheVersion: "market-explanation-cache-v1", input: identity });
+}
+
 export function buildMarketExplanationJob(impactItem, market, articles, instrument, { maxInputChars = 6_000, deterministicAnalytics = {} } = {}) {
   const instrumentId = instrument?.instrumentId || impactItem?.ticker || "";
   const linkedLegacyIds = new Set(impactItem?.linkedArticles || []);
   const related = articles
     .filter((article) => linkedLegacyIds.has(article.legacyArticleId)
       || article.instrumentLinks.some((link) => link.instrumentId === instrumentId || link.canonicalSymbol === impactItem?.ticker))
-    .sort((left, right) => right.relevance.score - left.relevance.score)
+    .sort((left, right) => right.relevance.score - left.relevance.score || left.canonicalArticleId.localeCompare(right.canonicalArticleId))
     .slice(0, 8);
   if (!related.length || Number(impactItem?.eventScore || 0) <= 0) {
     return { eligible: false, reason: "no-linked-market-evidence", instrumentId };
@@ -218,7 +252,7 @@ export function buildMarketExplanationJob(impactItem, market, articles, instrume
     },
     evidence
   };
-  return { eligible: true, ...finalize("market_explanation", instrumentId, input, {
+  return { eligible: true, cacheInputHash: hashInput(marketCacheInput(input)), ...finalize("market_explanation", instrumentId, input, {
     allowedArticleIds: evidence.map((item) => item.articleId),
     instrumentId
   }, 200 + Number(impactItem.impactScore || 0)) };

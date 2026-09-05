@@ -35,6 +35,33 @@ export class AiEnrichmentStore {
       .map((record) => structuredClone(record))[0] || null;
   }
 
+  latestBySubject(kind) {
+    const latest = new Map();
+    for (const record of this.records.values()) {
+      if (record.kind !== kind) continue;
+      const previous = latest.get(record.subjectId);
+      if (!previous || Date.parse(record.createdAt || 0) >= Date.parse(previous.createdAt || 0)) latest.set(record.subjectId, record);
+    }
+    return new Map([...latest].map(([id, record]) => [id, structuredClone(record)]));
+  }
+
+  listAccepted({ kind, subjectIds = null, limit = 3 } = {}) {
+    const allowed = subjectIds == null ? null : new Set(subjectIds);
+    const seen = new Set();
+    return [...this.records.values()].reverse()
+      .filter((record) => record.kind === kind && (!allowed || allowed.has(record.subjectId))
+        && ["ready", "stale"].includes(record.status) && record.output)
+      .sort((left, right) => Date.parse(right.generatedAt || right.updatedAt || 0) - Date.parse(left.generatedAt || left.updatedAt || 0))
+      .filter((record) => {
+        const identity = record.cacheKey || record.enrichmentId;
+        if (seen.has(identity)) return false;
+        seen.add(identity);
+        return true;
+      })
+      .slice(0, limit)
+      .map((record) => structuredClone(record));
+  }
+
   list({ status = "", kind = "", page = 1, pageSize = 50 } = {}) {
     const normalizedStatus = String(status || "").trim().toLowerCase();
     const normalizedKind = String(kind || "").trim().toLowerCase();
