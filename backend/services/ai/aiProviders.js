@@ -1,21 +1,13 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { providerRuntime } from "../providers/providerRuntime.js";
 import { sanitizeSensitiveData } from "../../utils/sanitize.js";
+import { LlamaCppProvider } from "./llamaCppProvider.js";
+export { LlamaCppProvider } from "./llamaCppProvider.js";
 
-const UNBOUNDED_QUOTA = Object.freeze({ getProviderSnapshot: () => ({ exhausted: false }) });
+import { AiProviderError, UNBOUNDED_QUOTA, isLoopbackHost, parseBaseUrl, parseStructuredContent, resolveRequestId, buildResponseMetadata } from "./aiProviderUtils.js";
+export { AiProviderError } from "./aiProviderUtils.js";
+
 const STRUCTURED_OUTPUT_MODES = new Set(["guided-json", "response-format"]);
-
-export class AiProviderError extends Error {
-  constructor(code, message, options = {}) {
-    super(message, { cause: options.cause });
-    this.name = "AiProviderError";
-    this.code = code;
-    this.status = options.status || null;
-    this.retryable = options.retryable === true;
-    this.retryAfterMs = options.retryAfterMs ?? null;
-    this.responseMetadata = options.responseMetadata ? structuredClone(options.responseMetadata) : null;
-  }
-}
 
 export class NoopAiProvider {
   constructor() {
@@ -44,99 +36,6 @@ export class MockAiProvider {
     const output = await this.handler(request);
     return { output, provider: this.name, model: this.model, usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 } };
   }
-}
-
-function isLoopbackHost(hostname = "") {
-  return ["localhost", "127.0.0.1", "::1"].includes(String(hostname || "").toLowerCase());
-}
-
-function parseBaseUrl(value) {
-  const url = new URL(String(value || "").trim());
-  if (!["http:", "https:"].includes(url.protocol)) throw new AiProviderError("AI_BASE_URL_INVALID", "NVIDIA base URL must use HTTP or HTTPS.");
-  if (url.protocol !== "https:" && !isLoopbackHost(url.hostname)) {
-    throw new AiProviderError("AI_BASE_URL_INSECURE", "Remote NVIDIA base URL must use HTTPS.");
-  }
-  url.pathname = url.pathname.replace(/\/+$/, "");
-  url.search = "";
-  url.hash = "";
-  return url;
-}
-
-function parseStructuredContent(content, responseMetadata = null) {
-  if (content && typeof content === "object" && !Array.isArray(content)) return content;
-  if (typeof content !== "string" || !content.trim()) {
-    throw new AiProviderError("AI_EMPTY_RESPONSE", "NVIDIA returned an empty completion.", { responseMetadata });
-  }
-  try {
-    const trimmed = content.trim();
-    const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-    return JSON.parse(fenced ? fenced[1] : trimmed);
-  } catch (error) {
-    throw new AiProviderError("AI_INVALID_JSON", "NVIDIA returned invalid structured JSON.", { cause: error, responseMetadata });
-  }
-}
-
-function normalizeUsage(usage = {}) {
-  const promptTokens = Math.max(0, Number(usage.prompt_tokens || 0));
-  const completionTokens = Math.max(0, Number(usage.completion_tokens || 0));
-  const totalTokens = Math.max(0, Number(usage.total_tokens || promptTokens + completionTokens));
-  return { promptTokens, completionTokens, totalTokens };
-}
-
-function boundedText(value, maxLength = 240) {
-  const normalized = String(value || "").trim();
-  return normalized ? normalized.slice(0, maxLength) : null;
-}
-
-function describeContent(content) {
-  const contentType = content === null ? "null" : Array.isArray(content) ? "array" : typeof content;
-  if (typeof content === "string" || Array.isArray(content)) {
-    return { contentType, contentLength: content.length };
-  }
-  if (content && typeof content === "object") {
-    try {
-      return { contentType, contentLength: JSON.stringify(content).length };
-    } catch {
-      return { contentType, contentLength: 0 };
-    }
-  }
-  return { contentType, contentLength: 0 };
-}
-
-function resolveRequestId(response) {
-  return boundedText(
-    response?.headers?.get?.("x-request-id")
-      || response?.headers?.get?.("nvcf-reqid")
-      || response?.headers?.get?.("request-id")
-  );
-}
-
-function buildResponseMetadata({ payload = null, response = null, requestedModel, fallbackRequestId = null, pollCount = 0 }) {
-  const choice = payload?.choices?.[0] || null;
-  const message = choice?.message || null;
-  const upstreamError = payload?.error && typeof payload.error === "object"
-    ? {
-        code: boundedText(payload.error.code || payload.error.type, 80),
-        message: boundedText(sanitizeSensitiveData(String(payload.error.message || "NVIDIA returned an error response.")), 500)
-      }
-    : null;
-  return {
-    requestedModel: boundedText(requestedModel),
-    payloadModel: boundedText(payload?.model),
-    finishReason: boundedText(choice?.finish_reason, 80),
-    requestId: resolveRequestId(response) || boundedText(payload?.requestId) || boundedText(fallbackRequestId),
-    httpStatus: Number.isFinite(Number(response?.status)) ? Number(response.status) : null,
-    pollCount: Math.max(0, Number(pollCount) || 0),
-    upstreamError,
-    usage: normalizeUsage(payload?.usage),
-    ...describeContent(message?.content),
-    hasReasoningContent: Boolean(
-      message
-      && Object.prototype.hasOwnProperty.call(message, "reasoning_content")
-      && message.reasoning_content !== null
-      && message.reasoning_content !== undefined
-    )
-  };
 }
 
 function structuredOutputPayload(mode, schema) {
@@ -280,7 +179,7 @@ export class NvidiaNimProvider {
         }
         const { payload, responseMetadata } = await this.resolveAsyncResponse(response, { headers, model, kind, inputHash, deadline });
         const usage = responseMetadata.usage;
-        budget?.settleAttempt(lease?.leaseId, { actualTokens: usage.totalTokens, conservative: usage.totalTokens === 0 });
+        budget?.settleAttempt(lease?.leaseId, { actualTokens: usage.totalTokens || null, conservative: usage.totalTokens === 0 });
         leaseSettled = true;
         if (responseMetadata.upstreamError) {
           throw new AiProviderError("AI_UPSTREAM_RESPONSE_ERROR", "NVIDIA returned an error response.", { responseMetadata });
@@ -301,7 +200,7 @@ export class NvidiaNimProvider {
         };
       } catch (error) {
         const retryable = error?.retryable === true;
-        const explicitHttpFailure = Number.isFinite(Number(error?.status));
+        const explicitHttpFailure = Number(error?.status) >= 400;
         if (!leaseSettled) {
           budget?.settleAttempt(lease?.leaseId, { actualTokens: explicitHttpFailure ? 0 : null, conservative: !explicitHttpFailure });
         }
@@ -324,9 +223,10 @@ export class NvidiaNimProvider {
 
 export function createAiProvider(config = {}, injectedProvider = null) {
   if (injectedProvider) return injectedProvider;
+  if (!["none", "nvidia", "llamacpp"].includes(config.provider)) throw new AiProviderError("AI_PROVIDER_INVALID", "Unsupported AI provider.");
   if (config.mode === "off" || config.provider === "none") return new NoopAiProvider();
-  if (config.provider !== "nvidia") throw new AiProviderError("AI_PROVIDER_INVALID", "Unsupported AI provider.");
-  return new NvidiaNimProvider({
+  const Provider = config.provider === "llamacpp" ? LlamaCppProvider : NvidiaNimProvider;
+  return new Provider({
     baseUrl: config.baseUrl,
     apiKey: config.apiKey,
     summaryModel: config.summaryModel,
@@ -335,6 +235,8 @@ export function createAiProvider(config = {}, injectedProvider = null) {
     maxRetries: config.maxRetries,
     maxOutputTokens: config.maxOutputTokens,
     concurrency: config.maxConcurrency,
-    structuredOutputMode: config.structuredOutputMode
+    structuredOutputMode: config.structuredOutputMode,
+    jsonMode: config.jsonMode,
+    allowPrivateHttp: config.allowPrivateHttp
   });
 }

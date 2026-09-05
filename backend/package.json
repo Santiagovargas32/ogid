@@ -14,6 +14,7 @@
     "awareness:lab": "node scripts/awareness-admission-lab.js",
     "market:watchlist:inspect": "node scripts/inspect-market-watchlist.js",
     "smoke:upstreams": "node scripts/smoke-upstreams.js",
+    "smoke:llamacpp": "node scripts/smoke-llamacpp.js",
     "check": "node scripts/check-source.js",
     "test": "node --require ./tests/testSetup.cjs --test",
     "build": "npm run check"

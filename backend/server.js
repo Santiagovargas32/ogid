@@ -37,7 +37,7 @@ import { sensitiveRouteAuth } from "./middleware/sensitiveRouteAuth.js";
 import { AiBudgetService } from "./services/ai/aiBudgetService.js";
 import { AiEnrichmentStore } from "./services/ai/aiEnrichmentStore.js";
 import { AiEnrichmentCoordinator } from "./services/ai/aiEnrichmentCoordinator.js";
-import { createAiProvider } from "./services/ai/aiProviders.js";
+import { AiProviderError, createAiProvider } from "./services/ai/aiProviders.js";
 import { AwarenessStore } from "./services/awareness/awarenessStore.js";
 import { AwarenessService, normalizeAwarenessMode } from "./services/awareness/awarenessService.js";
 
@@ -241,13 +241,14 @@ function normalizeMarketOffHoursStrategy(value = "") {
   return ["skip", "yahoo", "keep"].includes(normalized) ? normalized : "keep";
 }
 
-const AI_PROVIDERS = new Set(["none", "nvidia"]);
+const AI_PROVIDERS = new Set(["none", "nvidia", "llamacpp"]);
 const AI_MODES = new Set(["off", "shadow", "visible"]);
 const AI_FEATURES = new Set(["article-summary", "country-insight", "market-explanation"]);
 
 function normalizeAiProvider(value = "") {
   const normalized = String(value || "none").trim().toLowerCase();
-  return AI_PROVIDERS.has(normalized) ? normalized : "none";
+  if (!AI_PROVIDERS.has(normalized)) throw new AiProviderError("AI_PROVIDER_INVALID", "AI_PROVIDER must be none, nvidia or llamacpp.");
+  return normalized;
 }
 
 function normalizeAiMode(value = "") {
@@ -261,6 +262,23 @@ function normalizeAiFeatures(value) {
 
 function readConfig(overrides = {}) {
   validateNewsSourceCatalog(NEWS_SOURCE_CATALOG);
+  const aiProvider = normalizeAiProvider(overrides.ai?.provider ?? process.env.AI_PROVIDER);
+  // Select the environment before merging overrides to keep credentials and
+  // model names isolated when the provider changes.
+  const aiTransport = aiProvider === "llamacpp" ? {
+    baseUrl: process.env.LLAMACPP_BASE_URL || "",
+    apiKey: process.env.LLAMACPP_API_KEY || "",
+    summaryModel: process.env.LLAMACPP_MODEL_SUMMARY || "",
+    reasoningModel: process.env.LLAMACPP_MODEL_REASONING || process.env.LLAMACPP_MODEL_SUMMARY || "",
+    jsonMode: String(process.env.LLAMACPP_JSON_MODE || "auto").trim().toLowerCase(),
+    allowPrivateHttp: toBool(process.env.LLAMACPP_ALLOW_PRIVATE_HTTP, false)
+  } : {
+    baseUrl: process.env.NVIDIA_BASE_URL || "https://integrate.api.nvidia.com/v1",
+    apiKey: process.env.NVIDIA_API_KEY || "",
+    structuredOutputMode: String(process.env.NVIDIA_STRUCTURED_OUTPUT_MODE || "guided-json").trim().toLowerCase(),
+    summaryModel: process.env.NVIDIA_MODEL_SUMMARY || process.env.NVIDIA_SUMMARY_MODEL || "",
+    reasoningModel: process.env.NVIDIA_MODEL_REASONING || process.env.NVIDIA_REASONING_MODEL || process.env.NVIDIA_MODEL_SUMMARY || process.env.NVIDIA_SUMMARY_MODEL || ""
+  };
   const newsOverrides = overrides.news || {};
   const watchlistCountries = toList(process.env.WATCHLIST_COUNTRIES, ["US", "IL", "IR"]).map((value) =>
     value.toUpperCase()
@@ -323,6 +341,7 @@ function readConfig(overrides = {}) {
 
   const config = {
     port: toInt(process.env.PORT, 8080),
+    host: toTrimmedString(process.env.HOST) || undefined,
     refreshIntervalMs: refreshIntervalMs ?? newsIntervalMs ?? marketRefreshIntervalMs ?? null,
     wsHeartbeatMs: toInt(process.env.WS_HEARTBEAT_MS, 15_000),
     wsPath: "/ws",
@@ -394,14 +413,10 @@ function readConfig(overrides = {}) {
       pollAuditPath: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, process.env.AWARENESS_POLL_AUDIT_FILE || "data/intel/awareness-polls.jsonl")
     },
     ai: {
-      provider: normalizeAiProvider(process.env.AI_PROVIDER),
+      provider: aiProvider,
       mode: normalizeAiMode(process.env.AI_MODE),
       features: normalizeAiFeatures(process.env.AI_FEATURES),
-      baseUrl: process.env.NVIDIA_BASE_URL || "https://integrate.api.nvidia.com/v1",
-      apiKey: process.env.NVIDIA_API_KEY || "",
-      structuredOutputMode: String(process.env.NVIDIA_STRUCTURED_OUTPUT_MODE || "guided-json").trim().toLowerCase(),
-      summaryModel: process.env.NVIDIA_MODEL_SUMMARY || process.env.NVIDIA_SUMMARY_MODEL || "",
-      reasoningModel: process.env.NVIDIA_MODEL_REASONING || process.env.NVIDIA_REASONING_MODEL || process.env.NVIDIA_MODEL_SUMMARY || process.env.NVIDIA_SUMMARY_MODEL || "",
+      ...aiTransport,
       timeoutMs: toPositiveInt(process.env.AI_TIMEOUT_MS, 20_000),
       maxRetries: Math.min(1, toNonNegativeInt(process.env.AI_MAX_RETRIES, 1)),
       maxConcurrency: Math.min(2, toPositiveInt(process.env.AI_MAX_CONCURRENCY, 1)),
@@ -571,6 +586,8 @@ function readConfig(overrides = {}) {
     ai: {
       ...config.ai,
       ...(overrides.ai || {}),
+      provider: aiProvider,
+      reasoningModel: overrides.ai?.reasoningModel ?? overrides.ai?.summaryModel ?? config.ai.reasoningModel,
       features: overrides.ai?.features || config.ai.features
     },
     awareness: {
@@ -909,11 +926,12 @@ export function createAppServer(overrides = {}) {
       await dailyCandleStore.hydrate();
       await new Promise((resolve, reject) => {
         server.once("error", reject);
-        server.listen(config.port, () => {
+        server.listen(config.port, config.host, () => {
           server.removeListener("error", reject);
           resolve();
         });
       });
+      const aiStatus = aiCoordinator.getAdminSnapshot();
       log.info("api_config_status", {
         newsApiKeyConfigured: isRealKey(config.news.newsApiKey),
         gnewsApiKeyConfigured: isRealKey(config.news.gnewsApiKey),
@@ -945,11 +963,18 @@ export function createAppServer(overrides = {}) {
         youtubeSearchReserve: config.media?.youtube?.searchReserve,
         youtubeResolveConcurrency: config.media?.youtube?.resolveConcurrency,
         aiProvider: config.ai?.provider,
+        aiActiveProvider: aiProvider.name,
         aiMode: config.ai?.mode,
         aiFeatures: config.ai?.features,
+        aiModels: aiStatus.models,
+        aiJsonMode: aiStatus.jsonMode,
+        aiEndpoint: aiStatus.endpoint,
+        aiApiKeyConfigured: aiStatus.apiKeyConfigured,
         awarenessMode: config.awareness?.mode,
-        nvidiaStructuredOutputMode: config.ai?.structuredOutputMode,
-        nvidiaApiKeyConfigured: isRealKey(config.ai?.apiKey)
+        ...(config.ai?.provider === "nvidia" ? {
+          nvidiaStructuredOutputMode: config.ai.structuredOutputMode,
+          nvidiaApiKeyConfigured: isRealKey(config.ai.apiKey)
+        } : {})
       });
       if (!config.runtime.disableBackgroundRefresh) {
         void awarenessService.start().catch((error) => log.warn("awareness_start_failed", { message: error.message }));

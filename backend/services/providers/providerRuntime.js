@@ -59,14 +59,21 @@ export class ProviderRuntime {
         metric.attempts += 1; const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 9_000);
         try {
-          const response = await this.fetchImpl(url, { ...options, signal: controller.signal, retries: undefined, timeoutMs: undefined, dedupeKey: undefined, providerConcurrency: undefined, hostConcurrency: undefined, idempotent: undefined, throwHttpErrors: undefined, quotaTracker: undefined });
+          let response = await this.fetchImpl(url, { ...options, signal: controller.signal, retries: undefined, timeoutMs: undefined, dedupeKey: undefined, providerConcurrency: undefined, hostConcurrency: undefined, idempotent: undefined, throwHttpErrors: undefined, quotaTracker: undefined, bufferResponse: undefined });
+          // Opt-in for non-streaming model calls: hold the semaphore and abort
+          // timer until generation/body transfer finishes, not just headers.
+          if (options.bufferResponse) {
+            const body = await response.arrayBuffer();
+            response = new Response([204, 205, 304].includes(response.status) ? null : body, { status: response.status, statusText: response.statusText, headers: response.headers });
+          }
           if (response.status === 429 || response.status >= 500) {
             const httpError = errorFromResponse(provider, response, this.now());
             if (attempt < retries) throw httpError;
+            metric.results[response.status] = (metric.results[response.status] || 0) + 1;
+            if (options.throwHttpErrors) throw httpError;
             const circuit = this.circuit(provider); circuit.failures += 1;
             if (circuit.failures >= this.failureThreshold) { circuit.state = "open"; circuit.openedAt = this.now(); }
-            metric.errors += 1; metric.results[response.status] = (metric.results[response.status] || 0) + 1;
-            if (options.throwHttpErrors) throw httpError;
+            metric.errors += 1;
             return response;
           }
           this.circuits.set(provider, { state: "closed", failures: 0, openedAt: null }); metric.success += 1; metric.results[response.status] = (metric.results[response.status] || 0) + 1; return response;
