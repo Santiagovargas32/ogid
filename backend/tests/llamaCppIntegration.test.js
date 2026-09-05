@@ -79,8 +79,8 @@ test("llama.cpp shadow persists all three features and public REST/WebSockets ex
   await waitUntil(() => socket.readyState === WebSocket.OPEN);
   const input = snapshotInput();
   const originalInput = structuredClone(input);
-  // Keep optional deterministic analytics identical across this simulated
-  // restart; a changed analytics timestamp correctly changes the market hash.
+  // Keep the optional analytic values identical across this simulated restart.
+  // Recalculation timestamps alone do not invalidate the market cache.
   runtime.aiCoordinator.technicalIndicatorService = null;
   runtime.aiCoordinator.newsPriceCouplingService = null;
   runtime.aiCoordinator.reconcileNewsSnapshot(input);
@@ -93,6 +93,7 @@ test("llama.cpp shadow persists all three features and public REST/WebSockets ex
   assert.deepEqual(snapshot.data.ai.articleSummaries, {});
   assert.deepEqual(snapshot.data.ai.countryInsights, {});
   assert.deepEqual(snapshot.data.ai.marketExplanations, {});
+  assert.deepEqual(snapshot.data.ai.marketExplanationHistory, []);
   assert.equal((await fetch(`${baseUrl}/api/admin/ai-enrichments`)).status, 401);
   const headers = { Authorization: "Bearer test-admin-token" };
   const records = await (await fetch(`${baseUrl}/api/admin/ai-enrichments`, { headers })).json();

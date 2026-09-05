@@ -9,3 +9,4 @@ backend/data/intel/
 *.log
 /docs/*
 !/docs/llamacpp-deployment.md
+!/docs/ai-market-history.md

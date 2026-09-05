@@ -3,6 +3,7 @@ import { applyUpdate, getState, setSnapshot, subscribe } from "./state.js";
 import { RealtimeSocket } from "./websocket.js";
 import { SmartPollLoop } from "./smartPollLoop.js";
 import { resolveMarketQuotesPollDelayMs } from "./marketPolling.js";
+import { renderMarketExplanationHistory } from "./aiMarketHistory.js";
 import { HotspotMap, getLevelColor } from "./map.js";
 import { mountSituationalWorkspace } from "./media/situationalWorkspace.js";
 import { startAdvancedIntelligence } from "./intelligence/advancedIntelligence.js";
@@ -1326,18 +1327,13 @@ function renderAiCountryInsights(ai = {}) {
 
 function renderAiMarketExplanations(ai = {}) {
   if (!elements.aiMarketShell || !elements.aiMarketList) return;
-  const allowed = new Set(selectedMarketSymbols || []);
-  const entries = Object.entries(ai.marketExplanations || {}).filter(([, entry]) => !allowed.size || allowed.has(entry.ticker));
-  elements.aiMarketShell.classList.toggle("d-none", !isAiVisible(ai) || entries.length === 0);
-  elements.aiMarketList.innerHTML = entries.map(([instrumentId, entry]) => {
-    const output = entry.output;
-    return `<article class="ai-enrichment-card">
-      <div class="ai-enrichment-label">${escapeHtml(entry.ticker || instrumentId)} · ${escapeHtml(aiStatusLabel(entry))}</div>
-      <p>${escapeHtml(output?.narrative || "AI enrichment is pending or unavailable.")}</p>
-      ${renderAiEvidence(entry)}
-      <div class="small text-light-emphasis">Generated content · causality ${escapeHtml(output?.causality || "not established")} · uncertainty ${escapeHtml(output?.uncertainty?.level || "unknown")}</div>
-    </article>`;
-  }).join("");
+  const expanded = new Map([...elements.aiMarketList.querySelectorAll("details[data-enrichment-id]")]
+    .map((element) => [element.dataset.enrichmentId, element.open]));
+  const html = renderMarketExplanationHistory(ai, {
+    symbols: marketWatchlistLoaded ? selectedMarketSymbols : null, expanded, formatDate
+  });
+  elements.aiMarketShell.classList.toggle("d-none", !html);
+  elements.aiMarketList.innerHTML = html;
 }
 
 function renderMarketQuotes(market = { quotes: {} }) {

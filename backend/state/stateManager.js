@@ -96,6 +96,7 @@ function buildInitialAiState() {
     articleSummaries: {},
     countryInsights: {},
     marketExplanations: {},
+    marketExplanationHistory: [],
     status: {
       queueDepth: 0,
       active: 0,
@@ -431,6 +432,7 @@ class StateManager {
         articleSummaries: nextValue?.articleSummaries || {},
         countryInsights: nextValue?.countryInsights || {},
         marketExplanations: nextValue?.marketExplanations || {},
+        marketExplanationHistory: nextValue?.marketExplanationHistory || [],
         status: {
           ...buildInitialAiState().status,
           ...(nextValue?.status || {})
