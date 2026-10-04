@@ -73,6 +73,23 @@ function harness(mode = "visible", provider = new MockAiProvider({ handler: outp
   return { coordinator, provider, store, broadcasts, projection: () => projection };
 }
 
+test("legacy profiles preserve existing cache keys while task profile changes invalidate them", async () => {
+  const context = harness("visible");
+  const article = fixtureArticle();
+  const input = { snapshot: { market: { quotes: {} }, countries: {}, impact: { items: [] } },
+    signalCorpus: [article], displaySelection: [article], rawArticles: [article], instruments: [] };
+  context.coordinator.reconcileNewsSnapshot(input);
+  await waitUntil(() => context.coordinator.metrics.completed === 1);
+  context.provider.profileForKind = () => ({ version: "legacy", maxOutputTokens: 1200, temperature: 0.1 });
+  context.coordinator.reconcileNewsSnapshot(input);
+  assert.equal(context.coordinator.metrics.queued, 1);
+  context.provider.profileForKind = () => ({ version: "ogid-local-tasks-v1", maxOutputTokens: 1536, temperature: 0.3 });
+  context.coordinator.reconcileNewsSnapshot(input);
+  await waitUntil(() => context.coordinator.metrics.completed === 2);
+  assert.equal(context.coordinator.metrics.queued, 2);
+  await context.coordinator.stop();
+});
+
 test("visible coordinator enriches after deterministic input and maps output to legacy article id", async () => {
   const context = harness("visible");
   const article = fixtureArticle();

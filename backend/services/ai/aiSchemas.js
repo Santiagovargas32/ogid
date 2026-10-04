@@ -1,4 +1,5 @@
 import Ajv from "ajv";
+import { SCENARIO_SCHEMAS, validateScenarioOutput } from "./aiScenarioSchemas.js";
 
 const evidenceIds = {
   type: "array",
@@ -156,10 +157,11 @@ function marketPolicyErrors(output = {}) {
 }
 
 export function getAiOutputSchema(kind) {
-  return AI_OUTPUT_SCHEMAS[kind] || null;
+  return AI_OUTPUT_SCHEMAS[kind] || SCENARIO_SCHEMAS[kind] || null;
 }
 
 export function validateAiOutput(kind, output, context = {}) {
+  if (SCENARIO_SCHEMAS[kind]) return validateScenarioOutput(kind, output, context);
   const validator = validators[kind];
   if (!validator) return { valid: false, schemaValid: false, groundingValid: false, codes: ["UNSUPPORTED_AI_KIND"] };
   const schemaValid = validator(output);

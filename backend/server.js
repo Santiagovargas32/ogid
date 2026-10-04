@@ -2,6 +2,11 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
+import { readTaskProfiles } from "./services/ai/aiTaskProfiles.js";
+import { IntelligenceStore } from "./services/intel/intelligenceStore.js";
+import { EvidenceMemoryService } from "./services/intel/evidenceMemoryService.js";
+import { ForecastService } from "./services/intel/forecastService.js";
+import { ProspectiveIntelligenceService } from "./services/intel/prospectiveIntelligenceService.js";
 import express from "express";
 import helmet from "helmet";
 import routes from "./routes/index.js";
@@ -243,7 +248,7 @@ function normalizeMarketOffHoursStrategy(value = "") {
 
 const AI_PROVIDERS = new Set(["none", "nvidia", "llamacpp"]);
 const AI_MODES = new Set(["off", "shadow", "visible"]);
-const AI_FEATURES = new Set(["article-summary", "country-insight", "market-explanation"]);
+const AI_FEATURES = new Set(["article-summary", "country-insight", "market-explanation", "intelligence"]);
 
 function normalizeAiProvider(value = "") {
   const normalized = String(value || "none").trim().toLowerCase();
@@ -424,8 +429,17 @@ function readConfig(overrides = {}) {
       maxJobsPerCycle: toPositiveInt(process.env.AI_MAX_JOBS_PER_CYCLE, 10),
       maxInputChars: toPositiveInt(process.env.AI_MAX_INPUT_CHARS, 6_000),
       maxOutputTokens: toPositiveInt(process.env.AI_MAX_OUTPUT_TOKENS, 1_200),
-      dailyRequestBudget: toPositiveInt(process.env.AI_DAILY_REQUEST_BUDGET || process.env.AI_REQUEST_DAILY_BUDGET, 50),
-      dailyTokenBudget: toPositiveInt(process.env.AI_DAILY_TOKEN_BUDGET || process.env.AI_TOKEN_DAILY_BUDGET, 100_000),
+      taskProfiles: null,
+      contextTokens: toPositiveInt(process.env.AI_CONTEXT_TOKENS, 131072),
+      maxInputTokens: toPositiveInt(process.env.AI_MAX_INPUT_TOKENS, 65536),
+      tokenizeInputs: toBool(process.env.AI_TOKENIZE_INPUTS, false),
+      memoryEnabled: toBool(process.env.INTELLIGENCE_MEMORY_ENABLED, false),
+      memoryDir: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, process.env.INTELLIGENCE_MEMORY_DIR || "data/intelligence"),
+      analysisIntervalMs: Math.max(60000, toPositiveInt(process.env.AI_ANALYSIS_INTERVAL_MS, 600000)),
+      packetMaxChars: toPositiveInt(process.env.AI_PACKET_MAX_CHARS, 96000),
+      countries: watchlistCountries,
+      dailyRequestBudget: toNonNegativeInt(process.env.AI_DAILY_REQUEST_BUDGET || process.env.AI_REQUEST_DAILY_BUDGET, 50),
+      dailyTokenBudget: toNonNegativeInt(process.env.AI_DAILY_TOKEN_BUDGET || process.env.AI_TOKEN_DAILY_BUDGET, 100_000),
       stateFile: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, process.env.AI_STATE_FILE || "data/ai/ai-enrichments.json"),
       budgetStateFile: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, process.env.AI_BUDGET_STATE_FILE || "data/ai/ai-budget.json")
     },
@@ -667,6 +681,20 @@ function readConfig(overrides = {}) {
     disabledReason
   };
 
+  if (mergedConfig.ai.provider !== "llamacpp" && (mergedConfig.ai.dailyRequestBudget === 0 || mergedConfig.ai.dailyTokenBudget === 0)) {
+    throw new AiProviderError("AI_UNLIMITED_REQUIRES_LOCAL", "Unlimited AI budgets require the llamacpp provider.");
+  }
+  const intelligenceEnabled = mergedConfig.ai.mode !== "off" && mergedConfig.ai.provider !== "none"
+    && mergedConfig.ai.memoryEnabled && mergedConfig.ai.features.includes("intelligence");
+  if (mergedConfig.ai.provider === "llamacpp" && mergedConfig.ai.mode !== "off" && (intelligenceEnabled || process.env.AI_TASK_OUTPUT_TOKENS)) {
+    mergedConfig.ai.taskProfiles ??= readTaskProfiles(process.env.AI_TASK_OUTPUT_TOKENS);
+  }
+  if (mergedConfig.ai.provider === "llamacpp" && mergedConfig.ai.mode !== "off") {
+    const largestOutput = Math.max(mergedConfig.ai.maxOutputTokens, ...Object.values(mergedConfig.ai.taskProfiles || {}).map((profile) => profile.maxOutputTokens));
+    if (mergedConfig.ai.maxInputTokens + largestOutput + 512 > mergedConfig.ai.contextTokens) {
+      throw new AiProviderError("AI_CONTEXT_CONFIG_INVALID", "Input and task output allowances must fit in the model context.");
+    }
+  }
   return mergedConfig;
 }
 
@@ -780,6 +808,10 @@ export function createAppServer(overrides = {}) {
     persistencePath: config.ai.budgetStateFile
   });
   const aiProvider = createAiProvider(config.ai, overrides.aiProvider);
+  const intelligenceEnabled = config.ai.mode !== "off" && config.ai.provider !== "none" && aiProvider.enabled === true
+    && config.ai.memoryEnabled && config.ai.features.includes("intelligence");
+  const intelligenceStore = intelligenceEnabled ? new IntelligenceStore({ rootDir: config.ai.memoryDir }) : null;
+  const evidenceMemory = intelligenceEnabled ? new EvidenceMemoryService({ store: intelligenceStore }) : null;
   const signalCorrelator = overrides.signalCorrelator || new SignalCorrelatorService({
     baselineDays: 30,
     persistencePath: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, "data/intel/signal-history.json")
@@ -853,12 +885,18 @@ export function createAppServer(overrides = {}) {
     stateManager,
     socketServer,
     technicalIndicatorService,
-    newsPriceCouplingService
+    newsPriceCouplingService,
+    intelligence: config.ai.features.includes("intelligence") && evidenceMemory ? new ProspectiveIntelligenceService({
+      config: config.ai, store: intelligenceStore, memory: evidenceMemory,
+      forecastService: new ForecastService({ store: intelligenceStore, candleStore: dailyCandleStore }),
+      stateManager, marketConditionsService, marketWatchlistService, awarenessStore, signalCorrelator
+    }) : null
   });
   aiCoordinator.syncProjection();
   mediaStreamService.setSocketServer(socketServer);
   const orchestrator = new RefreshOrchestratorService({
     stateManager,
+    evidenceMemory,
     socketServer,
     config,
     rssAggregator,
@@ -977,6 +1015,7 @@ export function createAppServer(overrides = {}) {
         } : {})
       });
       if (!config.runtime.disableBackgroundRefresh) {
+        aiCoordinator.start();
         void awarenessService.start().catch((error) => log.warn("awareness_start_failed", { message: error.message }));
         orchestrator.start();
         mediaStreamService.start();

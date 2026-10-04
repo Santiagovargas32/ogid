@@ -21,8 +21,8 @@ function nextUtcReset(nowMs) {
 
 export class AiBudgetService {
   constructor({ dailyRequestBudget = 50, dailyTokenBudget = 100_000, persistencePath = null, now = Date.now } = {}) {
-    this.dailyRequestBudget = Math.max(1, Number(dailyRequestBudget) || 50);
-    this.dailyTokenBudget = Math.max(1, Number(dailyTokenBudget) || 100_000);
+    this.dailyRequestBudget = dailyRequestBudget === 0 ? null : Math.max(1, Number(dailyRequestBudget) || 50);
+    this.dailyTokenBudget = dailyTokenBudget === 0 ? null : Math.max(1, Number(dailyTokenBudget) || 100_000);
     this.persistencePath = persistencePath;
     this.now = now;
     this.state = { day: utcDay(this.now()), requestsUsed: 0, tokensUsed: 0, reservations: {} };
@@ -46,10 +46,10 @@ export class AiBudgetService {
   reserveAttempt({ estimatedTokens = 1 } = {}) {
     this.rollover();
     const estimate = Math.max(1, Math.ceil(Number(estimatedTokens) || 1));
-    if (this.state.requestsUsed + 1 > this.dailyRequestBudget) {
+    if (this.dailyRequestBudget !== null && this.state.requestsUsed + 1 > this.dailyRequestBudget) {
       throw new AiBudgetError("AI_REQUEST_BUDGET_EXHAUSTED", "AI daily request budget exhausted.");
     }
-    if (this.state.tokensUsed + this.reservedTokens() + estimate > this.dailyTokenBudget) {
+    if (this.dailyTokenBudget !== null && this.state.tokensUsed + this.reservedTokens() + estimate > this.dailyTokenBudget) {
       throw new AiBudgetError("AI_TOKEN_BUDGET_EXHAUSTED", "AI daily token budget exhausted.");
     }
     const lease = { leaseId: randomUUID(), estimatedTokens: estimate, reservedAt: new Date(this.now()).toISOString() };
@@ -87,13 +87,16 @@ export class AiBudgetService {
       day: this.state.day,
       requestsUsed: this.state.requestsUsed,
       requestBudget: this.dailyRequestBudget,
-      requestsRemaining: Math.max(0, this.dailyRequestBudget - this.state.requestsUsed),
+      requestsRemaining: this.dailyRequestBudget === null ? null : Math.max(0, this.dailyRequestBudget - this.state.requestsUsed),
+      requestsUnlimited: this.dailyRequestBudget === null,
       tokensUsed: this.state.tokensUsed,
       tokensReserved,
       tokenBudget: this.dailyTokenBudget,
-      tokensRemaining: Math.max(0, this.dailyTokenBudget - this.state.tokensUsed - tokensReserved),
+      tokensRemaining: this.dailyTokenBudget === null ? null : Math.max(0, this.dailyTokenBudget - this.state.tokensUsed - tokensReserved),
+      tokensUnlimited: this.dailyTokenBudget === null,
       activeReservations: Object.keys(this.state.reservations || {}).length,
-      exhausted: this.state.requestsUsed >= this.dailyRequestBudget || this.state.tokensUsed + tokensReserved >= this.dailyTokenBudget,
+      exhausted: (this.dailyRequestBudget !== null && this.state.requestsUsed >= this.dailyRequestBudget)
+        || (this.dailyTokenBudget !== null && this.state.tokensUsed + tokensReserved >= this.dailyTokenBudget),
       nextResetAt: nextUtcReset(this.now())
     };
   }

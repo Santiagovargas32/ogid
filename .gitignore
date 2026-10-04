@@ -10,3 +10,6 @@ backend/data/intel/
 /docs/*
 !/docs/llamacpp-deployment.md
 !/docs/ai-market-history.md
+
+backend/data/intelligence/
+!/docs/prospective-intelligence.md

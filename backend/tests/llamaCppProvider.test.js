@@ -4,6 +4,7 @@ import { AiProviderError, LlamaCppProvider, NvidiaNimProvider, NoopAiProvider, c
 import { AiBudgetService } from "../services/ai/aiBudgetService.js";
 import { getAiOutputSchema } from "../services/ai/aiSchemas.js";
 import { ProviderError } from "../services/providers/providerErrors.js";
+import { readTaskProfiles } from "../services/ai/aiTaskProfiles.js";
 
 const schema = getAiOutputSchema("article_summary");
 const request = { kind: "article_summary", messages: [{ role: "system", content: "Return exactly one JSON object." }, { role: "user", content: "Evidence" }], schema, inputHash: "same-input" };
@@ -173,10 +174,10 @@ for (const content of [output, JSON.stringify(output), "```json\n" + JSON.string
 }
 for (const [content, code] of [["", "AI_EMPTY_RESPONSE"], ["   ", "AI_EMPTY_RESPONSE"], [null, "AI_EMPTY_RESPONSE"], [undefined, "AI_EMPTY_RESPONSE"], ["{", "AI_INVALID_JSON"], ["before {}", "AI_INVALID_JSON"], ["{} after", "AI_INVALID_JSON"], ["{} {}", "AI_INVALID_JSON"], ["[]", "AI_INVALID_JSON"], ["null", "AI_INVALID_JSON"]]) {
   test(`rejects invalid completion content: ${String(content)}`, async () => {
-    const h = harness({}, () => jsonResponse(completion({ choices: [{ finish_reason: "length", message: { content } }] })));
+    const h = harness({}, () => jsonResponse(completion({ choices: [{ finish_reason: "stop", message: { content } }] })));
     await assert.rejects(h.generate(), (error) => {
       assert.equal(error.code, code);
-      assert.equal(error.responseMetadata.finishReason, "length");
+      assert.equal(error.responseMetadata.finishReason, "stop");
       return true;
     });
     assert.equal(h.calls.length, 1);
@@ -191,9 +192,49 @@ test("diagnostic metadata never contains completion, reasoning, prompt or API ke
     requestedModel: "summary-alias", payloadModel: "actual-model.gguf", finishReason: "stop",
     requestId: "***", httpStatus: 200, pollCount: 0, upstreamError: null,
     usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
-    contentType: "string", contentLength: JSON.stringify(output).length, hasReasoningContent: true
+    contentType: "string", contentLength: JSON.stringify(output).length, hasReasoningContent: true,
+    inputTokens: null, taskProfile: { maxOutputTokens: 1200, temperature: 0.1, version: "legacy" }
   });
   assert.doesNotMatch(JSON.stringify(metadata), /sentinel-key|Supported summary|private reasoning|Evidence/);
+});
+
+test("truncated output is rejected even when it contains valid JSON and budget reservations are settled", async () => {
+  const h = harness({}, () => jsonResponse(completion({ choices: [{ finish_reason: "length", message: { content: JSON.stringify(output) } }] })));
+  await assert.rejects(h.generate(), { code: "AI_OUTPUT_TRUNCATED" });
+  assert.equal(h.budget.snapshot().activeReservations, 0);
+  assert.equal(h.budget.snapshot().tokensUsed, 15);
+});
+
+test("task profiles send task-specific limits and sampling without changing model context", async () => {
+  const h = harness({ taskProfiles: readTaskProfiles('{"article_summary":2048}') });
+  const result = await h.generate();
+  assert.equal(h.calls[0].body.max_tokens, 2048);
+  assert.equal(h.calls[0].body.temperature, 0.3);
+  assert.equal(h.calls[0].body.top_p, 0.8);
+  assert.deepEqual(h.calls[0].body.chat_template_kwargs, { enable_thinking: false });
+  assert.equal(result.responseMetadata.taskProfile.maxOutputTokens, 2048);
+  assert.equal(h.provider.contextTokens, 131072);
+  assert.throws(() => readTaskProfiles('{"unknown":1024}'));
+  assert.throws(() => readTaskProfiles('{"article_summary":1}'));
+});
+
+test("optional tokenization uses server template and rejects excess input before generation or reservation", async () => {
+  const h = harness({ tokenizeInputs: true, maxInputTokens: 2 }, (n) => jsonResponse(n === 1 ? { prompt: "Rendered template" } : { tokens: [1, 2, 3] }));
+  await assert.rejects(h.generate(), { code: "AI_CONTEXT_LIMIT" });
+  assert.deepEqual(h.calls.map((call) => call.url), ["http://127.0.0.1:8080/apply-template", "http://127.0.0.1:8080/tokenize"]);
+  assert.equal(h.budget.snapshot().requestsUsed, 0);
+  assert.equal(h.calls[0].body.add_generation_prompt, true);
+  assert.equal(h.calls[1].body.content, "Rendered template");
+});
+
+test("tokenized input fits context and tokenization failure does not send a completion", async () => {
+  const h = harness({ tokenizeInputs: true }, (n) => jsonResponse(n === 1 ? { prompt: "Template" } : n === 2 ? { tokens: [1, 2, 3] } : completion()));
+  assert.equal((await h.generate()).responseMetadata.inputTokens, 3);
+  assert.equal(h.budget.snapshot().requestsUsed, 1);
+  const invalid = harness({ tokenizeInputs: true }, () => jsonResponse({}));
+  await assert.rejects(invalid.generate(), { code: "AI_TOKENIZATION_FAILED" });
+  assert.equal(invalid.calls.length, 1);
+  assert.equal(invalid.budget.snapshot().requestsUsed, 0);
 });
 
 for (const [payload, status, code] of [[{}, 200, "AI_CHOICES_MISSING"], [{ choices: [] }, 200, "AI_CHOICES_MISSING"], [null, 200, "AI_CHOICES_MISSING"], [unsupported, 200, "AI_UPSTREAM_RESPONSE_ERROR"], [{ requestId: "nim-request" }, 202, "AI_ASYNC_UNSUPPORTED"]]) {

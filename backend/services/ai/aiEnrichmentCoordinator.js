@@ -51,7 +51,7 @@ function publicEntry(record, { status = null, refreshStatus = null } = {}) {
 }
 
 export class AiEnrichmentCoordinator {
-  constructor({ config = {}, provider, store, budget, stateManager = null, socketServer = null, technicalIndicatorService = null, newsPriceCouplingService = null, now = Date.now } = {}) {
+  constructor({ config = {}, provider, store, budget, stateManager = null, socketServer = null, technicalIndicatorService = null, newsPriceCouplingService = null, intelligence = null, now = Date.now } = {}) {
     this.config = config;
     this.provider = provider;
     this.store = store;
@@ -60,6 +60,8 @@ export class AiEnrichmentCoordinator {
     this.socketServer = socketServer;
     this.technicalIndicatorService = technicalIndicatorService;
     this.newsPriceCouplingService = newsPriceCouplingService;
+    this.intelligence = intelligence;
+    this.intelligenceSubjectsInFlight = new Set();
     this.now = now;
     this.mode = ["off", "shadow", "visible"].includes(config.mode) ? config.mode : "off";
     this.features = new Set((config.features || []).map((feature) => FEATURE_KINDS[feature] || feature));
@@ -86,6 +88,18 @@ export class AiEnrichmentCoordinator {
     return this.mode !== "off" && this.provider?.enabled === true;
   }
 
+  start() {
+    if (!this.isEnabled() || this.started || this.stopped) return;
+    this.started = true;
+    if (this.intelligence) this.intelligence.onUpdate = () => this.syncProjection({ broadcast: true });
+    this.intelligence?.start((job) => {
+      const scheduled = this.#enqueue(job, job.subjectRef);
+      this.#drain();
+      this.syncProjection({ broadcast: true });
+      return scheduled;
+    });
+  }
+
   syncProjection({ broadcast = false } = {}) {
     const projection = this.getPublicProjection();
     this.stateManager?.setAiProjection?.(projection);
@@ -93,15 +107,19 @@ export class AiEnrichmentCoordinator {
     return projection;
   }
 
-  reconcileNewsSnapshot({ snapshot = {}, signalCorpus = [], displaySelection = [], rawArticles = [], instruments = [] } = {}) {
+  reconcileNewsSnapshot({ snapshot = {}, signalCorpus = [], marketSignalCorpus = null, displaySelection = [], rawArticles = [], instruments = [] } = {}) {
+    // Market evidence must use the same admitted financial/geopolitical corpus
+    // as the deterministic market pipeline (plan section 2).
+    const aiCorpus = this.intelligence ? (marketSignalCorpus || signalCorpus) : signalCorpus;
     this.lastCanonicalLayer = buildCanonicalArticleLayer({
-      signalCorpus,
+      signalCorpus: aiCorpus,
       displaySelection,
       rawArticles,
       instruments,
       marketQuotes: snapshot.market?.quotes || {}
     });
-    this.lastSignalCorpus = signalCorpus;
+    this.lastSignalCorpus = aiCorpus;
+    this.intelligence?.wake();
     if (!this.isEnabled()) return this.syncProjection();
 
     let scheduled = 0;
@@ -144,6 +162,7 @@ export class AiEnrichmentCoordinator {
   }
 
   reconcileMarketSnapshot({ snapshot = {}, instruments = [] } = {}) {
+    this.intelligence?.wake();
     if (!this.isEnabled() || !this.features.has("market_explanation") || !this.lastCanonicalLayer) return this.syncProjection();
     const scheduled = this.#scheduleMarketJobs(snapshot, instruments, this.maxJobsPerCycle);
     this.syncProjection();
@@ -263,9 +282,12 @@ export class AiEnrichmentCoordinator {
   }
 
   #enqueue(job, subjectRef, { allowScheduling = true } = {}) {
+    const intelligenceKey = `${job.kind}:${job.subjectId}`;
+    if (job.intelligence && this.intelligenceSubjectsInFlight.has(intelligenceKey)) return false;
     if (job.kind === "market_explanation" && this.marketSubjectsInFlight.has(job.subjectId)) return false;
     const model = this.provider.modelForKind(job.kind);
-    const cacheKey = cacheKeyFor(job, this.provider.name, model);
+    const profile = this.provider.profileForKind?.(job.kind);
+    const cacheKey = cacheKeyFor(job, this.provider.name, profile && profile.version !== "legacy" ? `${model}|${JSON.stringify(profile)}` : model);
     const accepted = this.store.findAcceptedByCacheKey(cacheKey);
     if (accepted) {
       this.metrics.cacheHits += 1;
@@ -321,6 +343,7 @@ export class AiEnrichmentCoordinator {
     this.queue.sort((left, right) => right.priority - left.priority);
     this.queuedCacheKeys.add(cacheKey);
     if (job.kind === "market_explanation") this.marketSubjectsInFlight.add(job.subjectId);
+    if (job.intelligence) this.intelligenceSubjectsInFlight.add(intelligenceKey);
     this.metrics.queued += 1;
     this.updatedAt = timestamp;
     return true;
@@ -334,6 +357,7 @@ export class AiEnrichmentCoordinator {
       void this.#run(item).finally(() => {
         this.queuedCacheKeys.delete(item.cacheKey);
         if (item.job.kind === "market_explanation") this.marketSubjectsInFlight.delete(item.job.subjectId);
+        if (item.job.intelligence) this.intelligenceSubjectsInFlight.delete(`${item.job.kind}:${item.job.subjectId}`);
         this.active -= 1;
         this.#drain();
         this.syncProjection({ broadcast: true });
@@ -348,6 +372,8 @@ export class AiEnrichmentCoordinator {
     this.store.upsert({ ...current, status: "running", updatedAt: startedAt });
     this.syncProjection({ broadcast: true });
     try {
+      const packetHash = item.job.intelligence ? await this.intelligence.prepare(item.job) : null;
+      if (packetHash) this.store.upsert({ ...this.store.get(item.recordId), packetHash });
       const result = await this.provider.generate({
         kind: item.job.kind,
         messages: item.job.messages,
@@ -371,6 +397,7 @@ export class AiEnrichmentCoordinator {
         });
         this.metrics.rejected += 1;
       } else {
+        if (item.job.intelligence) await this.intelligence.accept(item.job, result, packetHash);
         this.store.upsert({
           ...this.store.get(item.recordId),
           status: "ready",
@@ -439,6 +466,7 @@ export class AiEnrichmentCoordinator {
       }
     };
     if (this.mode !== "visible") return projection;
+    Object.assign(projection, this.intelligence?.projection() || {});
 
     for (const [subjectKey, reference] of this.subjectRefs) {
       const current = this.store.get(reference.recordId);
@@ -481,6 +509,7 @@ export class AiEnrichmentCoordinator {
       budget: this.budget?.snapshot?.() || null,
       store: this.store?.summary?.() || null,
       transport: this.provider?.getMetrics?.() || {},
+      intelligence: this.intelligence?.diagnostics() || null,
       eligibility: structuredClone(this.lastEligibility),
       lastError: this.lastError,
       updatedAt: this.updatedAt
@@ -493,6 +522,7 @@ export class AiEnrichmentCoordinator {
 
   async stop({ timeoutMs = 5_000 } = {}) {
     this.stopped = true;
+    await this.intelligence?.stop();
     const deadline = this.now() + timeoutMs;
     while (this.active > 0 && this.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 25));
   }

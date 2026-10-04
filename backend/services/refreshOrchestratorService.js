@@ -92,6 +92,7 @@ class RefreshOrchestratorService {
     dailyCandleService = null,
     intradayCandleService = null,
     aiCoordinator = null,
+    evidenceMemory = null,
     awarenessService = null
   }) {
     this.stateManager = stateManager;
@@ -104,6 +105,7 @@ class RefreshOrchestratorService {
     this.dailyCandleService = dailyCandleService;
     this.intradayCandleService = intradayCandleService;
     this.aiCoordinator = aiCoordinator;
+    this.evidenceMemory = evidenceMemory;
     this.awarenessService = awarenessService;
     this.newsInFlight = false;
     this.marketInFlight = false;
@@ -449,6 +451,13 @@ class RefreshOrchestratorService {
             this.awarenessService?.getMarketArticles?.() || []
           )
         : signalCorpus;
+      if (this.evidenceMemory) {
+        try {
+          await this.evidenceMemory.capture(marketSignalCorpus);
+        } catch (error) {
+          log.warn("intelligence_evidence_capture_failed", { code: error.code || "INTELLIGENCE_STORAGE_ERROR" });
+        }
+      }
       const newsSourceMeta = {
         ...(newsResult.sourceMeta || {}),
         selectedCountByProvider: countByProvider(selectedNews, this.config.news?.providers || []),
@@ -534,6 +543,7 @@ class RefreshOrchestratorService {
       void Promise.resolve(this.aiCoordinator?.reconcileNewsSnapshot?.({
         snapshot,
         signalCorpus,
+        marketSignalCorpus,
         displaySelection: selectedNews,
         rawArticles: newsResult.articles || [],
         instruments: selectedMarketInstruments

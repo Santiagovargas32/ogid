@@ -237,6 +237,10 @@ export function createAiProvider(config = {}, injectedProvider = null) {
     concurrency: config.maxConcurrency,
     structuredOutputMode: config.structuredOutputMode,
     jsonMode: config.jsonMode,
-    allowPrivateHttp: config.allowPrivateHttp
+    allowPrivateHttp: config.allowPrivateHttp,
+    taskProfiles: config.taskProfiles,
+    contextTokens: config.contextTokens,
+    maxInputTokens: config.maxInputTokens,
+    tokenizeInputs: config.tokenizeInputs
   });
 }

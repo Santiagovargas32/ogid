@@ -3,6 +3,24 @@ import assert from "node:assert/strict";
 import { AiBudgetError, AiBudgetService } from "../services/ai/aiBudgetService.js";
 import { AiEnrichmentStore } from "../services/ai/aiEnrichmentStore.js";
 
+test("unlimited budgets retain accounting and independently honor the remaining finite limit", () => {
+  const unlimited = new AiBudgetService({ dailyRequestBudget: 0, dailyTokenBudget: 0 });
+  const lease = unlimited.reserveAttempt({ estimatedTokens: 200000 });
+  assert.equal(unlimited.snapshot().tokensReserved, 200000);
+  unlimited.settleAttempt(lease.leaseId, { actualTokens: 150000 });
+  assert.equal(unlimited.snapshot().tokensUsed, 150000);
+  assert.equal(unlimited.snapshot().requestsUsed, 1);
+  assert.equal(unlimited.snapshot().requestsRemaining, null);
+  assert.equal(unlimited.snapshot().tokensRemaining, null);
+  assert.equal(unlimited.snapshot().requestsUnlimited, true);
+  assert.equal(unlimited.snapshot().exhausted, false);
+  const finite = new AiBudgetService({ dailyRequestBudget: 1, dailyTokenBudget: 0 });
+  finite.reserveAttempt({ estimatedTokens: 200000 });
+  assert.throws(() => finite.reserveAttempt(), { code: "AI_REQUEST_BUDGET_EXHAUSTED" });
+  const finiteTokens = new AiBudgetService({ dailyRequestBudget: 0, dailyTokenBudget: 5 });
+  assert.throws(() => finiteTokens.reserveAttempt({ estimatedTokens: 6 }), { code: "AI_TOKEN_BUDGET_EXHAUSTED" });
+});
+
 test("AI request and token budgets reserve and reconcile independently", () => {
   const budget = new AiBudgetService({ dailyRequestBudget: 2, dailyTokenBudget: 100, now: () => Date.parse("2026-07-19T12:00:00Z") });
   const first = budget.reserveAttempt({ estimatedTokens: 60 });

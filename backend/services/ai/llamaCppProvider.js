@@ -22,7 +22,8 @@ export class LlamaCppProvider {
     baseUrl, apiKey = "", summaryModel, reasoningModel,
     jsonMode = "auto", allowPrivateHttp = false,
     timeoutMs = 20_000, maxRetries = 1, maxOutputTokens = 1_200,
-    concurrency = 1, runtime = providerRuntime, wait = sleep
+    concurrency = 1, runtime = providerRuntime, wait = sleep,
+    taskProfiles = null, contextTokens = 131072, maxInputTokens = 65536, tokenizeInputs = false
   } = {}) {
     this.name = "llamacpp";
     this.enabled = true;
@@ -43,11 +44,40 @@ export class LlamaCppProvider {
     this.concurrency = Math.max(1, Math.min(2, Number(concurrency) || 1));
     this.runtime = runtime;
     this.wait = wait;
+    this.taskProfiles = taskProfiles;
+    this.contextTokens = contextTokens;
+    this.maxInputTokens = maxInputTokens;
+    this.tokenizeInputs = tokenizeInputs;
     this.metrics = { generations: 0, completed: 0, failed: 0, retries: 0, formatFallbacks: 0, lastDurationMs: 0, maxDurationMs: 0 };
   }
 
   modelForKind(kind) {
     return kind === "article_summary" ? this.summaryModel : this.reasoningModel;
+  }
+
+  profileForKind(kind) {
+    return this.taskProfiles?.[kind] || { maxOutputTokens: this.maxOutputTokens, temperature: 0.1, version: "legacy" };
+  }
+
+  async countInputTokens(messages, profile) {
+    const headers = { "Content-Type": "application/json" };
+    if (this.apiKey) headers.Authorization = `Bearer ${this.apiKey}`;
+    const post = async (route, body) => {
+      const endpoint = new URL(`${this.baseUrl.pathname.replace(/\/v1$/, "")}/${route}`, this.baseUrl);
+      const response = await this.runtime.fetch(this.name, endpoint, {
+        method: "POST", headers, body: JSON.stringify(body), timeoutMs: Math.min(this.timeoutMs, 20000),
+        retries: 0, idempotent: true, throwHttpErrors: true, bufferResponse: true, redirect: "error",
+        providerConcurrency: this.concurrency, hostConcurrency: this.concurrency, quotaTracker: UNBOUNDED_QUOTA
+      });
+      if (!response.ok) throw new AiProviderError("AI_TOKENIZATION_FAILED", "Server tokenization is unavailable.");
+      return response.json();
+    };
+    const template = await post("apply-template", { messages, add_generation_prompt: true,
+      chat_template_kwargs: { enable_thinking: profile.thinking === true } });
+    if (typeof template.prompt !== "string") throw new AiProviderError("AI_TOKENIZATION_FAILED", "Invalid chat template response.");
+    const tokens = await post("tokenize", { content: template.prompt, add_special: true });
+    if (!Array.isArray(tokens.tokens)) throw new AiProviderError("AI_TOKENIZATION_FAILED", "Invalid tokenizer response.");
+    return tokens.tokens.length;
   }
 
   getMetrics() {
@@ -58,7 +88,8 @@ export class LlamaCppProvider {
       retries: Number(transport.retries || 0) + this.metrics.retries,
       jsonMode: this.jsonMode,
       structuredOutputMode: this.structuredOutputMode,
-      circuit: this.runtime.getCircuitSnapshot?.(this.name) || null
+      circuit: this.runtime.getCircuitSnapshot?.(this.name) || null,
+      contextTokens: this.contextTokens, maxInputTokens: this.maxInputTokens, taskProfiles: this.taskProfiles
     };
   }
 
@@ -80,6 +111,11 @@ export class LlamaCppProvider {
 
   async generateCompletion({ kind, messages, schema, inputHash, budget }) {
     const model = this.modelForKind(kind);
+    const profile = this.profileForKind(kind);
+    const inputTokens = this.tokenizeInputs ? await this.countInputTokens(messages, profile) : null;
+    if (inputTokens !== null && (inputTokens > this.maxInputTokens || inputTokens + profile.maxOutputTokens + 512 > this.contextTokens)) {
+      throw new AiProviderError("AI_CONTEXT_LIMIT", "The evidence packet exceeds the configured input/context allowance.");
+    }
     const endpoint = new URL(`${this.baseUrl.pathname}/chat/completions`.replace(/\/{2,}/g, "/"), this.baseUrl);
     const headers = { "Content-Type": "application/json", Accept: "application/json" };
     if (this.apiKey) headers.Authorization = `Bearer ${this.apiKey}`;
@@ -89,12 +125,14 @@ export class LlamaCppProvider {
     // fallback, never nested retry loops. Every POST reserves its own budget.
     for (let attempt = 0; attempt <= this.maxRetries; attempt += 1) {
       const body = JSON.stringify({
-        model, messages, temperature: 0.1,
-        max_tokens: this.maxOutputTokens, stream: false,
+        model, messages, temperature: profile.temperature,
+        max_tokens: profile.maxOutputTokens, stream: false,
+        ...(this.taskProfiles ? { top_p: profile.topP, top_k: profile.topK, min_p: profile.minP,
+          chat_template_kwargs: { enable_thinking: profile.thinking === true } } : {}),
         // Documented llama.cpp contract: schema is an object, not NIM's string.
         ...(useStructuredOutput ? { response_format: { type: "json_schema", schema } } : {})
       });
-      const lease = budget?.reserveAttempt({ estimatedTokens: Math.ceil(body.length / 4) + this.maxOutputTokens });
+      const lease = budget?.reserveAttempt({ estimatedTokens: (inputTokens ?? Math.ceil(body.length / 4)) + profile.maxOutputTokens });
       let settled = false;
       let responseMetadata = null;
       try {
@@ -141,6 +179,7 @@ export class LlamaCppProvider {
         if (!Array.isArray(payload?.choices) || !payload.choices[0]?.message) {
           throw new AiProviderError("AI_CHOICES_MISSING", "llama.cpp response has no completion choice.");
         }
+        if (payload.choices[0].finish_reason === "length") throw new AiProviderError("AI_OUTPUT_TRUNCATED", "Task output reached its token allowance.");
         const output = parseStructuredContent(payload.choices[0].message.content, responseMetadata, "llama.cpp");
         if (!output || typeof output !== "object" || Array.isArray(output)) {
           throw new AiProviderError("AI_INVALID_JSON", "llama.cpp completion must contain one JSON object.");
@@ -149,7 +188,8 @@ export class LlamaCppProvider {
           output, provider: this.name,
           // Keep the configured alias as the cache/provenance identity. The
           // actual upstream name is retained separately in safe metadata.
-          model, usage, requestId: responseMetadata.requestId, responseMetadata
+          model, usage, requestId: responseMetadata.requestId,
+          responseMetadata: { ...responseMetadata, taskProfile: profile, inputTokens }
         };
       } catch (error) {
         if (!settled) {
