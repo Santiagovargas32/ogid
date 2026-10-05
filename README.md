@@ -167,6 +167,10 @@ The advanced endpoint accepts active windows from 6 to 48 hours; `activeWindowHo
 
 Administrative routes, mutations and `force=1` requests are allowed from loopback by default. For non-local access, configure `ADMIN_API_TOKEN` and send it as a Bearer token or `X-Admin-Token`. Set `ALLOW_LOCAL_ADMIN=0` to require the token on loopback too.
 
+## Private read-only MCP integration
+
+The optional [OGID MCP adapter](integrations/ogid-mcp/README.md) exposes four bounded read tools over stdio. It queries the running backend on loopback and requires no provider keys or OGID administrator token. See the [private tunnel setup](integrations/ogid-mcp/CONFIGURAR-TUNEL.md) for ChatGPT connection and deployment checks. Credentials and machine-specific profiles stay outside Git.
+
 ## Yahoo/BLS Hotfix Operations
 
 Yahoo transport is owned by `yahoo-finance2`; `MARKET_YAHOO_BASE_URL` and `MARKET_YAHOO_USER_AGENT` are legacy diagnostic values and do not override the library transport. Keep result validation enabled. A failed multi-symbol quote request is retried once per symbol so one malformed result cannot discard the rest of the batch; sanitized diagnostics retain only the error name, HTTP status, validation paths and validation keywords.

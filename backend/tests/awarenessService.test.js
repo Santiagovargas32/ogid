@@ -28,6 +28,22 @@ const rssSource = {
 
 const rss = `<?xml version="1.0"?><rss version="2.0"><channel><item><title>FOMC Interest Rate Decision</title><description>Official monetary policy statement.</description><link>https://www.federalreserve.gov/newsevents/pressreleases/monetary20260729a.htm</link><pubDate>Wed, 29 Jul 2026 18:00:00 GMT</pubDate></item></channel></rss>`;
 
+test("calendar polling reports scheduled time, never Date.parse(0), including a subsequent 304", async () => {
+  const nowMs = Date.parse("2026-10-05T19:00:00Z");
+  const source = { ...rssSource, sourceId: "calendar-fixture", adapter: "ics", kind: "macro_scheduled" };
+  const body = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:release-1\nDTSTART:20261006T123000Z\nSUMMARY:Trade release\nEND:VEVENT\nEND:VCALENDAR";
+  let calls = 0;
+  const service = new AwarenessService({ mode: "visible", store: new AwarenessStore({ now: () => nowMs }), sources: [source], now: () => nowMs,
+    fetchImpl: async () => ++calls === 1 ? new Response(body, { headers: { "content-type": "text/calendar", etag: '"calendar-v1"' } }) : new Response(null, { status: 304 }) });
+  for (const expected of ["ok", "not-modified"]) {
+    assert.equal((await service.pollSource(source)).status, expected);
+    const status = service.getSnapshot().sourceStatus[0];
+    assert.equal(status.latestEventAt, "2026-10-06T12:30:00.000Z");
+    assert.equal(status.latestEventTimeKind, "scheduledAt");
+    assert.equal(status.lagMs, null);
+  }
+});
+
 test("Fed calendar resolves official current and next monthly pages without a third-party calendar", () => {
   const source = { url: "https://www.federalreserve.gov/newsevents/calendar.htm", urlStrategy: "fed-month", timezone: "America/New_York" };
   assert.equal(resolveSourceRequestUrl({ ...source, monthOffset: 0 }, Date.parse("2026-07-31T23:00:00Z")), "https://www.federalreserve.gov/newsevents/2026-july.htm");

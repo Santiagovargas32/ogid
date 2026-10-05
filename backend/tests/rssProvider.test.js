@@ -1,7 +1,30 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fetchRss, parseFeedArticles, resetRssFeedValidationCacheForTests } from "../services/news/providers/rssProvider.js";
+import { fetchRss, parseFeedArticles, hasFeedEnvelope, hasFeedEntries, resetRssFeedValidationCacheForTests } from "../services/news/providers/rssProvider.js";
 import { providerRuntime } from "../services/providers/providerRuntime.js";
+
+test("namespaced Atom entries preserve source update dates and links through normalization", async () => {
+  const xml = `<a10:feed xmlns:a10="http://www.w3.org/2005/Atom"><a10:title>Council</a10:title><a10:entry><a10:title>Official statement</a10:title><a10:link href="https://example.org/2026/09/28/statement"/><a10:updated>2026-10-05T19:30:00Z</a10:updated></a10:entry></a10:feed>`;
+  assert.equal(hasFeedEnvelope(xml), true);
+  assert.equal(hasFeedEntries(xml), true);
+  const [raw] = parseFeedArticles(xml, "Council");
+  assert.equal(raw.title, "Official statement");
+  assert.equal(raw.url, "https://example.org/2026/09/28/statement");
+  assert.equal(raw.publishedAt, "2026-10-05T19:30:00Z");
+  assert.equal(raw.provenance.publishedAtQuality, "source");
+  assert.equal(raw.provenance.publishedAtBasis, "updated");
+  const { normalizeArticles } = await import("../services/normalizeService.js");
+  const [normalized] = normalizeArticles([raw]);
+  assert.equal(normalized.provenance.publishedAtBasis, "updated");
+});
+
+test("publication wins over an update; similarly named XML tags cannot invent dates", () => {
+  const [article] = parseFeedArticles(`<feed><entry><title>Release</title><link href="https://example.org/release"/><updated>2026-10-05T19:30:00Z</updated><published>2026-09-28T12:00:00Z</published></entry></feed>`);
+  assert.equal(article.publishedAt, "2026-09-28T12:00:00Z");
+  assert.equal(article.provenance.publishedAtBasis, "published");
+  const [missing] = parseFeedArticles(`<rss><channel><item><title>Release</title><pubDateExtra>2026-09-28T12:00:00Z</pubDateExtra></item></channel></rss>`);
+  assert.equal(missing.provenance.publishedAtQuality, "fallback-missing");
+});
 
 test("rss provider marks html pages as invalid feeds and caches the invalid result", async () => {
   resetRssFeedValidationCacheForTests();

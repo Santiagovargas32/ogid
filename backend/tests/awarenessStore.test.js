@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { createAwarenessEvent } from "../services/awareness/awarenessParsers.js";
 import { AwarenessStore } from "../services/awareness/awarenessStore.js";
+import { sourceEventTiming } from "../services/awareness/awarenessEventTime.js";
 
 const source = {
   sourceId: "awareness-fed-calendar",
@@ -17,6 +18,59 @@ const source = {
   role: "official",
   official: true
 };
+
+test("old calendar metadata is repaired in projections without rewriting stored events", () => {
+  const store = new AwarenessStore({ now: () => Date.parse("2026-10-05T19:00:00Z") });
+  store.registerSources([source]);
+  store.reconcile([createAwarenessEvent({ source, rawId: "schedule", title: "FOMC minutes", scheduledAt: "2026-10-07T18:00:00Z" })]);
+  store.updateSourceStatus(source.sourceId, { latestEventAt: "1999-12-31T23:00:00Z", lagMs: 999999 });
+  const { sourceStatus } = store.getSnapshot({ mode: "visible", filters: { from: "2026-12-01T00:00:00Z" } });
+  assert.equal(sourceStatus[0].latestEventAt, "2026-10-07T18:00:00.000Z");
+  assert.equal(sourceStatus[0].latestEventTimeKind, "scheduledAt");
+  assert.equal(sourceStatus[0].lagMs, null);
+  assert.equal(store.sourceStatuses.get(source.sourceId).latestEventAt, "1999-12-31T23:00:00Z");
+  assert.deepEqual(sourceEventTiming([{ publishedAt: null }, { publishedAt: "bad", scheduledAt: "bad" }]), { latestEventAt: null, latestEventTimeKind: null, lagMs: null });
+});
+
+test("the same official release has one projection, preserves attribution and repairs Fed classification", () => {
+  const directSource = { ...source, sourceId: "awareness-fed-releases", kind: "macro_release", adapter: "rss" };
+  const title = "Federal Reserve Board announces approval of application";
+  const canonicalUrl = "https://www.federalreserve.gov/newsevents/pressreleases/orders20261005a.htm";
+  const direct = createAwarenessEvent({ source: directSource, title, canonicalUrl, publishedAt: "2026-10-05T20:30:00Z" });
+  assert.equal(direct.kind, "regulatory_filing");
+  const legacy = { ...direct, kind: "macro_release" };
+  const derived = { ...direct, eventId: "derived", source: { ...direct.source, sourceId: "rss-fed" }, instrumentIds: ["test-instrument"] };
+  for (const records of [[derived, legacy], [legacy, derived]]) {
+    const store = new AwarenessStore({ now: () => Date.parse("2026-10-05T21:00:00Z") });
+    store.registerSources([directSource]);
+    store.reconcile(records);
+    const snapshot = store.getSnapshot({ mode: "visible", filters: { kinds: ["regulatory_filing"] } });
+    assert.equal(snapshot.recent.length, 1);
+    assert.equal(snapshot.quality.total, 1);
+    assert.equal(snapshot.recent[0].source.sourceId, directSource.sourceId);
+    assert.deepEqual(snapshot.recent[0].relatedSources, [directSource.sourceId, "rss-fed"]);
+    assert.deepEqual(snapshot.recent[0].instrumentIds, ["test-instrument"]);
+    assert.equal(store.events.size, 2);
+    assert.equal(store.events.get(legacy.eventId).kind, "macro_release");
+    assert.equal(store.getSnapshot({ mode: "visible", filters: { kinds: ["macro_release"] } }).recent.length, 0);
+  }
+});
+
+test("release deduplication cannot merge shadow enrichment, schedules or different publications", () => {
+  const store = new AwarenessStore({ now: () => Date.parse("2026-10-05T19:00:00Z") });
+  const active = { ...source, sourceId: "active", kind: "macro_release", admissionState: "active" };
+  const shadow = { ...active, sourceId: "shadow", admissionState: "shadow" };
+  store.registerSources([active, shadow]);
+  const event = createAwarenessEvent({ source: active, rawId: "release", title: "Release", canonicalUrl: "https://example.org/releases", publishedAt: "2026-10-05T18:00:00Z" });
+  store.reconcile([event, { ...event, eventId: "shadow-copy", source: { ...event.source, sourceId: "shadow" }, instrumentIds: ["must-not-leak"] },
+    { ...event, eventId: "older", publishedAt: "2026-10-04T18:00:00Z" },
+    { ...event, eventId: "schedule", status: "scheduled", scheduledAt: "2026-10-06T18:00:00Z", publishedAt: null }]);
+  const snapshot = store.getSnapshot({ mode: "visible" });
+  assert.equal(snapshot.recent.length, 2);
+  assert.equal(snapshot.upcoming.length, 1);
+  assert.equal(JSON.stringify(snapshot).includes("must-not-leak"), false);
+  assert.equal(store.getSnapshot({ mode: "visible", publicView: false }).recent.length, 3);
+});
 
 test("awareness store deduplicates, correlates scheduled releases and persists monotonic revisions", () => {
   const root = mkdtempSync(join(tmpdir(), "awareness-store-"));

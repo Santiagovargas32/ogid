@@ -1,0 +1,21 @@
+# Plantilla de unidad systemd DE USUARIO; no instalada.
+# Verificar binario, perfil y archivo de credenciales antes de habilitar.
+# Binario 0.0.15 instalado en ~/.local/bin; completar perfil y clave fuera de Git.
+# El perfil debe usar env -i para no transmitir secretos al adaptador.
+[Unit]
+Description=OGID private read-only MCP tunnel
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h
+ExecStartPre=/usr/bin/test -s %h/.config/ogid-mcp/runtime-api-key
+ExecStart=%h/.local/bin/tunnel-client run --profile-file %h/.config/ogid-mcp/tunnel-client.yaml
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+UMask=0077
+
+[Install]
+WantedBy=default.target
