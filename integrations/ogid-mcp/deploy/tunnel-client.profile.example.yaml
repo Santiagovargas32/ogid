@@ -15,4 +15,4 @@ log:
 mcp:
   commands:
     - channel: main
-      command: "/usr/bin/env -i PATH=/usr/bin:/bin OGID_BASE_URL=http://127.0.0.1:3000 /usr/bin/node /ABSOLUTE/PATH/ogid/integrations/ogid-mcp/src/index.js"
+      command: "/usr/bin/env -i PATH=/usr/bin:/bin OGID_BASE_URL=http://127.0.0.1:3000 OGID_PROFILE=research OGID_INSTRUMENT_AUTH=runtime /usr/bin/node /ABSOLUTE/PATH/ogid/integrations/ogid-mcp/src/index.js"

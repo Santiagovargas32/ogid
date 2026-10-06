@@ -31,6 +31,7 @@ export async function getMediaStreams(req, res, next) {
 
     const data = await mediaStreamService.getSnapshot({
       force: toBool(req.query.force),
+      stored: toBool(req.query.stored),
       resolve: req.query.resolve || "critical",
       ids: req.query.ids || []
     });
@@ -49,6 +50,7 @@ export async function getMediaStreamById(req, res, next) {
 
     const stream = await mediaStreamService.getStreamById(req.params.id, {
       force: toBool(req.query.force),
+      stored: toBool(req.query.stored),
       resolve: req.query.resolve || "visible"
     });
     if (!stream) {

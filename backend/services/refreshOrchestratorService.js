@@ -92,6 +92,7 @@ class RefreshOrchestratorService {
     dailyCandleService = null,
     intradayCandleService = null,
     aiCoordinator = null,
+    newsArchive = null,
     awarenessService = null
   }) {
     this.stateManager = stateManager;
@@ -104,6 +105,7 @@ class RefreshOrchestratorService {
     this.dailyCandleService = dailyCandleService;
     this.intradayCandleService = intradayCandleService;
     this.aiCoordinator = aiCoordinator;
+    this.newsArchive = newsArchive;
     this.awarenessService = awarenessService;
     this.newsInFlight = false;
     this.marketInFlight = false;
@@ -407,6 +409,7 @@ class RefreshOrchestratorService {
       const rawIntelNews = normalizeAdminArticles(newsResult.rawArticles || [], newsResult.sourceMeta?.provider || "aggregated");
       const geopoliticalAwareness = this.awarenessService?.getGeopoliticalArticles?.() || [];
       const shadowFinancialCycle = awarenessMode === "shadow" && queryLane === "financial";
+      this.newsArchive?.ingest(newsResult.rawArticles?.length ? newsResult.rawArticles : normalizedNews, { lane: queryLane, awarenessMode });
       const selection = shadowFinancialCycle
         ? {
             signalCorpus: this.stateManager.getSignalCorpus(),
@@ -529,6 +532,7 @@ class RefreshOrchestratorService {
 
       const aggregateNews = await this.resolveAggregateNewsSnapshot();
       snapshot = await this.enrichSnapshotWithMapAssets(snapshot, aggregateNews);
+      this.newsArchive?.recordContext(snapshot);
       await this.refreshSecondaryIntel(snapshot, aggregateNews);
       this.socketServer.broadcast("update", this.buildUpdatePayload(snapshot), snapshot.meta);
       void Promise.resolve(this.aiCoordinator?.reconcileNewsSnapshot?.({
@@ -716,6 +720,7 @@ class RefreshOrchestratorService {
 
       const aggregateNews = await this.resolveAggregateNewsSnapshot();
       snapshot = await this.enrichSnapshotWithMapAssets(snapshot, aggregateNews);
+      this.newsArchive?.recordContext(snapshot);
       await this.refreshSecondaryIntel(snapshot, aggregateNews);
       try {
         await this.marketHistoryStore?.persistMarketState?.(previousSnapshot.market || {}, marketState, {

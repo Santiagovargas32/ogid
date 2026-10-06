@@ -33,6 +33,11 @@ import { createSocketServer } from "./websocket/socketServer.js";
 import { errorHandler, notFoundHandler } from "./utils/error.js";
 import { createLogger, requestLogger } from "./utils/logger.js";
 import { queryParamAllowlist } from "./utils/queryParamAllowlist.js";
+import { sensitiveRouteAuth } from "./middleware/sensitiveRouteAuth.js";
+import { mcpOperatorAuth, readOperatorCredentials } from "./middleware/mcpOperatorAuth.js";
+import { NewsArchive } from "./services/research/newsArchive.js";
+import { MaterialAlertStore } from "./services/research/materialAlertStore.js";
+import { PortfolioContextService } from "./services/research/portfolioContext.js";
 import { AiBudgetService } from "./services/ai/aiBudgetService.js";
 import { AiEnrichmentStore } from "./services/ai/aiEnrichmentStore.js";
 import { AiEnrichmentCoordinator } from "./services/ai/aiEnrichmentCoordinator.js";
@@ -522,6 +527,10 @@ function readConfig(overrides = {}) {
         normalRefreshHours: toPositiveInt(process.env.YOUTUBE_NORMAL_STREAM_REFRESH_HOURS, 12),
         lazyRefreshHours: toPositiveInt(process.env.YOUTUBE_LAZY_STREAM_REFRESH_HOURS, 24)
       }
+    },
+    security: {
+      adminApiToken: process.env.ADMIN_API_TOKEN || "",
+      allowLocalAdmin: toBool(process.env.ALLOW_LOCAL_ADMIN, true)
     }
   };
 
@@ -601,6 +610,10 @@ function readConfig(overrides = {}) {
         ...config.media.youtube,
         ...(overrides.media?.youtube || {})
       }
+    },
+    security: {
+      ...config.security,
+      ...(overrides.security || {})
     },
     runtime: {
       disableBackgroundRefresh:
@@ -687,6 +700,8 @@ export function createAppServer(overrides = {}) {
   );
   app.use(express.json({ limit: "1mb" }));
   app.use(requestLogger);
+  app.use(mcpOperatorAuth);
+  app.use(sensitiveRouteAuth);
 
   app.use(express.static(frontendPath, { index: "index.html" }));
   app.use("/api", queryParamAllowlist, routes);
@@ -750,7 +765,10 @@ export function createAppServer(overrides = {}) {
   if (process.env.NODE_ENV !== "test") {
     apiQuotaTracker.configurePersistence(path.resolve(__dirname, process.env.PROVIDER_QUOTA_STATE_FILE || "data/provider-quota-state.json"));
   }
+  const newsArchive = overrides.newsArchive || new NewsArchive({ persistencePath: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, process.env.RESEARCH_NEWS_ARCHIVE_FILE || "data/intel/research-news.json") });
+  const materialAlertStore = overrides.materialAlertStore || new MaterialAlertStore({ persistencePath: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, process.env.RESEARCH_ALERT_STATE_FILE || "data/intel/research-alerts.json") });
   const rssAggregator = new RssAggregatorService({
+    onCollected: articles => newsArchive.ingest(articles, { awarenessMode: config.awareness.mode }),
     news: config.news,
     rssFeeds: config.news.rssFeeds,
     refreshIntervalMs: config.news.rssAggregateIntervalMs,
@@ -848,6 +866,7 @@ export function createAppServer(overrides = {}) {
   aiCoordinator.syncProjection();
   mediaStreamService.setSocketServer(socketServer);
   const orchestrator = new RefreshOrchestratorService({
+    newsArchive,
     stateManager,
     socketServer,
     config,
@@ -868,6 +887,11 @@ export function createAppServer(overrides = {}) {
   });
 
   app.locals.socketServer = socketServer;
+  app.locals.newsArchive = newsArchive;
+  app.locals.materialAlertStore = materialAlertStore;
+  app.locals.portfolioContextService = new PortfolioContextService({ stateManager, archive: newsArchive, alerts: materialAlertStore, awarenessService, watchlist: marketWatchlistService });
+  app.locals.mcpOperatorCredentials = overrides.mcpOperatorCredentials || readOperatorCredentials(process.env.MCP_OPERATOR_CREDENTIALS_FILE);
+  app.locals.mcpOperatorAudit = row => log.info("mcp_operator_authorized", row);
   app.locals.orchestrator = orchestrator;
   app.locals.manualRefreshService = manualRefreshService;
   app.locals.config = config;

@@ -1594,13 +1594,13 @@ export class MapLayerService {
     });
   }
 
-  async resolveRssSnapshot() {
+  async resolveRssSnapshot({ stored = false } = {}) {
     if (!this.rssAggregator) {
       return { items: [], meta: { source: "disabled" } };
     }
 
     try {
-      return await this.rssAggregator.getSnapshot({ force: false });
+      return await this.rssAggregator.getSnapshot({ force: false, stored });
     } catch (error) {
       log.warn("map_layer_rss_snapshot_failed", { message: error.message });
       return { items: [], meta: { source: "error", reason: error.message } };
@@ -1659,6 +1659,7 @@ export class MapLayerService {
     bbox = null,
     limit = 250,
     preset = "Global",
+    stored = false,
     force = false
   } = {}) {
     const resolvedLayerIds = layerIds.length
@@ -1671,7 +1672,8 @@ export class MapLayerService {
     const thresholdMs = Date.now() - resolvedTimeWindow.ms;
     const countriesSet = new Set((countries || []).map((iso2) => String(iso2 || "").toUpperCase()));
     const snapshot = this.stateManager.getSnapshot();
-    const rssSnapshot = await this.resolveRssSnapshot();
+    if (stored && force) throw new Error("stored-and-force-conflict");
+    const rssSnapshot = await this.resolveRssSnapshot({ stored });
 
     const layers = [];
     for (const layer of resolvedLayers) {

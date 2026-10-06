@@ -1,5 +1,0 @@
-node_modules/
-.env
-*.local
-# Diagnóstico de esta máquina; conservar localmente, sin publicar rutas o direcciones.
-DIAGNOSTICO-LOCAL.md

@@ -30,6 +30,7 @@ export class RssAggregatorService {
     this.generatedCursor = 0;
     this.corpus = [];
     this.lastSnapshot = null;
+    this.onCollected = config.onCollected || null;
     this.shadowComparisonStats = { cycles: 0, equivalentCycles: 0 };
     this.canonicalPipeline = new RssCanonicalPipeline({
       catalog: this.canonicalCatalog,
@@ -41,7 +42,8 @@ export class RssAggregatorService {
       maxFeedsPerCycle: this.maxFeedsPerRun,
       cycleDeadlineMs: config.cycleDeadlineMs || config.news?.rssCycleDeadlineMs || 60_000,
       timeoutMs: this.timeoutMs,
-      maxCorpusItems: this.maxCorpusItems
+      maxCorpusItems: this.maxCorpusItems,
+      onCollected: articles => { if (this.pipelineMode === "canonical") this.onCollected?.(articles); }
     });
   }
 
@@ -182,6 +184,7 @@ export class RssAggregatorService {
     }
 
     this.lastSnapshot = snapshot;
+    this.onCollected?.(enriched);
     this.cache.set("rss-aggregate", snapshot, this.refreshIntervalMs);
     log.info("rss_aggregate_refreshed", {
       catalogSize: this.feedCatalog.length,
@@ -203,8 +206,9 @@ export class RssAggregatorService {
     return this.canonicalPipeline.rollback();
   }
 
-  async getSnapshot({ force = false, countries = [], topic = "", threat = "", limit = null } = {}) {
-    const snapshot = await this.refresh({ force });
+  async getSnapshot({ force = false, stored = false, countries = [], topic = "", threat = "", limit = null } = {}) {
+    if (stored && force) throw new Error("stored-and-force-conflict");
+    const snapshot = stored ? this.lastSnapshot || { generatedAt: null, items: [], meta: { availability: "not-collected", stored: true } } : await this.refresh({ force });
     const countriesSet = new Set((countries || []).map((iso2) => String(iso2 || "").toUpperCase()));
     const topicFilter = String(topic || "").trim().toLowerCase();
     const threatFilter = normalizeThreat(threat);

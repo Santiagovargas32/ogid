@@ -1,4 +1,6 @@
-const ROUTE_QUERY_PARAMS = new Map(
+import { OGID_OPERATIONS } from "../contracts/ogidOperations.js";
+
+export const ROUTE_QUERY_PARAMS = new Map(
   Object.entries({
     "GET /api/health": [],
     "GET /api/country-instability": ["countries", "force", "windowHours", "maxEvents", "activeWindowHours", "baselineDays"],
@@ -42,6 +44,13 @@ const ROUTE_QUERY_PARAMS = new Map(
   }).map(([route, params]) => [route, new Set(params)])
 );
 
+for (const operation of OGID_OPERATIONS) {
+  const key = `${operation.method} ${operation.path}`;
+  const params = ROUTE_QUERY_PARAMS.get(key) || new Set();
+  for (const name of [...Object.keys(operation.parameters.properties), ...Object.keys(operation.fixed)]) params.add(name);
+  ROUTE_QUERY_PARAMS.set(key, params);
+}
+
 function normalizeApiPath(originalUrl = "") {
   const pathname = new URL(originalUrl || "/", "http://local").pathname;
   if (pathname.length > 1 && pathname.endsWith("/")) {
@@ -52,6 +61,7 @@ function normalizeApiPath(originalUrl = "") {
 
 function normalizeRouteKey(method, originalUrl = "") {
   const path = normalizeApiPath(originalUrl);
+  if (method === "GET" && /^\/api\/news\/items\/[^/]+$/.test(path)) return "GET /api/news/items/:id";
   const mediaStreamItemMatch = path.match(/^\/api\/media\/streams\/[^/]+$/);
   if (method === "GET" && mediaStreamItemMatch && path !== "/api/media/streams/health") {
     return `${method} /api/media/streams/:id`;
