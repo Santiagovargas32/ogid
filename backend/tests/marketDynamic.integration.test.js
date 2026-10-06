@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -29,7 +29,7 @@ const tsla = {
   metadataSource: { provider: "test" },
 };
 
-test("dynamic market API searches, persists a selection and serves Yahoo-backed OHLCV", async () => {
+test("anonymous LAN market API searches, persists a selection and serves Yahoo-backed OHLCV", async () => {
   const historyDir = mkdtempSync(join(tmpdir(), "ogid-market-dynamic-"));
   let runtime;
   const marketDataService = {
@@ -68,6 +68,12 @@ test("dynamic market API searches, persists a selection and serves Yahoo-backed 
     marketDataService,
     market: { provider: "yahoo", fallbackProvider: "", tickers: [], historyDir, historyPersist: false, dailyCandles: { enabled: true, adjustmentMode: "splits", retentionDays: 3650, backfillMaxDays: 30 } },
   });
+  // Keep the HTTP transport local while exercising an anonymous LAN peer.
+  runtime.server.prependListener("request", (req) => {
+    Object.defineProperty(req.socket, "remoteAddress", { configurable: true, value: "192.168.1.42" });
+  });
+  const selectionPath = join(historyDir, "watchlist-selection.json");
+  runtime.app.locals.marketWatchlistService.persistencePath = selectionPath;
   await runtime.start();
   try {
     const baseUrl = `http://127.0.0.1:${runtime.server.address().port}`;
@@ -83,6 +89,9 @@ test("dynamic market API searches, persists a selection and serves Yahoo-backed 
     assert.equal(updateResponse.status, 200);
     assert.deepEqual(update.data.selectedSymbols, ["TSLA"]);
     assert.equal(update.data.instruments[0].sector, "Consumer Cyclical");
+    assert.deepEqual(JSON.parse(readFileSync(selectionPath, "utf8")).selectedInstrumentIds, [tsla.instrumentId]);
+    const saved = await fetch(`${baseUrl}/api/market/watchlist`).then((response) => response.json());
+    assert.deepEqual(saved.data.selectedSymbols, ["TSLA"]);
 
     const candlesResponse = await fetch(`${baseUrl}/api/market/candles?instrumentId=${tsla.instrumentId}&interval=1day&limit=20&force=1`);
     const candles = await candlesResponse.json();

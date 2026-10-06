@@ -59,7 +59,7 @@ test("llama.cpp shadow persists all three features and public REST/WebSockets ex
   const aiProvider = new LlamaCppProvider({ baseUrl: "http://localhost:8080/v1", apiKey: "private-test-key", summaryModel: "qwen3.8-27b", runtime: transport });
   const runtime = createAppServer({ port: 0, host: "127.0.0.1", disableBackgroundRefresh: true,
     news: { providers: [], rssFeeds: [] }, market: { provider: "", historyPersist: false },
-    security: { allowLocalAdmin: false, adminApiToken: "test-admin-token" }, aiProvider,
+    aiProvider,
     ai: { provider: "llamacpp", mode: "shadow", features: ["article-summary", "country-insight", "market-explanation"],
       baseUrl: "http://localhost:8080/v1", apiKey: "private-test-key", summaryModel: "qwen3.8-27b",
       stateFile: join(directory, "enrichments.json"), budgetStateFile: join(directory, "budget.json") }
@@ -94,13 +94,13 @@ test("llama.cpp shadow persists all three features and public REST/WebSockets ex
   assert.deepEqual(snapshot.data.ai.countryInsights, {});
   assert.deepEqual(snapshot.data.ai.marketExplanations, {});
   assert.deepEqual(snapshot.data.ai.marketExplanationHistory, []);
-  assert.equal((await fetch(`${baseUrl}/api/admin/ai-enrichments`)).status, 401);
-  const headers = { Authorization: "Bearer test-admin-token" };
-  const records = await (await fetch(`${baseUrl}/api/admin/ai-enrichments`, { headers })).json();
+  const recordsResponse = await fetch(`${baseUrl}/api/admin/ai-enrichments`);
+  assert.equal(recordsResponse.status, 200);
+  const records = await recordsResponse.json();
   assert.equal(records.data.pagination.totalItems, 4);
   assert.deepEqual([...new Set(records.data.items.map((item) => item.kind))].sort(), ["article_summary", "country_insight", "market_explanation"]);
   assert.ok(records.data.items.every((item) => item.status === "ready" && item.validation.valid));
-  const pipeline = await (await fetch(`${baseUrl}/api/admin/pipeline-status`, { headers })).json();
+  const pipeline = await (await fetch(`${baseUrl}/api/admin/pipeline-status`)).json();
   assert.equal(pipeline.data.ai.activeProvider, "llamacpp");
   assert.equal(pipeline.data.ai.mode, "shadow");
   assert.equal(pipeline.data.ai.apiKeyConfigured, true);

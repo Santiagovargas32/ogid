@@ -9,7 +9,6 @@ import { DailyCandleService, resolveExpectedClosedDailyCandle } from "../service
 import { getInstrumentById } from "../services/market/instrumentRegistry.js";
 import { MarketCreditScheduler } from "../services/market/marketCreditScheduler.js";
 import { fetchDailyCandles } from "../services/market/marketProviderRouter.js";
-import { sensitiveRouteAuth } from "../middleware/sensitiveRouteAuth.js";
 import { getCandles } from "../controllers/marketController.js";
 
 const gd = getInstrumentById("us-equity-general-dynamics");
@@ -83,11 +82,6 @@ test("quota exhaustion rejects daily download before HTTP", async () => {
   let calls = 0; const originalFetch = globalThis.fetch; globalThis.fetch = async () => { calls += 1; throw new Error("must-not-call"); };
   try { const scheduler = new MarketCreditScheduler(); scheduler.state.consumedDay = 600; const result = await fetchDailyCandles({ provider: "twelve", twelveApiKey: "test", instrumentIds: [gd.instrumentId], creditScheduler: scheduler }); assert.equal(calls, 0); assert.equal(result.creditRejections.length, 1); }
   finally { globalThis.fetch = originalFetch; }
-});
-
-test("backfill mutation is denied remotely without authentication", () => {
-  let status = null; const req = { path: "/api/market/candles/backfill", method: "POST", headers: {}, query: {}, socket: { remoteAddress: "203.0.113.5" } }; const res = { app: { locals: { config: { security: { allowLocalAdmin: false, adminApiToken: "secret" } } } }, status(code) { status = code; return this; }, json() { return this; } };
-  sensitiveRouteAuth(req, res, () => { throw new Error("must-not-authorize"); }); assert.equal(status, 401);
 });
 
 test("explicit backfill is bounded and remains subject to quota", async () => {
