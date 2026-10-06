@@ -1,6 +1,8 @@
 import { appendFileSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { dirname } from "node:path";
+import { sourceEventTiming } from "./awarenessEventTime.js";
+import { officialReleaseKind } from "./awarenessClassification.js";
 
 const SCHEMA_VERSION = "awareness-v1";
 const RETENTION_MS = 365 * 24 * 60 * 60_000;
@@ -120,7 +122,8 @@ function semanticHash(event = {}) {
 }
 
 function timestampFor(event = {}) {
-  return Date.parse(event.publishedAt || event.scheduledAt || event.updatedAt || event.observedAt || 0) || 0;
+  const value = event.publishedAt || event.scheduledAt || event.updatedAt || event.observedAt;
+  return value ? Date.parse(value) || 0 : 0;
 }
 
 function hasValidCoordinates(location = null) {
@@ -177,6 +180,7 @@ function initialSourceStatus(source = {}) {
     httpStatus: null,
     latencyMs: null,
     latestEventAt: null,
+    latestEventTimeKind: null,
     lagMs: null,
     etag: null,
     lastModified: null,
@@ -375,8 +379,8 @@ export class AwarenessStore {
       const status = this.sourceStatuses.get(event.source?.sourceId);
       return !status || status.admissionState === "active";
     };
-    const matchingValues = [...this.events.values()].filter((event) => matchesFilters(event, filters));
-    const values = publicView && mode === "visible" ? matchingValues.filter(publicSourceIsActive) : matchingValues;
+    const admitted = [...this.events.values()].filter((event) => !publicView || mode !== "visible" || publicSourceIsActive(event));
+    const values = this.projectUniqueReleases(admitted).filter((event) => matchesFilters(event, filters));
     const allUpcoming = values
       .filter((event) => event.scheduledAt && Date.parse(event.scheduledAt) >= nowMs && ["scheduled", "live"].includes(event.status))
       .sort((left, right) => Date.parse(left.scheduledAt) - Date.parse(right.scheduledAt));
@@ -390,6 +394,7 @@ export class AwarenessStore {
       .filter((status) => !publicView || mode !== "visible" || status.admissionState === "active")
       .map((status) => ({
         ...status,
+        ...sourceEventTiming([...this.events.values()].filter((event) => event.source?.sourceId === status.sourceId), nowMs),
         window7d: summarizePollHistory(this.pollHistories.get(status.sourceId) || [], nowMs)
       }))
       .map((status) => {
@@ -417,6 +422,32 @@ export class AwarenessStore {
         stale: values.filter((event) => event.dataMode === "stale" || event.provenance?.stale).length
       }
     };
+  }
+
+  // Preserve per-source records and audits; collapse the same official release in views.
+  // Admission is part of the key so shadow data cannot enrich an active event.
+  projectUniqueReleases(events) {
+    const unique = new Map();
+    const rank = (event) => (this.sourceStatuses.has(event.source?.sourceId) ? 2 : 0) + (event.provenance?.stale ? 0 : 1);
+    for (const stored of events) {
+      const kind = officialReleaseKind(stored);
+      const event = kind === stored.kind ? stored : { ...stored, kind };
+      const admission = this.sourceStatuses.get(event.source?.sourceId)?.admissionState || sourceAdmissionState(event.source);
+      const release = event.source?.official === true && ["released", "updated"].includes(event.status) && event.canonicalUrl && event.publishedAt;
+      const key = release
+        ? JSON.stringify([admission, event.canonicalUrl, event.publishedAt, event.title])
+        : event.eventId;
+      const previous = unique.get(key);
+      if (!previous) { unique.set(key, event); continue; }
+      const preferred = rank(event) > rank(previous) || (rank(event) === rank(previous) && event.source.sourceId.localeCompare(previous.source.sourceId) < 0) ? event : previous;
+      const merged = { ...preferred };
+      for (const field of ["domains", "countries", "instrumentIds", "sectors", "assetClasses"]) {
+        merged[field] = [...new Set([...(previous[field] || []), ...(event[field] || [])])].sort();
+      }
+      merged.relatedSources = [...new Set([previous.source.sourceId, event.source.sourceId, ...(previous.relatedSources || []), ...(event.relatedSources || [])])].sort();
+      unique.set(key, merged);
+    }
+    return [...unique.values()];
   }
 
   appendAudit(event) {

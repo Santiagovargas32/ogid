@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { officialReleaseKind } from "./awarenessClassification.js";
 import * as cheerio from "cheerio";
 import { detectCountryMentions, getCountryByIso2 } from "../../utils/countryCatalog.js";
 import { sanitizeArticleContent } from "../news/newsContentSanitizer.js";
@@ -236,7 +237,7 @@ export function createAwarenessEvent({
   const resolvedScheduledAt = isoOrNull(scheduledAt);
   const resolvedPublishedAt = isoOrNull(publishedAt);
   const resolvedUpdatedAt = isoOrNull(updatedAt) || resolvedPublishedAt || resolvedScheduledAt || null;
-  const resolvedKind = kind || source.kind;
+  const resolvedKind = officialReleaseKind({ kind: kind || source.kind, canonicalUrl: resolvedUrl, source });
   const text = `${sanitized.title}. ${sanitized.excerpt || ""}`;
   const resolvedCountries = [...new Set(countries || detectCountryMentions(text))];
   const resolvedLocation = location === undefined && ["official_security_release", "maritime_alert"].includes(resolvedKind)

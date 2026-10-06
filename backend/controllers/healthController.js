@@ -6,6 +6,7 @@ export function getHealth(_req, res) {
   const orchestrator = res.app.locals.orchestrator;
   const meta = stateManager.getMeta();
   const snapshot = stateManager.getSnapshot();
+  const quoteCount = Object.keys(snapshot?.market?.quotes || {}).length;
   const websocket = socketServer?.getHealth?.() || {
     clientCount: socketServer?.clientCount?.() ?? 0,
     path: config?.wsPath || "/ws",
@@ -29,6 +30,9 @@ export function getHealth(_req, res) {
       dataQuality: meta.dataQuality || {},
       watchlistCountries: meta.watchlistCountries || [],
       market: {
+        availability: quoteCount ? "available" : "empty",
+        quoteCount,
+        selectedInstrumentCount: config?.market?.tickers?.length || 0,
         configuredProvider: config?.market?.provider || null,
         configuredFallbackProvider: config?.market?.fallbackProvider || null,
         providerChain: snapshot?.market?.sourceMeta?.providerChain || config?.market?.providerChain || null,

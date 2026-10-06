@@ -28,12 +28,11 @@ test("server config enables all llama.cpp features in shadow with isolated crede
   LLAMACPP_MODEL_REASONING: "qwen3.8-27b", LLAMACPP_JSON_MODE: " AUTO ", LLAMACPP_ALLOW_PRIVATE_HTTP: "1",
   NVIDIA_API_KEY: "must-not-use-nvidia-key", NVIDIA_MODEL_SUMMARY: "must-not-use-nvidia-model",
   AI_TIMEOUT_MS: "180000", AI_MAX_CONCURRENCY: "1", AI_QUEUE_MAX: "50", AI_MAX_JOBS_PER_CYCLE: "4",
-  PORT: "3000", HOST: "127.0.0.1", ALLOW_LOCAL_ADMIN: "0"
+  PORT: "3000", HOST: "127.0.0.1"
 }, () => {
   const runtime = createAppServer({ market: { historyPersist: false } });
   assert.equal(runtime.config.host, "127.0.0.1");
   assert.equal(runtime.config.port, 3000);
-  assert.equal(runtime.config.security.allowLocalAdmin, false);
   assert.equal(runtime.config.ai.provider, "llamacpp");
   assert.equal(runtime.config.ai.apiKey, "test-llama-key");
   assert.equal(runtime.config.ai.timeoutMs, 180_000);

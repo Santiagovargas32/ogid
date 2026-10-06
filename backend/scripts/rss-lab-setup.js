@@ -13,8 +13,6 @@ export function applyRssLabEnvironment({ env = process.env, fetchImpl = globalTh
   Object.assign(env, {
     NODE_ENV: "test",
     PORT: String(port),
-    ADMIN_API_TOKEN: "",
-    ALLOW_LOCAL_ADMIN: "1",
     NEWS_API_KEY: "",
     GNEWS_API_KEY: "",
     MEDIASTACK_API_KEY: "",

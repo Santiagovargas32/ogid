@@ -6,6 +6,7 @@ import { providerRuntime } from "../providers/providerRuntime.js";
 import { AWARENESS_SOURCES } from "./awarenessCatalog.js";
 import { createAwarenessEvent, parseAwarenessSource } from "./awarenessParsers.js";
 import { normalizeAwarenessAdmissionState } from "./awarenessStore.js";
+import { sourceEventTiming } from "./awarenessEventTime.js";
 
 const log = createLogger("backend/services/awareness/awarenessService");
 const MAX_RESPONSE_BYTES = 1_000_000;
@@ -517,7 +518,7 @@ export class AwarenessService {
         throw new Error("awareness-parser-empty-after-data");
       }
       const reconciliation = this.store.reconcile(events, { sourceId: source.sourceId });
-      const latestPublishedMs = events.reduce((latest, event) => Math.max(latest, Date.parse(event.publishedAt || 0) || 0), 0);
+      const timing = sourceEventTiming(events, this.now());
       const outcome = events.length ? "ok" : emptyResultAllowed ? "empty-valid" : "empty";
       this.store.recordPoll(source.sourceId, {
         attemptedAt: new Date(startedAt).toISOString(),
@@ -537,8 +538,7 @@ export class AwarenessService {
         latencyMs,
         etag: response.headers?.get?.("etag") || previous.etag || null,
         lastModified: response.headers?.get?.("last-modified") || previous.lastModified || null,
-        latestEventAt: latestPublishedMs ? new Date(latestPublishedMs).toISOString() : previous.latestEventAt || null,
-        lagMs: latestPublishedMs ? Math.max(0, this.now() - latestPublishedMs) : previous.lagMs ?? null,
+        ...timing,
         stale: false,
         error: events.length || emptyResultAllowed ? null : "no-events-parsed",
         consecutiveErrors: 0,

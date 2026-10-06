@@ -1,28 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { sensitiveRouteAuth } from "../middleware/sensitiveRouteAuth.js";
+import { createAppServer } from "../server.js";
 import { sanitizeSensitiveData, sanitizeUrl } from "../utils/sanitize.js";
-
-function runAuth({ path = "/api/admin/api-limits", method = "GET", force = "", remoteAddress = "198.51.100.10", token = "", configuredToken = "" } = {}) {
-  let nextCalled = false;
-  let statusCode = 200;
-  let body = null;
-  const req = {
-    path,
-    method,
-    query: force ? { force } : {},
-    headers: token ? { authorization: `Bearer ${token}` } : {},
-    socket: { remoteAddress },
-    ip: remoteAddress
-  };
-  const res = {
-    app: { locals: { config: { security: { allowLocalAdmin: true, adminApiToken: configuredToken } } } },
-    status(value) { statusCode = value; return this; },
-    json(value) { body = value; return this; }
-  };
-  sensitiveRouteAuth(req, res, () => { nextCalled = true; });
-  return { nextCalled, statusCode, body };
-}
 
 test("sensitive URL values and nested tokens are redacted", () => {
   const rawUrl = "https://example.test/data?apiKey=do-not-log&token=also-secret&crumb=crumb-secret&cookie=cookie-secret&symbol=GD";
@@ -40,10 +19,42 @@ test("sensitive URL values and nested tokens are redacted", () => {
   assert.equal(message.includes("third-secret"), false);
 });
 
-test("sensitive routes deny remote anonymous access and accept configured tokens", () => {
-  assert.equal(runAuth().statusCode, 401);
-  assert.equal(runAuth({ method: "POST", path: "/intel/refresh" }).statusCode, 401);
-  assert.equal(runAuth({ path: "/news/aggregate", force: "1" }).statusCode, 401);
-  assert.equal(runAuth({ configuredToken: "test-admin-token", token: "test-admin-token" }).nextCalled, true);
-  assert.equal(runAuth({ remoteAddress: "127.0.0.1" }).nextCalled, true);
+test("admin routes and mutations require no token on loopback or LAN", async (t) => {
+  const runtime = createAppServer({
+    port: 0,
+    host: "127.0.0.1",
+    disableBackgroundRefresh: true,
+    news: { providers: [], rssFeeds: [] },
+    market: { provider: "", historyPersist: false }
+  });
+  // Simulate the peer address before Express handles real HTTP requests.
+  let remoteAddress = "127.0.0.1";
+  runtime.server.prependListener("request", (req) => {
+    Object.defineProperty(req.socket, "remoteAddress", { configurable: true, value: remoteAddress });
+  });
+  t.after(() => runtime.stop());
+  await runtime.start();
+  const baseUrl = `http://127.0.0.1:${runtime.server.address().port}`;
+  for (const address of ["127.0.0.1", "192.168.1.42", "::ffff:192.168.1.42", "fd00::42"]) {
+    remoteAddress = address;
+    for (const path of ["/admin", "/admin/", "/admin.html"]) {
+      const response = await fetch(`${baseUrl}${path}`);
+      assert.equal(response.status, 200, `${address} ${path}`);
+      assert.match(response.headers.get("content-type"), /text\/html/);
+      assert.match(await response.text(), /<html/);
+    }
+    for (const path of ["/api/admin/api-limits", "/api/admin/news-raw", "/api/admin/pipeline-status", "/api/admin/ai-enrichments"]) {
+      const response = await fetch(`${baseUrl}${path}`);
+      assert.equal(response.status, 200, `${address} ${path}`);
+      assert.equal((await response.json()).ok, true);
+    }
+    const forced = await fetch(`${baseUrl}/api/market/candles?force=1&instrumentId=unknown`);
+    assert.equal(forced.status, 400);
+    assert.equal((await forced.json()).error.code, "INVALID_INSTRUMENT");
+    const backfill = await fetch(`${baseUrl}/api/market/candles/backfill`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: "{}"
+    });
+    assert.equal(backfill.status, 400);
+    assert.equal((await backfill.json()).error.code, "INVALID_INSTRUMENTS");
+  }
 });

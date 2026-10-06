@@ -165,7 +165,11 @@ The advanced endpoint accepts active windows from 6 to 48 hours; `activeWindowHo
 5. `npm run dev` (or `npm start`)
 6. Open `http://localhost:8080`
 
-Administrative routes, mutations and `force=1` requests are allowed from loopback by default. For non-local access, configure `ADMIN_API_TOKEN` and send it as a Bearer token or `X-Admin-Token`. Set `ALLOW_LOCAL_ADMIN=0` to require the token on loopback too.
+OGID is intended for local use and trusted LAN access. Administrative routes, mutations (including watchlist updates) and `force=1` requests do not require authentication. `ADMIN_API_TOKEN` and `ALLOW_LOCAL_ADMIN` are no longer used. Set `HOST=0.0.0.0` to listen on the LAN, or `HOST=127.0.0.1` for loopback only.
+
+## Private read-only MCP integration
+
+The optional [OGID MCP adapter](integrations/ogid-mcp/README.md) exposes four bounded read tools over stdio. It queries the running backend on loopback and requires no provider keys or OGID administrator token. See the [private tunnel setup](integrations/ogid-mcp/CONFIGURAR-TUNEL.md) for ChatGPT connection and deployment checks. Credentials and machine-specific profiles stay outside Git.
 
 ## Yahoo/BLS Hotfix Operations
 
@@ -178,7 +182,7 @@ cd backend
 npm run market:watchlist:inspect
 ```
 
-The production example is documented in `backend/.env.production.example`. It assumes no NewsAPI/GNews credentials, so it uses `NEWS_PROVIDERS=rss`; it disables loopback admin bypass; it starts Awareness in `shadow`; and it limits intraday ingestion to one instrument. It also includes an explicit llama.cpp shadow profile with a fictitious Tailscale host and empty key that must be replaced locally before use. Set `HOST=127.0.0.1` and `PORT=3000` behind Nginx. Inject the real `ADMIN_API_TOKEN` and model API key only on the server. The general `.env.example` continues to default to AI `none/off`.
+The production example is documented in `backend/.env.production.example`. It assumes no NewsAPI/GNews credentials, so it uses `NEWS_PROVIDERS=rss`; it starts Awareness in `shadow`; and it limits intraday ingestion to one instrument. It also includes an explicit llama.cpp shadow profile with a fictitious Tailscale host and empty key that must be replaced locally before use. Set `HOST=127.0.0.1` and `PORT=3000` behind Nginx. Inject the real model API key only on the server. The general `.env.example` continues to default to AI `none/off`.
 
 The live upstream smoke probe is opt-in and does not run in the normal test suite. Run it from the production host to exercise that host's DNS, TLS and egress path:
 

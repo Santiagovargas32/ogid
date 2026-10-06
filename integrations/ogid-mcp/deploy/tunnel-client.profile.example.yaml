@@ -1,0 +1,18 @@
+# Perfil para tunnel-client 0.0.15. Copiar fuera de Git y rellenar el ID real.
+# La clave se almacena como texto en su propio archivo protegido; no en este YAML.
+config_version: 1
+control_plane:
+  base_url: "https://api.openai.com"
+  tunnel_id: "RELLENAR_TUNNEL_ID"
+  api_key: "file:/ABSOLUTE/PATH/config/ogid-mcp/runtime-api-key"
+health:
+  listen_addr: "127.0.0.1:8766"
+admin_ui:
+  open_browser: false
+log:
+  level: info
+  format: json
+mcp:
+  commands:
+    - channel: main
+      command: "/usr/bin/env -i PATH=/usr/bin:/bin OGID_BASE_URL=http://127.0.0.1:3000 /usr/bin/node /ABSOLUTE/PATH/ogid/integrations/ogid-mcp/src/index.js"

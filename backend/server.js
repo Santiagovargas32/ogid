@@ -33,7 +33,6 @@ import { createSocketServer } from "./websocket/socketServer.js";
 import { errorHandler, notFoundHandler } from "./utils/error.js";
 import { createLogger, requestLogger } from "./utils/logger.js";
 import { queryParamAllowlist } from "./utils/queryParamAllowlist.js";
-import { sensitiveRouteAuth } from "./middleware/sensitiveRouteAuth.js";
 import { AiBudgetService } from "./services/ai/aiBudgetService.js";
 import { AiEnrichmentStore } from "./services/ai/aiEnrichmentStore.js";
 import { AiEnrichmentCoordinator } from "./services/ai/aiEnrichmentCoordinator.js";
@@ -523,10 +522,6 @@ function readConfig(overrides = {}) {
         normalRefreshHours: toPositiveInt(process.env.YOUTUBE_NORMAL_STREAM_REFRESH_HOURS, 12),
         lazyRefreshHours: toPositiveInt(process.env.YOUTUBE_LAZY_STREAM_REFRESH_HOURS, 24)
       }
-    },
-    security: {
-      adminApiToken: process.env.ADMIN_API_TOKEN || "",
-      allowLocalAdmin: toBool(process.env.ALLOW_LOCAL_ADMIN, true)
     }
   };
 
@@ -606,10 +601,6 @@ function readConfig(overrides = {}) {
         ...config.media.youtube,
         ...(overrides.media?.youtube || {})
       }
-    },
-    security: {
-      ...config.security,
-      ...(overrides.security || {})
     },
     runtime: {
       disableBackgroundRefresh:
@@ -696,7 +687,6 @@ export function createAppServer(overrides = {}) {
   );
   app.use(express.json({ limit: "1mb" }));
   app.use(requestLogger);
-  app.use(sensitiveRouteAuth);
 
   app.use(express.static(frontendPath, { index: "index.html" }));
   app.use("/api", queryParamAllowlist, routes);

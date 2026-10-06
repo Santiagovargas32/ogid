@@ -19,13 +19,14 @@ function stripCdata(value = "") {
 }
 
 function extractTag(block, tagName) {
-  const pattern = new RegExp(`<${tagName}[^>]*>([\\s\\S]*?)<\\/${tagName}>`, "i");
+  const name = tagName.includes(":") ? tagName : `(?:[A-Za-z_][\\w.-]*:)?${tagName}`;
+  const pattern = new RegExp(`<(${name})(?=[\\s>])[^>]*>([\\s\\S]*?)<\\/\\1\\s*>`, "i");
   const match = String(block || "").match(pattern);
-  return match ? decodeEntities(stripCdata(match[1]).trim()) : "";
+  return match ? decodeEntities(stripCdata(match[2]).trim()) : "";
 }
 
 function extractAtomLink(block) {
-  const match = String(block || "").match(/<link[^>]+href="([^"]+)"[^>]*\/?>/i);
+  const match = String(block || "").match(/<(?:[A-Za-z_][\w.-]*:)?link\b[^>]+href="([^"]+)"[^>]*\/?>/i);
   return match ? decodeEntities(match[1].trim()) : "";
 }
 
@@ -55,7 +56,7 @@ function resolvePublishedAt(value, fallbackMs) {
 export function parseFeedArticles(xml = "", feedLabel = "RSS Feed", sourceDefinition = {}) {
   const sourceName = extractTag(xml, "title") || feedLabel;
   const sourceType = sourceDefinition.type || "rss";
-  const items = String(xml || "").match(/<item\b[\s\S]*?<\/item>/gi) || String(xml || "").match(/<entry\b[\s\S]*?<\/entry>/gi) || [];
+  const items = String(xml || "").match(/<((?:[A-Za-z_][\w.-]*:)?item)\b[\s\S]*?<\/\1\s*>/gi) || String(xml || "").match(/<((?:[A-Za-z_][\w.-]*:)?entry)\b[\s\S]*?<\/\1\s*>/gi) || [];
 
   return items.map((item, index) => {
     const title = extractTag(item, "title");
@@ -72,13 +73,9 @@ export function parseFeedArticles(xml = "", feedLabel = "RSS Feed", sourceDefini
       urlToImage: imageUrl
     });
     const link = extractTag(item, "link") || extractAtomLink(item);
-    const rawPublishedAt =
-      extractTag(item, "pubDate") ||
-      extractTag(item, "dc:date") ||
-      extractTag(item, "published") ||
-      extractTag(item, "updated") ||
-      extractTag(item, "cb:occurrenceDate") ||
-      extractTag(item, "cb:publicationDate");
+    const dateTags = ["pubDate", "dc:date", "published", "cb:publicationDate", "cb:occurrenceDate", "updated"];
+    const publishedAtBasis = dateTags.find(tag => extractTag(item, tag)) || null;
+    const rawPublishedAt = publishedAtBasis ? extractTag(item, publishedAtBasis) : "";
     const publishedAt = resolvePublishedAt(rawPublishedAt, Date.now() - index * 60_000);
 
     return {
@@ -113,18 +110,19 @@ export function parseFeedArticles(xml = "", feedLabel = "RSS Feed", sourceDefini
         sourceType,
         queryProvider: sourceDefinition.queryProvider || null,
         methodVersion: sourceDefinition.provenance?.methodVersion || "rss-parser-v1",
-        publishedAtQuality: publishedAt.quality
+        publishedAtQuality: publishedAt.quality,
+        publishedAtBasis
       }
     };
   });
 }
 
 export function hasFeedEntries(xml = "") {
-  return /<item\b[\s\S]*?<\/item>/i.test(String(xml || "")) || /<entry\b[\s\S]*?<\/entry>/i.test(String(xml || ""));
+  return /<((?:[A-Za-z_][\w.-]*:)?(?:item|entry))\b[\s\S]*?<\/\1\s*>/i.test(String(xml || ""));
 }
 
 export function hasFeedEnvelope(xml = "") {
-  return /<rss\b/i.test(String(xml || "")) || /<feed\b/i.test(String(xml || ""));
+  return /<(?:[A-Za-z_][\w.-]*:)?(?:rss|feed)\b/i.test(String(xml || ""));
 }
 
 function shouldSkipInvalidFeed(url) {

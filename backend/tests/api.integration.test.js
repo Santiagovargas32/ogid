@@ -147,6 +147,7 @@ test("REST API exposes health and snapshot payloads", async () => {
     assert.equal(healthPayload.data.websocket.clientCount, 0);
     assert.equal(healthPayload.data.websocket.path, "/ws");
     assert.equal(healthPayload.data.market.configuredProvider, "twelve");
+    assert.equal(healthPayload.data.market.selectedInstrumentCount, 3);
     assert.equal(healthPayload.data.market.configuredFallbackProvider, "yahoo");
     assert.equal(healthPayload.data.market.providerChain, "twelve+yahoo");
     assert.equal(healthPayload.data.market.effectiveProvider, "twelve");
@@ -156,6 +157,9 @@ test("REST API exposes health and snapshot payloads", async () => {
 
     const snapshotResponse = await fetch(`${baseUrl}/api/intel/snapshot?countries=US,IL,IR`);
     const snapshotPayload = await snapshotResponse.json();
+    const quoteCount = Object.keys(snapshotPayload.data.market.quotes).length;
+    assert.equal(healthPayload.data.market.quoteCount, quoteCount);
+    assert.equal(healthPayload.data.market.availability, quoteCount ? "available" : "empty");
     assert.equal(snapshotResponse.status, 200);
     assert.equal(snapshotPayload.ok, true);
     assert.ok(Array.isArray(snapshotPayload.data.hotspots));
