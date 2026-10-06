@@ -13,8 +13,8 @@ class Semaphore {
 function initialState() { return { etag: null, lastModified: null, lastAttemptAt: null, lastSuccessAt: null, nextEligibleAt: null, cooldownUntil: null, consecutiveErrors: 0, healthStatus: "unknown", articles: [] }; }
 
 export class RssCanonicalPipeline {
-  constructor({ catalog, fetchImpl, now = Date.now, persistencePath = null, globalConcurrency = 4, hostConcurrency = 1, maxFeedsPerCycle = 18, cycleDeadlineMs = 60_000, timeoutMs = 9_000, maxCorpusItems = 900 } = {}) {
-    this.catalog = catalog; this.fetchImpl = fetchImpl; this.now = now; this.persistencePath = persistencePath;
+  constructor({ catalog, fetchImpl, now = Date.now, persistencePath = null, globalConcurrency = 4, hostConcurrency = 1, maxFeedsPerCycle = 18, cycleDeadlineMs = 60_000, timeoutMs = 9_000, maxCorpusItems = 900, onCollected = null } = {}) {
+    this.onCollected = onCollected; this.catalog = catalog; this.fetchImpl = fetchImpl; this.now = now; this.persistencePath = persistencePath;
     this.globalConcurrency = globalConcurrency; this.hostConcurrency = hostConcurrency; this.maxFeedsPerCycle = Math.min(18, Math.max(12, maxFeedsPerCycle));
     this.cycleDeadlineMs = cycleDeadlineMs; this.timeoutMs = timeoutMs; this.maxCorpusItems = maxCorpusItems;
     this.states = new Map(); this.hostSemaphores = new Map(); this.corpus = []; this.metrics = { cycles: 0, externalRequests: 0, notModified: 0, errors: 0, staleServed: 0, duplicates: 0, latencyMs: 0 };
@@ -40,6 +40,8 @@ export class RssCanonicalPipeline {
     const startedAt = this.now(); const deadlineAt = startedAt + this.cycleDeadlineMs; const selected = this.selectEligible(startedAt); const global = new Semaphore(this.globalConcurrency);
     const results = await Promise.all(selected.map((feed) => global.use(() => this.#pollFeed(feed, deadlineAt))));
     const incoming = results.flatMap((result) => result.articles || []);
+    // Archivo autorizado antes del límite del corpus canónico.
+    this.onCollected?.(incoming);
     const merged = deduplicateRssArticles([...this.corpus, ...incoming], { maxItems: this.maxCorpusItems });
     this.metrics.cycles += 1; this.metrics.duplicates += Math.max(0, this.corpus.length + incoming.length - merged.items.length); this.metrics.latencyMs += Math.max(0, this.now() - startedAt);
     this.corpus = merged.items; this.persist();

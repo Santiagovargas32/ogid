@@ -3,6 +3,7 @@ import { BASELINE_COUNTRIES } from "../../../backend/utils/countryCatalog.js";
 import { AWARENESS_SOURCES, AWARENESS_SOURCE_CATALOG_VERSION } from "../../../backend/services/awareness/awarenessCatalog.js";
 import { VERSION } from "./config.js";
 import { ReadError } from "./client.js";
+import { authorizeInstruments, extendedToolDefinitions } from "./operations.js";
 
 const ISO_CODES = BASELINE_COUNTRIES.map(c => c.iso2);
 const countries = z.array(z.enum(ISO_CODES)).min(1).max(50).optional();
@@ -109,11 +110,11 @@ export function toolDefinitions(config, read) {
       }
     },
     {
-      name: "ogid_get_awareness", description: "Consulta agenda y comunicados públicos de OGID. Conserva upcoming/recent, fechas y calidad. En shadow/off los eventos están ocultos. instrumentIds solo admite IDs de la lista verificada del operador.",
+      name: "ogid_get_awareness", description: "Consulta agenda y comunicados públicos de OGID. Conserva upcoming/recent, fechas y calidad. En shadow/off los eventos están ocultos. instrumentIds requiere autorización mediante la lista explícita o el registro verificado del runtime.",
       schema: awarenessSchema,
       async run(args) {
         if (args.from && args.to && Date.parse(args.from) > Date.parse(args.to)) throw new ReadError("INVALID_WINDOW", "from debe ser anterior o igual a to.");
-        if (args.instrumentIds?.some(id => !config.instrumentIds.includes(id))) throw new ReadError("UNVERIFIED_INSTRUMENT", "ID no incluido en la lista de instrumentos verificados del adaptador.");
+        await authorizeInstruments(config, read, args.instrumentIds);
         const { domains, statuses, ...rest } = args;
         const data = validateAwareness(await read("/api/intel/awareness-snapshot", { ...rest, domain: domains, status: statuses }));
         const warnings = awarenessWarnings(data);
@@ -152,7 +153,8 @@ export function toolDefinitions(config, read) {
           ...(health.market?.availability === "empty" ? ["Mercado sin cotizaciones disponibles; la etiqueta fallback/synthetic no acredita la existencia de precios de respaldo."] : [])] };
       }
     }
-  ].map(t => ({ ...t, annotations: ANNOTATIONS }));
+    , ...extendedToolDefinitions(config, read)
+  ].map(t => ({ ...t, annotations: t.annotations || ANNOTATIONS }));
 }
 
 export async function executeTool(tool, input, config) {
@@ -163,6 +165,7 @@ export async function executeTool(tool, input, config) {
     let truncated = false;
     const response = () => ({ structuredContent: payload, content: [{ type: "text", text: JSON.stringify(payload) }] });
     const size = () => Buffer.byteLength(JSON.stringify(response()));
+    if ((payload.data.articles || payload.data.news?.articles) && size() > config.maxOutputBytes) throw new ReadError("OUTPUT_TOO_LARGE", "Respuesta paginada demasiado grande; reducir limit sin avanzar el cursor.");
     const arrays = ["news", "upcoming", "recent", "sources"];
     while (size() > config.maxOutputBytes) {
       const candidates = arrays.filter(key => Array.isArray(payload.data[key]) && payload.data[key].length);

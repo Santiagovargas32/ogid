@@ -13,6 +13,7 @@ export async function getAggregateNews(req, res) {
   const countries = req.query.countries ? parseCountries(req.query.countries, config.watchlistCountries || []) : [];
   const payload = await aggregator.getSnapshot({
     force: req.query.force === "1" || req.query.force === "true",
+    stored: req.query.stored === "1" || req.query.stored === "true",
     countries,
     topic: String(req.query.topic || ""),
     threat: String(req.query.threat || ""),

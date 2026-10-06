@@ -434,7 +434,8 @@ export class AdvancedIntelligenceService {
     this.inFlight = new Map();
   }
 
-  async getSnapshot({ countries = [], force = false, windowHours = 24, maxEvents = 450, activeWindowHours = null, baselineDays = 7 } = {}) {
+  async getSnapshot({ countries = [], force = false, stored = false, windowHours = 24, maxEvents = 450, activeWindowHours = null, baselineDays = 7 } = {}) {
+    if (stored && force) throw new Error("stored-and-force-conflict");
     const resolvedCountries = [...new Set((countries || []).map((iso2) => String(iso2 || "").toUpperCase()).filter(Boolean))];
     const resolvedWindowHours = Math.max(1, Math.min(168, Number(windowHours || 24)));
     const resolvedActiveWindowHours = activeWindowHours === null || activeWindowHours === undefined
@@ -451,7 +452,8 @@ export class AdvancedIntelligenceService {
       maxEvents,
       activeWindowHours: resolvedActiveWindowHours,
       baselineDays,
-      stateRevision
+      stateRevision,
+      stored
     });
     const cached = !force ? this.cache.get(key) : null;
     if (cached && this.now() - cached.createdAtMs < this.cacheTtlMs) return structuredClone(cached.value);
@@ -459,6 +461,7 @@ export class AdvancedIntelligenceService {
     const promise = this.#buildSnapshot({
       countries: resolvedCountries,
       force,
+      stored,
       windowHours: resolvedWindowHours,
       maxEvents,
       activeWindowHours: resolvedActiveWindowHours,
@@ -473,9 +476,10 @@ export class AdvancedIntelligenceService {
     return structuredClone(value);
   }
 
-  async #buildSnapshot({ countries, force, windowHours, maxEvents, activeWindowHours, baselineDays }) {
+  async #buildSnapshot({ countries, force, stored, windowHours, maxEvents, activeWindowHours, baselineDays }) {
     const aggregateNews = await this.rssAggregator.getSnapshot({
       force,
+      stored,
       countries: [],
       limit: Math.max(500, Number(this.rssAggregator.maxCorpusItems || 500))
     });

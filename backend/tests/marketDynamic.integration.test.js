@@ -29,7 +29,7 @@ const tsla = {
   metadataSource: { provider: "test" },
 };
 
-test("anonymous LAN market API searches, persists a selection and serves Yahoo-backed OHLCV", async () => {
+test("LAN market API reads anonymously and authorizes selection and forced OHLCV", async () => {
   const historyDir = mkdtempSync(join(tmpdir(), "ogid-market-dynamic-"));
   let runtime;
   const marketDataService = {
@@ -65,10 +65,11 @@ test("anonymous LAN market API searches, persists a selection and serves Yahoo-b
   runtime = createAppServer({
     port: 0,
     disableBackgroundRefresh: true,
+    security: { adminApiToken: "fixture-market-admin", allowLocalAdmin: true },
     marketDataService,
     market: { provider: "yahoo", fallbackProvider: "", tickers: [], historyDir, historyPersist: false, dailyCandles: { enabled: true, adjustmentMode: "splits", retentionDays: 3650, backfillMaxDays: 30 } },
   });
-  // Keep the HTTP transport local while exercising an anonymous LAN peer.
+  // Keep the HTTP transport local while exercising a LAN peer.
   runtime.server.prependListener("request", (req) => {
     Object.defineProperty(req.socket, "remoteAddress", { configurable: true, value: "192.168.1.42" });
   });
@@ -80,9 +81,15 @@ test("anonymous LAN market API searches, persists a selection and serves Yahoo-b
     const search = await fetch(`${baseUrl}/api/market/instruments/search?q=Tesla&limit=5`).then((response) => response.json());
     assert.equal(search.data.instruments[0].instrumentId, tsla.instrumentId);
 
+    const deniedUpdate = await fetch(`${baseUrl}/api/market/watchlist`, {
+      method: "PUT", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ instrumentIds: [tsla.instrumentId] }),
+    });
+    assert.equal(deniedUpdate.status, 401);
+
     const updateResponse = await fetch(`${baseUrl}/api/market/watchlist`, {
       method: "PUT",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", authorization: "Bearer fixture-market-admin" },
       body: JSON.stringify({ instrumentIds: [tsla.instrumentId] }),
     });
     const update = await updateResponse.json();
@@ -93,7 +100,9 @@ test("anonymous LAN market API searches, persists a selection and serves Yahoo-b
     const saved = await fetch(`${baseUrl}/api/market/watchlist`).then((response) => response.json());
     assert.deepEqual(saved.data.selectedSymbols, ["TSLA"]);
 
-    const candlesResponse = await fetch(`${baseUrl}/api/market/candles?instrumentId=${tsla.instrumentId}&interval=1day&limit=20&force=1`);
+    const candlesUrl = `${baseUrl}/api/market/candles?instrumentId=${tsla.instrumentId}&interval=1day&limit=20&force=1`;
+    assert.equal((await fetch(candlesUrl)).status, 401);
+    const candlesResponse = await fetch(candlesUrl, { headers: { authorization: "Bearer fixture-market-admin" } });
     const candles = await candlesResponse.json();
     assert.equal(candlesResponse.status, 200, JSON.stringify(candles));
     assert.equal(candles.data.status, "fresh");

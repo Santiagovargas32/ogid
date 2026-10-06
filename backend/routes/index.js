@@ -7,10 +7,12 @@ import mediaRoutes from "./mediaRoutes.js";
 import mapRoutes from "./mapRoutes.js";
 import marketRoutes from "./marketRoutes.js";
 import newsRoutes from "./newsRoutes.js";
+import researchRoutes from "./researchRoutes.js";
 
 const router = Router();
 
 router.use(healthRoutes);
+router.use(researchRoutes);
 router.get("/country-instability", getCountryInstability);
 router.use("/admin", adminRoutes);
 router.use("/intel", intelRoutes);

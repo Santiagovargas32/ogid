@@ -54,6 +54,7 @@ export async function getMapLayers(req, res) {
     bbox: parseBbox(req.query.bbox),
     limit: parsePositiveInt(req.query.limit, 250, { min: 10, max: 1000 }),
     preset: String(req.query.preset || "Global"),
+    stored: req.query.stored === "1" || req.query.stored === "true",
     force: req.query.force === "1" || req.query.force === "true"
   });
   res.json(mapResponse(bundle));

@@ -11,7 +11,7 @@ El adaptador utiliza stdio y el cliente oficial `tunnel-client`. El perfil de ej
 
 La credencial es una **API key runtime de la organización OpenAI**, obtenida en Platform; no aparece como un secreto de la suscripción personal ChatGPT y no es una clave de OGID. El principal necesita permisos Tunnels **Read + Use** en la organización del túnel. Un ID identifica el túnel y no sustituye su clave. Mantener el secreto fuera de Git, del chat y de los argumentos del proceso; `file:` permite que el cliente lea el archivo protegido.
 
-La plantilla inicia Node con `env -i` para evitar transmitir al adaptador variables del cliente del túnel. Comprobar la ruta de Node con `command -v node`; añadir únicamente las variables `OGID_*` necesarias. El comando de ejemplo no carga `.env` ni `backend/.env`.
+La plantilla inicia Node con `env -i` para evitar transmitir al adaptador variables del cliente del túnel. Comprobar la ruta de Node con `command -v node`; añadir únicamente las variables `OGID_*` necesarias. La plantilla 0.2.0 añade `OGID_PROFILE=research` y `OGID_INSTRUMENT_AUTH=runtime` para resolver los símbolos verificados del backend. El comando de ejemplo no carga `.env` ni `backend/.env`.
 
 ## Prueba local y desde ChatGPT
 
@@ -31,9 +31,11 @@ curl --fail --silent --show-error http://127.0.0.1:8766/readyz
 
 El puerto de diagnóstico debe estar libre y escuchar solo en loopback. La UI está en `http://127.0.0.1:8766/ui`. No necesita puertos entrantes públicos. Que ambos GET respondan 200 no demuestra por sí solo que ChatGPT pueda listar y ejecutar las herramientas.
 
+En la UI, `Overview` permite revisar el estado y `Logs` muestra los eventos en directo. Comparar los contadores de `/health/response-delivery` antes y después de una llamada: deben aumentar `accepted` y `completed`, sin nuevos `terminal_failures`. Un evento `dispatcher forwarded command to MCP server` indica envío al MCP; los contadores y el resultado de la herramienta permiten comprobar la entrega y el éxito de la operación por separado.
+
 En ChatGPT, crear o revisar el MCP personalizado con conexión **Tunnel**, seleccionar el túnel asociado al workspace correcto y limitar su acceso. Este adaptador no implementa OAuth de aplicación: los permisos del túnel y workspace deben corresponder al alcance de lectura previsto. Instalar/seleccionar el plugin en la conversación y ejecutar:
 
-> Usa únicamente OGID: llama a ogid_health; ogid_get_news con countries=["ALL"], sources=["rss"], limit=5; ogid_get_awareness con domains=["macro"], kinds=["macro_scheduled"], limit=10; y ogid_get_awareness_sources. Conserva procedencia y advertencias. Distingue publicación, actualización y recepción. Si falla una llamada, informa del error sin sustituirla por navegación web.
+> Usa únicamente OGID: comprueba salud y capabilities, versión 0.2.0 y diez herramientas; resuelve NVDA/NVIDIA y ASML sin elegir un mercado ambiguo; consulta ogid_search_news para NVDA sin countries y completa sus páginas; lee un artículo y pide contexto weekly con identidad confirmada. Conserva cobertura, procedencia y calidad. Si falla, informa del error sin sustituirlo por navegación web. Ejecuta también las cuatro herramientas compatibles.
 
 | Prueba | Criterio de aceptación |
 | --- | --- |
@@ -41,17 +43,17 @@ En ChatGPT, crear o revisar el MCP personalizado con conexión **Tunnel**, selec
 | Noticias | Lote acotado, procedencia, fechas sin verificar identificadas, sin texto completo |
 | Agenda | `upcoming`/`recent`, fechas y fuentes; calendario sin fecha ficticia de 1999 |
 | Fuentes | Catálogo y salud diferenciados; `runtime:null` no se interpreta como sano |
-| Límites | Entradas inválidas rechazadas; no hay herramienta administrativa ni de refresh |
+| Límites | Entradas inválidas rechazadas; no hay ogid_operator ni capacidad de refresh/mutación en investigación |
 
 Registrar hora, herramienta y éxito/error sin secretos ni contenidos privados. Revisar `/health/control-plane` y `/health/response-delivery` junto con las respuestas reales. `/health/mcp=unknown/not_observed` puede reflejar observación limitada del protocolo y exige contrastar las llamadas. Consultas de descubrimiento a un canal `harpoon` no configurado no justifican habilitarlo cuando las herramientas OGID de `main` funcionan.
 
-Al actualizar el código, reiniciar el backend y el cliente del túnel de forma controlada para cargarlo, y comprobar la versión por `ogid_health`. El cliente lanza y administra su hijo stdio: no iniciar además otro MCP para la misma conexión. Refrescar el catálogo del plugin si cambia el contrato.
+Al actualizar el código, reiniciar el backend y el cliente del túnel de forma controlada para cargarlo, y comprobar la versión por `ogid_health`. El cliente lanza y administra su hijo stdio: no iniciar además otro MCP para la misma conexión. Usar **Actualizar herramientas** (Refresh) en la gestión de la conexión existente e iniciar una conversación nueva si cambia el contrato. No hace falta editar el nombre ni la descripción para actualizar las herramientas. Ver [migración 0.2.0](MIGRACION-0.2.md) y [evaluación completa](EVALUACION-CHATGPT.md).
 
 ## Ejecución persistente
 
 `deploy/ogid-mcp-tunnel.service` es una plantilla de usuario. Usa `%h` para la carpeta personal y supone binario en `~/.local/bin`, perfil y clave en `~/.config/ogid-mcp`. Adaptar las rutas si la instalación difiere. El perfil ya contiene la ruta absoluta al checkout; no necesita `EnvironmentFile`.
 
-Después de verificar las cuatro herramientas y disponer de OGID persistente, detener el cliente en primer plano antes de iniciar el servicio:
+Después de verificar las diez herramientas y disponer de OGID persistente, detener el cliente en primer plano antes de iniciar el servicio:
 
 ```sh
 mkdir -p "$HOME/.config/systemd/user"

@@ -1,4 +1,6 @@
-# Mejora: acceso privado de ChatGPT a OGID y calidad de fechas
+# Antecedente histórico: OGID MCP 0.1.1
+
+Este documento describe la mejora anterior y sus verificaciones del 5 de octubre; no es el estado operativo de 0.2.0. Consultar README.md, MIGRACION-0.2.md y RESULTADOS.md para la implementación actual.
 
 OGID expone un adaptador independiente MCP de solo lectura, versión **0.1.1**, con cuatro herramientas por stdio. El túnel privado conecta ChatGPT al proceso local sin publicar el backend ni compartir claves de proveedores con el adaptador.
 

@@ -57,6 +57,17 @@ test("cross-pipeline comparison reports overlap without publishing duplicates", 
   assert.deepEqual(comparison, { legacyCount: 1, canonicalCount: 1, overlap: 1, coverage: 1, crossPipelineDuplicates: 1 });
 });
 
+test("archivo recibe las noticias canónicas antes del recorte del corpus", async () => {
+  const catalog = buildCanonicalRssCatalog({ primaryFeeds: [feed("archive")] });
+  const collected = [];
+  const body = `<rss><channel>${Array.from({ length: 7 }, (_, i) => `<item><title>Distinct company ${i}</title><link>https://news.test/${i}</link><pubDate>Tue, 06 Oct 2026 12:00:00 GMT</pubDate></item>`).join("")}</channel></rss>`;
+  const pipeline = new RssCanonicalPipeline({ catalog, maxCorpusItems: 2, fetchImpl: async () => response(body), onCollected: rows => collected.push(...rows) });
+  const snapshot = await pipeline.runCycle();
+  assert.equal(snapshot.items.length, 2);
+  assert.equal(collected.length, 7);
+  assert.equal(new Set(collected.map(article => article.url)).size, 7);
+});
+
 test("rollback keeps canonical state available while returning to legacy mode", () => {
   const pipeline = new RssCanonicalPipeline({ catalog: buildCanonicalRssCatalog({ primaryFeeds: [feed("rollback")] }) }); pipeline.corpus = [{ id: "kept" }]; pipeline.state("rollback");
   assert.deepEqual(pipeline.rollback(), { mode: "legacy", corpusPreserved: 1, statePreserved: 1 });

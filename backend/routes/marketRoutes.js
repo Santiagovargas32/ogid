@@ -1,11 +1,13 @@
 import { Router } from "express";
 import { backfillCandles, getAnalytics, getCandleMetrics, getCandles, getConditions, getImpact, getProviderStatus, getQuotes, getTechnicalIndicators, getWatchlist, searchInstruments, updateWatchlist } from "../controllers/marketController.js";
+import { resolveInstruments } from "../controllers/researchController.js";
 
 const router = Router();
 
 router.get("/quotes", getQuotes);
 router.get("/provider-status", getProviderStatus);
 router.get("/instruments/search", searchInstruments);
+router.get("/instruments/resolve", resolveInstruments);
 router.get("/watchlist", getWatchlist);
 router.put("/watchlist", updateWatchlist);
 router.get("/candles", getCandles);

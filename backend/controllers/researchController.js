@@ -1,0 +1,35 @@
+import { OGID_OPERATIONS, OPERATIONS_VERSION, getOperation, parseOperationQuery, validateValue } from "../contracts/ogidOperations.js";
+import { AppError } from "../utils/error.js";
+import { listVerifiedInstruments } from "../services/market/instrumentRegistry.js";
+import { instrumentView, resolveReferences } from "../services/research/instrumentIdentity.js";
+import { numericProjection } from "../utils/researchProjection.js";
+import stateManager from "../state/stateManager.js";
+import apiQuotaTracker from "../services/admin/apiQuotaTrackerService.js";
+function params(req, id) {
+  try { return parseOperationQuery(req.query, getOperation(id)); }
+  catch { throw new AppError("Parámetros inválidos o ventana inconsistente.", 400, "INVALID_RESEARCH_QUERY"); }
+}
+export function searchNews(req, res) { res.json({ ok: true, data: res.app.locals.newsArchive.search(params(req, "news.search")) }); }
+export function getNewsItem(req, res) {
+  if (!/^[A-Za-z0-9._:-]{1,128}$/.test(req.params.id)) throw new AppError("ID inválido.", 400, "INVALID_NEWS_ID");
+  res.json({ ok: true, data: res.app.locals.newsArchive.getItem(req.params.id) });
+}
+export function resolveInstruments(req, res) {
+  const query = params(req, "instruments.resolve"); const universe = listVerifiedInstruments(); const snapshot = stateManager.getSnapshot();
+  const resolutions = resolveReferences(query.references || [], query, universe); const ids = new Set(resolutions.flatMap(row => row.candidates));
+  res.json({ ok: true, data: { generatedAt: new Date().toISOString(), registryOrigin: "verified-runtime", instruments: universe.filter(instrument => !query.references?.length || ids.has(instrument.instrumentId)).map(instrument => instrumentView(instrument, res.app.locals.marketWatchlistService.selectedInstrumentIds, snapshot.market?.quotes || {})), resolutions,
+    warnings: ["La identidad de proveedor no demuestra una posición ni una clase elegida. Resolver no consulta proveedores; si falta una identidad, usar búsqueda operador y verificación explícita."] } });
+}
+export function getCapabilities(_req, res) { res.json({ ok: true, data: { contractVersion: OPERATIONS_VERSION, generatedAt: new Date().toISOString(), operations: OGID_OPERATIONS.filter(op => op.profile === "research"), newsCoverage: res.app.locals.newsArchive.coverage(), runningCommitVerified: false } }); }
+export function getDiagnostics(_req, res) {
+  const snapshot = stateManager.getSnapshot(); const orchestrator = res.app.locals.orchestrator;
+  res.json({ ok: true, data: { generatedAt: new Date().toISOString(), counts: { news: snapshot.news.length, quotes: Object.keys(snapshot.market?.quotes || {}).length, archived: res.app.locals.newsArchive.records.size },
+    quotas: apiQuotaTracker.getSnapshot().map(row => ({ provider: row.provider, metrics: numericProjection(row) })), pipeline: { news: numericProjection(orchestrator?.newsCycleTelemetry), market: numericProjection(orchestrator?.marketCycleTelemetry) },
+    archive: res.app.locals.newsArchive.coverage(), warnings: ["Diagnóstico público de métricas; cuerpos, configuración privada y logs internos no se publican."] } });
+}
+export function getPortfolioContext(req, res) { res.json({ ok: true, data: res.app.locals.portfolioContextService.getContext(params(req, "portfolio.context")) }); }
+export function acknowledgeAlerts(req, res) {
+  if (!req.mcpOperatorAuthorized) throw new AppError("Requiere credencial MCP con alerts:ack.", 403, "MCP_OPERATOR_FORBIDDEN");
+  if (!validateValue(req.body, getOperation("portfolio.alerts.ack").body)) throw new AppError("Entrega inválida.", 400, "INVALID_ALERT_ACK");
+  res.json({ ok: true, data: res.app.locals.materialAlertStore.acknowledge(req.body) });
+}

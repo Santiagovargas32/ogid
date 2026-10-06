@@ -10,3 +10,8 @@ backend/data/intel/
 /docs/*
 !/docs/llamacpp-deployment.md
 !/docs/ai-market-history.md
+# MCP: dependencias, secretos y diagnóstico local de la integración.
+integrations/ogid-mcp/**/node_modules/
+integrations/ogid-mcp/**/.env
+integrations/ogid-mcp/**/*.local
+integrations/ogid-mcp/**/DIAGNOSTICO-LOCAL.md

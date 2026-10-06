@@ -496,6 +496,7 @@ export async function getNewsRaw(req, res) {
   const aggregateSnapshot = aggregator
     ? await aggregator.getSnapshot({
         force: false,
+        stored: req.query.stored === "1" || req.query.stored === "true",
         limit: config.news?.rssAggregateMaxItems
       })
     : { generatedAt: null, items: [] };

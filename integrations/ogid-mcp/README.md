@@ -1,76 +1,108 @@
-# OGID MCP de solo lectura
+# OGID MCP 0.2.0
 
-Adaptador Node.js/ESM que consulta un backend OGID existente por HTTP en loopback y expone cuatro herramientas MCP por **stdio**. No abre un puerto propio, carga claves de proveedores ni inicia otro recolector. Requiere el checkout completo de OGID porque reutiliza sus catálogos estáticos de países y fuentes.
+Adaptador Node/ESM por stdio, conectado al backend OGID por HTTP loopback. El perfil investigación ofrece diez herramientas y lecturas almacenadas para toda la API JSON clasificada. El perfil operador añade una herramienta con operaciones enumeradas y permisos de servidor. No inicia recolectores ni recibe claves de proveedores.
 
-## Instalación y pruebas
+## Instalar y verificar
 
-Node 22–26; el proyecto recomienda Node 24. Desde la raíz del repositorio, con OGID ya en ejecución:
+Desde la raíz del checkout completo, con Node 22–26:
 
 ```sh
 npm --prefix integrations/ogid-mcp ci --ignore-scripts
 npm --prefix integrations/ogid-mcp run check
+npm --prefix integrations/ogid-mcp run inventory:check
 npm --prefix integrations/ogid-mcp test
-npm --prefix integrations/ogid-mcp run smoke
+npm --prefix backend run check
+npm --prefix backend test
 ```
 
-Las pruebas usan fixtures y un cliente MCP real por stdio. `smoke` consulta las cuatro herramientas contra el backend local y solo imprime contadores y calidad. No refresca proveedores. `npm start` inicia stdio, que requiere un cliente MCP; no es un servidor HTTP para abrir en el navegador.
+Las pruebas deterministas usan fixtures y protocolo MCP real; no consumen cuotas de Internet. Con el backend nuevo en ejecución, `npm --prefix integrations/ogid-mcp run smoke` comprueba las diez herramientas y cuatro paquetes sin refresh ni mutaciones. Si el archivo está vacío, declara el caso de lectura de artículo sin probar. Consultar un paquete material conserva candidatos observados; nunca reconoce entregas.
 
-## Herramientas
+## Herramientas de investigación
 
-| Herramienta | Lectura | Parámetros |
-| --- | --- | --- |
-| `ogid_health` | Conectividad, calidad por dominio, disponibilidad de mercado y modo Awareness | Ninguno |
-| `ogid_get_news` | Lote actual de noticias con procedencia y fechas | `countries`, `sources`, `limit` |
-| `ogid_get_awareness` | Agenda y comunicados públicos; listas `upcoming` y `recent` | `domains`, `kinds`, `statuses`, `countries`, `instrumentIds`, `from`, `to`, `limit` |
-| `ogid_get_awareness_sources` | Catálogo versionado y salud pública disponible por fuente | Ninguno |
+| Herramienta | Datos / uso |
+| --- | --- |
+| ogid_health | Conectividad, versión del adaptador, fechas, calidad y disponibilidad |
+| ogid_get_news | Lote editorial actual; contrato compatible con 0.1.1 |
+| ogid_get_awareness | Agenda/comunicados públicos, upcoming/recent, fechas y calidad |
+| ogid_get_awareness_sources | Catálogo versionado y salud pública por fuente |
+| ogid_get_capabilities | Contratos, permisos, versión, cobertura y límites |
+| ogid_search_news | Archivo preeditorial por países, identidades, texto, temas, fuentes y fechas |
+| ogid_get_news_item | Metadata y extracto autorizado de un artículo archivado |
+| ogid_resolve_instruments | Identidades verificadas del runtime, alternativas y cobertura |
+| ogid_get_portfolio_context | Paquetes agenda/daily/material/weekly |
+| ogid_query | Operación enumerada para mercado, inteligencia, mapas, medios y diagnóstico |
 
-`limit` admite 1–100, por defecto 20. OGID aplica el límite Awareness por separado a cada lista. Fechas ISO con zona horaria; `from <= to`. `instrumentIds` solo acepta los IDs verificados que el operador configure. El filtro de noticias usa `ALL` por defecto, pero sigue sujeto a las menciones de países reconocidas por OGID; no es una búsqueda histórica completa.
+[API-MCP.md](API-MCP.md) enumera las 45 rutas JSON y 54 operaciones: 35 de investigación y 19 de operador. Sus esquemas se generan desde [el registro compartido](../../backend/contracts/ogidOperations.js). Cambiarlo exige regenerar el inventario; una prueba detecta rutas sin clasificación.
 
-Cada respuesta incluye `ok`, `queriedAt`, `origin`, `data`, `warnings` y `truncated`. Los errores son explícitos y no se convierten en listas vacías. Al alcanzar el máximo de bytes se recortan listas y se informa de que el resultado es parcial.
+Ejemplos de argumentos MCP:
 
-## Configuración
-
-`.env.example` contiene valores públicos de ejemplo. El adaptador **no carga `.env` automáticamente**, ni lee `backend/.env`. Para una ejecución local con configuración propia:
-
-```sh
-cd integrations/ogid-mcp
-cp .env.example .env
-node --env-file=.env src/index.js
+```json
+{"references":["NVDA","NVIDIA","ASML","Alphabet"]}
+{"symbols":["NVDA"],"from":"2026-10-04T12:00:00Z","to":"2026-10-06T12:00:00Z","limit":100}
+{"operationId":"market.quotes","parameters":{"tickers":["NVDA"]}}
+{"mode":"weekly","symbols":["NVDA"],"limit":30}
 ```
 
-El cliente del túnel usa los valores escritos en su `mcp.commands[].command`. Editar `.env` no altera ese comando; configurar allí las variables necesarias o añadir una ruta absoluta a `--env-file` para un archivo exclusivo del adaptador.
+ASML/Alphabet/ETF requieren elegir un instrumentId verificado si la referencia resulta ambigua. Un nombre general de ETF requiere confirmar mercado/clase incluso si el registro conoce una sola cotización. El resolver no consulta proveedores ni registra candidaturas. Funciona sin watchlist; identidad disponible no implica precio disponible. Si una clase ETF no está verificada, devuelve unavailable y requiere intervención explícita del operador, sin sustituirla por otro producto.
 
-| Variable | Predeterminado | Contrato |
-| --- | --- | --- |
-| `OGID_BASE_URL` | `http://127.0.0.1:3000` | Solo IP literal loopback; sin usuario, contraseña, ruta, query ni fragmento |
-| `OGID_TIMEOUT_MS` | 5000 | 100–30000 ms; incluye la lectura del cuerpo |
-| `OGID_MAX_RESPONSE_BYTES` | 2097152 | Máximo por respuesta HTTP; 1024–4194304 |
-| `OGID_MAX_OUTPUT_BYTES` | 262144 | Máximo de respuesta MCP completa; 4096–524288 |
-| `OGID_INSTRUMENT_IDS` | Vacío | IDs verificados separados por comas; vacío deshabilita el filtro por instrumento |
+## Archivo y paginación
 
-## Calidad y límites
+El backend ingiere noticias intel y RSS antes del recorte editorial. Conserva metadata/extractos autorizados durante 30 días desde su recopilación, con poda por última observación y límites de 100 000 artículos / 64 MiB de metadata. JSON atómico reutiliza la persistencia existente; el índice en memoria es suficiente para este volumen local. El historial de riesgos/impactos ocupa como máximo un registro por hora durante esos 30 días. Los archivos se crean con permiso 600 y el directorio nuevo con 700.
 
-- `synthetic`, `fallback`, `mixed` y `stale` se conservan. Un backend sano no acredita precios utilizables para una cartera. `market.availability=empty` significa que no hay cotizaciones, aunque la calidad global indique respaldo.
-- Una fecha RSS de respaldo no se presenta como publicación: `publishedAt=null`, con `receivedAt` y `provenance.publishedAtQuality`. Si la fuente solo informa actualización, se expone `updatedAt` y `provenance.publishedAtBasis=updated`. No se deduce publicación a partir de la URL.
-- `latestEventAt` en un calendario puede ser una fecha programada futura; `latestEventTimeKind` distingue `scheduledAt` de `publishedAt`. La frescura de consulta se mide con `lastSuccessAt`, no con la fecha del evento ni `generatedAt`.
-- El backend proyecta un solo comunicado oficial cuando dos ingestiones comparten URL, título y publicación, conservando `relatedSources`. Los registros y auditorías de cada fuente se mantienen, y los datos shadow no enriquecen la vista pública.
-- Awareness `shadow`/`off` oculta eventos. `runtime:null` en el catálogo significa desconocido. Los calendarios no aportan consenso financiero.
-- `ogidCheckoutCommit` identifica el checkout, no el proceso OGID cargado. `runningCommitVerified=false` se mantiene hasta disponer de identificación verificable de un despliegue. La distribución sin `.git` devuelve commit desconocido.
+No rellena semanas anteriores ni descarga retrospectivamente. Cobertura declara activación, oldest/newest, recepción, fechas desconocidas, poda por capacidad y continuidad de adquisición desconocida. Los snapshots actuales no demuestran continuidad histórica. El historial se registra en los ciclos intel/mercado y permanece tras reinicio; no es una serie de rentabilidades.
 
-## Seguridad y conexión
+Filtros antes de paginar, país opcional y coincidencia por entidad con método/evidencia. Un resultado sin país incluye noticias corporativas sin etiqueta. País y empresa juntos restringen ambos. Componentes y pesos de ETF no están disponibles: no se infiere exposición cuantitativa.
 
-Solo se permiten tres rutas GET fijas y sus parámetros pactados. Sin escrituras, refresh, administración, shell, URL/cabeceras arbitrarias ni lectura de archivos desde las herramientas. No se reenvían cookies ni tokens. Redirecciones rechazadas y validación TLS normal; se rechaza `NODE_TLS_REJECT_UNAUTHORIZED=0`. Un único reintento para 502/503/504 y determinados fallos de conexión; ninguno para 401, 429 o timeout.
+`timeField` es publishedAt por defecto; admite updatedAt, receivedAt y archiveChangedAt. Publicación desconocida queda fuera de ventanas publishedAt. archiveChangedAt y contentRevision registran cambios del contenido y permiten encontrar correcciones de publicaciones antiguas; otro sondeo o feed no los convierte en noticia nueva. No verifican actualidad del hecho. Los tres tiempos de fuente/recepción se conservan por separado.
 
-La salida limita contenido y elimina campos privados. Noticias y eventos son datos externos no confiables: las instrucciones MCP exigen conservar su calidad y no obedecer instrucciones incluidas en ellos. Las anotaciones de lectura no sustituyen autenticación ni los permisos del cliente.
+Cada búsqueda fija una revisión; continuar con `{"cursor":"nextCursor","limit":100}`. Llegadas/correcciones nuevas no alteran páginas ya abiertas. Filtros no pueden cambiar. Una página limitada por bytes avanza solo por artículos entregados. Un artículo que no cabe genera error explícito, sin saltarlo. Cursores firmados caducan a los 15 minutos, al reiniciar o por expulsión de revisiones (32 revisiones / 200 000 referencias): CURSOR_EXPIRED requiere empezar una búsqueda nueva. Artículos e historial permanecen en disco; cursores no. La retención del backend no borra respuestas ya enviadas al contexto o historial del producto cliente.
+
+## Configuración y permisos
+
+El adaptador no carga .env ni backend/.env automáticamente. La [plantilla de túnel](deploy/tunnel-client.profile.example.yaml) usa env -i con investigación y autorización runtime explícitas. Para --env-file usar un archivo exclusivo del adaptador, protegido, con ruta absoluta.
+
+| Variable | Valor / función |
+| --- | --- |
+| OGID_BASE_URL | http://127.0.0.1:3000; solo origen loopback literal |
+| OGID_PROFILE | research por defecto; operator requiere credencial privada |
+| OGID_INSTRUMENT_AUTH | allowlist por compatibilidad; runtime recomendado en plantilla |
+| OGID_INSTRUMENT_IDS | IDs autorizados separados por comas para allowlist |
+| OGID_TIMEOUT_MS | 5000; 100–30000, incluye cuerpo HTTP |
+| OGID_MAX_RESPONSE_BYTES | 2097152; máximo 4194304 |
+| OGID_MAX_OUTPUT_BYTES | 262144; 4096–524288, incluye envoltura MCP |
+| OGID_MAX_CONCURRENT | 4; 1–8, cola máxima 32 |
+| OGID_OPERATOR_CREDENTIAL_FILE | JSON privado 600, solo perfil operador |
+
+Variables backend: RESEARCH_NEWS_ARCHIVE_FILE y RESEARCH_ALERT_STATE_FILE, relativas al backend; valores en .env.example. MCP_OPERATOR_CREDENTIALS_FILE deshabilitado por defecto. La autenticación sensible existente permanece.
+
+La conexión investigación no anuncia ogid_operator. El operador verifica token, alcance, método, ruta y argumentos también en servidor; registra operación y hora sin secretos. Las respuestas admin solo incluyen métricas. [OPERADOR.md](OPERADOR.md) contiene ejemplos de permisos y configuración para una conexión separada.
+
+## Calidad y errores
+
+Cada respuesta incluye ok, queriedAt, origin, data, warnings y truncated. Se mantienen las garantías de 0.1.1: fechas de respaldo sin publicación ficticia, stale/synthetic/mixed/fallback, Awareness off/shadow oculto y lastSuccessAt separado de agenda futura. Un precio ausente/sintético no muestra changePct=0 como rendimiento real. El commit del checkout nunca acredita el proceso cargado.
+
+Las lecturas stored evitan consultas de RSS y resolución de medios; precios/series se leen de stores existentes. Los ciclos normales del backend pueden seguir recopilando según su configuración: una consulta no los dispara. No hay force en investigación. Solo investigación reintenta una vez 502/503/504 o ciertos fallos de conexión; no 401/429/timeout, operador ni escrituras. Redirecciones bloqueadas, TLS normal, entrada estricta y rutas enumeradas.
+
+Salida sin texto completo, prompts internos, secretos ni rutas privadas. Artículos headline-only-link-out devuelven título/enlace y excerpt=null. Errores upstream no reflejan sus cuerpos. Archivo corrupto impide recuperación con error explícito y se conserva para revisión; no se sobrescribe vacío.
+
+Materialidad configurable medium/high; reportes sin corroboración excluidos por defecto. includeUncorroborated habilita candidatos a confirmar, nunca hechos confirmados. Candidatos y reconocimientos se persisten 30 días / 10 000 entradas por conjunto. Correcciones semánticas reaparecen; repetir un feed no acredita corroboración independiente. Solo alerts:ack puede reconocer una entrega realmente realizada; investigación no puede garantizar ausencia de repeticiones entre ejecuciones si nadie reconoce las entregas.
+
+Scores son heurísticos, no probabilidades. La asociación noticia/precio no demuestra causalidad. OGID complementa la investigación externa y no inventa posiciones, pesos ni holdings.
+
+## Activación y documentación
 
 ```text
-ChatGPT → túnel privado de OpenAI ← HTTPS saliente ← tunnel-client
+ChatGPT → túnel OpenAI ← conexión HTTPS saliente ← tunnel-client
                                                      ↕ stdio
-                                                 OGID MCP
-                                                     ↓ GET loopback
-                                                 backend OGID
+                                                   OGID MCP
+                                                     ↓ HTTP loopback
+                                                  backend OGID
 ```
 
-La [guía del túnel](CONFIGURAR-TUNEL.md) explica credencial runtime, perfil local, prueba desde ChatGPT y servicio de usuario. Las claves, IDs reales y perfiles de máquina se guardan fuera de Git. `DIAGNOSTICO-LOCAL.md` y los archivos `.local` se conservan como notas locales ignoradas.
+Reiniciar backend y túnel carga el código; cambios de catálogo requieren Refresh del plugin y conversación nueva. readyz no demuestra una llamada desde ChatGPT ni una tarea programada.
 
-Ver [MEJORA-MCP.md](MEJORA-MCP.md) para el alcance de la mejora y los pasos de activación. Dependencias fijadas en `package-lock.json`: SDK MCP servidor/cliente 2.3.1 y Zod 4.6.5.
+- [Configuración del túnel](CONFIGURAR-TUNEL.md), [runbook Fedora](RUNBOOK-FEDORA.md) y [migración/rollback](MIGRACION-0.2.md).
+- [Cuatro instrucciones de tareas](TAREAS-CARTERA.md) y [evaluación desde ChatGPT](EVALUACION-CHATGPT.md).
+- [Resultados y límites de esta implementación](RESULTADOS.md).
+
+Perfiles, claves y notas de máquina quedan fuera de Git; *.local y DIAGNOSTICO-LOCAL.md están ignorados. Dependencias existentes fijadas: SDK MCP 2.3.1 y Zod 4.6.5.

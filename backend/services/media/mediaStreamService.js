@@ -300,7 +300,9 @@ class MediaStreamService {
     });
   }
 
-  async getSnapshot({ force = false, resolve = "critical", ids = [] } = {}) {
+  async getSnapshot({ force = false, stored = false, resolve = "critical", ids = [] } = {}) {
+    if (stored && force) throw new Error("stored-and-force-conflict");
+    if (stored) return clone(this.snapshot);
     const mode = normalizeResolveMode(resolve);
     if (!this.snapshot.generatedAt || force || mode !== "none") {
       await this.refresh({
@@ -313,13 +315,14 @@ class MediaStreamService {
     return clone(this.snapshot);
   }
 
-  async getStreamById(id, { force = false, resolve = "visible" } = {}) {
+  async getStreamById(id, { force = false, stored = false, resolve = "visible" } = {}) {
     const streamId = String(id || "").trim();
     if (!streamId) {
       return null;
     }
     const snapshot = await this.getSnapshot({
       force,
+      stored,
       resolve,
       ids: [streamId]
     });

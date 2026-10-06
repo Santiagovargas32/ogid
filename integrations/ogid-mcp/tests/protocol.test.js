@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 
-test("MCP stdio real: initialize, cuatro herramientas, llamadas e inputs rechazados", async () => {
+test("MCP stdio real: catálogo ampliado, cuatro herramientas compatibles e inputs rechazados", async () => {
   const requests = [];
   const server = createServer((req, res) => {
     requests.push(req.url);
@@ -27,10 +27,15 @@ test("MCP stdio real: initialize, cuatro herramientas, llamadas e inputs rechaza
     await client.connect(transport);
     assert.equal(client.getServerVersion().name, 'ogid-readonly');
     const { tools } = await client.listTools();
-    assert.deepEqual(tools.map(t => t.name).sort(), ['ogid_get_awareness', 'ogid_get_awareness_sources', 'ogid_get_news', 'ogid_health']);
+    assert.equal(tools.length, 10);
+    assert.ok(!tools.some(t => t.name === 'ogid_operator'));
+    const legacy = ['ogid_get_awareness', 'ogid_get_awareness_sources', 'ogid_get_news', 'ogid_health'];
+    assert.ok(legacy.every(name => tools.some(t => t.name === name)));
     for (const tool of tools) {
       assert.equal(tool.annotations.readOnlyHint, true);
       assert.equal(tool.inputSchema.additionalProperties, false);
+      assert.ok(tool.outputSchema);
+      if (!legacy.includes(tool.name)) continue;
       const result = await client.callTool({ name: tool.name, arguments: {} });
       assert.equal(result.isError, undefined);
       assert.equal(result.structuredContent.ok, true);
