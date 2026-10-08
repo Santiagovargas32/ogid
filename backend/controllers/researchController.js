@@ -6,6 +6,7 @@ import { instrumentView, resolveReferences } from "../services/research/instrume
 import { numericProjection } from "../utils/researchProjection.js";
 import stateManager from "../state/stateManager.js";
 import apiQuotaTracker from "../services/admin/apiQuotaTrackerService.js";
+import { researchSourceCatalog } from "../services/research/sourceCatalogView.js";
 export function params(req, id) {
   try { return parseOperationQuery(req.query, getOperation(id)); }
   catch { throw new AppError("Parámetros inválidos o ventana inconsistente.", 400, "INVALID_RESEARCH_QUERY"); }
@@ -37,7 +38,7 @@ export function acknowledgeAlerts(req, res) {
 
 export function getTechnicalContext(req,res) { res.json({ok:true,data:res.app.locals.technicalContextService.get(params(req,"market.technical-context"))}); }
 export function getEventImpact(req,res) { res.json({ok:true,data:{...res.app.locals.eventLedger.search(params(req,"research.event-impact")),pipeline:res.app.locals.researchPipeline}}); }
-export function getResearchSources(_req,res) { res.json({ok:true,data:res.app.locals.officialSourceService.status()}); }
+export function getResearchSources(_req,res) { res.json({ok:true,data:researchSourceCatalog(res.app.locals)}); }
 export function getCompanyFacts(req,res) { const {companyId}=params(req,"research.companyfacts");const table=res.app.locals.researchStore.view("companyFacts");const data=Object.hasOwn(table,companyId)?table[companyId]:null;res.json({ok:true,data:data||{companyId,metrics:null,missingReason:"no-stored-companyfacts",quality:{coverage:"not-available"}}}); }
 export function getEtfHoldings(req,res) { res.json({ok:true,data:res.app.locals.officialSourceService.holdings(params(req,"etf.holdings"))}); }
 export function getHistoryJob(req,res) {res.json({ok:true,data:res.app.locals.historicalAcquisitionService.get(params(req,"market.history.job").jobId)});}

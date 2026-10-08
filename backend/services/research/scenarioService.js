@@ -21,6 +21,10 @@ export class ScenarioService {
     const at=new Date(this.now()).toISOString();
     return this.alerts.researchTransaction(state=>{
       let changes=0;
+      for(const signal of Object.values(state.signals))if(signal.active&&signal.type==="event-review-candidate"&&this.eventLedger.isIdentityVerified&&!this.eventLedger.isIdentityVerified(signal.evidence?.eventId)){
+        signal.active=false;signal.revision++;signal.generatedAt=at;signal.lastTransitionAt=at;signal.quality={...signal.quality,eventIdentityVerified:false};
+        this.alerts.appendChange(state,{kind:"signal-transition",entityId:signal.signalId,revision:signal.revision,snapshot:signal,reason:"event-identity-requires-replay"});changes++;
+      }
       for(const scenario of Object.values(state.scenarios))if(!terminal.has(scenario.status)&&Date.parse(scenario.expiresAt)<=this.now()){scenario.status="expired";scenario.updatedAt=at;scenario.revision++;this.alerts.appendChange(state,{kind:"scenario-transition",entityId:scenario.scenarioId,revision:scenario.revision,snapshot:scenario,reason:"horizon-expired"});changes++;}
       for(const ctx of contexts) {
         const valid=!ctx.quality.reason&&!ctx.quality.stale&&ctx.indicators.levels.value&&ctx.indicators.atr14Wilder.value>0&&typeof ctx.observed?.close==="number";

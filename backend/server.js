@@ -41,6 +41,7 @@ import { ResearchStore } from "./services/research/researchStore.js";
 import { EventLedger } from "./services/research/eventLedger.js";
 import { OfficialSourceService, loadResearchSources } from "./services/research/officialSources.js";
 import { HistoricalAcquisitionService } from "./services/market/historicalAcquisitionService.js";
+import { HistoricalImportService } from "./services/market/historicalImportService.js";
 import { TechnicalContextService } from "./services/market/technicalContextService.js";
 import { NewsArchive } from "./services/research/newsArchive.js";
 import { MaterialAlertStore } from "./services/research/materialAlertStore.js";
@@ -904,7 +905,8 @@ export function createAppServer(overrides = {}) {
     perClientMax: config.manualRefresh.perClientMax
   });
 
-  const technicalContextService = new TechnicalContextService({store:dailyCandleStore});
+  const historicalImportService = new HistoricalImportService({ledger:researchStore,rootDir:dailyCandleStore.rootDir});
+  const technicalContextService = new TechnicalContextService({store:dailyCandleStore,imports:historicalImportService});
   const scenarioService = new ScenarioService({alerts:materialAlertStore,technicalContext:technicalContextService,eventLedger,candleStore:dailyCandleStore,policy:overrides.signalPolicy||loadSignalPolicy(process.env.RESEARCH_SIGNAL_POLICY_FILE)});
   orchestrator.researchCycle = () => {
     const publicEvents=awarenessService.getSnapshot({limit:100},{publicView:true});
@@ -921,6 +923,7 @@ export function createAppServer(overrides = {}) {
   app.locals.technicalContextService = technicalContextService;
   app.locals.scenarioService = scenarioService;
   app.locals.historicalAcquisitionService = new HistoricalAcquisitionService({ledger:researchStore,marketDataService,candleStore:dailyCandleStore});
+  app.locals.historicalImportService = historicalImportService;
   app.locals.materialAlertStore = materialAlertStore;
   app.locals.portfolioContextService = new PortfolioContextService({ stateManager, archive: newsArchive, alerts: materialAlertStore, awarenessService, watchlist: marketWatchlistService, scenarioService });
   app.locals.mcpOperatorCredentials = overrides.mcpOperatorCredentials || readOperatorCredentials(process.env.MCP_OPERATOR_CREDENTIALS_FILE);

@@ -18,7 +18,7 @@ test("cliente MCP real y backend real: diez herramientas, paginación, mercado a
   archive.ingest(Array.from({ length: 43 }, (_, index) => ({ id: `fixture-${index}`, title: `NVIDIA results ${index}`, url: `https://example.org/item/${index}`, provider: "rss", publishedAt: new Date(Date.now() - 1000 * index).toISOString() })));
   const client = new Client({ name: "ogid-research-e2e", version: "1.0" }); const transport = new StdioClientTransport({ command: process.execPath, args: [fileURLToPath(new URL("../src/index.js", import.meta.url))], env: { PATH: process.env.PATH, OGID_BASE_URL: `http://127.0.0.1:${runtime.server.address().port}`, OGID_INSTRUMENT_AUTH: "runtime" }, stderr: "pipe" });
   try {
-    await client.connect(transport); assert.equal(client.getServerVersion().version, "0.3.0"); assert.equal((await client.listTools()).tools.length, 10);
+    await client.connect(transport); assert.equal(client.getServerVersion().version, "0.4.0"); assert.equal((await client.listTools()).tools.length, 10);
     const call = async (name, args = {}) => { const result = await client.callTool({ name, arguments: args }); assert.ok(!result.isError, `${name}: ${result.structuredContent?.error?.code}`); return result.structuredContent.data; };
     const capabilities = await call("ogid_get_capabilities"); assert.equal(capabilities.profile, "research"); assert.ok(capabilities.operations.every(operation => operation.permission === "read:stored"));
     for (const name of ["ogid_health", "ogid_get_news", "ogid_get_awareness", "ogid_get_awareness_sources"]) await call(name);

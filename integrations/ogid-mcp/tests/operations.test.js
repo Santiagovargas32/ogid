@@ -14,7 +14,7 @@ const token = "fixture_" + "k".repeat(48);
 function requiredSample(definition) {
   return Object.fromEntries((definition.required || []).map(key => {
     const def = definition.properties[key];
-    const value = def.type === "object" ? requiredSample(def) : def.type === "array" ? ["fixture-id"] : def.format === "date-time" ? "2026-10-06T12:00:00Z" : def.type === "integer" ? def.minimum || 1 : def.enum?.[0] || (key === "q" ? "NVDA" : "fixture-id");
+    const value = def.type === "object" ? requiredSample(def) : def.type === "array" ? ["fixture-id"] : def.format === "date-time" ? "2026-10-06T12:00:00Z" : def.type === "integer" ? def.minimum || 1 : def.enum?.[0] || (key === "q" ? "NVDA" : key === "currency" ? "USD" : "fixture-id");
     return [key, value];
   }));
 }

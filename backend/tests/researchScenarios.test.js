@@ -6,6 +6,11 @@ import { join } from "node:path";
 import { MaterialAlertStore } from "../services/research/materialAlertStore.js";
 import { ScenarioService } from "../services/research/scenarioService.js";
 const id="us-equity-nvidia";
+test("legacy event-review signals are deactivated with an audited transition on refresh",()=>{
+ const alerts=new MaterialAlertStore();alerts.researchTransaction(state=>{state.signals.legacy={signalId:"legacy",instrumentId:id,type:"event-review-candidate",active:true,revision:1,evidence:{eventId:"old-url-group"},quality:{}};});
+ const service=new ScenarioService({alerts,eventLedger:{isIdentityVerified:()=>false},technicalContext:{},candleStore:{}});
+ assert.equal(service.refresh().changes,1);assert.equal(alerts.research.signals.legacy.active,false);assert.equal(alerts.research.signals.legacy.revision,2);assert.equal(alerts.research.changes.at(-1).reason,"event-identity-requires-replay");assert.equal(service.refresh().changes,0);
+});
 function context(price=105,revision="r1",timestamp="2026-10-08T20:00:00Z") {return {instrumentId:id,snapshotId:revision,seriesRevision:revision,lastClosedCandleAt:timestamp,sampleSize:200,observed:{close:price},indicators:{levels:{value:{support:90,resistance:100}},atr14Wilder:{value:2},relativeVolume:{value:1}},quality:{reason:null,stale:false,synthetic:false}};}
 test("persistent scenarios do not repeat transitions, corrections are audited and reads never acknowledge",()=>{
  let now=Date.parse("2026-10-08T22:00:00Z"),ctx=context();const path=join(mkdtempSync(join(tmpdir(),"ogid-scenarios-")),"alerts.json");

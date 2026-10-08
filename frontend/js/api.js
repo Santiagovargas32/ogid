@@ -72,6 +72,12 @@ export const api = {
   getPipelineStatus: () => request("/api/admin/pipeline-status"),
   getAdminNewsRaw: (params = {}) => request("/api/admin/news-raw", params),
   getAdminAiEnrichments: (params = {}) => request("/api/admin/ai-enrichments", params),
+  getAdminHistory: () => request("/api/admin/history", {}, { cache: "no-store" }),
+  replayAdminEvents: (body) => request("/api/admin/events/replay", {}, { method: "POST", body }),
+  createHistoryJob: (body) => request("/api/admin/history/jobs", {}, { method: "POST", body }),
+  runHistoryJob: (body) => request("/api/admin/history/run", {}, { method: "POST", body }),
+  importHistory: (body) => request("/api/admin/history/import", {}, { method: "POST", body }),
+  getTechnicalContext: (params) => request("/api/market/technical-context", params, { cache: "no-store" }),
   refreshMediaStreams: (payload = {}) => request("/api/media/streams/refresh", {}, { method: "POST", body: payload }),
   getMediaStreamsHealth: () => request("/api/media/streams/health")
 };

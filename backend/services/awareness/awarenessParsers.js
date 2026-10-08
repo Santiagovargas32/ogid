@@ -465,7 +465,7 @@ function parseBeaScheduleHtml(body, source, observedAt) {
     const url = canonicalUrl(link.attr("href") || source.url, source.url);
     events.push(createAwarenessEvent({
       source,
-      rawId: url !== source.url ? url : title,
+      rawId: `${url}|${title}|${scheduledAt}`,
       title,
       summary: context,
       canonicalUrl: url,
@@ -473,7 +473,7 @@ function parseBeaScheduleHtml(body, source, observedAt) {
       observedAt
     }));
   });
-  return events.filter(Boolean);
+  return events.filter(Boolean).map(event=>({...event,identityVersion:"bea-scheduled-publication-v2"}));
 }
 
 function parseReleaseLinks(body, source, observedAt, { hrefPattern, titlePattern = null } = {}) {
