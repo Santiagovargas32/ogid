@@ -2,7 +2,7 @@
 
 Contrato 1.0.0. Generado desde backend/contracts/ogidOperations.js; no editar a mano.
 
-45 rutas JSON con método; 35 operaciones de investigación y 19 de operador. Las variantes almacenadas/proveedor comparten algunas rutas.
+54 rutas JSON con método; 41 operaciones de investigación y 22 de operador. Las variantes almacenadas/proveedor comparten algunas rutas.
 
 Las cuatro herramientas compatibles se conservan. ogid_get_awareness_sources compone el catálogo local versionado y la salud pública Awareness, sin una ruta adicional. El inventario cubre las rutas de backend/routes montadas bajo /api; WebSocket, archivos estáticos y transporte del túnel tienen contratos independientes.
 
@@ -31,6 +31,15 @@ Las cuatro herramientas compatibles se conservan. ogid_get_awareness_sources com
 | market.candles | GET /api/market/candles | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
 | market.candles.metrics | GET /api/market/candles/metrics | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
 | market.indicators | GET /api/market/indicators | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
+| market.technical-context | GET /api/market/technical-context | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
+| research.event-impact | GET /api/research/event-impact | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
+| research.companyfacts | GET /api/research/companyfacts | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
+| research.sources | GET /api/research/sources | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
+| etf.holdings | GET /api/etf/holdings | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
+| market.history.job | GET /api/market/history/jobs | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
+| market.history.create | POST /api/market/history/jobs | ogid_operator | operator / candles:backfill | public | mutation; local job creation; run is explicit |
+| market.history.run | POST /api/market/history/run | ogid_operator | operator / candles:backfill | public | mutation; max 4 Yahoo requests per run; provider limits |
+| research.sources.run | POST /api/research/sources/run | ogid_operator | operator / sources:ingest | public | mutation; configured public sources only; max 4 requests |
 | market.impact | GET /api/market/impact | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
 | market.analytics | GET /api/market/analytics | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
 | market.conditions | GET /api/market/conditions | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
@@ -1135,6 +1144,17 @@ Retención: current snapshot; consult response coverage. Procedencia: OGID runti
           "splits",
           "none"
         ]
+      },
+      "package": {
+        "type": "string",
+        "enum": [
+          "standard-v1"
+        ]
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 2500
       }
     },
     "required": [
@@ -1143,6 +1163,351 @@ Retención: current snapshot; consult response coverage. Procedencia: OGID runti
     "additionalProperties": false
   },
   "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### market.technical-context
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "instrumentId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "interval": {
+        "type": "string",
+        "enum": [
+          "1day",
+          "1wk",
+          "1h",
+          "30min",
+          "15min",
+          "5min"
+        ]
+      },
+      "adjusted": {
+        "type": "string",
+        "enum": [
+          "splits",
+          "none"
+        ]
+      },
+      "package": {
+        "type": "string",
+        "enum": [
+          "standard-v1"
+        ]
+      },
+      "benchmarkInstrumentId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 30,
+        "maximum": 2500
+      }
+    },
+    "required": [
+      "instrumentId"
+    ],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### research.event-impact
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "instrumentIds": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "minItems": 1,
+        "maxItems": 50,
+        "uniqueItems": true
+      },
+      "eventIds": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "minItems": 1,
+        "maxItems": 50,
+        "uniqueItems": true
+      },
+      "from": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "to": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### research.companyfacts
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "companyId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      }
+    },
+    "required": [
+      "companyId"
+    ],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### research.sources
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### etf.holdings
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "instrumentId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      }
+    },
+    "required": [
+      "instrumentId"
+    ],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### market.history.job
+
+Retención: durable bounded job ledger. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "jobId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      }
+    },
+    "required": [
+      "jobId"
+    ],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### market.history.create
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": {
+    "type": "object",
+    "properties": {
+      "requestId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "instrumentIds": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "minItems": 1,
+        "maxItems": 20,
+        "uniqueItems": true
+      },
+      "targetBars": {
+        "type": "integer",
+        "minimum": 30,
+        "maximum": 2500
+      },
+      "endAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "requestId",
+      "instrumentIds"
+    ],
+    "additionalProperties": false
+  },
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### market.history.run
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": {
+    "type": "object",
+    "properties": {
+      "jobId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "maxRequests": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 4
+      }
+    },
+    "required": [
+      "jobId"
+    ],
+    "additionalProperties": false
+  },
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### research.sources.run
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": {
+    "type": "object",
+    "properties": {
+      "sourceIds": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "minItems": 1,
+        "maxItems": 4,
+        "uniqueItems": true
+      },
+      "maxRequests": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 4
+      }
+    },
+    "required": [
+      "sourceIds"
+    ],
+    "additionalProperties": false
+  },
   "pathParameters": null,
   "fixed": {}
 }

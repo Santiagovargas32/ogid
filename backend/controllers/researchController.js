@@ -6,7 +6,7 @@ import { instrumentView, resolveReferences } from "../services/research/instrume
 import { numericProjection } from "../utils/researchProjection.js";
 import stateManager from "../state/stateManager.js";
 import apiQuotaTracker from "../services/admin/apiQuotaTrackerService.js";
-function params(req, id) {
+export function params(req, id) {
   try { return parseOperationQuery(req.query, getOperation(id)); }
   catch { throw new AppError("Parámetros inválidos o ventana inconsistente.", 400, "INVALID_RESEARCH_QUERY"); }
 }
@@ -34,3 +34,14 @@ export function acknowledgeAlerts(req, res) {
   if (!validateValue(req.body, getOperation("portfolio.alerts.ack").body)) throw new AppError("Entrega inválida.", 400, "INVALID_ALERT_ACK");
   res.json({ ok: true, data: res.app.locals.materialAlertStore.acknowledge(req.body) });
 }
+
+export function getTechnicalContext(req,res) { res.json({ok:true,data:res.app.locals.technicalContextService.get(params(req,"market.technical-context"))}); }
+export function getEventImpact(req,res) { res.json({ok:true,data:res.app.locals.eventLedger.search(params(req,"research.event-impact"))}); }
+export function getResearchSources(_req,res) { res.json({ok:true,data:res.app.locals.officialSourceService.status()}); }
+export function getCompanyFacts(req,res) { const {companyId}=params(req,"research.companyfacts");const data=res.app.locals.researchStore.view("companyFacts")[companyId];res.json({ok:true,data:data||{companyId,metrics:null,missingReason:"no-stored-companyfacts",quality:{coverage:"not-available"}}}); }
+export function getEtfHoldings(req,res) { res.json({ok:true,data:res.app.locals.officialSourceService.holdings(params(req,"etf.holdings"))}); }
+export function getHistoryJob(req,res) {res.json({ok:true,data:res.app.locals.historicalAcquisitionService.get(params(req,"market.history.job").jobId)});}
+function operatorBody(req,id){if(!req.mcpOperatorAuthorized)throw new AppError("Requiere credencial MCP de alcance.",403,"MCP_OPERATOR_FORBIDDEN");if(!validateValue(req.body,getOperation(id).body))throw new AppError("Cuerpo inválido.",400,"INVALID_OPERATOR_ARGUMENTS");return req.body;}
+export function createHistoryJob(req,res){res.json({ok:true,data:res.app.locals.historicalAcquisitionService.create(operatorBody(req,"market.history.create"))});}
+export async function runHistoryJob(req,res){res.json({ok:true,data:await res.app.locals.historicalAcquisitionService.run(operatorBody(req,"market.history.run"))});}
+export async function runResearchSources(req,res){res.json({ok:true,data:await res.app.locals.officialSourceService.run(operatorBody(req,"research.sources.run"))});}

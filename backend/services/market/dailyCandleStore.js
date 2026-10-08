@@ -8,7 +8,7 @@ import { sanitizeSensitiveData } from "../../utils/sanitize.js";
 
 function safe(value) { return String(value || "").replace(/[^a-zA-Z0-9._-]/g, "_"); }
 function parse(line) { try { return JSON.parse(line); } catch { return null; } }
-function sameMarketValues(left, right) { return ["open", "high", "low", "close", "volume", "source", "providerSymbol", "dataMode", "currency", "adjusted", "quality", "closeTime"].every((field) => left?.[field] === right?.[field]); }
+function sameMarketValues(left, right) { return ["open", "high", "low", "close", "volume", "source", "providerSymbol", "dataMode", "currency", "adjusted", "quality", "closeTime", "providerAdjustedClose"].every((field) => left?.[field] === right?.[field]); }
 
 export class DailyCandleStore {
   constructor({ enabled = true, rootDir, retentionDays = 3650, rolloutBatch = 1, intervals = ["1day"] } = {}) { this.enabled = enabled !== false; this.rootDir = path.resolve(rootDir || path.resolve(process.cwd(), "data/market")); this.candleDir = path.join(this.rootDir, "candles"); this.retentionDays = Math.max(30, Number(retentionDays) || 3650); this.rolloutBatch = rolloutBatch; this.intervals = [...new Set(["1day", ...intervals])]; this.series = new Map(); this.identities = new Set(); this.hydratedSeries = new Set(); this.writeChain = Promise.resolve(); }
@@ -58,7 +58,7 @@ export class DailyCandleStore {
       const index = values.findIndex((item) => candleIdentity(item) === candleIdentity(candle));
       if (index < 0) { values.push(candle); inserted += 1; }
       else if (sameMarketValues(values[index], candle)) { duplicates += 1; }
-      else { values[index] = candle; updated += 1; }
+      else { const previous=values[index]; values[index] = {...candle,revision:(previous.revision||1)+1,revisions:[...(previous.revisions||[]),{revision:previous.revision||1,fetchedAt:previous.fetchedAt,open:previous.open,high:previous.high,low:previous.low,close:previous.close,volume:previous.volume,source:previous.source,adjusted:previous.adjusted}].slice(-20)}; updated += 1; }
       values.sort((a, b) => Date.parse(a.openTime) - Date.parse(b.openTime));
       dirtySeries.set(key, { values, candle, adjustmentMode });
       this.identities.add(identity);

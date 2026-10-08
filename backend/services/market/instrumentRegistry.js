@@ -1,3 +1,4 @@
+import { getCompany } from "../research/companyIdentity.js";
 import { createHash } from "node:crypto";
 import { sessionPolicyResolver } from "./sessionPolicyResolver.js";
 
@@ -80,6 +81,11 @@ export function registerInstrument(rawInstrument = {}) {
     ...existing,
     ...rawInstrument,
     instrumentId: existing?.instrumentId || rawInstrument.instrumentId || dynamicInstrumentId(symbol, assetType),
+    identityVersion: "instrument-identity-v2",
+    identityRevision: (existing?.identityRevision || 0) + 1,
+    companyId: rawInstrument.companyId || existing?.companyId || null,
+    relationships: Object.freeze([...(rawInstrument.relationships || existing?.relationships || [])]),
+    calendarId: rawInstrument.calendarId || rawInstrument.mic || existing?.calendarId || null,
     canonicalSymbol: symbol,
     displayName: rawInstrument.displayName || rawInstrument.longName || rawInstrument.shortName || existing?.displayName || symbol,
     assetType,
@@ -99,6 +105,7 @@ export function registerInstrument(rawInstrument = {}) {
     metadataSource: rawInstrument.metadataSource || existing?.metadataSource || { provider: "yahoo-finance2", verifiedAt: new Date().toISOString() },
     dynamic: rawInstrument.dynamic ?? existing?.dynamic ?? true
   });
+  if (instrument.companyId && !getCompany(instrument.companyId)) throw Object.assign(new Error("unverified-company-identity"), { code: "INVALID_COMPANY_IDENTITY" });
   const validation = validateInstrument(instrument);
   if (!validation.valid) {
     throw Object.assign(new Error(`invalid-instrument:${instrument.instrumentId}:${validation.missing.join(",")}`), {

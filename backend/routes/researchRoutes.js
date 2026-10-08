@@ -1,6 +1,11 @@
 import { Router } from "express";
-import { acknowledgeAlerts, getCapabilities, getDiagnostics, getPortfolioContext } from "../controllers/researchController.js";
+import { getEventImpact, getResearchSources, getCompanyFacts, getEtfHoldings, runResearchSources, acknowledgeAlerts, getCapabilities, getDiagnostics, getPortfolioContext } from "../controllers/researchController.js";
 const router = Router();
+router.get("/research/event-impact",getEventImpact);
+router.get("/research/sources",getResearchSources);
+router.get("/research/companyfacts",getCompanyFacts);
+router.get("/etf/holdings",getEtfHoldings);
+router.post("/research/sources/run",runResearchSources);
 router.get("/capabilities", getCapabilities);
 router.get("/diagnostics", getDiagnostics);
 router.get("/portfolio/context", getPortfolioContext);

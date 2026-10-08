@@ -50,7 +50,7 @@ test("todas las lecturas MCP sobre backend real: almacenadas, sin refresh/cuotas
   const id = archive.search().articles[0].id; const nvda = getInstrumentByCanonicalSymbol("NVDA").instrumentId;
   try {
     for (const operation of OGID_OPERATIONS.filter(op => op.profile === "research")) {
-      const params = operation.id === "market.candles" || operation.id === "market.indicators" ? { instrumentId: nvda } : operation.id === "portfolio.context" ? { mode: "weekly", instrumentIds: [nvda] } : {};
+      const params = ["market.candles","market.indicators","market.technical-context"].includes(operation.id) ? { instrumentId: nvda } : operation.id === "etf.holdings" ? {instrumentId:getInstrumentByCanonicalSymbol("QQQ").instrumentId} : operation.id === "market.history.job" ? {jobId:runtime.app.locals.historicalAcquisitionService.create({requestId:"fixture",instrumentIds:[nvda]}).jobId} : operation.id === "research.companyfacts" ? {companyId:"unavailable-fixture"} : operation.id === "portfolio.context" ? { mode: "weekly", instrumentIds: [nvda] } : {};
       const path = operation.pathParameters ? { id: operation.id === "news.item" ? id : "fixture-stream" } : undefined;
       const data = await read.operation(operation.id, params, undefined, path); assert.ok(data && typeof data === "object", operation.id);
       const output = JSON.stringify(projectOperation(operation, data)); assert.ok(!output.includes("/home/fedora"), operation.id);

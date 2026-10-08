@@ -1,3 +1,4 @@
+import { stableHash } from "../utils/stableHash.js";
 import { publicProjection, pick } from "../utils/researchProjection.js";
 import stateManager from "../state/stateManager.js";
 import { computeMarketImpact } from "../services/market/impactEngineService.js";
@@ -309,7 +310,8 @@ export async function getCandles(req, res, next) {
     }
   }
   const candles = res.app.locals.dailyCandleService.query({ instrumentId, interval, adjustmentMode, from: from?.toISOString(), to: to?.toISOString(), limit });
-  return res.json(mapResponse({ instrumentId, interval, adjusted: adjustmentMode, from: from?.toISOString() || null, to: to?.toISOString() || null, limit, refreshMode: forceRefresh ? "forced" : "local", status: marketDataStatus || (candles.length ? "stored" : "empty"), error: marketDataError, candles }));
+  return res.json(mapResponse({ instrumentId, interval, adjusted: adjustmentMode, from: from?.toISOString() || null, to: to?.toISOString() || null, limit, refreshMode: forceRefresh ? "forced" : "local", status: marketDataStatus || (candles.length ? "stored" : "empty"), error: marketDataError, candles,seriesRevision:stableHash(candles),snapshotId:stableHash(candles),lastClosedCandleAt:candles.at(-1)?.closeTime||null,
+    quality:{synthetic:candles.some(c=>c.synthetic||c.dataMode==="synthetic"),stale:candles.some(c=>c.dataMode==="stale"),calendarPartial:candles.some(c=>c.calendar?.partial||!c.calendar)},coverage:{sampleSize:candles.length,from:candles[0]?.openTime||null,to:candles.at(-1)?.closeTime||null},warnings:["Yahoo split-adjusted OHLCV is not a verified total-return series."] }));
 }
 
 export function getCandleMetrics(_req, res) { return res.json(mapResponse({ intraday: res.app.locals.intradayCandleService?.getMetrics?.() || null })); }
@@ -343,6 +345,7 @@ export function getTechnicalIndicators(req, res) {
   if (!instrument || instrument.verificationStatus !== "verified") return res.status(404).json({ ok: false, error: { code: "INSTRUMENT_NOT_FOUND", message: "Instrument is not enabled and verified." } });
   const interval = String(req.query.interval || "1day"); if (!SUPPORTED_CANDLE_INTERVALS.includes(interval)) return res.status(400).json({ ok: false, error: { code: "INVALID_INTERVAL", message: "The candle interval is not supported." } });
   const adjustmentMode = String(req.query.adjusted || "splits"); if (!["splits", "none"].includes(adjustmentMode)) return res.status(400).json({ ok: false, error: { code: "INVALID_ADJUSTMENT", message: "adjusted must be splits or none." } });
+  if (req.query.package) return res.json(mapResponse(res.app.locals.technicalContextService.get({instrumentId,interval,adjusted:adjustmentMode,package:String(req.query.package),limit:parsePositiveInt(req.query.limit,500,{min:1,max:2500})})));
   return res.json(mapResponse(res.app.locals.technicalIndicatorService.calculate({ instrumentId, interval, adjustmentMode })));
 }
 

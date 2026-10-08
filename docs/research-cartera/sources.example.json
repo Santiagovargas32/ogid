@@ -1,0 +1,7 @@
+{
+  "companies": [],
+  "instruments": [],
+  "sources": [
+    {"sourceId":"official-fed-releases", "adapter":"rss", "url":"https://www.federalreserve.gov/feeds/press_all.xml", "allowedHosts":["www.federalreserve.gov"], "originGroup":"federal-reserve", "contentPolicy":"headline-only-link-out", "enabled":false, "verifiedAt":null}
+  ]
+}

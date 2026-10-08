@@ -70,7 +70,7 @@ export class NewsArchive {
   }
   ingest(values = [], { lane = "editorial", awarenessMode = "off" } = {}) {
     if (lane === "financial" && awarenessMode !== "visible") return { accepted: 0, reason: "financial-not-public" };
-    const now = new Date(this.now()).toISOString(); let accepted = 0;
+    const now = new Date(this.now()).toISOString(); let accepted = 0; const collected = [];
     for (const raw of values) {
       if (!allowedArticle(raw)) continue;
       const article = permittedArticle({ ...raw, sourceId: raw.sourceId || raw.source?.sourceId || raw.provenance?.sourceId, sourceName: raw.sourceName || raw.source?.name,
@@ -97,9 +97,9 @@ export class NewsArchive {
       record.contentRevision = (previous ? previous.contentRevision || 1 : 0) + (contentChanged ? 1 : 0);
       record.archiveChangedAt = contentChanged ? now : previous.archiveChangedAt || previous.archiveFirstSeenAt;
       if (changed) { record.revision++; this.revision++; }
-      this.records.set(id, record); accepted++;
+      this.records.set(id, record); if (changed) collected.push(record); accepted++;
     }
-    this.lastIngestAt = now; this.prune(); this.persist();
+    this.lastIngestAt = now; this.prune(); this.persist(); this.onIngest?.(collected);
     return { accepted, revision: this.revision };
   }
   recordContext(snapshot) {

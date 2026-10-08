@@ -35,6 +35,11 @@ import { createLogger, requestLogger } from "./utils/logger.js";
 import { queryParamAllowlist } from "./utils/queryParamAllowlist.js";
 import { sensitiveRouteAuth } from "./middleware/sensitiveRouteAuth.js";
 import { mcpOperatorAuth, readOperatorCredentials } from "./middleware/mcpOperatorAuth.js";
+import { ResearchStore } from "./services/research/researchStore.js";
+import { EventLedger } from "./services/research/eventLedger.js";
+import { OfficialSourceService, loadResearchSources } from "./services/research/officialSources.js";
+import { HistoricalAcquisitionService } from "./services/market/historicalAcquisitionService.js";
+import { TechnicalContextService } from "./services/market/technicalContextService.js";
 import { NewsArchive } from "./services/research/newsArchive.js";
 import { MaterialAlertStore } from "./services/research/materialAlertStore.js";
 import { PortfolioContextService } from "./services/research/portfolioContext.js";
@@ -765,7 +770,12 @@ export function createAppServer(overrides = {}) {
   if (process.env.NODE_ENV !== "test") {
     apiQuotaTracker.configurePersistence(path.resolve(__dirname, process.env.PROVIDER_QUOTA_STATE_FILE || "data/provider-quota-state.json"));
   }
+  const researchSources = overrides.researchSources || loadResearchSources(process.env.RESEARCH_SOURCES_FILE);
+  const researchStore = overrides.researchStore || new ResearchStore({persistencePath:process.env.NODE_ENV === "test"?null:path.resolve(__dirname,process.env.RESEARCH_LEDGER_FILE || "data/intel/research-ledger.json")});
+  const eventLedger = new EventLedger({store:researchStore});
+  const officialSourceService = new OfficialSourceService({store:researchStore,eventLedger,sources:researchSources,userAgent:process.env.RESEARCH_SEC_USER_AGENT || null});
   const newsArchive = overrides.newsArchive || new NewsArchive({ persistencePath: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, process.env.RESEARCH_NEWS_ARCHIVE_FILE || "data/intel/research-news.json") });
+  newsArchive.onIngest = items => eventLedger.ingest(items);
   const materialAlertStore = overrides.materialAlertStore || new MaterialAlertStore({ persistencePath: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, process.env.RESEARCH_ALERT_STATE_FILE || "data/intel/research-alerts.json") });
   const rssAggregator = new RssAggregatorService({
     onCollected: articles => newsArchive.ingest(articles, { awarenessMode: config.awareness.mode }),
@@ -886,8 +896,17 @@ export function createAppServer(overrides = {}) {
     perClientMax: config.manualRefresh.perClientMax
   });
 
+  orchestrator.researchCycle = () => {
+    const publicEvents=awarenessService.getSnapshot({limit:100},{publicView:true});
+    if(publicEvents.mode === "visible") eventLedger.ingest([...publicEvents.recent,...publicEvents.upcoming].map(e=>({...e,url:e.canonicalUrl,eventTime:e.scheduledAt})),{sourceId:"awareness"});
+  };
   app.locals.socketServer = socketServer;
   app.locals.newsArchive = newsArchive;
+  app.locals.researchStore = researchStore;
+  app.locals.eventLedger = eventLedger;
+  app.locals.officialSourceService = officialSourceService;
+  app.locals.technicalContextService = new TechnicalContextService({store:dailyCandleStore});
+  app.locals.historicalAcquisitionService = new HistoricalAcquisitionService({ledger:researchStore,marketDataService,candleStore:dailyCandleStore});
   app.locals.materialAlertStore = materialAlertStore;
   app.locals.portfolioContextService = new PortfolioContextService({ stateManager, archive: newsArchive, alerts: materialAlertStore, awarenessService, watchlist: marketWatchlistService });
   app.locals.mcpOperatorCredentials = overrides.mcpOperatorCredentials || readOperatorCredentials(process.env.MCP_OPERATOR_CREDENTIALS_FILE);

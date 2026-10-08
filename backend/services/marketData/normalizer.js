@@ -149,7 +149,7 @@ export function normalizeYahooBar(raw = {}, { symbol } = {}) {
   if (!timestamp || [open, high, low, close].some((value) => value == null)) return null;
   if (high < Math.max(open, low, close) || low > Math.min(open, high, close)) return null;
   if (volume != null && volume < 0) return null;
-  return { symbol: normalizedSymbol, source: "yahoo", timestamp, open, high, low, close, volume };
+  return { symbol: normalizedSymbol, source: "yahoo", timestamp, open, high, low, close, volume, ...(finite(raw.adjclose ?? raw.adjClose) != null ? {providerAdjustedClose:finite(raw.adjclose ?? raw.adjClose)} : {}) };
 }
 
 export function normalizeYahooChart(result, { symbol } = {}) {

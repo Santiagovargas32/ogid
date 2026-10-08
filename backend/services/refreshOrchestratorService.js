@@ -533,6 +533,7 @@ class RefreshOrchestratorService {
       const aggregateNews = await this.resolveAggregateNewsSnapshot();
       snapshot = await this.enrichSnapshotWithMapAssets(snapshot, aggregateNews);
       this.newsArchive?.recordContext(snapshot);
+      this.researchCycle?.(snapshot);
       await this.refreshSecondaryIntel(snapshot, aggregateNews);
       this.socketServer.broadcast("update", this.buildUpdatePayload(snapshot), snapshot.meta);
       void Promise.resolve(this.aiCoordinator?.reconcileNewsSnapshot?.({
@@ -721,6 +722,7 @@ class RefreshOrchestratorService {
       const aggregateNews = await this.resolveAggregateNewsSnapshot();
       snapshot = await this.enrichSnapshotWithMapAssets(snapshot, aggregateNews);
       this.newsArchive?.recordContext(snapshot);
+      this.researchCycle?.(snapshot);
       await this.refreshSecondaryIntel(snapshot, aggregateNews);
       try {
         await this.marketHistoryStore?.persistMarketState?.(previousSnapshot.market || {}, marketState, {

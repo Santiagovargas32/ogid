@@ -30,7 +30,7 @@ function dynamicInstrument(symbol) {
 
 function equivalentBar(left, right) {
   return left.open === right.open && left.high === right.high && left.low === right.low
-    && left.close === right.close && left.volume === right.volume && left.source === right.source;
+    && left.close === right.close && left.volume === right.volume && left.source === right.source && left.providerAdjustedClose === right.providerAdjustedClose;
 }
 
 export class MarketDataStoreAdapter {
@@ -162,13 +162,14 @@ export class MarketDataStoreAdapter {
       session: instrument.sessionPolicy,
     };
     if (["1day", "1h", "30min", "15min", "5min"].includes(canonicalInterval)) {
-      return normalizeCanonicalCandle(raw, {
+      const normalized = normalizeCanonicalCandle(raw, {
         instrument,
         fetchedAt: instant(this.now()).toISOString(),
         source: "yahoo",
         providerSymbol: bar.symbol,
         adjustmentMode: "splits",
       }).candle;
+      return normalized && bar.providerAdjustedClose != null ? {...normalized,providerAdjustedClose:bar.providerAdjustedClose,adjustmentQuality:{ohlcv:"provider-split-adjusted",separateAdjustedClose:"provider-adjusted-close; split/dividend basis not independently reconciled",totalReturnVerified:false}} : normalized;
     }
     return {
       schemaVersion: CANDLE_SCHEMA_VERSION,
@@ -195,6 +196,7 @@ export class MarketDataStoreAdapter {
       low: candle.low,
       close: candle.close,
       volume: candle.volume,
+      ...(candle.providerAdjustedClose != null ? {providerAdjustedClose:candle.providerAdjustedClose}:{}),
     };
   }
 

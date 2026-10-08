@@ -1,9 +1,13 @@
 import { Router } from "express";
 import { backfillCandles, getAnalytics, getCandleMetrics, getCandles, getConditions, getImpact, getProviderStatus, getQuotes, getTechnicalIndicators, getWatchlist, searchInstruments, updateWatchlist } from "../controllers/marketController.js";
-import { resolveInstruments } from "../controllers/researchController.js";
+import { getTechnicalContext, getHistoryJob, createHistoryJob, runHistoryJob, resolveInstruments } from "../controllers/researchController.js";
 
 const router = Router();
 
+router.get("/technical-context",getTechnicalContext);
+router.get("/history/jobs",getHistoryJob);
+router.post("/history/jobs",createHistoryJob);
+router.post("/history/run",runHistoryJob);
 router.get("/quotes", getQuotes);
 router.get("/provider-status", getProviderStatus);
 router.get("/instruments/search", searchInstruments);
