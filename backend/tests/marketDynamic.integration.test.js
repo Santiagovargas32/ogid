@@ -65,7 +65,7 @@ test("LAN market API reads anonymously and authorizes selection and forced OHLCV
   runtime = createAppServer({
     port: 0,
     disableBackgroundRefresh: true,
-    security: { adminApiToken: "fixture-market-admin", allowLocalAdmin: true },
+    security: { adminApiToken: "fixture-market-admin", allowLocalAdmin: true, allowLanAdmin: false },
     marketDataService,
     market: { provider: "yahoo", fallbackProvider: "", tickers: [], historyDir, historyPersist: false, dailyCandles: { enabled: true, adjustmentMode: "splits", retentionDays: 3650, backfillMaxDays: 30 } },
   });

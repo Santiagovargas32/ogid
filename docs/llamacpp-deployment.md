@@ -65,7 +65,7 @@ El smoke muestra `responseMetadata` también cuando falla. `httpStatus=200` con 
 
 ## Configuración
 
-No reemplazar el `.env` existente. Conservar las demás variables, en particular `ADMIN_API_TOKEN`, `ALLOW_LOCAL_ADMIN=0`, fuentes y configuración de mercado.
+No reemplazar el `.env` existente. Conservar las demás variables, en particular `ADMIN_API_TOKEN`, fuentes y configuración de mercado. En producción, establecer `ALLOW_LOCAL_ADMIN=0` y `ALLOW_LAN_ADMIN=0` para exigir el token también a través de un proxy local o privado.
 
 | Variable nueva | Valor predeterminado / significado |
 | --- | --- |
@@ -83,6 +83,7 @@ Perfil inicial de producción, con valores ficticios:
 HOST=127.0.0.1
 PORT=3000
 ALLOW_LOCAL_ADMIN=0
+ALLOW_LAN_ADMIN=0
 AI_PROVIDER=llamacpp
 AI_MODE=shadow
 AI_FEATURES=article-summary,country-insight,market-explanation
@@ -259,7 +260,7 @@ AI_PROVIDER=none
 AI_MODE=off
 ```
 
-Conservar `HOST=127.0.0.1`, `PORT=3000`, `ALLOW_LOCAL_ADMIN=0`, el token administrativo y los archivos de estado. Ejecutar como el usuario propietario de PM2:
+Conservar `HOST=127.0.0.1`, `PORT=3000`, `ALLOW_LOCAL_ADMIN=0`, `ALLOW_LAN_ADMIN=0`, el token administrativo y los archivos de estado. Ejecutar como el usuario propietario de PM2:
 
 ```bash
 cd /var/www/ogid/backend
