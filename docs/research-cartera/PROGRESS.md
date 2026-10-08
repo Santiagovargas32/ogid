@@ -65,9 +65,9 @@ P0 → P1 datos → P1 seguimiento → P2 implementados y probados localmente. S
 | P0 | research/p0-reliability | e26733a | f71e4c0 |
 | P1 datos/contexto | research/p1-data-context | f71e4c0 | 71f2ca0 |
 | P1 escenarios | research/p1-scenarios | 71f2ca0 | 819a4ef |
-| P2 evaluación/MCP | research/p2-evaluation-mcp | 819a4ef | P2_COMMIT_PENDING |
+| P2 evaluación/MCP | research/p2-evaluation-mcp | 819a4ef | b76e561 |
 
-Las ramas son apiladas; cada base es el paquete previo. Main permanece e26733a. Los refinamientos de integración y la documentación final pertenecen a P2. Identidad de commit aplicada por comando, sin cambiar Git config.
+Las ramas son apiladas; cada base es el paquete previo. Main permanece e26733a. Los refinamientos de integración y la documentación final pertenecen a P2. Identidad de commit aplicada por comando, sin cambiar Git config. P2 de implementación: b76e561e74d39f494c246446f1dccb6004e6bd3a; el commit documental posterior registra este cierre. Checkout limpio comprobado tras el cierre; sin publicación remota.
 
 ## Estado de integraciones y trabajo posterior
 
