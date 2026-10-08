@@ -1,5 +1,7 @@
 # Estado de entrega — 2026-10-08
 
+Estado más reciente: [pasada operativa de histórico diario](BACKFILL-500-2026-10-08.md), autorizada después de integrar el PR #9. Los apartados anteriores a ese seguimiento conservan el registro de sus entregas.
+
 P0 → P1 datos → P1 seguimiento → P2 implementados y probados localmente. Sin push, PR remoto, merge en main ni despliegue. Sin cambios de tareas/chats, credenciales, costes o posiciones. Rama final `research/p2-evaluation-mcp`.
 
 [Contratos y cambios](API-CHANGES.md) · [Activación, migración, rollback y ChatGPT](RUNBOOK.md) · [Paquetes y decisiones](IMPLEMENTATION.md).
@@ -97,3 +99,15 @@ Siguiente acción fuera de esta entrega: revisar los cuatro diffs apilados, eleg
 - Contrato 1.2.0 / MCP 0.4.0, 68 rutas / 77 operaciones (45 research, 32 operator), diez herramientas research. Inventario generado y scopes comprobados, sin dependencias nuevas.
 - Verificación final: **573/573 backend PASS**, **21/21 MCP PASS**, backend build/check (incluye frontend) PASS, MCP check PASS, inventory:check PASS, git diff --check PASS. Regresiones: histórico por rango/reintentos, CSV 500 velas/recuperación/aislamiento/rechazos/autenticación, agrupación BLS/BEA/correcciones, compatibilidad BEA al actualizar IDs, relectura sin escritura y rechazo de snapshot cambiado, inactivación de señales legacy. Pruebas HTTP y MCP reales con fixtures aislados; sin llamadas financieras a proveedores ni importación de fixtures operativos. No se hizo validación visual de navegador.
 - Límites reales: CSV no se concatena con Yahoo ni se promueve a alertas/evaluación sin reconciliación. No hay descargador automático nuevo de otra fuente sin clave. Identidades/fuentes específicas/holdings y muestra predictiva operativa siguen pendientes. No se ha ejecutado despliegue, push, PR remoto, reinicio manual ni descarga/carga sobre datos operativos.
+
+
+## Seguimiento: carga operativa de 500 sesiones — LIVE_VALIDATED con límites
+
+- Base: main `f0ed7f0`, PR #9 integrado por el usuario. Correcciones locales en `fix/history-calendar-verification`, sin publicación remota.
+- Petición autorizada: recorrer los 18 instrumentos seleccionados, adquirir al menos 500 velas diarias cerradas bajo control de llamadas y comprobar su acceso desde el MCP existente. Se respaldaron mercado y ledgers antes de escribir; configuración y credenciales conservadas.
+- Ejecutado: 86 operaciones chart de adquisición y dos de diagnóstico, una a la vez y diez segundos de separación. Ciclos de fondo pausados solo durante mantenimiento. Jobs con ventanas/cursor/errores persistidos; detención al recibir cobertura parcial. SPCX se acotó a su fecha de admisión y VUAA se omitió al confirmar el límite de la serie consultada. No hay reejecución automática de los jobs parciales conservados.
+- Resultado auditado: **16/18 con ≥500 velas**, de 589 a 598; **VUAA.DE 449** (Yahoo empieza 2024-12-30), **SPCX 81** (desde 2026-06-12). **SMA200 disponible en 12/18**. VWCE.DE, VUAA.DE, SXR8.DE, EUNL.DE y EQQQ.MI contienen huecos reales y declaran `gaps_detected`; SPCX declara `insufficient_data`. No se inventan cierres ni se concatena otra fuente sin reconciliación. [Recuentos, fechas ausentes y límites](BACKFILL-500-2026-10-08.md).
+- Correcciones necesarias detectadas en datos reales: identidad diaria por fecha de sesión local y ajuste, recuperación de duplicados antiguos conservando revisiones/horas, índice por lote para evitar búsquedas cuadráticas, cierres históricos verificados de EE. UU. 2025-01-09 y Milán 2024/2025-08-15. Identidad intradía y contratos API/MCP conservados.
+- Verificación: **578/578 backend**, **21/21 MCP**, build/check e inventario PASS; archivos operativos sin sesiones duplicadas ni OHLC inválidos, cálculo independiente de SMA200 coincide donde está disponible y persistencia comprobada tras reinicios del backend. El MCP conectado devolvió 500 muestras para MSFT y ASML.AS con SMA200, 500 para VWCE con N/D por huecos, 449 para VUAA y 81 para SPCX.
+- Disponibilidad local recuperada: backend en la sesión screen existente y túnel/MCP conservados. Al cierre se vuelve al arranque habitual del servidor para continuar la recogida incremental. No hacen falta resultados técnicos precalculados ni cambios en acciones de ChatGPT para consultar las operaciones existentes. El adaptador ejecutándose es 0.3.0; el repositorio contiene 0.4.0. No se atribuye la versión del checkout al proceso del túnel.
+- Límites pendientes: cobertura independiente/reconciliación, datos ausentes de ETF, calendario histórico parcial, identidades/holdings y muestras predictivas prospectivas. La pasada de precios no acredita esas integraciones.

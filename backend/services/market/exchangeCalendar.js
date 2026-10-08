@@ -1,11 +1,16 @@
 // Versionado desde fuentes oficiales; reglas recurrentes fuera de 2026 son parciales.
-export const CALENDAR_VERSION = "exchange-calendar-2026.1";
+export const CALENDAR_VERSION = "exchange-calendar-2026.2";
 export const CALENDAR_SOURCES = Object.freeze({
   US: "https://www.nyse.com/trade/hours-calendars", XNAS: "https://www.nasdaqtrader.com/Trader.aspx?id=Calendar",
   XETR: "https://www.cashmarket.deutsche-boerse.com/cash-en/trading/trading-calendar-and-trading-hours",
   XAMS: "https://www.euronext.com/en/trading/trading-hours-holidays", XMIL: "https://www.euronext.com/en/trading/trading-hours-holidays"
 });
 const DAY = 86400000;
+// Cierres históricos comprobados; no se ocultan otros huecos de proveedor.
+const HISTORICAL_CLOSURES = Object.freeze({
+  US: Object.freeze({"2025-01-09":Object.freeze({reason:"national-day-of-mourning",sources:["https://www.nasdaqtrader.com/TraderNews.aspx?id=ETA2025-1","https://ir.theice.com/press/news-details/2024/The-New-York-Stock-Exchange-Will-Close-Markets-on-January-9-to-Honor-the-Passing-of-Former-President-Jimmy-Carter-on-National-Day-of-Mourning/default.aspx"]})}),
+  XMIL: Object.freeze(Object.fromEntries(["2024-08-15","2025-08-15"].map(date=>[date,Object.freeze({reason:"ferragosto",sources:[CALENDAR_SOURCES.XMIL]})])))
+});
 export function addDate(date, days) { return new Date(Date.parse(`${date}T12:00:00Z`) + days * DAY).toISOString().slice(0,10); }
 export function localDate(value, zone) { return new Intl.DateTimeFormat("en-CA", { timeZone: zone, year:"numeric", month:"2-digit", day:"2-digit" }).format(new Date(value)); }
 export function zonedBoundary(date, minute, zone) {
@@ -39,13 +44,14 @@ export function tradingDay(instrument, date) {
   if(early) closeMinute=780;
   const halfDayPending=id==="XAMS" && [`${y}-12-24`,`${y}-12-31`].includes(date) && ![0,6].includes(weekday(date));
   const partial=!id || y!==2026 || halfDayPending;
-  const closed=[0,6].includes(weekday(date)) || holidays.includes(date);
+  const historicalClosure=HISTORICAL_CLOSURES[us?"US":id]?.[date]||null;
+  const closed=[0,6].includes(weekday(date)) || holidays.includes(date) || Boolean(historicalClosure);
   return { calendarId:id, methodVersion:CALENDAR_VERSION, date, timezone:zone, closed, earlyClose:Boolean(early), halfDayPending,
     openMinute, closeMinute, openTime:closed||halfDayPending?null:zonedBoundary(date,openMinute,zone), closeTime:closed||halfDayPending?null:zonedBoundary(date,closeMinute,zone),
     premarket:us ? (id==="XNAS"||id==="ARCX"?{openMinute:240,closeMinute:570}:null):null,
     afterHours:us && id!=="XNYS" ? {openMinute:closeMinute,closeMinute:early?1020:1200}:null,
-    partial, sources: id?[CALENDAR_SOURCES[id] || CALENDAR_SOURCES.US]:[],
-    warnings:[...(!id?["Unknown venue; weekday cash approximation."]:[]),...(y!==2026?["Recurring rules only; exceptional historical/future closures not verified."]:[]),...(halfDayPending?["Official half day; closing time pending appendix. No closed candle inferred."]:[])] };
+    partial, historicalClosure:historicalClosure?{reason:historicalClosure.reason}:null,sources: id?[CALENDAR_SOURCES[id] || CALENDAR_SOURCES.US,...(historicalClosure?.sources||[])]:[],
+    warnings:[...(!id?["Unknown venue; weekday cash approximation."]:[]),...(y!==2026?["Recurring rules plus listed historical exceptions; other exceptional closures not verified."]:[]),...(halfDayPending?["Official half day; closing time pending appendix. No closed candle inferred."]:[])] };
 }
 export function adjacentTradingDay(instrument,date,direction) { for(let n=1;n<=370;n++) { const day=tradingDay(instrument,addDate(date,n*direction)); if(!day.closed&&!day.halfDayPending) return day; } return null; }
 export function expectedDailyGaps(candles,instrument) {

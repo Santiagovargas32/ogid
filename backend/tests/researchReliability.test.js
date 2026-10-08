@@ -12,6 +12,16 @@ import { NewsArchive } from "../services/research/newsArchive.js";
 import { projectOperation } from "../utils/researchProjection.js";
 import { getOperation } from "../contracts/ogidOperations.js";
 const us = getInstrumentByCanonicalSymbol("NVDA");
+test("historical mourning and Ferragosto closures do not block continuous daily indicators",()=>{
+  for(const mic of ["XNAS","XNYS","ARCX","XASE"]){const day=tradingDay({mic},"2025-01-09");assert.equal(day.closed,true);assert.equal(day.openTime,null);assert.equal(day.historicalClosure.reason,"national-day-of-mourning");assert.ok(day.sources.some(url=>url.includes("ETA2025-1")));}
+  const at=date=>({openTime:`${date}T12:00:00Z`});
+  assert.deepEqual(expectedDailyGaps([at("2025-01-08"),at("2025-01-10")],us),[]);
+  for(const date of ["2024-08-15","2025-08-15"]){assert.equal(tradingDay({mic:"XMIL"},date).closed,true);assert.equal(tradingDay({mic:"XAMS"},date).closed,false);}
+  assert.deepEqual(expectedDailyGaps([at("2025-08-14"),at("2025-08-18")],{mic:"XMIL",timezone:"Europe/Rome"}),[]);
+  assert.deepEqual(expectedDailyGaps([at("2025-01-06"),at("2025-01-08")],us),["2025-01-07"]);
+  const records=["2025-01-07","2025-01-08","2025-01-10"].map((date,i)=>({instrumentId:us.instrumentId,interval:"1day",openTime:tradingDay(us,date).openTime,closeTime:tradingDay(us,date).closeTime,open:100+i,high:102+i,low:99+i,close:101+i,source:"fixture",currency:"USD",adjusted:true,provenance:{adjustmentMode:"splits"}}));
+  const result=calculateTechnicalIndicators(records,{interval:"1day",instrument:us});assert.equal(result.quality.gapDetected,false);assert.equal(result.indicators.simpleReturn.reason,null);
+});
 test("calendars: US holiday, early close, DST divergence and European venue hours",()=>{
   assert.equal(tradingDay(us,"2026-07-03").closed,true);
   assert.equal(tradingDay(us,"2026-11-27").closeTime,"2026-11-27T18:00:00.000Z");

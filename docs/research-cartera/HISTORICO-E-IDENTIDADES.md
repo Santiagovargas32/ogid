@@ -1,6 +1,6 @@
 # Histórico diario y seguimiento de identidad
 
-Contrato 1.2.0, adaptador MCP 0.4.0. Implementación local; no acredita histórico financiero descargado, activación en servidor ni holdings operativos.
+Contrato 1.2.0, adaptador MCP 0.4.0 en el repositorio. La carga operativa autorizada del 8 de octubre y sus límites se documentan en [Backfill de 500 sesiones](BACKFILL-500-2026-10-08.md). Esto no acredita holdings operativos ni cobertura independiente de Yahoo.
 
 ## Cargar el histórico desde administración
 
@@ -28,6 +28,16 @@ Yahoo continúa su recogida incremental en su serie habitual. **El histórico de
 ## API y MCP
 
 Las diez herramientas de investigación siguen siendo las mismas. `ogid_query` admite ahora `market.history.datasets`; `market.technical-context` acepta `datasetId` opcional y `adjusted=splits|none`. El dataset debe coincidir con instrumento y ajuste. Solo admite intervalos diario y semanal derivado, sin benchmark externo. La consulta normal sin dataset conserva la serie habitual.
+
+El MCP lee las velas persistidas y calcula el paquete técnico localmente al consultar; no hace falta guardar un resultado calculado aparte ni descargar otra vez desde ChatGPT. Ejemplo con un `instrumentId` de la watchlist:
+
+```json
+{"operationId":"market.technical-context","parameters":{"instrumentId":"yahoo-msft-1jyi8oj","interval":"1day","limit":500}}
+```
+
+Comprobar `sampleSize`, `lastClosedCandleAt`, `quality`, `coverage.gaps` e `indicators.sma200.reason`. Tener 500 filas no garantiza indicadores disponibles si hay huecos. `market.candles` permite leer las velas; `market.history.job` muestra la cobertura del job. Las consultas locales normales no consumen llamadas de proveedor.
+
+Las velas diarias se identifican internamente por instrumento, fecha de sesión en la zona de la bolsa y ajuste. Una corrección de las horas UTC actualiza la sesión y conserva hasta 20 revisiones, sin contar otro día. Al recuperar archivos antiguos duplicados se prefiere el horario canónico del calendario y después la observación más reciente. Las velas intradía conservan la identidad por apertura exacta. El calendario histórico incluye cierres excepcionales verificados; continúa marcado parcial para otros años y medias sesiones no resueltas.
 
 Jobs `market.history.create` aceptan `startAt` opcional además de `endAt`, ambos ISO con zona. El objetivo se comprueba sobre el rango del job; finalizar ventanas no garantiza alcanzar 500 sesiones. Un rango demasiado corto puede terminar correctamente con `goalMet=false`.
 
