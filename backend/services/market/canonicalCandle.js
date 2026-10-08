@@ -1,3 +1,4 @@
+import { tradingDay } from "./exchangeCalendar.js";
 import { getInstrumentById } from "./instrumentRegistry.js";
 
 export const CANDLE_SCHEMA_VERSION = 1;
@@ -6,8 +7,8 @@ export const INTRADAY_CANDLE_METHOD_VERSION = "intraday-candle-v1";
 export const SUPPORTED_CANDLE_INTERVALS = Object.freeze(["5min", "15min", "30min", "1h", "1day"]);
 const INTERVAL_MS = Object.freeze({ "5min": 300_000, "15min": 900_000, "30min": 1_800_000, "1h": 3_600_000, "1day": 86_400_000 });
 
-function finite(value) { const number = Number(value); return Number.isFinite(number) ? number : null; }
-function safeIso(value) { const date = new Date(value); return Number.isFinite(date.getTime()) ? date.toISOString() : null; }
+function finite(value) { if (value == null || value === "" || typeof value === "boolean") return null; const number = Number(value); return Number.isFinite(number) ? number : null; }
+function safeIso(value) { if (value == null || value === "") return null; const date = new Date(value); return Number.isFinite(date.getTime()) ? date.toISOString() : null; }
 
 function zonedDateTimeToUtc(dateText, timeText, timeZone) {
   const [year, month, day] = String(dateText).split("-").map(Number);
@@ -30,9 +31,8 @@ export function resolveDailyCandleTimes(dateText, instrument) {
     const openTime = `${dateText}T00:00:00.000Z`;
     return { openTime, closeTime: addUtcDays(openTime, 1), session: "24x7" };
   }
-  const openTime = zonedDateTimeToUtc(dateText, "09:30:00", instrument.timezone);
-  const closeTime = zonedDateTimeToUtc(dateText, "16:00:00", instrument.timezone);
-  return openTime && closeTime ? { openTime, closeTime, session: instrument.sessionPolicy } : null;
+  const calendar = tradingDay(instrument, dateText);
+  return calendar.openTime && calendar.closeTime ? { openTime: calendar.openTime, closeTime: calendar.closeTime, session: instrument.sessionPolicy, calendar } : null;
 }
 
 export function candleIntervalMs(interval) { return INTERVAL_MS[interval] || null; }
@@ -58,8 +58,10 @@ export function normalizeCanonicalCandle(raw = {}, { instrument = getInstrumentB
   const currency = raw.currency || instrument?.currency || null;
   if (instrument && currency !== instrument.currency) errors.push("currency-mismatch");
   if (errors.length) return { valid: false, errors: [...new Set(errors)], candle: null };
+  if (raw.synthetic || raw.provenance?.synthetic || ["synthetic", "fallback", "seeded"].includes(raw.dataMode)) return { valid: false, errors: ["synthetic-candle"], candle: null };
+  if (Date.parse(times.closeTime) <= Date.parse(times.openTime)) return { valid: false, errors: ["timestamp-order-invalid"], candle: null };
   const adjusted = adjustmentMode !== "none";
-  return { valid: true, errors: [], candle: { schemaVersion: CANDLE_SCHEMA_VERSION, instrumentId: instrument.instrumentId, interval: raw.interval, openTime: times.openTime, closeTime: times.closeTime, open, high, low, close, volume, currency, exchange: instrument.exchange, session: times.session || instrument.sessionPolicy, source: source || "unknown", providerSymbol: providerSymbol || null, fetchedAt, adjusted, dataMode: raw.dataMode || "observed", quality: raw.quality || "valid", methodVersion: raw.interval === "1day" ? DAILY_CANDLE_METHOD_VERSION : INTRADAY_CANDLE_METHOD_VERSION, provenance: { provider: source || "unknown", providerSymbol: providerSymbol || null, adjustmentMode, providerDatetime: raw.datetime || raw.date || null, fetchedAt } } };
+  return { valid: true, errors: [], candle: { schemaVersion: CANDLE_SCHEMA_VERSION, instrumentId: instrument.instrumentId, interval: raw.interval, openTime: times.openTime, closeTime: times.closeTime, open, high, low, close, volume, currency, exchange: instrument.exchange, session: times.session || instrument.sessionPolicy, source: source || "unknown", providerSymbol: providerSymbol || null, fetchedAt, adjusted, dataMode: raw.dataMode || "observed", quality: raw.quality || "valid", methodVersion: raw.interval === "1day" ? DAILY_CANDLE_METHOD_VERSION : INTRADAY_CANDLE_METHOD_VERSION, calendar: times.calendar || null, provenance: { provider: source || "unknown", providerSymbol: providerSymbol || null, adjustmentMode, providerDatetime: raw.datetime || raw.date || null, fetchedAt } } };
 }
 
 export function candleIdentity(candle) { return `${candle.instrumentId}|${candle.interval}|${candle.openTime}`; }

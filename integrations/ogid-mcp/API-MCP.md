@@ -992,6 +992,14 @@ Retención: current snapshot; consult response coverage. Procedencia: OGID runti
         "minItems": 1,
         "maxItems": 50,
         "uniqueItems": true
+      },
+      "includeSeries": {
+        "type": "boolean"
+      },
+      "seriesLimit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
       }
     },
     "required": [],
@@ -999,7 +1007,9 @@ Retención: current snapshot; consult response coverage. Procedencia: OGID runti
   },
   "body": null,
   "pathParameters": null,
-  "fixed": {}
+  "fixed": {
+    "view": "compact"
+  }
 }
 ```
 
@@ -1042,9 +1052,7 @@ Retención: current snapshot; consult response coverage. Procedencia: OGID runti
           "1h",
           "30min",
           "15min",
-          "5min",
-          "1wk",
-          "1mo"
+          "5min"
         ]
       },
       "from": {
@@ -1118,9 +1126,7 @@ Retención: current snapshot; consult response coverage. Procedencia: OGID runti
           "1h",
           "30min",
           "15min",
-          "5min",
-          "1wk",
-          "1mo"
+          "5min"
         ]
       },
       "adjusted": {
@@ -2284,9 +2290,7 @@ Retención: current snapshot; consult response coverage. Procedencia: OGID runti
           "1h",
           "30min",
           "15min",
-          "5min",
-          "1wk",
-          "1mo"
+          "5min"
         ]
       },
       "from": {

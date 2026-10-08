@@ -1,3 +1,4 @@
+import { BACKEND_BUILD } from "../utils/buildIdentity.js";
 import { OGID_OPERATIONS, OPERATIONS_VERSION, getOperation, parseOperationQuery, validateValue } from "../contracts/ogidOperations.js";
 import { AppError } from "../utils/error.js";
 import { listVerifiedInstruments } from "../services/market/instrumentRegistry.js";
@@ -20,7 +21,7 @@ export function resolveInstruments(req, res) {
   res.json({ ok: true, data: { generatedAt: new Date().toISOString(), registryOrigin: "verified-runtime", instruments: universe.filter(instrument => !query.references?.length || ids.has(instrument.instrumentId)).map(instrument => instrumentView(instrument, res.app.locals.marketWatchlistService.selectedInstrumentIds, snapshot.market?.quotes || {})), resolutions,
     warnings: ["La identidad de proveedor no demuestra una posición ni una clase elegida. Resolver no consulta proveedores; si falta una identidad, usar búsqueda operador y verificación explícita."] } });
 }
-export function getCapabilities(_req, res) { res.json({ ok: true, data: { contractVersion: OPERATIONS_VERSION, generatedAt: new Date().toISOString(), operations: OGID_OPERATIONS.filter(op => op.profile === "research"), newsCoverage: res.app.locals.newsArchive.coverage(), runningCommitVerified: false } }); }
+export function getCapabilities(_req, res) { res.json({ ok: true, data: { contractVersion: OPERATIONS_VERSION, build: BACKEND_BUILD, generatedAt: new Date().toISOString(), operations: OGID_OPERATIONS.filter(op => op.profile === "research"), newsCoverage: res.app.locals.newsArchive.coverage(), runningCommitVerified: false } }); }
 export function getDiagnostics(_req, res) {
   const snapshot = stateManager.getSnapshot(); const orchestrator = res.app.locals.orchestrator;
   res.json({ ok: true, data: { generatedAt: new Date().toISOString(), counts: { news: snapshot.news.length, quotes: Object.keys(snapshot.market?.quotes || {}).length, archived: res.app.locals.newsArchive.records.size },

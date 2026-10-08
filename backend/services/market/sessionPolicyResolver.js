@@ -1,3 +1,4 @@
+import { cashCalendarSchedule } from "./exchangeCalendar.js";
 const FIVE_MINUTES_MS = 5 * 60_000;
 const CASH_OPEN_MINUTE = 9 * 60 + 30;
 const CASH_CLOSE_MINUTE = 16 * 60;
@@ -331,7 +332,7 @@ export class SessionPolicyResolver {
       return {
         policyId,
         sessionCalendar: "weekday_exchange_hours_approximation",
-        sessionPolicyPartial: false,
+        sessionPolicyPartial: true,
         limitations: ["Exchange holidays and early closes require an explicit calendar."]
       };
     }
@@ -378,7 +379,7 @@ export class SessionPolicyResolver {
     } else if (["nyse-equities", "exchange-hours"].includes(quality.policyId)) {
       timeZone = quality.policyId === "nyse-equities" ? "America/New_York" : timeZone;
       const parts = localParts(asOfMs, timeZone);
-      schedule = parts ? cashSchedule(parts, timeZone, asOfMs, intervalMs) : null;
+      schedule = parts ? cashCalendarSchedule(instrument, asOfMs, intervalMs) : null;
     }
 
     if (!schedule) {

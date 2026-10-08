@@ -8,6 +8,7 @@ const AS_OF = "2026-08-02T18:00:00.000Z";
 const spy = Object.freeze({
   instrumentId: "yahoo-spy-test",
   canonicalSymbol: "SPY",
+  mic: "ARCX",
   assetType: "etf",
   timezone: "America/New_York",
   sessionPolicy: "exchange-hours"

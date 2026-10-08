@@ -7,6 +7,7 @@ import { permittedArticle, safeUrl } from "../../utils/researchProjection.js";
 import { listVerifiedInstruments } from "../market/instrumentRegistry.js";
 import { matchInstrument, resolveReferences } from "./instrumentIdentity.js";
 
+import { normalizeNewsFilters } from "../../utils/stableHash.js";
 const DAY = 86400000;
 const hash = value => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const temporal = value => value && Number.isFinite(Date.parse(value)) ? Date.parse(value) : null;
@@ -145,11 +146,12 @@ export class NewsArchive {
   }
   search(input = {}) {
     this.cleanupSnapshots();
-    const { limit = 20, maxBytes = 262144, cursor, ...filters } = input;
+    const { limit = 20, maxBytes = 262144, cursor, ...rawFilters } = input;
+    const filters = normalizeNewsFilters(rawFilters);
     let id, offset = 0, snapshot;
     if (cursor) {
       ({ id, offset } = this.decodeCursor(cursor)); snapshot = this.snapshots.get(id);
-      if (Object.keys(filters).length && hash(filters) !== snapshot.filterHash) throw new AppError("Los filtros no pueden cambiar dentro de una revisión paginada.", 400, "CURSOR_FILTER_MISMATCH");
+      if (Object.keys(rawFilters).length && hash(filters) !== snapshot.filterHash) throw new AppError("Los filtros no pueden cambiar dentro de una revisión paginada.", 400, "CURSOR_FILTER_MISMATCH");
     } else {
       const universe = listVerifiedInstruments();
       const resolutions = resolveReferences([...(filters.symbols || []), ...(filters.instrumentIds || [])], {}, universe);

@@ -1,3 +1,4 @@
+import { publicProjection, pick } from "../utils/researchProjection.js";
 import stateManager from "../state/stateManager.js";
 import { computeMarketImpact } from "../services/market/impactEngineService.js";
 import { buildCoverageByMode, computeQuoteAgeMin, decorateQuote, resolveQuoteOriginStage } from "../services/market/quoteMetadata.js";
@@ -129,6 +130,19 @@ export function getQuotes(req, res) {
     ])
   );
 
+  if (req.query.view === "compact") {
+    const limit = Math.min(100, Math.max(1, Number(req.query.seriesLimit) || 20));
+    const compactQuotes = Object.fromEntries(Object.entries(quotes).map(([symbol, quote]) => [symbol, {
+      ...pick(quote, ["price","changePct","asOf","fetchedAt","source","sourceDetail","currency","exchange","instrumentId","dataMode","synthetic","stale","session","marketState","quoteAgeMin","providerDataMode"]),
+      changePct: quote.price == null || quote.synthetic ? null : quote.changePct ?? null,
+      delay: { classification: quote.source === "yahoo" ? "web-delayed" : "unknown", seconds: quote.delaySeconds ?? null },
+      missingReason: quote.price == null ? "no-usable-stored-price" : null
+    }]));
+    return res.json(mapResponse(publicProjection({ contractVersion: "quotes-compact-v1", tickers, quotes: compactQuotes,
+      snapshotId: snapshot.market?.revision || null, asOf: snapshot.market?.updatedAt || null,
+      ...(String(req.query.includeSeries) === "true" ? { timeseries: Object.fromEntries(tickers.map(t => [t,(snapshot.market?.timeseries?.[t] || []).slice(-limit)])) } : {}),
+      warnings: ["Global live status does not mean real-time prices; check each datum."] })));
+  }
   const timeseries = Object.fromEntries(
     tickers.map((ticker) => [ticker, snapshot.market?.timeseries?.[ticker] || []])
   );

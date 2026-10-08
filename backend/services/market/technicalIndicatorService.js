@@ -1,11 +1,19 @@
 import { calculateTechnicalIndicators, DEFAULT_INDICATOR_PARAMETERS, TECHNICAL_INDICATORS_METHOD_VERSION } from "./technicalIndicators.js";
-
+import { getInstrumentById } from "./instrumentRegistry.js";
+import { stableHash } from "../../utils/stableHash.js";
+import { CALENDAR_VERSION } from "./exchangeCalendar.js";
 export class TechnicalIndicatorService {
-  constructor({ store, now = () => new Date() } = {}) { this.store = store; this.now = now; this.cache = new Map(); }
-  /** @param {{instrumentId:string, interval?:string, adjustmentMode?:"splits"|"none", parameters?:object, limit?:number}} request */
+  constructor({ store, now = () => new Date(), maxCacheEntries = 128, cacheTtlMs = 900000 } = {}) { Object.assign(this, { store, now, maxCacheEntries, cacheTtlMs }); this.cache = new Map(); }
   calculate({ instrumentId, interval = "1day", adjustmentMode = "splits", parameters = DEFAULT_INDICATOR_PARAMETERS, limit = 500 } = {}) {
-    const candles = this.store.query({ instrumentId, interval, adjustmentMode, limit }); const latest = candles.at(-1); const key = JSON.stringify([instrumentId, interval, adjustmentMode, latest?.openTime || null, parameters, TECHNICAL_INDICATORS_METHOD_VERSION]);
-    if (this.cache.has(key)) return this.cache.get(key);
-    const result = { instrumentId, interval, adjustmentMode, ...calculateTechnicalIndicators(candles, { interval, parameters, calculatedAt: this.now().toISOString() }) }; this.cache.set(key, result); return result;
+    const now = this.now(); const queried = this.store.query({ instrumentId, interval, adjustmentMode, limit });
+    const candles = queried.filter(c => Date.parse(c.closeTime) <= now.getTime());
+    const seriesRevision = stableHash(candles);
+    const key = stableHash({ instrumentId, interval, adjustmentMode, limit, seriesRevision, parameters, calendar: CALENDAR_VERSION, method: TECHNICAL_INDICATORS_METHOD_VERSION });
+    for (const [id, row] of this.cache) if (row.expiresAt <= now.getTime()) this.cache.delete(id);
+    const cached = this.cache.get(key); if (cached) { this.cache.delete(key); this.cache.set(key,cached); return cached.result; }
+    const result = { instrumentId, interval, adjustmentMode, seriesRevision, calendarVersion: CALENDAR_VERSION, ...calculateTechnicalIndicators(candles, { interval, instrument: getInstrumentById(instrumentId), parameters, calculatedAt: now.toISOString() }) };
+    this.cache.set(key, { result, expiresAt: now.getTime() + this.cacheTtlMs });
+    while(this.cache.size > this.maxCacheEntries) this.cache.delete(this.cache.keys().next().value);
+    return result;
   }
 }

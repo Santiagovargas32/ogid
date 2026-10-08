@@ -8,7 +8,7 @@ import { sanitizeSensitiveData } from "../../utils/sanitize.js";
 
 function safe(value) { return String(value || "").replace(/[^a-zA-Z0-9._-]/g, "_"); }
 function parse(line) { try { return JSON.parse(line); } catch { return null; } }
-function sameMarketValues(left, right) { return ["open", "high", "low", "close", "volume", "source", "providerSymbol", "dataMode"].every((field) => left?.[field] === right?.[field]); }
+function sameMarketValues(left, right) { return ["open", "high", "low", "close", "volume", "source", "providerSymbol", "dataMode", "currency", "adjusted", "quality", "closeTime"].every((field) => left?.[field] === right?.[field]); }
 
 export class DailyCandleStore {
   constructor({ enabled = true, rootDir, retentionDays = 3650, rolloutBatch = 1, intervals = ["1day"] } = {}) { this.enabled = enabled !== false; this.rootDir = path.resolve(rootDir || path.resolve(process.cwd(), "data/market")); this.candleDir = path.join(this.rootDir, "candles"); this.retentionDays = Math.max(30, Number(retentionDays) || 3650); this.rolloutBatch = rolloutBatch; this.intervals = [...new Set(["1day", ...intervals])]; this.series = new Map(); this.identities = new Set(); this.hydratedSeries = new Set(); this.writeChain = Promise.resolve(); }

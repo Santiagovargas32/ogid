@@ -1,3 +1,4 @@
+import { expectedDailyGaps } from "./exchangeCalendar.js";
 import { candleIntervalMs } from "./canonicalCandle.js";
 
 export const TECHNICAL_INDICATORS_METHOD_VERSION = "technical-indicators-v1";
@@ -5,7 +6,7 @@ export const DEFAULT_INDICATOR_PARAMETERS = Object.freeze({ smaPeriod: 20, emaPe
 
 const ok = (value, sampleSize) => ({ value, reason: null, sampleSize });
 const unavailable = (reason, sampleSize = 0) => ({ value: null, reason, sampleSize });
-const finite = (value) => Number.isFinite(Number(value));
+const finite = (value) => value != null && value !== "" && typeof value !== "boolean" && Number.isFinite(Number(value));
 const mean = (values) => values.reduce((total, value) => total + value, 0) / values.length;
 
 export function simpleReturn(previous, current) { return finite(previous) && finite(current) && Number(previous) !== 0 ? ok(Number(current) / Number(previous) - 1, 2) : unavailable("insufficient_data"); }
@@ -34,13 +35,13 @@ export function atr(candles, period = 14) { if (candles.length < period + 1) ret
 export function realizedVolatility(values, period = 20) { if (values.length < period + 1) return unavailable("insufficient_data", values.length); const returns = values.slice(-(period + 1)).slice(1).map((value, index) => Math.log(Number(value) / Number(values.slice(-(period + 1))[index]))); if (!returns.every(finite)) return unavailable("insufficient_data", values.length); const average = mean(returns); const variance = returns.reduce((total, value) => total + (value - average) ** 2, 0) / Math.max(1, returns.length - 1); return ok(Math.sqrt(variance), period + 1); }
 export function volumeChange(previous, current) { return finite(previous) && finite(current) && Number(previous) !== 0 ? ok(Number(current) / Number(previous) - 1, 2) : unavailable("volume_unavailable"); }
 
-function hasGap(candles, interval) { const expected = candleIntervalMs(interval); if (!expected) return true; for (let index = 1; index < candles.length; index += 1) { const delta = Date.parse(candles[index].openTime) - Date.parse(candles[index - 1].openTime); const sameUtcDate = candles[index].openTime.slice(0, 10) === candles[index - 1].openTime.slice(0, 10); if (interval === "1day" ? delta > expected * 4 : sameUtcDate && delta > expected * 1.5) return true; } return false; }
-function incompatibleReason(candles, interval) { if (!candles.length) return "insufficient_data"; if (candles.some((candle, index) => candle.interval !== interval || (index && Date.parse(candle.openTime) <= Date.parse(candles[index - 1].openTime)))) return "invalid_series"; for (const field of ["instrumentId", "currency", "source", "adjusted"]) if (new Set(candles.map((candle) => candle[field])).size > 1) return "incompatible_series"; return null; }
+function hasGap(candles, interval, instrument) { if (interval === "1day" && instrument) return expectedDailyGaps(candles, instrument).length > 0; const expected = candleIntervalMs(interval); if (!expected) return true; for (let index = 1; index < candles.length; index += 1) { const delta = Date.parse(candles[index].openTime) - Date.parse(candles[index - 1].openTime); const sameUtcDate = candles[index].openTime.slice(0, 10) === candles[index - 1].openTime.slice(0, 10); if (interval === "1day" ? delta > expected * 4 : sameUtcDate && delta > expected * 1.5) return true; } return false; }
+function incompatibleReason(candles, interval) { if (!candles.length) return "insufficient_data"; if (candles.some(c => c.synthetic || c.provenance?.synthetic || ["synthetic", "fallback", "seeded"].includes(c.dataMode))) return "synthetic_series"; if (candles.some(c => ![c.open,c.high,c.low,c.close].every(finite))) return "invalid_values"; if (candles.some((candle, index) => candle.interval !== interval || (index && Date.parse(candle.openTime) <= Date.parse(candles[index - 1].openTime)))) return "invalid_series"; for (const field of ["instrumentId", "currency", "source", "adjusted"]) if (new Set(candles.map((candle) => candle[field])).size > 1) return "incompatible_series"; return null; }
 function describe(name, result) { if (result.value == null) return { indicator: name, text: `Unavailable: ${result.reason}.`, recommendation: null }; return { indicator: name, text: "Deterministic value calculated from persisted closed candles.", recommendation: null }; }
 
 /** @returns {{methodVersion:string, parameters:object, calculatedAt:string, lastCandleAt:string|null, observed:object|null, indicators:object, interpretations:object[], quality:object}} */
-export function calculateTechnicalIndicators(candles, { interval, parameters = {}, calculatedAt = new Date().toISOString() } = {}) {
-  const params = { ...DEFAULT_INDICATOR_PARAMETERS, ...parameters }; const reason = incompatibleReason(candles, interval); const gapDetected = !reason && hasGap(candles, interval); const closes = candles.map((candle) => candle.close); const volumes = candles.map((candle) => candle.volume); const blocked = (result) => reason ? unavailable(reason, candles.length) : gapDetected ? unavailable("gaps_detected", candles.length) : result;
+export function calculateTechnicalIndicators(candles, { interval, instrument = null, parameters = {}, calculatedAt = new Date().toISOString() } = {}) {
+  const params = { ...DEFAULT_INDICATOR_PARAMETERS, ...parameters }; const reason = incompatibleReason(candles, interval); const gapDetected = !reason && hasGap(candles, interval, instrument); const closes = candles.map((candle) => candle.close); const volumes = candles.map((candle) => candle.volume); const blocked = (result) => reason ? unavailable(reason, candles.length) : gapDetected ? unavailable("gaps_detected", candles.length) : result;
   const indicators = {
     simpleReturn: blocked(simpleReturn(closes.at(-2), closes.at(-1))), logarithmicReturn: blocked(logarithmicReturn(closes.at(-2), closes.at(-1))), sma: blocked(sma(closes, params.smaPeriod)), ema: blocked(ema(closes, params.emaPeriod)), rsi: blocked(rsi(closes, params.rsiPeriod)), macd: blocked(macd(closes, params.macdFast, params.macdSlow, params.macdSignal)), bollinger: blocked(bollingerBands(closes, params.bollingerPeriod, params.bollingerStdDev)), atr: blocked(atr(candles, params.atrPeriod)), realizedVolatility: blocked(realizedVolatility(closes, params.volatilityPeriod)), volumeChange: blocked(volumeChange(volumes.at(-2), volumes.at(-1)))
   };

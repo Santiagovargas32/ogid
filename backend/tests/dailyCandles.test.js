@@ -50,7 +50,7 @@ test("lazy upsert preserves prior disk history and serializes concurrent revisio
   const root = mkdtempSync(join(tmpdir(), "daily-upsert-restart-"));
   const first = new DailyCandleStore({ rootDir: root });
   const firstCandle = normalizeCanonicalCandle(raw, { instrument: gd, fetchedAt: "2026-07-11T00:00:00Z", source: "yahoo", providerSymbol: "GD", adjustmentMode: "splits" }).candle;
-  const secondCandle = normalizeCanonicalCandle({ ...raw, date: "2026-07-11", datetime: "2026-07-11", close: "106" }, { instrument: gd, fetchedAt: "2026-07-12T00:00:00Z", source: "yahoo", providerSymbol: "GD", adjustmentMode: "splits" }).candle;
+  const secondCandle = normalizeCanonicalCandle({ ...raw, date: "2026-07-09", datetime: "2026-07-09", close: "106" }, { instrument: gd, fetchedAt: "2026-07-12T00:00:00Z", source: "yahoo", providerSymbol: "GD", adjustmentMode: "splits" }).candle;
   await first.append([firstCandle], { now: new Date("2026-07-12T00:00:00Z") });
 
   const restarted = new DailyCandleStore({ rootDir: root });
@@ -68,7 +68,7 @@ test("lazy upsert preserves prior disk history and serializes concurrent revisio
   ]);
   const reloaded = new DailyCandleStore({ rootDir: root });
   assert.equal(reloaded.query({ instrumentId: gd.instrumentId, interval: "1day" }).length, 2);
-  assert.equal(reloaded.latest(gd.instrumentId).close, 108);
+  assert.equal(reloaded.query({ instrumentId: gd.instrumentId }).at(0).close, 108);
 });
 
 test("daily router maps instrumentId to provider symbol, leases each symbol and keeps partial responses", async () => {

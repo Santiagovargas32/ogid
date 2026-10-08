@@ -1,3 +1,4 @@
+import { BACKEND_BUILD } from "../utils/buildIdentity.js";
 import stateManager from "../state/stateManager.js";
 
 export function getHealth(_req, res) {
@@ -20,6 +21,7 @@ export function getHealth(_req, res) {
     ok: true,
     data: {
       status: "ok",
+      build: BACKEND_BUILD,
       timestamp: new Date().toISOString(),
       uptimeSeconds: Math.floor(process.uptime()),
       websocketClients: websocket.clientCount ?? 0,
