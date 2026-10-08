@@ -7,7 +7,7 @@ import { instrumentView, resolveReferences } from "./instrumentIdentity.js";
 const MATERIAL_HIGH = /\b(?:bankrupt(?:cy)?|insolven(?:cy|t)|restatement|trading halt|fraud|acquisition|merger|earnings warning|profit warning|export ban|quiebra|fraude|fusi[oó]n)\b/i;
 const MATERIAL_MEDIUM = /\b(?:earnings|guidance|results|regulatory|sanctions|lawsuit|recall|dividend|contract award|resultados|sanciones|demanda|dividendo)\b/i;
 export class PortfolioContextService {
-  constructor({ stateManager, archive, alerts, awarenessService, watchlist, now = Date.now } = {}) { Object.assign(this, { stateManager, archive, alerts, awarenessService, watchlist, now }); }
+  constructor({ stateManager, archive, alerts, awarenessService, watchlist, scenarioService=null, now = Date.now } = {}) { Object.assign(this, { stateManager, archive, alerts, awarenessService, watchlist, scenarioService, now }); }
   getContext(input) {
     const now = this.now(); const mode = input.mode;
     const window = { from: input.from || new Date(now - (mode === "weekly" ? 7 * 86400000 : mode === "material" ? 3 * 3600000 : mode === "agenda" ? 0 : 86400000)).toISOString(),
@@ -56,6 +56,7 @@ export class PortfolioContextService {
       health: { lastRefreshAt: snapshot.meta?.lastRefreshAt || null, marketUpdatedAt: snapshot.market?.updatedAt || null, newsCoverage: news.coverage },
       universe: instruments.map(instrument => instrumentView(instrument, this.watchlist.selectedInstrumentIds, snapshot.market?.quotes || {})), resolutions, news, awareness: events, market,
       risks: { dataAsOf: snapshot.meta?.lastRefreshAt || null, countries: input.countries?.length ? Object.fromEntries(Object.entries(snapshot.countries || {}).filter(([iso]) => input.countries.includes(iso))) : snapshot.countries || {}, temporalScope: "current-snapshot" },
+      scenarioSummary: this.scenarioService ? (()=>{const result=this.scenarioService.list({instrumentIds:ids,limit:input.limit||20});return {snapshotId:result.snapshotId,latestSequence:result.latestSequence,hasMore:result.hasMore,scenarios:result.scenarios.map(s=>({scenarioId:s.scenarioId,instrumentId:s.instrumentId,role:s.role,status:s.status,revision:s.revision,expiresAt:s.expiresAt,seriesRevision:s.context.seriesRevision,quality:s.quality})),deliveryVerified:false};})() : null,
       impact: { ...impact, evidenceWindow: newsWindow, methodCaveat: "heuristic-association-not-causality" }, history, material: { candidates: mode === "material" ? this.alerts.candidates(candidates) : [], deliveryAcknowledged: false,
         policy: { minImportance: input.minImportance || "medium", includeUncorroborated: input.includeUncorroborated || false, methodVersion: "material-v1" }, partial: news.hasMore || eventsLimited || events.upcoming.length >= (input.limit || 20) || events.recent.length >= (input.limit || 20),
         acknowledgementOperation: "operator-only; acknowledge after actual delivery" }, warnings });

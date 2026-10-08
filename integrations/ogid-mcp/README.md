@@ -1,4 +1,4 @@
-# OGID MCP 0.2.0
+# OGID MCP 0.3.0
 
 Adaptador Node/ESM por stdio, conectado al backend OGID por HTTP loopback. El perfil investigación ofrece diez herramientas y lecturas almacenadas para toda la API JSON clasificada. El perfil operador añade una herramienta con operaciones enumeradas y permisos de servidor. No inicia recolectores ni recibe claves de proveedores.
 
@@ -32,7 +32,7 @@ Las pruebas deterministas usan fixtures y protocolo MCP real; no consumen cuotas
 | ogid_get_portfolio_context | Paquetes agenda/daily/material/weekly |
 | ogid_query | Operación enumerada para mercado, inteligencia, mapas, medios y diagnóstico |
 
-[API-MCP.md](API-MCP.md) enumera las 45 rutas JSON y 54 operaciones: 35 de investigación y 19 de operador. Sus esquemas se generan desde [el registro compartido](../../backend/contracts/ogidOperations.js). Cambiarlo exige regenerar el inventario; una prueba detecta rutas sin clasificación.
+[API-MCP.md](API-MCP.md) enumera las 62 rutas JSON y 71 operaciones: 44 de investigación y 27 de operador. Sus esquemas se generan desde [el registro compartido](../../backend/contracts/ogidOperations.js). Cambiarlo exige regenerar el inventario; una prueba detecta rutas sin clasificación.
 
 Ejemplos de argumentos MCP:
 
@@ -51,7 +51,7 @@ El backend ingiere noticias intel y RSS antes del recorte editorial. Conserva me
 
 No rellena semanas anteriores ni descarga retrospectivamente. Cobertura declara activación, oldest/newest, recepción, fechas desconocidas, poda por capacidad y continuidad de adquisición desconocida. Los snapshots actuales no demuestran continuidad histórica. El historial se registra en los ciclos intel/mercado y permanece tras reinicio; no es una serie de rentabilidades.
 
-Filtros antes de paginar, país opcional y coincidencia por entidad con método/evidencia. Un resultado sin país incluye noticias corporativas sin etiqueta. País y empresa juntos restringen ambos. Componentes y pesos de ETF no están disponibles: no se infiere exposición cuantitativa.
+Filtros antes de paginar, país opcional y coincidencia por entidad con método/evidencia. Un resultado sin país incluye noticias corporativas sin etiqueta. País y empresa juntos restringen ambos. Holdings fechados solo están disponibles si se ingirió evidencia del emisor para el ISIN/mercado verificado; no se infiere exposición cuantitativa.
 
 `timeField` es publishedAt por defecto; admite updatedAt, receivedAt y archiveChangedAt. Publicación desconocida queda fuera de ventanas publishedAt. archiveChangedAt y contentRevision registran cambios del contenido y permiten encontrar correcciones de publicaciones antiguas; otro sondeo o feed no los convierte en noticia nueva. No verifican actualidad del hecho. Los tres tiempos de fuente/recepción se conservan por separado.
 
@@ -88,6 +88,14 @@ Salida sin texto completo, prompts internos, secretos ni rutas privadas. Artícu
 Materialidad configurable medium/high; reportes sin corroboración excluidos por defecto. includeUncorroborated habilita candidatos a confirmar, nunca hechos confirmados. Candidatos y reconocimientos se persisten 30 días / 10 000 entradas por conjunto. Correcciones semánticas reaparecen; repetir un feed no acredita corroboración independiente. Solo alerts:ack puede reconocer una entrega realmente realizada; investigación no puede garantizar ausencia de repeticiones entre ejecuciones si nadie reconoce las entregas.
 
 Scores son heurísticos, no probabilidades. La asociación noticia/precio no demuestra causalidad. OGID complementa la investigación externa y no inventa posiciones, pesos ni holdings.
+
+## Investigación financiera 1.1.0
+
+[Resumen de contratos y operaciones](../../docs/research-cartera/API-CHANGES.md), [progreso y evidencia](../../docs/research-cartera/PROGRESS.md) y [runbook 0.3, migración/rollback y ChatGPT](../../docs/research-cartera/RUNBOOK.md). Esta guía nueva sustituye versiones esperadas y migración 0.2 para esta entrega; las instrucciones de instalación y perfiles anteriores continúan siendo referencias.
+
+ogid_query añade market.technical-context, research.event-impact, research.scenarios, signals.delta, etf.holdings y research.forecast-evaluation. Técnica standard-v1 reproducible y N/D explícitos; eventos con evidencia, escenarios con condiciones observadas, journal de consumidor sin entrega implícita. El MCP fija cotizaciones compactas y permite series acotadas solo con includeSeries=true. Confidence legacy es fuerza heurística, nunca probabilidad de éxito.
+
+La configuración de fuentes SEC/IR/macro/contratos/emisores es opt-in. Sin evidencia/identidades/ingesta, holdings/companyfacts permanecen N/D. Lecturas no activan proveedores. No se han modificado tareas ChatGPT ni desplegado esta versión.
 
 ## Activación y documentación
 

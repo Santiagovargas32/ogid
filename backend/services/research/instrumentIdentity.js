@@ -1,3 +1,4 @@
+import { getCompany } from "./companyIdentity.js";
 import { listVerifiedInstruments } from "../market/instrumentRegistry.js";
 import { pick } from "../../utils/researchProjection.js";
 
@@ -36,7 +37,8 @@ export function resolveReferences(references = [], criteria = {}, universe = lis
 export function instrumentView(instrument, selectedIds = [], quotes = {}) {
   const quote = quotes[instrument.canonicalSymbol];
   const usable = quote?.price != null && !quote.synthetic && !["synthetic", "fallback"].includes(quote.dataMode);
-  return { ...pick(instrument, ["instrumentId", "canonicalSymbol", "displayName", "assetType", "sector", "industry", "exchange", "mic", "currency", "timezone", "country", "isin", "shareClass", "aliases", "providerSymbols", "metadataSource"]),
+  return { ...pick(instrument, ["identityVersion", "identityRevision", "companyId", "relationships", "calendarId", "instrumentId", "canonicalSymbol", "displayName", "assetType", "sector", "industry", "exchange", "mic", "currency", "timezone", "country", "isin", "shareClass", "aliases", "providerSymbols", "metadataSource"]),
+    entity: getCompany(instrument.companyId),
     isin: instrument.isin ?? null, shareClass: instrument.shareClass ?? null, mic: instrument.mic ?? null,
     selected: selectedIds.includes(instrument.instrumentId), verified: instrument.verificationStatus === "verified", coverage: usable ? "quote-available" : "identity-only", missingReason: usable ? null : "no-usable-stored-quote", holdings: null, holdingsMissingReason: instrument.assetType === "etf" ? "no-dated-weighted-holdings" : null };
 }

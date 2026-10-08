@@ -1,3 +1,4 @@
+import { adjacentTradingDay, tradingDay } from "./exchangeCalendar.js";
 import { fetchDailyCandles } from "./marketProviderRouter.js";
 import { getInstrumentById, resolveVerifiedInstrumentReferences } from "./instrumentRegistry.js";
 import { resolveDailyCandleTimes } from "./canonicalCandle.js";
@@ -11,9 +12,10 @@ export function resolveExpectedClosedDailyCandle(instrument, now = new Date(), {
     if (now.getUTCHours() * 60 + now.getUTCMinutes() < cryptoCloseDelayMinutes) return null;
     return resolveDailyCandleTimes(previousUtcDate(now), instrument);
   }
-  const local = dateInZone(now, instrument.timezone); let date = local.date;
-  if (!["Mon", "Tue", "Wed", "Thu", "Fri"].includes(local.weekday) || local.minutes < 16 * 60 + equityDelayMinutes) date = previousWeekday(date);
-  return resolveDailyCandleTimes(date, instrument);
+  const local = dateInZone(now, instrument.timezone); const day = tradingDay(instrument, local.date);
+  if (day.halfDayPending) return null;
+  const expected = !day.closed && now.getTime() >= Date.parse(day.closeTime) + equityDelayMinutes * 60000 ? day : adjacentTradingDay(instrument, local.date, -1);
+  return expected ? resolveDailyCandleTimes(expected.date, instrument) : null;
 }
 
 export class DailyCandleService {

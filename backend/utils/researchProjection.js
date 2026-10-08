@@ -47,8 +47,9 @@ export function publicProjection(value, depth = 0) {
   return result;
 }
 export function projectOperation(operation, data) {
-  if (operation.projection === "health") return publicProjection(pick(data, ["status", "timestamp", "uptimeSeconds", "lastRefreshAt", "refreshIntervalMs", "sourceMode", "dataQuality", "market"]));
+  if (operation.projection === "health") return publicProjection(pick(data, ["build", "status", "timestamp", "uptimeSeconds", "lastRefreshAt", "refreshIntervalMs", "sourceMode", "dataQuality", "market"]));
   if (operation.projection === "admin-counts") return { generatedAt: data.generatedAt || null, summary: numericProjection(data.summary || {}), pagination: numericProjection(data.pagination || {}), itemCount: data.items?.length ?? data.entries?.length ?? null, metrics: numericProjection(data) };
+  if (operation.projection === "quotes") return publicProjection({ ...pick(data,["contractVersion","tickers","snapshotId","asOf","warnings"]), quotes: data.quotes || {}, ...(data.contractVersion === "quotes-compact-v1" && data.timeseries ? {timeseries:data.timeseries}: {}) });
   const projected = publicProjection(data);
   if (operation.projection === "quotes") {
     for (const quote of Object.values(projected.quotes || {})) if (quote.price == null || quote.synthetic || ["synthetic", "fallback"].includes(quote.dataMode)) quote.changePct = null;

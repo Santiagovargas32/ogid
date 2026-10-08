@@ -1,0 +1,8 @@
+{
+  "purpose": "study-universe-only; no accredited positions or selected ETF class",
+  "symbols": ["MSFT", "NVDA", "GOOGL", "GOOG", "ASML", "ASML.AS", "AMD", "ORCL", "AAPL", "LMT", "NOC", "GD"],
+  "etfReferences": ["VWCE.DE", "VUAA.DE", "SXR8.DE", "EUNL.DE", "EQQQ.MI"],
+  "etfFamilies": ["Vanguard FTSE All-World UCITS", "Vanguard S&P 500 UCITS", "iShares Core S&P 500 UCITS", "iShares Core MSCI World UCITS", "Invesco EQQQ Nasdaq-100 UCITS"],
+  "positions": null,
+  "selectionRequired": "Verify companyId/CIK at entity level and each market identity/ISIN/MIC/currency/shareClass before use. ASML markets differ; GOOGL/GOOG share one entity. Do not substitute US ETFs."
+}

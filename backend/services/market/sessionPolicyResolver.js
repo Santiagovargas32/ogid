@@ -1,6 +1,5 @@
+import { cashCalendarSchedule, expectedIntradayGapCount } from "./exchangeCalendar.js";
 const FIVE_MINUTES_MS = 5 * 60_000;
-const CASH_OPEN_MINUTE = 9 * 60 + 30;
-const CASH_CLOSE_MINUTE = 16 * 60;
 const FX_WEEKLY_OPEN_MINUTE = 17 * 60;
 const FX_WEEKLY_CLOSE_MINUTE = 17 * 60;
 const FUTURES_OPEN_MINUTE = 17 * 60;
@@ -118,14 +117,6 @@ function dateAtWeekday(parts, targetWeekday, direction) {
   return calendarDate(parts, distance);
 }
 
-function adjacentWeekday(parts, direction) {
-  for (let offset = direction; Math.abs(offset) <= 7; offset += direction) {
-    const candidate = calendarDate(parts, offset);
-    if (candidate.weekday >= 1 && candidate.weekday <= 5) return candidate;
-  }
-  return null;
-}
-
 function localBoundary(date, minute, timeZone) {
   if (!date) return null;
   return zonedDateTimeIso({
@@ -133,41 +124,6 @@ function localBoundary(date, minute, timeZone) {
     hour: Math.floor(minute / 60),
     minute: minute % 60
   }, timeZone);
-}
-
-function cashSchedule(parts, timeZone, asOfMs, intervalMs) {
-  const minute = parts.hour * 60 + parts.minute;
-  const weekday = parts.weekday >= 1 && parts.weekday <= 5;
-  const eligible = weekday && minute >= CASH_OPEN_MINUTE && minute < CASH_CLOSE_MINUTE;
-  let expectedLatestCandleAt;
-  if (weekday && minute >= CASH_OPEN_MINUTE + intervalMs / 60_000 && minute < CASH_CLOSE_MINUTE) {
-    expectedLatestCandleAt = new Date(floorTimestamp(asOfMs, intervalMs)).toISOString();
-  } else if (weekday && minute >= CASH_CLOSE_MINUTE) {
-    expectedLatestCandleAt = localBoundary(calendarDate(parts), CASH_CLOSE_MINUTE, timeZone);
-  } else {
-    expectedLatestCandleAt = localBoundary(adjacentWeekday(parts, -1), CASH_CLOSE_MINUTE, timeZone);
-  }
-
-  let nextEligibleAt = null;
-  if (!eligible) {
-    if (weekday && minute < CASH_OPEN_MINUTE) {
-      nextEligibleAt = localBoundary(calendarDate(parts), CASH_OPEN_MINUTE, timeZone);
-    } else {
-      const next = adjacentWeekday(parts, 1);
-      nextEligibleAt = localBoundary(next, CASH_OPEN_MINUTE, timeZone);
-    }
-  }
-
-  return {
-    eligible,
-    sessionState: eligible ? "open" : "closed",
-    sessionId: eligible ? parts.date : null,
-    minute,
-    sessionOpenMinute: CASH_OPEN_MINUTE,
-    sessionCloseMinute: CASH_CLOSE_MINUTE,
-    expectedLatestCandleAt,
-    nextEligibleAt
-  };
 }
 
 function fxTradingWeek(parts) {
@@ -331,7 +287,7 @@ export class SessionPolicyResolver {
       return {
         policyId,
         sessionCalendar: "weekday_exchange_hours_approximation",
-        sessionPolicyPartial: false,
+        sessionPolicyPartial: true,
         limitations: ["Exchange holidays and early closes require an explicit calendar."]
       };
     }
@@ -378,7 +334,7 @@ export class SessionPolicyResolver {
     } else if (["nyse-equities", "exchange-hours"].includes(quality.policyId)) {
       timeZone = quality.policyId === "nyse-equities" ? "America/New_York" : timeZone;
       const parts = localParts(asOfMs, timeZone);
-      schedule = parts ? cashSchedule(parts, timeZone, asOfMs, intervalMs) : null;
+      schedule = parts ? cashCalendarSchedule(instrument, asOfMs, intervalMs) : null;
     }
 
     if (!schedule) {
@@ -414,6 +370,10 @@ export class SessionPolicyResolver {
     const currentSession = this.resolve(instrument, currentMs, { intervalMs });
     if (!previousSession.eligible || !currentSession.eligible) {
       return { reason: "session_unresolved", after: previous.closeTime, before: current.openTime, missingCandles: null };
+    }
+    if (["nyse-equities","exchange-hours"].includes(previousSession.policyId)) {
+      const missingCandles=expectedIntradayGapCount(previous,current,instrument,intervalMs);
+      return missingCandles?{reason:"missing_candles",after:previous.closeTime,before:current.openTime,missingCandles,session:currentSession.sessionId}:null;
     }
     if (previousSession.policyId !== "24x7" && previousSession.sessionId !== currentSession.sessionId) return null;
     const delta = currentMs - previousMs;

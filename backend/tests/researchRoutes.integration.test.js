@@ -13,6 +13,16 @@ import { createReadClient } from "../../integrations/ogid-mcp/src/client.js";
 import { loadConfig } from "../../integrations/ogid-mcp/src/config.js";
 import { executeTool, toolDefinitions } from "../../integrations/ogid-mcp/src/tools.js";
 import { readOperatorCredentials } from "../middleware/mcpOperatorAuth.js";
+import { ResearchStore } from "../services/research/researchStore.js";
+
+test("research ledger capacity does not interrupt legacy news collection and reports blocked coverage",()=>{
+  const runtime=createAppServer({disableBackgroundRefresh:true,researchStore:new ResearchStore({maxEntries:0}),news:{providers:[],rssFeeds:[]},market:{enabled:false,historyPersist:false,initialTickers:[],tickers:[]}});
+  assert.doesNotThrow(()=>runtime.app.locals.newsArchive.ingest([{id:"offline-capacity",title:"NVIDIA results",url:"https://example.org/capacity",provider:"rss",publishedAt:"2026-10-08T12:00:00Z"}]));
+  assert.equal(runtime.app.locals.newsArchive.search().total,1);assert.equal(runtime.app.locals.researchPipeline.archiveEvents.status,"blocked");assert.equal(runtime.app.locals.researchPipeline.archiveEvents.failureCode,"RESEARCH_CAPACITY");assert.equal(runtime.app.locals.researchPipeline.archiveEvents.pendingReplay,true);
+  runtime.app.locals.researchStore.maxEntries=20;
+  runtime.app.locals.newsArchive.ingest([{id:"offline-after-capacity",title:"NVIDIA updated results",url:"https://example.org/capacity-restored",provider:"rss",publishedAt:"2026-10-08T13:00:00Z"}]);
+  assert.equal(runtime.app.locals.researchPipeline.archiveEvents.status,"partial");assert.equal(runtime.app.locals.researchPipeline.archiveEvents.pendingReplay,true);
+});
 
 test("inventario: todas las rutas JSON montadas tienen contrato y permiso; rutas nuevas sin clasificar fallan", () => {
   const malformed = join(mkdtempSync(join(tmpdir(), "ogid-credential-test-")), "operator.json");
@@ -31,7 +41,7 @@ test("inventario: todas las rutas JSON montadas tienen contrato y permiso; rutas
     return routes;
   };
   const mounted = new Set(enumerate("index.js", "/api")); const registered = new Set(OGID_OPERATIONS.map(op => `${op.method} ${op.path}`));
-  assert.deepEqual([...mounted].sort(), [...registered].sort()); assert.equal(OPERATIONS_VERSION, "1.0.0");
+  assert.deepEqual([...mounted].sort(), [...registered].sort()); assert.equal(OPERATIONS_VERSION, "1.1.0");
   for (const operation of OGID_OPERATIONS) { assert.ok(operation.scope); assert.ok(operation.effects); assert.ok(operation.projection); assert.equal(operation.parameters.additionalProperties, false); assert.ok(["research", "operator"].includes(operation.profile)); }
 });
 test("todas las lecturas MCP sobre backend real: almacenadas, sin refresh/cuotas, identidades y separación operador", async () => {
@@ -50,7 +60,7 @@ test("todas las lecturas MCP sobre backend real: almacenadas, sin refresh/cuotas
   const id = archive.search().articles[0].id; const nvda = getInstrumentByCanonicalSymbol("NVDA").instrumentId;
   try {
     for (const operation of OGID_OPERATIONS.filter(op => op.profile === "research")) {
-      const params = operation.id === "market.candles" || operation.id === "market.indicators" ? { instrumentId: nvda } : operation.id === "portfolio.context" ? { mode: "weekly", instrumentIds: [nvda] } : {};
+      const params = ["market.candles","market.indicators","market.technical-context"].includes(operation.id) ? { instrumentId: nvda } : operation.id === "etf.holdings" ? {instrumentId:getInstrumentByCanonicalSymbol("QQQ").instrumentId} : operation.id === "market.history.job" ? {jobId:runtime.app.locals.historicalAcquisitionService.create({requestId:"fixture",instrumentIds:[nvda]}).jobId} : operation.id === "research.companyfacts" ? {companyId:"unavailable-fixture"} : operation.id === "portfolio.context" ? { mode: "weekly", instrumentIds: [nvda] } : {};
       const path = operation.pathParameters ? { id: operation.id === "news.item" ? id : "fixture-stream" } : undefined;
       const data = await read.operation(operation.id, params, undefined, path); assert.ok(data && typeof data === "object", operation.id);
       const output = JSON.stringify(projectOperation(operation, data)); assert.ok(!output.includes("/home/fedora"), operation.id);

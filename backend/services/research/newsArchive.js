@@ -7,6 +7,7 @@ import { permittedArticle, safeUrl } from "../../utils/researchProjection.js";
 import { listVerifiedInstruments } from "../market/instrumentRegistry.js";
 import { matchInstrument, resolveReferences } from "./instrumentIdentity.js";
 
+import { normalizeNewsFilters } from "../../utils/stableHash.js";
 const DAY = 86400000;
 const hash = value => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const temporal = value => value && Number.isFinite(Date.parse(value)) ? Date.parse(value) : null;
@@ -69,7 +70,7 @@ export class NewsArchive {
   }
   ingest(values = [], { lane = "editorial", awarenessMode = "off" } = {}) {
     if (lane === "financial" && awarenessMode !== "visible") return { accepted: 0, reason: "financial-not-public" };
-    const now = new Date(this.now()).toISOString(); let accepted = 0;
+    const now = new Date(this.now()).toISOString(); let accepted = 0; const collected = [];
     for (const raw of values) {
       if (!allowedArticle(raw)) continue;
       const article = permittedArticle({ ...raw, sourceId: raw.sourceId || raw.source?.sourceId || raw.provenance?.sourceId, sourceName: raw.sourceName || raw.source?.name,
@@ -96,9 +97,9 @@ export class NewsArchive {
       record.contentRevision = (previous ? previous.contentRevision || 1 : 0) + (contentChanged ? 1 : 0);
       record.archiveChangedAt = contentChanged ? now : previous.archiveChangedAt || previous.archiveFirstSeenAt;
       if (changed) { record.revision++; this.revision++; }
-      this.records.set(id, record); accepted++;
+      this.records.set(id, record); if (changed) collected.push(record); accepted++;
     }
-    this.lastIngestAt = now; this.prune(); this.persist();
+    this.lastIngestAt = now; this.prune(); this.persist(); this.onIngest?.(collected);
     return { accepted, revision: this.revision };
   }
   recordContext(snapshot) {
@@ -145,11 +146,12 @@ export class NewsArchive {
   }
   search(input = {}) {
     this.cleanupSnapshots();
-    const { limit = 20, maxBytes = 262144, cursor, ...filters } = input;
+    const { limit = 20, maxBytes = 262144, cursor, ...rawFilters } = input;
+    const filters = normalizeNewsFilters(rawFilters);
     let id, offset = 0, snapshot;
     if (cursor) {
       ({ id, offset } = this.decodeCursor(cursor)); snapshot = this.snapshots.get(id);
-      if (Object.keys(filters).length && hash(filters) !== snapshot.filterHash) throw new AppError("Los filtros no pueden cambiar dentro de una revisión paginada.", 400, "CURSOR_FILTER_MISMATCH");
+      if (Object.keys(rawFilters).length && hash(filters) !== snapshot.filterHash) throw new AppError("Los filtros no pueden cambiar dentro de una revisión paginada.", 400, "CURSOR_FILTER_MISMATCH");
     } else {
       const universe = listVerifiedInstruments();
       const resolutions = resolveReferences([...(filters.symbols || []), ...(filters.instrumentIds || [])], {}, universe);

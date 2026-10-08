@@ -1,5 +1,7 @@
 # Perfil operador
 
+Contrato 1.1.0 / adaptador 0.3.0: [operaciones y runbook financiero](../../docs/research-cartera/RUNBOOK.md).
+
 Investigación usa diez herramientas sin credenciales operador. Una conexión separada con OGID_PROFILE=operator añade ogid_operator; únicamente anuncia las operaciones que permiten sus scopes. No cambiar el perfil de las tareas de cartera para resolver errores de datos.
 
 | Scope | Operaciones autorizadas |
@@ -8,7 +10,11 @@ Investigación usa diez herramientas sin credenciales operador. Una conexión se
 | provider:query | Búsqueda de identidades y variantes de consulta externa enumeradas |
 | intel:refresh | Refresh intel |
 | watchlist:write | Sustituir selección de instrumentos verificados |
-| candles:backfill | Backfill de velas dentro de los límites existentes |
+| candles:backfill | Backfill legacy y jobs históricos acotados create/run |
+| sources:ingest | Ingesta acotada de fuentes locales verificadas |
+| signals:generate | Refrescar escenarios locales o borrar con tombstone |
+| signals:ack | Checkpoint CAS de procesamiento y recuperación explícita; sin recibo de entrega |
+| forecasts:write | Registrar pronósticos antes del resultado con disponibilidad/costes |
 | media:refresh | Actualizar/resolver streams |
 | alerts:ack | Reconocer candidatos después de su entrega real |
 

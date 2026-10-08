@@ -1,5 +1,7 @@
 # Resultados de la implementación 0.2.0
 
+Documento histórico. Para la entrega financiera 0.3.0 del 08/10/2026, sin push/PR/despliegue, consultar [PROGRESS](../../docs/research-cartera/PROGRESS.md).
+
 Implementación realizada el 6 de octubre de 2026 en feat/ogid-mcp-research, inicialmente desde main 8609fa4a9f6cbb66d16e06bf6f87a85fae412917. La entrega se prepara mediante una PR hacia main. El adaptador 0.1.1 y sus correcciones de calidad se recuperaron selectivamente de la rama histórica; se conservó inicialmente la autenticación de esa base del backend.
 
 Preparación de la PR sobre main b18c0c6, que ya fusionó la versión anterior del MCP y eliminó la autenticación administrativa. Esta entrega conserva la protección de la implementación activada: ADMIN_API_TOKEN, ALLOW_LOCAL_ADMIN y middleware sensible, además de las credenciales scoped del operador MCP. Por tanto, respecto a main restituye la autenticación administrativa; las actualizaciones de dependencias de main se conservan. CI instala ambos paquetes y comprueba backend, MCP e inventario.

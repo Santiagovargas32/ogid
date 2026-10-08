@@ -29,7 +29,7 @@ export function createReadClient(config, fetchImpl = fetch) {
           if (operation.body) headers["Content-Type"] = "application/json";
           response = await fetchImpl(url, { method: operation.method, headers, redirect: "error", signal: controller.signal, ...(operation.body ? { body: JSON.stringify(body || {}) } : {}) });
           if (!response.ok) {
-            const allowed = new Set(["CURSOR_EXPIRED", "CURSOR_FILTER_MISMATCH", "INVALID_CURSOR", "NEWS_ITEM_TOO_LARGE", "NEWS_ITEM_NOT_FOUND", "UNRESOLVED_INSTRUMENT", "MCP_OPERATOR_FORBIDDEN", "OUTPUT_TOO_LARGE", "SNAPSHOT_TOO_LARGE"]);
+            const allowed = new Set(["CURSOR_EXPIRED", "CURSOR_FILTER_MISMATCH", "INVALID_CURSOR", "NEWS_ITEM_TOO_LARGE", "NEWS_ITEM_NOT_FOUND", "UNRESOLVED_INSTRUMENT", "MCP_OPERATOR_FORBIDDEN", "OUTPUT_TOO_LARGE", "SNAPSHOT_TOO_LARGE", "CHANGE_RETENTION_GAP", "CHANGE_HISTORY_CHANGED", "SIGNAL_ITEM_TOO_LARGE", "CHECKPOINT_CONFLICT", "INVALID_CONSUMER", "HISTORY_JOB_NOT_FOUND", "FORECAST_BACKDATING_FORBIDDEN", "FUTURE_INFORMATION", "FORECAST_DATA_UNAVAILABLE", "IDEMPOTENCY_CONFLICT", "FORECAST_DUPLICATE", "FILTERED_CHECKPOINT_FORBIDDEN", "INVALID_TECHNICAL_PARAMETERS", "INVALID_FORECAST", "INVALID_PROBABILITY", "INVALID_ETF_IDENTITY", "RESEARCH_CAPACITY", "SOURCE_BUSY", "UNKNOWN_SOURCE", "SCENARIO_NOT_FOUND", "HOLDINGS_SNAPSHOT_CHANGED"]);
             let code = legacy ? "UPSTREAM_HTTP" : response.status === 401 ? "UNAUTHORIZED" : response.status === 429 ? "RATE_LIMITED" : "UPSTREAM_HTTP";
             const chunks = []; let bytes = 0;
             for await (const chunk of response.body) { bytes += chunk.byteLength; if (bytes > 8192) break; chunks.push(Buffer.from(chunk)); }

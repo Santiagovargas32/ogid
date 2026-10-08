@@ -2,7 +2,7 @@ import * as z from "zod/v4";
 import { OGID_OPERATIONS, OPERATIONS_VERSION, getOperation, operationPath, validIsoDate } from "../../../backend/contracts/ogidOperations.js";
 import { projectOperation } from "../../../backend/utils/researchProjection.js";
 import { ReadError } from "./client.js";
-import { VERSION } from "./config.js";
+import { VERSION, ADAPTER_BUILD } from "./config.js";
 
 export function zodSchema(def) {
   if (def.type === "object") return z.strictObject(Object.fromEntries(Object.entries(def.properties).map(([name, value]) => [name, (def.required || []).includes(name) ? zodSchema(value) : zodSchema(value).optional()])));
@@ -39,21 +39,21 @@ export function extendedToolDefinitions(config, read) {
     const values = clean(zodSchema(operation.parameters).parse(params));
     if (values.from && values.to && Date.parse(values.from) > Date.parse(values.to)) throw new ReadError("INVALID_WINDOW", "from debe ser anterior o igual a to.");
     if (operation.profile === "research" && operation.id !== "instruments.resolve") await authorizeInstruments(config, read, [...(values.instrumentIds || []), ...(values.symbols || []), ...(values.tickers || []), ...(values.instrumentId ? [values.instrumentId] : []), ...(values.benchmarkInstrumentId ? [values.benchmarkInstrumentId] : [])]);
-    if (operation.id === "news.search") values.maxBytes = Math.min(values.maxBytes || config.maxOutputBytes, config.maxOutputBytes);
+    if (["news.search","signals.delta"].includes(operation.id)) values.maxBytes = Math.min(values.maxBytes || config.maxOutputBytes, config.maxOutputBytes);
     const raw = await callOperation(read, operation, values, body, pathParams);
     return { data: projectOperation(operation, raw), warnings: [...(raw.warnings || []), ...(operation.profile === "operator" ? ["Operación del perfil operador autorizada por credencial local; no utilizar en tareas de investigación."] : []), ...(operation.projection === "admin-counts" ? ["Solo métricas administrativas: los cuerpos internos se omiten."] : [])] };
   }
   const tools = [
     { name: "ogid_get_capabilities", description: "Descubre versión, cobertura, permisos y contratos de las operaciones OGID disponibles. No acredita la identidad del proceso por el commit del checkout.", schema: z.strictObject({}), async run() {
       const runtime = await callOperation(read, getOperation("capabilities"));
-      return { data: { adapterVersion: VERSION, contractVersion: OPERATIONS_VERSION, profile: config.profile, instrumentAuthorization: config.instrumentAuth, checkoutCommit: config.commit, runningCommitVerified: false,
-        operations: [...research, ...(config.profile === "operator" ? operator : [])].map(describe), runtime: { contractVersion: runtime.contractVersion, generatedAt: runtime.generatedAt, newsCoverage: runtime.newsCoverage } }, warnings: ["Datos disponibles y cuota no equivalen a cobertura completa o hechos corroborados."] };
+      return { data: { adapterVersion: VERSION, adapterBuild: ADAPTER_BUILD, contractVersion: OPERATIONS_VERSION, profile: config.profile, instrumentAuthorization: config.instrumentAuth, checkoutCommit: config.commit, runningCommitVerified: false,
+        operations: [...research, ...(config.profile === "operator" ? operator : [])].map(describe), runtime: { contractVersion: runtime.contractVersion, generatedAt: runtime.generatedAt, newsCoverage: runtime.newsCoverage, build: runtime.build || null, researchPipeline:runtime.researchPipeline || null } }, warnings: ["Datos disponibles y cuota no equivalen a cobertura completa o hechos corroborados."] };
     } },
     { name: "ogid_search_news", description: "Busca todo el archivo autorizado anterior al recorte editorial, por país, empresa verificada, texto, temas y fechas. País omitido incluye noticias corporativas sin país. Recorre nextCursor de la misma revisión; conservar cobertura parcial y fechas desconocidas.", schema: zodSchema(getOperation("news.search").parameters), run: args => execute(getOperation("news.search"), args) },
     { name: "ogid_get_news_item", description: "Lee metadata y extracto permitido de un artículo por ID del archivo. No devuelve texto completo ni reconstruye noticias fuera de retención.", schema: z.strictObject({ id: z.string().regex(/^[A-Za-z0-9._:-]{1,128}$/) }), run: ({ id }) => execute(getOperation("news.item"), {}, undefined, { id }) },
     { name: "ogid_resolve_instruments", description: "Resuelve símbolos, nombres o IDs contra identidades verificadas del runtime, incluso sin watchlist. Devuelve alternativas para ASML, Alphabet y clases ETF ambiguas; nunca elige mercado/clase ni consulta proveedores.", schema: zodSchema(getOperation("instruments.resolve").parameters), run: args => execute(getOperation("instruments.resolve"), args) },
     { name: "ogid_get_portfolio_context", description: "Reúne contexto complementario OGID para agenda, resumen diario, candidatos materiales o revisión semanal. Usa datos almacenados, identifica cobertura parcial y no marca alertas entregadas. Confirmar hechos con fuentes externas; no inventar pesos/posiciones ni causalidad.", schema: zodSchema(getOperation("portfolio.context").parameters), run: args => execute(getOperation("portfolio.context"), args) },
-    { name: "ogid_query", description: "Consulta operaciones de lectura enumeradas: watchlist, precios, velas, indicadores, condiciones, impactos, analítica, inteligencia, mapas, medios y diagnóstico seguro. Parámetros según operationId; stored impide consumo de proveedores. Descubrir contratos con ogid_get_capabilities.",
+    { name: "ogid_query", description: "Consulta operaciones de lectura enumeradas: watchlist, precios, velas, indicadores/contexto técnico, eventos, escenarios, cambios por consumidor, holdings fechados, evaluación, condiciones, impactos, inteligencia, mapas, medios y diagnóstico seguro. Parámetros según operationId; stored impide consumo de proveedores. Descubrir contratos con ogid_get_capabilities.",
       schema: z.strictObject({ operationId: z.enum(research.filter(op => op.tool === "ogid_query").map(op => op.id)), parameters: z.union(research.filter(op => op.tool === "ogid_query").map(op => zodSchema(op.parameters).describe(op.id))).default({}), pathParameters: z.strictObject({ id: z.string().regex(/^[A-Za-z0-9._:-]{1,128}$/) }).optional() }),
       async run({ operationId, parameters, pathParameters }) {
         const operation = getOperation(operationId);

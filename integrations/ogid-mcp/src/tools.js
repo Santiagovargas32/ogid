@@ -1,7 +1,7 @@
 import * as z from "zod/v4";
 import { BASELINE_COUNTRIES } from "../../../backend/utils/countryCatalog.js";
 import { AWARENESS_SOURCES, AWARENESS_SOURCE_CATALOG_VERSION } from "../../../backend/services/awareness/awarenessCatalog.js";
-import { VERSION } from "./config.js";
+import { VERSION, ADAPTER_BUILD } from "./config.js";
 import { ReadError } from "./client.js";
 import { authorizeInstruments, extendedToolDefinitions } from "./operations.js";
 
@@ -138,13 +138,13 @@ export function toolDefinitions(config, read) {
       }
     },
     {
-      name: "ogid_health", description: "Comprueba conectividad de lectura con OGID, modo Awareness y calidad. El commit corresponde al checkout, no acredita el código cargado por el proceso. No revela configuración privada.",
+      name: "ogid_health", description: "Comprueba conectividad de lectura con OGID, modo Awareness y calidad. Separa el checkout de la identidad capturada al cargar backend/adaptador; hash local no es atestación. No revela configuración privada.",
       schema: z.strictObject({}),
       async run() {
         const [health, awareness] = await Promise.all([read("/api/health"), read("/api/intel/awareness-snapshot", { limit: 1 })]);
         validateAwareness(awareness);
         return { data: {
-          adapterVersion: VERSION, ogidCheckoutCommit: config.commit, runningCommitVerified: false,
+          adapterVersion: VERSION, adapterBuild: ADAPTER_BUILD, backendBuild: health.build || null, ogidCheckoutCommit: config.commit, runningCommitVerified: false,
           ...pick(health, ["status", "timestamp", "uptimeSeconds", "lastRefreshAt", "sourceMode"]),
           dataQuality: Object.fromEntries(Object.entries(health.dataQuality || {}).map(([key,value]) => [key, pick(value, ["mode", "provider", "reason", "synthetic", "inputMode"])])),
           market: pick(health.market, ["availability", "quoteCount", "selectedInstrumentCount", "configuredProvider", "effectiveProvider"]),
