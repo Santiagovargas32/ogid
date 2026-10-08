@@ -35,6 +35,7 @@ import { createLogger, requestLogger } from "./utils/logger.js";
 import { queryParamAllowlist } from "./utils/queryParamAllowlist.js";
 import { sensitiveRouteAuth } from "./middleware/sensitiveRouteAuth.js";
 import { mcpOperatorAuth, readOperatorCredentials } from "./middleware/mcpOperatorAuth.js";
+import { ScenarioService } from "./services/research/scenarioService.js";
 import { ResearchStore } from "./services/research/researchStore.js";
 import { EventLedger } from "./services/research/eventLedger.js";
 import { OfficialSourceService, loadResearchSources } from "./services/research/officialSources.js";
@@ -896,19 +897,23 @@ export function createAppServer(overrides = {}) {
     perClientMax: config.manualRefresh.perClientMax
   });
 
+  const technicalContextService = new TechnicalContextService({store:dailyCandleStore});
+  const scenarioService = new ScenarioService({alerts:materialAlertStore,technicalContext:technicalContextService,eventLedger,candleStore:dailyCandleStore,policy:overrides.signalPolicy||{}});
   orchestrator.researchCycle = () => {
     const publicEvents=awarenessService.getSnapshot({limit:100},{publicView:true});
     if(publicEvents.mode === "visible") eventLedger.ingest([...publicEvents.recent,...publicEvents.upcoming].map(e=>({...e,url:e.canonicalUrl,eventTime:e.scheduledAt})),{sourceId:"awareness"});
+    scenarioService.refresh({instrumentIds:marketWatchlistService.selectedInstrumentIds});
   };
   app.locals.socketServer = socketServer;
   app.locals.newsArchive = newsArchive;
   app.locals.researchStore = researchStore;
   app.locals.eventLedger = eventLedger;
   app.locals.officialSourceService = officialSourceService;
-  app.locals.technicalContextService = new TechnicalContextService({store:dailyCandleStore});
+  app.locals.technicalContextService = technicalContextService;
+  app.locals.scenarioService = scenarioService;
   app.locals.historicalAcquisitionService = new HistoricalAcquisitionService({ledger:researchStore,marketDataService,candleStore:dailyCandleStore});
   app.locals.materialAlertStore = materialAlertStore;
-  app.locals.portfolioContextService = new PortfolioContextService({ stateManager, archive: newsArchive, alerts: materialAlertStore, awarenessService, watchlist: marketWatchlistService });
+  app.locals.portfolioContextService = new PortfolioContextService({ stateManager, archive: newsArchive, alerts: materialAlertStore, awarenessService, watchlist: marketWatchlistService, scenarioService });
   app.locals.mcpOperatorCredentials = overrides.mcpOperatorCredentials || readOperatorCredentials(process.env.MCP_OPERATOR_CREDENTIALS_FILE);
   app.locals.mcpOperatorAudit = row => log.info("mcp_operator_authorized", row);
   app.locals.orchestrator = orchestrator;

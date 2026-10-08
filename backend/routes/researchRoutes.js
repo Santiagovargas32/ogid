@@ -1,6 +1,12 @@
 import { Router } from "express";
-import { getEventImpact, getResearchSources, getCompanyFacts, getEtfHoldings, runResearchSources, acknowledgeAlerts, getCapabilities, getDiagnostics, getPortfolioContext } from "../controllers/researchController.js";
+import { getScenarios, getSignalsDelta, refreshScenarios, deleteScenario, acknowledgeSignals, recoverSignals, getEventImpact, getResearchSources, getCompanyFacts, getEtfHoldings, runResearchSources, acknowledgeAlerts, getCapabilities, getDiagnostics, getPortfolioContext } from "../controllers/researchController.js";
 const router = Router();
+router.get("/research/scenarios",getScenarios);
+router.get("/signals/delta",getSignalsDelta);
+router.post("/research/scenarios/refresh",refreshScenarios);
+router.post("/research/scenarios/delete",deleteScenario);
+router.post("/signals/checkpoint",acknowledgeSignals);
+router.post("/signals/recover",recoverSignals);
 router.get("/research/event-impact",getEventImpact);
 router.get("/research/sources",getResearchSources);
 router.get("/research/companyfacts",getCompanyFacts);

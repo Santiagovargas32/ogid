@@ -39,7 +39,7 @@ export function extendedToolDefinitions(config, read) {
     const values = clean(zodSchema(operation.parameters).parse(params));
     if (values.from && values.to && Date.parse(values.from) > Date.parse(values.to)) throw new ReadError("INVALID_WINDOW", "from debe ser anterior o igual a to.");
     if (operation.profile === "research" && operation.id !== "instruments.resolve") await authorizeInstruments(config, read, [...(values.instrumentIds || []), ...(values.symbols || []), ...(values.tickers || []), ...(values.instrumentId ? [values.instrumentId] : []), ...(values.benchmarkInstrumentId ? [values.benchmarkInstrumentId] : [])]);
-    if (operation.id === "news.search") values.maxBytes = Math.min(values.maxBytes || config.maxOutputBytes, config.maxOutputBytes);
+    if (["news.search","signals.delta"].includes(operation.id)) values.maxBytes = Math.min(values.maxBytes || config.maxOutputBytes, config.maxOutputBytes);
     const raw = await callOperation(read, operation, values, body, pathParams);
     return { data: projectOperation(operation, raw), warnings: [...(raw.warnings || []), ...(operation.profile === "operator" ? ["Operación del perfil operador autorizada por credencial local; no utilizar en tareas de investigación."] : []), ...(operation.projection === "admin-counts" ? ["Solo métricas administrativas: los cuerpos internos se omiten."] : [])] };
   }

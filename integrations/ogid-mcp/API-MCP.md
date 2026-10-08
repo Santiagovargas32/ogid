@@ -2,7 +2,7 @@
 
 Contrato 1.0.0. Generado desde backend/contracts/ogidOperations.js; no editar a mano.
 
-54 rutas JSON con método; 41 operaciones de investigación y 22 de operador. Las variantes almacenadas/proveedor comparten algunas rutas.
+60 rutas JSON con método; 43 operaciones de investigación y 26 de operador. Las variantes almacenadas/proveedor comparten algunas rutas.
 
 Las cuatro herramientas compatibles se conservan. ogid_get_awareness_sources compone el catálogo local versionado y la salud pública Awareness, sin una ruta adicional. El inventario cubre las rutas de backend/routes montadas bajo /api; WebSocket, archivos estáticos y transporte del túnel tienen contratos independientes.
 
@@ -32,6 +32,12 @@ Las cuatro herramientas compatibles se conservan. ogid_get_awareness_sources com
 | market.candles.metrics | GET /api/market/candles/metrics | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
 | market.indicators | GET /api/market/indicators | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
 | market.technical-context | GET /api/market/technical-context | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
+| research.scenarios | GET /api/research/scenarios | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
+| signals.delta | GET /api/signals/delta | ogid_query | research / read:stored | public | stored read; never advances consumer checkpoint; no-provider |
+| research.scenarios.refresh | POST /api/research/scenarios/refresh | ogid_operator | operator / signals:generate | public | mutation; stored calculations; no provider |
+| research.scenarios.delete | POST /api/research/scenarios/delete | ogid_operator | operator / signals:generate | public | mutation; local audited tombstone |
+| signals.checkpoint | POST /api/signals/checkpoint | ogid_operator | operator / signals:ack | public | mutation; processing acknowledgement only; no delivery receipt |
+| signals.recover | POST /api/signals/recover | ogid_operator | operator / signals:ack | public | mutation; explicit recovery after snapshot review; acknowledges retained gap |
 | research.event-impact | GET /api/research/event-impact | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
 | research.companyfacts | GET /api/research/companyfacts | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
 | research.sources | GET /api/research/sources | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
@@ -1223,6 +1229,273 @@ Retención: current snapshot; consult response coverage. Procedencia: OGID runti
     "additionalProperties": false
   },
   "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### research.scenarios
+
+Retención: durable scenarios; bounded audited revisions. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "instrumentIds": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "minItems": 1,
+        "maxItems": 50,
+        "uniqueItems": true
+      },
+      "statuses": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": [
+            "pending-data",
+            "watch",
+            "confirmed",
+            "invalidated",
+            "expired"
+          ]
+        },
+        "minItems": 1,
+        "maxItems": 5,
+        "uniqueItems": true
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### signals.delta
+
+Retención: 30-day change journal; explicit gap errors. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "consumerId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 100
+      },
+      "instrumentIds": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "minItems": 1,
+        "maxItems": 50,
+        "uniqueItems": true
+      },
+      "cursor": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      },
+      "maxBytes": {
+        "type": "integer",
+        "minimum": 4096,
+        "maximum": 524288
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### research.scenarios.refresh
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": {
+    "type": "object",
+    "properties": {
+      "instrumentIds": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "minItems": 1,
+        "maxItems": 50,
+        "uniqueItems": true
+      }
+    },
+    "required": [
+      "instrumentIds"
+    ],
+    "additionalProperties": false
+  },
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### research.scenarios.delete
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": {
+    "type": "object",
+    "properties": {
+      "scenarioId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "reason": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      }
+    },
+    "required": [
+      "scenarioId",
+      "reason"
+    ],
+    "additionalProperties": false
+  },
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### signals.checkpoint
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": {
+    "type": "object",
+    "properties": {
+      "consumerId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 100
+      },
+      "checkpointCursor": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096
+      },
+      "expectedSequence": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 2147483647
+      }
+    },
+    "required": [
+      "consumerId",
+      "checkpointCursor",
+      "expectedSequence"
+    ],
+    "additionalProperties": false
+  },
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### signals.recover
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": {
+    "type": "object",
+    "properties": {
+      "consumerId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 100
+      },
+      "sequence": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 2147483647
+      },
+      "expectedSequence": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 2147483647
+      },
+      "reason": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      }
+    },
+    "required": [
+      "consumerId",
+      "sequence",
+      "expectedSequence",
+      "reason"
+    ],
+    "additionalProperties": false
+  },
   "pathParameters": null,
   "fixed": {}
 }

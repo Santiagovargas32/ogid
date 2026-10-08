@@ -41,7 +41,14 @@ export function getResearchSources(_req,res) { res.json({ok:true,data:res.app.lo
 export function getCompanyFacts(req,res) { const {companyId}=params(req,"research.companyfacts");const data=res.app.locals.researchStore.view("companyFacts")[companyId];res.json({ok:true,data:data||{companyId,metrics:null,missingReason:"no-stored-companyfacts",quality:{coverage:"not-available"}}}); }
 export function getEtfHoldings(req,res) { res.json({ok:true,data:res.app.locals.officialSourceService.holdings(params(req,"etf.holdings"))}); }
 export function getHistoryJob(req,res) {res.json({ok:true,data:res.app.locals.historicalAcquisitionService.get(params(req,"market.history.job").jobId)});}
-function operatorBody(req,id){if(!req.mcpOperatorAuthorized)throw new AppError("Requiere credencial MCP de alcance.",403,"MCP_OPERATOR_FORBIDDEN");if(!validateValue(req.body,getOperation(id).body))throw new AppError("Cuerpo inválido.",400,"INVALID_OPERATOR_ARGUMENTS");return req.body;}
+export function operatorBody(req,id){if(!req.mcpOperatorAuthorized)throw new AppError("Requiere credencial MCP de alcance.",403,"MCP_OPERATOR_FORBIDDEN");if(!validateValue(req.body,getOperation(id).body))throw new AppError("Cuerpo inválido.",400,"INVALID_OPERATOR_ARGUMENTS");return req.body;}
 export function createHistoryJob(req,res){res.json({ok:true,data:res.app.locals.historicalAcquisitionService.create(operatorBody(req,"market.history.create"))});}
 export async function runHistoryJob(req,res){res.json({ok:true,data:await res.app.locals.historicalAcquisitionService.run(operatorBody(req,"market.history.run"))});}
 export async function runResearchSources(req,res){res.json({ok:true,data:await res.app.locals.officialSourceService.run(operatorBody(req,"research.sources.run"))});}
+
+export function getScenarios(req,res){res.json({ok:true,data:res.app.locals.scenarioService.list(params(req,"research.scenarios"))});}
+export function getSignalsDelta(req,res){res.json({ok:true,data:res.app.locals.materialAlertStore.delta(params(req,"signals.delta"))});}
+export function refreshScenarios(req,res){res.json({ok:true,data:res.app.locals.scenarioService.refresh(operatorBody(req,"research.scenarios.refresh"))});}
+export function deleteScenario(req,res){res.json({ok:true,data:res.app.locals.scenarioService.remove(operatorBody(req,"research.scenarios.delete"))});}
+export function acknowledgeSignals(req,res){res.json({ok:true,data:res.app.locals.materialAlertStore.acknowledgeChanges(operatorBody(req,"signals.checkpoint"))});}
+export function recoverSignals(req,res){res.json({ok:true,data:res.app.locals.materialAlertStore.recoverCheckpoint(operatorBody(req,"signals.recover"))});}

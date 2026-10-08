@@ -1,3 +1,5 @@
+import { resolveExpectedClosedDailyCandle } from "./dailyCandleService.js";
+import { sessionPolicyResolver } from "./sessionPolicyResolver.js";
 import { getInstrumentById } from "./instrumentRegistry.js";
 import { calculateTechnicalIndicators, sma, atr } from "./technicalIndicators.js";
 import { stableHash } from "../../utils/stableHash.js";
@@ -56,11 +58,14 @@ export class TechnicalContextService {
     const perYear=interval==="1day"?252:interval==="1wk"?52:null;const vol=base.indicators.realizedVolatility;
     const sessionBars=last&&!["1day","1wk"].includes(interval)?bars.filter(c=>localDate(c.openTime,instrument.timezone)===localDate(last.openTime,instrument.timezone)):[];
     const volume=sessionBars.reduce((s,c)=>s+(finite(c.volume)?c.volume:0),0);const vwap=volume>0&&sessionBars.every(c=>finite(c.volume))?ok(sessionBars.reduce((s,c)=>s+(c.high+c.low+c.close)/3*c.volume,0)/volume,sessionBars.length):nd("intraday_volume_unavailable",sessionBars.length);
+    const expected = interval === "1day" ? resolveExpectedClosedDailyCandle(instrument,this.now())?.closeTime : interval==="1wk"?null:sessionPolicyResolver.resolve(instrument,asOf,{intervalMs:candleIntervalMs(interval)}).expectedLatestCandleAt;
+    const staleByTime=Boolean(expected && (!last || Date.parse(last.closeTime)<Date.parse(expected)));
     return {instrumentId,companyId:instrument.companyId||null,interval,adjusted,package:packageId,methodVersion:"technical-context-v1",asOf,snapshotId:stableHash({bars,benchmark,interval,adjusted}),seriesRevision:stableHash(bars),sampleSize:bars.length,lastClosedCandleAt:last?.closeTime||null,
+      observed:base.observed,
       warmup:{sma200:200,rsi14:15,macd12269:34,atr14:15,relativeStrength:21,complete:bars.length>=200},parameters:{smaPeriods:[20,50,200],slopeWindow:5,rsiPeriod:14,macd:[12,26,9],bollinger:[20,2],atrPeriod:14,volatilityPeriod:20,levelsWindow:60},
       indicators:{...base.indicators,sma20:protect(movingAverage(bars,20)),sma50:protect(movingAverage(bars,50)),sma200:protect(movingAverage(bars,200)),atr14Simple:{...protect(atr(bars,14)),method:"simple-mean-true-range-v1"},atr14Wilder:protect(wilderAtr(bars)),volatility:{...protect(vol),unit:"log-return-standard-deviation-per-bar",annualizationFactor:perYear,annualized:!invalid&&vol.value!=null&&perYear?vol.value*Math.sqrt(perYear):null,annualizedReason:perYear?null:"intraday_annualization_not_assumed"},
       relativeStrength:protect(benchmarkReason?nd(benchmarkReason,benchmark.length):relativeStrength(bars,benchmark)),relativeVolume:protect(relativeVolume(bars,instrument,interval)),levels:protect(levels(bars)),vwapApprox:{...protect(vwap),method:"typical-price-times-bar-volume-v1",approximate:true,unit:instrument.currency,coverage:sessionBars.length?{from:sessionBars[0].openTime,sessionOpenObserved:sessionBars[0].openTime===zonedBoundary(localDate(last.openTime,instrument.timezone),tradingDay(instrument,localDate(last.openTime,instrument.timezone)).openMinute,instrument.timezone)}:null}},
-      quality:{...base.quality,reason:invalid||null,stale:bars.some(c=>c.dataMode==="stale"||c.provenance?.stale),calendarPartial:daily.some(c=>c.calendar?.partial||c.calendar==null),synthetic:bars.some(c=>c.synthetic||["synthetic","fallback","seeded"].includes(c.dataMode)),provider: [...new Set(bars.map(c=>c.source))],delay:"web-delayed-or-provider-history",currency:instrument.currency},
+      quality:{...base.quality,reason:invalid||null,stale:staleByTime||bars.some(c=>c.dataMode==="stale"||c.provenance?.stale),calendarPartial:daily.some(c=>c.calendar?.partial||c.calendar==null),synthetic:bars.some(c=>c.synthetic||["synthetic","fallback","seeded"].includes(c.dataMode)),provider: [...new Set(bars.map(c=>c.source))],delay:"web-delayed-or-provider-history",currency:instrument.currency},
       coverage:{from:bars[0]?.openTime||null,to:last?.closeTime||null,gaps:interval==="1day"?expectedDailyGaps(bars,instrument).slice(0,100):[]},warnings:["Correlated indicators are not independent confirmations.","Relative strength aligns exact closes, without timezone or FX interpolation.","Weekly frames derive from complete daily sessions; historical exceptional calendars may be partial."]};
   }
 }

@@ -30,3 +30,13 @@
 - adjClose Yahoo conservado separado si el proveedor lo ofrece; no se acredita retorno total. Revisiones de OHLCV auditadas (20 versiones por vela). Reconciliación independiente sin segunda fuente permanece no disponible.
 - Verificación: 43/43 tests focalizados backend PASS; check backend PASS; inventario PASS; 21/21 MCP PASS. No nuevas dependencias, credenciales, servicios ni tareas.
 - Siguiente: escenarios/señales persistentes y checkpoints por consumidor sobre este paquete.
+
+## P1 escenarios/seguimiento — IMPLEMENTED / TESTED
+
+- Rama `research/p1-scenarios`, base P1 datos 71f2ca0. MaterialAlertStore migra v1→v2 de forma aditiva; restaura escenarios, señales, secuencia, firma de cursores y consumidores. Archivo privado 600, límite de 32 MiB; research ledger 64 MiB. Un solo escritor por proceso.
+- Escenarios favorable/central/adverso con niveles anclados, contexto/evidencia/horizonte/confirmación/invalidación/vencimiento y estados especificados. Confirmación solo acredita condición observada. Correcciones de la misma vela pueden revisar incluso invalidaciones, con historial auditado. No objetivos/probabilidades inventados.
+- Anomalías de retorno/gap/volumen y candidatos de eventos con evidencia. Umbrales versionados, histéresis y cooldown. Causa del movimiento desconocida; canales económicos no establecen causalidad ni beneficio.
+- Journal duradero con tombstones, snapshots acotados, cursores por consumidor, presupuesto de bytes sin avanzar sobre registros omitidos, retención/cambio de historia explícitos. Lecturas no reconocen ni avanzan. Reconocimiento de procesamiento operador con comparación de secuencia; recuperación de huecos explícita. No se reconoce entrega sin recibo: deliveryVerified=false y deliveredAt=null. Reconocimiento filtrado rechazado para no saltar activos.
+- portfolio.context añade resumen de escenarios; mantiene contratos legacy, alertas observadas y módulos existentes.
+- Checks: 19/19 pruebas focalizadas PASS (transiciones, correcciones, reinicio, cursores, expiración, huecos, bytes, compatibilidad archivo/API); check backend PASS; inventario PASS; 21/21 MCP PASS. No live financiero ni notificaciones externas.
+- Siguiente: P2 evaluación temporal, aliases heurísticos, cliente MCP real para nuevas operaciones y validación completa/documentación de activación.
