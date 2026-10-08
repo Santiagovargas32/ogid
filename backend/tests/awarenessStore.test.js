@@ -19,6 +19,17 @@ const source = {
   official: true
 };
 
+test("BEA changed identity does not duplicate the same stored release; different dates remain distinct",()=>{
+ const bea={...source,sourceId:"bea-calendar",adapter:"bea-schedule-html",url:"https://www.bea.gov/news/schedule"};
+ const old=createAwarenessEvent({source:bea,rawId:"GDP",title:"Gross Domestic Product",canonicalUrl:bea.url,scheduledAt:"2026-10-09T12:30:00Z"});
+ const current={...old,eventId:"bea-current",identityVersion:"bea-scheduled-publication-v2"};
+ const later={...current,eventId:"bea-next",scheduledAt:"2026-11-09T12:30:00Z"};
+ for(const records of [[old,current,later],[current,old,later]]){
+  const store=new AwarenessStore({now:()=>Date.parse("2026-10-08T22:00:00Z")});store.reconcile(records);
+  const snapshot=store.getSnapshot({mode:"visible"});assert.equal(snapshot.upcoming.length,2);assert.equal(snapshot.upcoming[0].eventId,"bea-current");assert.equal(store.events.size,3);
+ }
+});
+
 test("old calendar metadata is repaired in projections without rewriting stored events", () => {
   const store = new AwarenessStore({ now: () => Date.parse("2026-10-05T19:00:00Z") });
   store.registerSources([source]);

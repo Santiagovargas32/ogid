@@ -434,12 +434,15 @@ export class AwarenessStore {
       const event = kind === stored.kind ? stored : { ...stored, kind };
       const admission = this.sourceStatuses.get(event.source?.sourceId)?.admissionState || sourceAdmissionState(event.source);
       const release = event.source?.official === true && ["released", "updated"].includes(event.status) && event.canonicalUrl && event.publishedAt;
+      const beaSchedule = event.provenance?.adapter === "bea-schedule-html" && ["scheduled","live"].includes(event.status) && event.scheduledAt;
       const key = release
         ? JSON.stringify([admission, event.canonicalUrl, event.publishedAt, event.title])
-        : event.eventId;
+        : beaSchedule ? JSON.stringify(["bea-schedule",admission,event.source.sourceId,event.canonicalUrl,event.scheduledAt,event.title,event.kind]) : event.eventId;
       const previous = unique.get(key);
       if (!previous) { unique.set(key, event); continue; }
-      const preferred = rank(event) > rank(previous) || (rank(event) === rank(previous) && event.source.sourceId.localeCompare(previous.source.sourceId) < 0) ? event : previous;
+      const beaRank = row => row.identityVersion === "bea-scheduled-publication-v2" ? 1 : 0;
+      let preferred = rank(event) > rank(previous) || (rank(event) === rank(previous) && event.source.sourceId.localeCompare(previous.source.sourceId) < 0) ? event : previous;
+      if(beaSchedule&&beaRank(event)!==beaRank(previous))preferred=beaRank(event)>beaRank(previous)?event:previous;
       const merged = { ...preferred };
       for (const field of ["domains", "countries", "instrumentIds", "sectors", "assetClasses"]) {
         merged[field] = [...new Set([...(previous[field] || []), ...(event[field] || [])])].sort();

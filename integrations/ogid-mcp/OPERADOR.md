@@ -1,6 +1,6 @@
 # Perfil operador
 
-Contrato 1.1.0 / adaptador 0.3.0: [operaciones y runbook financiero](../../docs/research-cartera/RUNBOOK.md).
+Contrato 1.2.0 / adaptador 0.4.0: [operaciones y runbook financiero](../../docs/research-cartera/RUNBOOK.md) y [histórico/CSV/relectura de eventos](../../docs/research-cartera/HISTORICO-E-IDENTIDADES.md).
 
 Investigación usa diez herramientas sin credenciales operador. Una conexión separada con OGID_PROFILE=operator añade ogid_operator; únicamente anuncia las operaciones que permiten sus scopes. No cambiar el perfil de las tareas de cartera para resolver errores de datos.
 

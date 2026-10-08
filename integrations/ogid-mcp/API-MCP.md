@@ -1,8 +1,8 @@
 # Inventario API → MCP
 
-Contrato 1.1.0. Generado desde backend/contracts/ogidOperations.js; no editar a mano.
+Contrato 1.2.0. Generado desde backend/contracts/ogidOperations.js; no editar a mano.
 
-62 rutas JSON con método; 44 operaciones de investigación y 27 de operador. Las variantes almacenadas/proveedor comparten algunas rutas.
+68 rutas JSON con método; 45 operaciones de investigación y 32 de operador. Las variantes almacenadas/proveedor comparten algunas rutas.
 
 Las cuatro herramientas compatibles se conservan. ogid_get_awareness_sources compone el catálogo local versionado y la salud pública Awareness, sin una ruta adicional. El inventario cubre las rutas de backend/routes montadas bajo /api; WebSocket, archivos estáticos y transporte del túnel tienen contratos independientes.
 
@@ -46,6 +46,12 @@ Las cuatro herramientas compatibles se conservan. ogid_get_awareness_sources com
 | etf.holdings | GET /api/etf/holdings | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
 | market.history.job | GET /api/market/history/jobs | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
 | market.history.create | POST /api/market/history/jobs | ogid_operator | operator / candles:backfill | public | mutation; local job creation; run is explicit |
+| market.history.datasets | GET /api/market/history/datasets | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
+| admin.history.status | GET /api/admin/history | ogid_operator | operator / admin:read | public | stored/local-calculation; no-provider |
+| admin.history.create | POST /api/admin/history/jobs | ogid_operator | operator / candles:backfill | public | mutation; local job creation only |
+| admin.history.run | POST /api/admin/history/run | ogid_operator | operator / candles:backfill | public | mutation; max 4 Yahoo requests per explicit run |
+| admin.events.replay | POST /api/admin/events/replay | ogid_operator | operator / sources:ingest | public | mutation; local Awareness snapshot replay; dryRun defaults true; no providers; snapshotId required to commit |
+| admin.history.import | POST /api/admin/history/import | ogid_operator | operator / candles:backfill | public | mutation; local validated CSV; preview default; no external requests |
 | market.history.run | POST /api/market/history/run | ogid_operator | operator / candles:backfill | public | mutation; max 4 Yahoo requests per run; provider limits |
 | research.sources.run | POST /api/research/sources/run | ogid_operator | operator / sources:ingest | public | mutation; configured public sources only; max 4 requests |
 | market.impact | GET /api/market/impact | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
@@ -1190,6 +1196,10 @@ Retención: current snapshot; consult response coverage. Procedencia: OGID runti
         "minLength": 1,
         "maxLength": 128
       },
+      "datasetId": {
+        "type": "string",
+        "pattern": "^csv-[a-f0-9]{32}$"
+      },
       "interval": {
         "type": "string",
         "enum": [
@@ -1897,6 +1907,10 @@ Retención: current snapshot; consult response coverage. Procedencia: OGID runti
         "minimum": 30,
         "maximum": 2500
       },
+      "startAt": {
+        "type": "string",
+        "format": "date-time"
+      },
       "endAt": {
         "type": "string",
         "format": "date-time"
@@ -1905,6 +1919,252 @@ Retención: current snapshot; consult response coverage. Procedencia: OGID runti
     "required": [
       "requestId",
       "instrumentIds"
+    ],
+    "additionalProperties": false
+  },
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### market.history.datasets
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### admin.history.status
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### admin.history.create
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": {
+    "type": "object",
+    "properties": {
+      "requestId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "instrumentIds": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "minItems": 1,
+        "maxItems": 20,
+        "uniqueItems": true
+      },
+      "targetBars": {
+        "type": "integer",
+        "minimum": 30,
+        "maximum": 2500
+      },
+      "startAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "endAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "requestId",
+      "instrumentIds"
+    ],
+    "additionalProperties": false
+  },
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### admin.history.run
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": {
+    "type": "object",
+    "properties": {
+      "jobId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "maxRequests": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 4
+      }
+    },
+    "required": [
+      "jobId"
+    ],
+    "additionalProperties": false
+  },
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### admin.events.replay
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": {
+    "type": "object",
+    "properties": {
+      "dryRun": {
+        "type": "boolean"
+      },
+      "snapshotId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### admin.history.import
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": {
+    "type": "object",
+    "properties": {
+      "requestId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "instrumentId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "source": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 60
+      },
+      "sourceUrl": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512
+      },
+      "providerSymbol": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 80
+      },
+      "currency": {
+        "type": "string",
+        "pattern": "^[A-Z]{3}$"
+      },
+      "adjustmentMode": {
+        "type": "string",
+        "enum": [
+          "splits",
+          "none"
+        ]
+      },
+      "startAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "endAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "csv": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 500000
+      },
+      "dryRun": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "instrumentId",
+      "source",
+      "sourceUrl",
+      "providerSymbol",
+      "currency",
+      "adjustmentMode",
+      "startAt",
+      "endAt",
+      "csv"
     ],
     "additionalProperties": false
   },

@@ -189,6 +189,7 @@ export class MarketDataService {
     to = null,
     force = false,
     allowStale = true,
+    providerRetries = undefined,
   } = {}) {
     const normalizedSymbol = normalizeYahooSymbol(symbol);
     const range = resolveMarketDataRange({ period, interval, from, to, now: this.now() });
@@ -213,7 +214,7 @@ export class MarketDataService {
         interval: range.interval,
         includePrePost: false,
         events: "div|split",
-      });
+      }, {}, {retries:providerRetries});
       const bars = normalizeYahooChart(raw, { symbol: normalizedSymbol });
       const fromMs = range.period1.getTime();
       const toMs = range.period2.getTime();

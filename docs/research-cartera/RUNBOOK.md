@@ -1,5 +1,7 @@
 # Activación posterior, persistencia y rollback
 
+Evolución actual: contrato 1.2.0 / MCP 0.4.0. Consultar [histórico por rango, CSV, identidad de eventos y pendientes](HISTORICO-E-IDENTIDADES.md) antes de activar este paquete.
+
 Procedimiento preparado; **no ejecutado en esta entrega**. La autorización actual excluye despliegue, merge, push, PR remoto y cambios de tareas ChatGPT. Usar el checkout completo backend+adaptador de la misma revisión tras aprobar la activación.
 
 ## Instalación y procesos encontrados
@@ -91,7 +93,7 @@ curl --fail --silent --show-error http://127.0.0.1:8766/healthz
 curl --fail --silent --show-error http://127.0.0.1:8766/readyz
 ```
 
-Esperar contrato 1.1.0, adaptador 0.3.0, diez herramientas research, hashes capturados, fechas/cobertura/ausencias coherentes y runningCommitVerified=false. Comparar hash con el artefacto revisado y conservar evidencia privada; checkoutCommit no certifica el proceso. Smoke existente cubre herramientas/paquetes legacy; las operaciones nuevas se verifican con las llamadas siguientes. readyz acredita transporte local, no tareas ni entrega a ChatGPT.
+Esperar contrato 1.2.0, adaptador 0.4.0, diez herramientas research, hashes capturados, fechas/cobertura/ausencias coherentes y runningCommitVerified=false. Comparar hash con el artefacto revisado y conservar evidencia privada; checkoutCommit no certifica el proceso. Smoke existente cubre herramientas/paquetes legacy; las operaciones nuevas se verifican con las llamadas siguientes. readyz acredita transporte local, no tareas ni entrega a ChatGPT.
 
 ## Adquisición y comprobación funcional
 
@@ -148,7 +150,7 @@ La copia v1 omite escenarios/journal/checkpoints, que permanecen en v2; no simul
 
 Tras desplegar/reiniciar los procesos y verificar localmente, abrir la conexión OGID existente en la gestión de plugins de ChatGPT, **Refresh/Actualizar herramientas**, comprobar metadata/esquemas y abrir una conversación nueva. Flujo contrastado con [documentación oficial](https://developers.openai.com/plugins/deploy/connect-chatgpt). No recrear tareas ni tocar otros chats desde este encargo.
 
-Invocar ogid_health y ogid_get_capabilities; verificar 0.3.0/1.1.0 y los nuevos operationId. Resolver instrumentos primero: GOOGL/GOOG son clases, ASML requiere mercado, los UCITS requieren clase/ISIN/MIC verificados y no se sustituyen por QQQ/SPY. Consumir técnica/eventos/escenarios/delta/holdings/evaluación por ogid_query. Conservar missingReason, warnings, atraso y cobertura. Un plugin refrescado no cambia por sí solo el código del servidor.
+Invocar ogid_health y ogid_get_capabilities; verificar 0.4.0/1.2.0 y los nuevos operationId. Resolver instrumentos primero: GOOGL/GOOG son clases, ASML requiere mercado, los UCITS requieren clase/ISIN/MIC verificados y no se sustituyen por QQQ/SPY. Consumir técnica/eventos/escenarios/delta/holdings/evaluación por ogid_query. Conservar missingReason, warnings, atraso y cobertura. Un plugin refrescado no cambia por sí solo el código del servidor.
 
 Una consulta real desde ChatGPT debe comprobarse por separado tras activar. Transporte exitoso, respuesta de herramienta y entrega final de una tarea son evidencias diferentes. Esta entrega no modifica ninguna tarea ni valida notificación, ejecución programada o recibo de entrega.
 

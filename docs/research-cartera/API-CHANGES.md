@@ -1,6 +1,22 @@
-# API/MCP 1.1.0 / adaptador 0.3.0
+# API/MCP 1.2.0 / adaptador 0.4.0
 
-Inventario generado y exhaustivo: [API-MCP.md](../../integrations/ogid-mcp/API-MCP.md). Pasa de 45 rutas/54 operaciones a 62 rutas/71 operaciones: 44 research `read:stored`, 27 operator. Continúan diez herramientas research; `ogid_query` anuncia los nuevos operationId. Operator añade `ogid_operator` solo con credencial de alcance. Sin URLs ni rutas arbitrarias. El paquete npm backend conserva 1.0.0; la versión del contrato es 1.1.0 y ambas identidades se exponen por separado.
+Inventario generado y exhaustivo: [API-MCP.md](../../integrations/ogid-mcp/API-MCP.md). La entrega anterior tenía 62 rutas/71 operaciones; esta añade seis rutas y operaciones: 68 rutas/77 operaciones, 45 research `read:stored` y 32 operator. Continúan diez herramientas research; `ogid_query` anuncia los nuevos operationId. Operator añade `ogid_operator` solo con credencial de alcance. El paquete npm backend conserva 1.0.0; la versión del contrato es 1.2.0 y ambas identidades se exponen por separado. Los cuerpos CSV aceptan URL como metadata saneada de procedencia, sin visitarla ni aceptar rutas locales.
+
+## Histórico y eventos: incremento 1.2.0
+
+| Operación / cambio | Perfil / alcance | Comportamiento |
+| --- | --- | --- |
+| market.history.datasets | research / read:stored | Metadata de series CSV disponibles; sin proveedores |
+| market.technical-context: datasetId opcional | research / read:stored | Lee la serie CSV declarada, diaria/semanal sin benchmark externo; verifica instrumento y ajuste |
+| market.history.create: startAt opcional | operator / candles:backfill | Rango explícito de hasta cinco años; conserva idempotencia y jobs anteriores |
+| admin.history.status | operator / admin:read | Cobertura diaria, jobs, datasets, identidad pendiente y catálogo de fuentes |
+| admin.history.create / run | operator / candles:backfill | Preparación local y ejecución explícita de hasta cuatro operaciones chart, sin reintentos internos de chart |
+| admin.history.import | operator / candles:backfill | Vista previa por defecto; CSV canónico aislado, idempotente, procedencia declarada; hasta 500 kB/5000 filas |
+| admin.events.replay | operator / sources:ingest | Vista previa y relectura de hasta 500 eventos del snapshot Awareness visible; snapshotId obligatorio al guardar |
+| research.sources: catalog adicional | research / read:stored | Conserva sources específicos y expone Awareness con admisión/estado diferenciados |
+| research.event-impact | research / read:stored | Identidad por fuente/publicación v2; legacy excluido de impactos y conservado para auditoría |
+
+[Uso, límites, migración y datos pendientes](HISTORICO-E-IDENTIDADES.md). Las rutas admin conservan su autorización HTTP existente; MCP requiere además perfil/alcance. No se ha activado un descargador automático de otro proveedor sin clave.
 
 ## Operaciones nuevas
 

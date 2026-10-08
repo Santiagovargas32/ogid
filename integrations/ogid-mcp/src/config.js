@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { readFileSync, statSync } from "node:fs";
 
-export const VERSION = "0.3.0";
+export const VERSION = "0.4.0";
 export const ADAPTER_BUILD = captureBuildIdentity("adapter", VERSION);
 export const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 

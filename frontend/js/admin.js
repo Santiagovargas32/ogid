@@ -1,4 +1,5 @@
 import { api } from "./api.js";
+import { initAdminHistory } from "./adminHistory.js";
 
 const POLL_INTERVAL_MS = 60_000;
 const RAW_PAGE_SIZE = 100;
@@ -1077,6 +1078,7 @@ function startPolling() {
 
 async function bootstrap() {
   cacheElements();
+  initAdminHistory().catch(error=>{const node=byId("history-message");if(node)node.textContent=error.message;});
   elements.refreshMediaStreamsBtn?.addEventListener("click", async () => {
     elements.refreshMediaStreamsBtn.disabled = true;
     try {

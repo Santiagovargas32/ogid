@@ -1,4 +1,6 @@
-# OGID MCP 0.3.0
+# OGID MCP 0.4.0
+
+Contrato 1.2.0: histórico por rango desde admin, datasets CSV de procedencia declarada y relectura de eventos con identidad por publicación. [Uso, límites y migración](../../docs/research-cartera/HISTORICO-E-IDENTIDADES.md). Se mantienen diez herramientas de investigación; las operaciones nuevas se consultan mediante `ogid_query` o el perfil operador según sus permisos.
 
 Adaptador Node/ESM por stdio, conectado al backend OGID por HTTP loopback. El perfil investigación ofrece diez herramientas y lecturas almacenadas para toda la API JSON clasificada. El perfil operador añade una herramienta con operaciones enumeradas y permisos de servidor. No inicia recolectores ni recibe claves de proveedores.
 
@@ -89,9 +91,9 @@ Materialidad configurable medium/high; reportes sin corroboración excluidos por
 
 Scores son heurísticos, no probabilidades. La asociación noticia/precio no demuestra causalidad. OGID complementa la investigación externa y no inventa posiciones, pesos ni holdings.
 
-## Investigación financiera 1.1.0
+## Investigación financiera 1.2.0
 
-[Resumen de contratos y operaciones](../../docs/research-cartera/API-CHANGES.md), [progreso y evidencia](../../docs/research-cartera/PROGRESS.md) y [runbook 0.3, migración/rollback y ChatGPT](../../docs/research-cartera/RUNBOOK.md). Esta guía nueva sustituye versiones esperadas y migración 0.2 para esta entrega; las instrucciones de instalación y perfiles anteriores continúan siendo referencias.
+[Resumen de contratos y operaciones](../../docs/research-cartera/API-CHANGES.md), [progreso y evidencia](../../docs/research-cartera/PROGRESS.md) y [runbook 0.4, migración/rollback y ChatGPT](../../docs/research-cartera/RUNBOOK.md). Esta guía nueva sustituye versiones esperadas y migración 0.2 para esta entrega; las instrucciones de instalación y perfiles anteriores continúan siendo referencias.
 
 ogid_query añade market.technical-context, research.event-impact, research.scenarios, signals.delta, etf.holdings y research.forecast-evaluation. Técnica standard-v1 reproducible y N/D explícitos; eventos con evidencia, escenarios con condiciones observadas, journal de consumidor sin entrega implícita. El MCP fija cotizaciones compactas y permite series acotadas solo con includeSeries=true. Confidence legacy es fuerza heurística, nunca probabilidad de éxito.
 

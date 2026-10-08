@@ -1,6 +1,6 @@
 // Registro compartido: contratos de transporte, permisos e inventario API→MCP.
 // Sin imports de runtime ni secretos. Los parámetros son valores tipados; nunca URLs/rutas libres.
-export const OPERATIONS_VERSION = "1.1.0";
+export const OPERATIONS_VERSION = "1.2.0";
 const str = (maxLength = 128) => ({ type: "string", minLength: 1, maxLength });
 const int = (minimum, maximum) => ({ type: "integer", minimum, maximum });
 const choice = (...values) => ({ type: "string", enum: values });
@@ -44,7 +44,7 @@ export const OGID_OPERATIONS = Object.freeze([
   op("market.candles", "GET", "/api/market/candles", candles, { required: ["instrumentId"] }),
   op("market.candles.metrics", "GET", "/api/market/candles/metrics"),
   op("market.indicators", "GET", "/api/market/indicators", { instrumentId: str(), interval: candles.interval, adjusted: candles.adjusted, package: choice("standard-v1"), limit: int(1,2500) }, { required: ["instrumentId"] }),
-  op("market.technical-context", "GET", "/api/market/technical-context", { instrumentId: str(), interval: choice("1day","1wk","1h","30min","15min","5min"), adjusted: candles.adjusted, package: choice("standard-v1"), benchmarkInstrumentId: str(), limit: int(30,2500) }, { required:["instrumentId"] }),
+  op("market.technical-context", "GET", "/api/market/technical-context", { instrumentId: str(), datasetId:{type:"string",pattern:"^csv-[a-f0-9]{32}$"}, interval: choice("1day","1wk","1h","30min","15min","5min"), adjusted: candles.adjusted, package: choice("standard-v1"), benchmarkInstrumentId: str(), limit: int(30,2500) }, { required:["instrumentId"] }),
   op("research.forecast-evaluation", "GET", "/api/research/forecast-evaluation", {instrumentIds:refs.instrumentIds,modelVersion:str(100),minSamples:int(20,500),limit,asOf:date}, {effects:"stored evaluation; no forecast registration or providers"}),
   op("research.forecast.register", "POST", "/api/research/forecasts", {}, {...mutation("forecasts:write"),body:{forecastId:str(),instrumentId:str(),benchmarkInstrumentId:str(),eventId:str(),target:choice("return","relative-return","direction"),horizonHours:int(1,720),issuedAt:date,modelVersion:str(100),predictedValue:{type:"number"},direction:choice("up","down","flat"),probability:{type:"number",minimum:0,maximum:1},probabilityModelVersion:str(100),costs:schema({commissionBps:{type:"number",minimum:0,maximum:1000},spreadBps:{type:"number",minimum:0,maximum:1000},slippageBps:{type:"number",minimum:0,maximum:1000}},["commissionBps","spreadBps","slippageBps"]),evidence:array(schema({sourceId:str(),availableAt:date},["sourceId","availableAt"]),20)},bodyRequired:["forecastId","instrumentId","target","horizonHours","modelVersion"],cost:"prospective local registration only"}),
   op("research.scenarios", "GET", "/api/research/scenarios", {instrumentIds:refs.instrumentIds,statuses:array(choice("pending-data","watch","confirmed","invalidated","expired"),5),limit}, {retention:"durable scenarios; bounded audited revisions"}),
@@ -58,7 +58,13 @@ export const OGID_OPERATIONS = Object.freeze([
   op("research.sources", "GET", "/api/research/sources"),
   op("etf.holdings", "GET", "/api/etf/holdings", {instrumentId:str(),limit,offset:int(0,10000),snapshotId:str()}, {required:["instrumentId"]}),
   op("market.history.job", "GET", "/api/market/history/jobs", {jobId:str()}, {required:["jobId"],retention:"durable bounded job ledger"}),
-  op("market.history.create", "POST", "/api/market/history/jobs", {}, {...mutation("candles:backfill"),body:{requestId:str(),instrumentIds:array(str(),20),targetBars:int(30,2500),endAt:date},bodyRequired:["requestId","instrumentIds"],cost:"local job creation; run is explicit"}),
+  op("market.history.create", "POST", "/api/market/history/jobs", {}, {...mutation("candles:backfill"),body:{requestId:str(),instrumentIds:array(str(),20),targetBars:int(30,2500),startAt:date,endAt:date},bodyRequired:["requestId","instrumentIds"],cost:"local job creation; run is explicit"}),
+  op("market.history.datasets", "GET", "/api/market/history/datasets"),
+  op("admin.history.status", "GET", "/api/admin/history", {}, {profile:"operator",scope:"admin:read"}),
+  op("admin.history.create", "POST", "/api/admin/history/jobs", {}, {...mutation("candles:backfill"),body:{requestId:str(),instrumentIds:array(str(),20),targetBars:int(30,2500),startAt:date,endAt:date},bodyRequired:["requestId","instrumentIds"],cost:"local job creation only"}),
+  op("admin.history.run", "POST", "/api/admin/history/run", {}, {...mutation("candles:backfill"),body:{jobId:str(),maxRequests:int(1,4)},bodyRequired:["jobId"],cost:"max 4 Yahoo requests per explicit run"}),
+  op("admin.events.replay", "POST", "/api/admin/events/replay", {}, {...mutation("sources:ingest"),body:{dryRun:{type:"boolean"},snapshotId:str(64)},cost:"local Awareness snapshot replay; dryRun defaults true; no providers; snapshotId required to commit"}),
+  op("admin.history.import", "POST", "/api/admin/history/import", {}, {...mutation("candles:backfill"),body:{requestId:str(),instrumentId:str(),source:str(60),sourceUrl:str(512),providerSymbol:str(80),currency:{type:"string",pattern:"^[A-Z]{3}$"},adjustmentMode:choice("splits","none"),startAt:date,endAt:date,csv:str(500000),dryRun:{type:"boolean"}},bodyRequired:["instrumentId","source","sourceUrl","providerSymbol","currency","adjustmentMode","startAt","endAt","csv"],cost:"local validated CSV; preview default; no external requests"}),
   op("market.history.run", "POST", "/api/market/history/run", {}, {...mutation("candles:backfill"),body:{jobId:str(),maxRequests:int(1,4)},bodyRequired:["jobId"],cost:"max 4 Yahoo requests per run; provider limits"}),
   op("research.sources.run", "POST", "/api/research/sources/run", {}, {...mutation("sources:ingest"),body:{sourceIds:array(str(100),4),maxRequests:int(1,4)},bodyRequired:["sourceIds"],cost:"configured public sources only; max 4 requests"}),
   ...["impact", "analytics"].map(name => op(`market.${name}`, "GET", `/api/market/${name}`, impact)),

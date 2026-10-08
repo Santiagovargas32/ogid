@@ -128,15 +128,16 @@ export class YahooClient {
     this.retries = retries;
   }
 
-  chart(symbol, options = {}, moduleOptions = {}) {
+  chart(symbol, options = {}, moduleOptions = {}, requestOptions = {}) {
     const normalizedSymbol = normalizeYahooSymbol(symbol);
     const queryOptions = { ...options, return: "array" };
-    const key = `chart:${normalizedSymbol}:${stableOptions(queryOptions)}`;
+    const retries=requestOptions.retries ?? this.retries;
+    const key = `chart:${normalizedSymbol}:${stableOptions(queryOptions)}:retries=${retries}`;
     return this.requestQueue.run(key, ({ signal }) => this.client.chart(
       normalizedSymbol,
       queryOptions,
       requestModuleOptions(signal, moduleOptions),
-    ), { timeoutMs: this.timeoutMs, retries: this.retries, scope: "chart" });
+    ), { timeoutMs: this.timeoutMs, retries, scope: "chart" });
   }
 
   quote(symbols, options = {}, moduleOptions = {}) {
