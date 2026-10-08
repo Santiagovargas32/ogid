@@ -50,8 +50,20 @@ export function tradingDay(instrument, date) {
 export function adjacentTradingDay(instrument,date,direction) { for(let n=1;n<=370;n++) { const day=tradingDay(instrument,addDate(date,n*direction)); if(!day.closed&&!day.halfDayPending) return day; } return null; }
 export function expectedDailyGaps(candles,instrument) {
   const gaps=[]; for(let i=1;i<candles.length;i++) { let day=addDate(localDate(candles[i-1].openTime,instrument.timezone),1); const end=localDate(candles[i].openTime,instrument.timezone);
-    for(let n=0;day<end&&n<10000;n++,day=addDate(day,1)) { const session=tradingDay(instrument,day); if(!session.closed&&!session.halfDayPending) gaps.push(day); }
+    for(let n=0;day<end&&n<10000;n++,day=addDate(day,1)) { const session=instrument.sessionPolicy==="24x7"?{closed:false}:tradingDay(instrument,day); if(!session.closed&&!session.halfDayPending) gaps.push(day); }
   } return gaps;
+}
+export function expectedIntradayGapCount(previous,current,instrument,intervalMs) {
+  const from=Date.parse(previous.openTime),to=Date.parse(current.openTime);
+  if(!(to>from)||!(intervalMs>0))return 0;
+  const zone=instrument.timezone||"UTC";const end=localDate(to,zone);let count=0;
+  for(let date=localDate(from,zone),n=0;date<=end&&n<10000;date=addDate(date,1),n++) {
+    const day=tradingDay(instrument,date);if(!day.openTime||!day.closeTime)continue;
+    const open=Date.parse(day.openTime),close=Date.parse(day.closeTime);
+    const first=Math.max(0,Math.floor((from-open)/intervalMs)+1);
+    const last=Math.min(Math.ceil((close-open)/intervalMs)-1,Math.ceil((to-open)/intervalMs)-1);
+    count+=Math.max(0,last-first+1);
+  }return count;
 }
 export function cashCalendarSchedule(instrument,value,intervalMs=300000) {
   const now=+new Date(value); const id=calendarId(instrument); const zone=tradingDay(instrument,new Date(value).toISOString().slice(0,10)).timezone;

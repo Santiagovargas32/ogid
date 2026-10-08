@@ -1,6 +1,8 @@
 import { Router } from "express";
-import { getScenarios, getSignalsDelta, refreshScenarios, deleteScenario, acknowledgeSignals, recoverSignals, getEventImpact, getResearchSources, getCompanyFacts, getEtfHoldings, runResearchSources, acknowledgeAlerts, getCapabilities, getDiagnostics, getPortfolioContext } from "../controllers/researchController.js";
+import { getForecastEvaluation, registerForecast, getScenarios, getSignalsDelta, refreshScenarios, deleteScenario, acknowledgeSignals, recoverSignals, getEventImpact, getResearchSources, getCompanyFacts, getEtfHoldings, runResearchSources, acknowledgeAlerts, getCapabilities, getDiagnostics, getPortfolioContext } from "../controllers/researchController.js";
 const router = Router();
+router.get("/research/forecast-evaluation",getForecastEvaluation);
+router.post("/research/forecasts",registerForecast);
 router.get("/research/scenarios",getScenarios);
 router.get("/signals/delta",getSignalsDelta);
 router.post("/research/scenarios/refresh",refreshScenarios);

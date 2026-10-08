@@ -1,8 +1,8 @@
 # Inventario API → MCP
 
-Contrato 1.0.0. Generado desde backend/contracts/ogidOperations.js; no editar a mano.
+Contrato 1.1.0. Generado desde backend/contracts/ogidOperations.js; no editar a mano.
 
-60 rutas JSON con método; 43 operaciones de investigación y 26 de operador. Las variantes almacenadas/proveedor comparten algunas rutas.
+62 rutas JSON con método; 44 operaciones de investigación y 27 de operador. Las variantes almacenadas/proveedor comparten algunas rutas.
 
 Las cuatro herramientas compatibles se conservan. ogid_get_awareness_sources compone el catálogo local versionado y la salud pública Awareness, sin una ruta adicional. El inventario cubre las rutas de backend/routes montadas bajo /api; WebSocket, archivos estáticos y transporte del túnel tienen contratos independientes.
 
@@ -32,6 +32,8 @@ Las cuatro herramientas compatibles se conservan. ogid_get_awareness_sources com
 | market.candles.metrics | GET /api/market/candles/metrics | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
 | market.indicators | GET /api/market/indicators | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
 | market.technical-context | GET /api/market/technical-context | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
+| research.forecast-evaluation | GET /api/research/forecast-evaluation | ogid_query | research / read:stored | public | stored evaluation; no forecast registration or providers; no-provider |
+| research.forecast.register | POST /api/research/forecasts | ogid_operator | operator / forecasts:write | public | mutation; prospective local registration only |
 | research.scenarios | GET /api/research/scenarios | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
 | signals.delta | GET /api/signals/delta | ogid_query | research / read:stored | public | stored read; never advances consumer checkpoint; no-provider |
 | research.scenarios.refresh | POST /api/research/scenarios/refresh | ogid_operator | operator / signals:generate | public | mutation; stored calculations; no provider |
@@ -1234,6 +1236,199 @@ Retención: current snapshot; consult response coverage. Procedencia: OGID runti
 }
 ```
 
+### research.forecast-evaluation
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "instrumentIds": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "minItems": 1,
+        "maxItems": 50,
+        "uniqueItems": true
+      },
+      "modelVersion": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 100
+      },
+      "minSamples": {
+        "type": "integer",
+        "minimum": 20,
+        "maximum": 500
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      },
+      "asOf": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### research.forecast.register
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": {
+    "type": "object",
+    "properties": {
+      "forecastId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "instrumentId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "benchmarkInstrumentId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "eventId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "target": {
+        "type": "string",
+        "enum": [
+          "return",
+          "relative-return",
+          "direction"
+        ]
+      },
+      "horizonHours": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 720
+      },
+      "issuedAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "modelVersion": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 100
+      },
+      "predictedValue": {
+        "type": "number"
+      },
+      "direction": {
+        "type": "string",
+        "enum": [
+          "up",
+          "down",
+          "flat"
+        ]
+      },
+      "probability": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
+      },
+      "probabilityModelVersion": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 100
+      },
+      "costs": {
+        "type": "object",
+        "properties": {
+          "commissionBps": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1000
+          },
+          "spreadBps": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1000
+          },
+          "slippageBps": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1000
+          }
+        },
+        "required": [
+          "commissionBps",
+          "spreadBps",
+          "slippageBps"
+        ],
+        "additionalProperties": false
+      },
+      "evidence": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "sourceId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "availableAt": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          "required": [
+            "sourceId",
+            "availableAt"
+          ],
+          "additionalProperties": false
+        },
+        "minItems": 1,
+        "maxItems": 20,
+        "uniqueItems": true
+      }
+    },
+    "required": [
+      "forecastId",
+      "instrumentId",
+      "target",
+      "horizonHours",
+      "modelVersion"
+    ],
+    "additionalProperties": false
+  },
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
 ### research.scenarios
 
 Retención: durable scenarios; bounded audited revisions. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
@@ -1617,6 +1812,16 @@ Retención: current snapshot; consult response coverage. Procedencia: OGID runti
         "type": "integer",
         "minimum": 1,
         "maximum": 100
+      },
+      "offset": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 10000
+      },
+      "snapshotId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
       }
     },
     "required": [

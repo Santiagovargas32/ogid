@@ -14,7 +14,7 @@ export class MaterialAlertStore {
       const value = JSON.parse(readFileSync(this.path, "utf8"));
       if (!["material-alerts-v1","material-alerts-v2"].includes(value.schemaVersion)) throw new Error();
       this.observed = new Map(value.observed || []); this.acknowledged = new Map(value.acknowledged || []);
-      if(value.research) { if(!value.research.cursorKey || !Array.isArray(value.research.changes) || !Number.isInteger(value.research.sequence))throw new Error();this.research=value.research; }
+      if(value.research) { if(typeof value.research.cursorKey!=="string" || value.research.cursorKey.length<40 || !Array.isArray(value.research.changes) || !Number.isInteger(value.research.sequence) || value.research.sequence<0 || !Number.isInteger(value.research.retainedAfter) || value.research.retainedAfter<0 || value.research.retainedAfter>value.research.sequence || ["scenarios","signals","consumers"].some(k=>!value.research[k] || Array.isArray(value.research[k]) || typeof value.research[k]!=="object"))throw new Error();this.research=value.research; }
     } catch (error) { if (error.code !== "ENOENT") throw new AppError("No se pudo recuperar el estado de alertas; no sobrescribirlo.", 503, "ALERT_RECOVERY_FAILED"); }
     this.prune();
   }

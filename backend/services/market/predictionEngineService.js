@@ -61,8 +61,10 @@ function sectorTickers(allowedTickers = [], instruments = [], marketQuotes = {})
   return groups;
 }
 
-function isDefenseArticle(article) {
-  return (article.conflict?.totalWeight || 0) > 0 || article.sentiment?.label === "negative";
+function isDefenseArticle(article, instruments = []) {
+  const text=normalizeText(`${article.title||""} ${article.description||article.excerpt||""}`);
+  const direct=instruments.some(i=>[i.displayName,i.canonicalSymbol].filter(Boolean).some(term=>text.includes(normalizeText(term))));
+  return direct || /\b(?:defen[sc]e (?:budget|procurement|contract)|contract award|weapons procurement)\b/.test(text);
 }
 
 function isEnergyArticle(article) {
@@ -71,7 +73,7 @@ function isEnergyArticle(article) {
 }
 
 function isRelevantToGroup(article, sector, instruments = []) {
-  if (sector === "defense") return isDefenseArticle(article);
+  if (sector === "defense") return isDefenseArticle(article,instruments);
   if (sector === "energy") return isEnergyArticle(article);
   if (sector === "broad") return true;
   const text = normalizeText(`${article.title || ""}. ${article.description || ""}. ${article.content || ""}`);
@@ -141,17 +143,20 @@ function quoteQualityPenalty(quote = {}) {
   return Math.max(0, modePenalty + latencyPenalty - scoreBonus);
 }
 
+function usableQuote(q) {
+  return q&&typeof q.price==="number"&&Number.isFinite(q.price)&&typeof q.changePct==="number"&&Number.isFinite(q.changePct)&&!q.synthetic&&!q.provenance?.synthetic&&!q.stale&&!q.provenance?.stale&&!["synthetic","fallback","seeded","stale"].includes(q.dataMode);
+}
+
 function buildSectorPrediction({ sector, articles, tickers, countries, marketQuotes, inputMode }) {
   const pressures = articles.map((article) => scoreArticle(article, countries));
   const sectorPressure = Number(average(pressures).toFixed(2));
-  const momentum = Number(
-    average(tickers.map((ticker) => Number(marketQuotes[ticker]?.changePct || 0))).toFixed(2)
-  );
+  const usableMomentum=tickers.map(t=>marketQuotes[t]).filter(usableQuote);
+  const momentum=usableMomentum.length?Number(average(usableMomentum.map(q=>q.changePct)).toFixed(2)):null;
   const averageMarketPenalty = Math.round(average(tickers.map((ticker) => quoteQualityPenalty(marketQuotes[ticker]))) * 0.6);
-  const direction = classifyDirection(momentum, sectorPressure);
+  const direction = momentum==null?"Unavailable":classifyDirection(momentum, sectorPressure);
   const confidence = Math.max(
     35,
-    Math.min(95, Math.round(48 + sectorPressure * 6 + Math.min(20, Math.abs(momentum) * 4) - averageMarketPenalty))
+    Math.min(95, Math.round(48 + sectorPressure * 6 + Math.min(20, Math.abs(momentum ?? 0) * 4) - averageMarketPenalty))
   );
 
   return {
@@ -159,8 +164,13 @@ function buildSectorPrediction({ sector, articles, tickers, countries, marketQuo
     direction,
     confidence,
     signalStrength: confidence,
+    confidenceKind: "heuristic-signal-strength",
+    probability: null,
+    evaluationStatus: "insufficient-evaluation",
+    methodVersion: "prediction-heuristic-v2",
+    directionBasis: "observed-momentum-and-news-pressure; not a forecast probability",
     horizonHours: 24,
-    score: Number((sectorPressure + Math.abs(momentum)).toFixed(2)),
+    score: Number((sectorPressure + Math.abs(momentum ?? 0)).toFixed(2)),
     drivers: summarizeDrivers(articles, tickers),
     basedOnArticles: articles.map((article) => article.id),
     tickers,
@@ -177,8 +187,8 @@ function buildTickerPredictions(sectorPredictions = [], marketQuotes = {}) {
     for (const ticker of sectorPrediction.tickers) {
       const quote = marketQuotes[ticker] || {};
       const dataMode = normalizeQuoteDataMode(quote?.dataMode || (quote?.synthetic ? "synthetic" : "observed"));
-      const changePct = Number(quote.changePct || 0);
-      const confidenceBoost = Math.min(8, Math.round(Math.abs(changePct)));
+      const changePct = usableQuote(quote) ? quote.changePct : null;
+      const confidenceBoost = Math.min(8, Math.round(Math.abs(changePct ?? 0)));
       const confidence = Math.max(
         25,
         Math.min(95, sectorPrediction.confidence + confidenceBoost - quoteQualityPenalty(quote))
@@ -187,10 +197,16 @@ function buildTickerPredictions(sectorPredictions = [], marketQuotes = {}) {
       items.push({
         ticker,
         sector: sectorPrediction.sector,
-        direction: sectorPrediction.direction,
+        direction: usableQuote(quote) ? sectorPrediction.direction : "Unavailable",
         confidence,
         predictedConfidence: confidence,
         signalStrength: confidence,
+        confidenceKind: "heuristic-signal-strength",
+        probability: null,
+        evaluationStatus: "insufficient-evaluation",
+        methodVersion: "prediction-heuristic-v2",
+        directionBasis: "observed-momentum-and-news-pressure; not a forecast probability",
+        quality: { marketUsable: Boolean(usableQuote(quote)), calibrated: false },
         predictionScore,
         horizonHours: sectorPrediction.horizonHours,
         drivers: [...sectorPrediction.drivers].slice(0, 3),

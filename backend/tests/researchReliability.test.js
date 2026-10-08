@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { tradingDay, cashCalendarSchedule } from "../services/market/exchangeCalendar.js";
+import { tradingDay, cashCalendarSchedule, expectedIntradayGapCount, expectedDailyGaps } from "../services/market/exchangeCalendar.js";
 import { normalizeCanonicalCandle } from "../services/market/canonicalCandle.js";
 import { TechnicalIndicatorService } from "../services/market/technicalIndicatorService.js";
 import { simpleReturn, calculateTechnicalIndicators } from "../services/market/technicalIndicators.js";
@@ -27,6 +27,12 @@ test("calendars: US holiday, early close, DST divergence and European venue hour
   assert.equal(cashCalendarSchedule(us,"2026-11-27T19:00:00Z").expectedLatestCandleAt,"2026-11-27T18:00:00.000Z");
   assert.equal(cashCalendarSchedule(us,"2026-10-08T12:00:00Z").sessionPhase,"premarket");
   assert.equal(tradingDay(us,"2025-01-02").partial,true);
+  const candle=openTime=>({openTime});
+  assert.equal(expectedIntradayGapCount(candle("2026-07-02T19:55:00Z"),candle("2026-07-06T13:30:00Z"),us,300000),0);
+  assert.equal(expectedIntradayGapCount(candle("2026-07-02T19:50:00Z"),candle("2026-07-06T13:35:00Z"),us,300000),2);
+  assert.equal(expectedIntradayGapCount(candle("2026-10-06T19:55:00Z"),candle("2026-10-08T13:30:00Z"),us,300000),78);
+  assert.deepEqual(expectedDailyGaps([candle("2026-10-02T00:00:00Z"),candle("2026-10-05T00:00:00Z")],{timezone:"UTC",sessionPolicy:"24x7"}),["2026-10-03","2026-10-04"]);
+  const cryptoBars=bars().slice(0,2).map((c,i)=>({...c,interval:"5min",openTime:i?"2026-10-08T00:05:00Z":"2026-10-07T23:55:00Z"}));assert.equal(calculateTechnicalIndicators(cryptoBars,{interval:"5min",instrument:{timezone:"UTC",sessionPolicy:"24x7"}}).quality.gapDetected,true);
 });
 function bars(){ return Array.from({length:30},(_,i)=>({ instrumentId:us.instrumentId, interval:"1day", openTime:new Date(Date.UTC(2026,0,i+1,14,30)).toISOString(),closeTime:new Date(Date.UTC(2026,0,i+1,21)).toISOString(),open:100+i,high:110+i,low:90+i,close:101+i,volume:100,source:"fixture",currency:"USD",adjusted:true,dataMode:"observed" })); }
 test("correction/backfill with identical last timestamp invalidates full-series cache; limits and memory bounded",()=>{
@@ -41,7 +47,9 @@ test("null and synthetic candles never become numeric observations",()=>{
   assert.equal(simpleReturn(null,12).value,null);
   const raw={instrumentId:us.instrumentId,interval:"1day",date:"2026-10-08",open:null,high:12,low:0,close:10,volume:3};
   assert.equal(normalizeCanonicalCandle(raw,{instrument:us}).valid,false);
+  assert.equal(normalizeCanonicalCandle({...raw,open:10,openTime:"invalid",closeTime:"invalid"},{instrument:us}).valid,false);
   assert.equal(normalizeCanonicalCandle({...raw,open:10,synthetic:true},{instrument:us}).valid,false);
+  const lastHour=normalizeCanonicalCandle({...raw,open:10,interval:"1h",openTime:"2026-10-08T19:30:00Z",closeTime:"2026-10-08T20:30:00Z"},{instrument:us});assert.equal(lastHour.candle.closeTime,"2026-10-08T20:00:00.000Z");
   const series=bars();series[1].dataMode="synthetic";assert.equal(calculateTechnicalIndicators(series,{interval:"1day"}).indicators.sma.reason,"synthetic_series");
   series[1].dataMode="observed";series[2].currency="EUR";assert.equal(calculateTechnicalIndicators(series,{interval:"1day"}).indicators.sma.reason,"incompatible_series");
 });

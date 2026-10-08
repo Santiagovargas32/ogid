@@ -1,4 +1,4 @@
-import { tradingDay } from "./exchangeCalendar.js";
+import { tradingDay, calendarId, localDate } from "./exchangeCalendar.js";
 import { getInstrumentById } from "./instrumentRegistry.js";
 
 export const CANDLE_SCHEMA_VERSION = 1;
@@ -50,7 +50,12 @@ export function normalizeCanonicalCandle(raw = {}, { instrument = getInstrumentB
   if (!raw.instrumentId) errors.push("instrument-id-missing");
   if (!SUPPORTED_CANDLE_INTERVALS.includes(raw.interval)) errors.push("interval-invalid");
   const times = raw.openTime && raw.closeTime ? { openTime: safeIso(raw.openTime), closeTime: safeIso(raw.closeTime), session: raw.session } : instrument ? raw.interval === "1day" ? resolveDailyCandleTimes(raw.date || String(raw.datetime || "").slice(0, 10), instrument) : resolveIntradayCandleTimes(raw.datetime, raw.interval, instrument) : null;
-  if (!times || !Number.isFinite(new Date(times.openTime).getTime()) || !Number.isFinite(new Date(times.closeTime).getTime())) errors.push("timestamp-invalid");
+  if (!times?.openTime || !times?.closeTime || !Number.isFinite(new Date(times.openTime).getTime()) || !Number.isFinite(new Date(times.closeTime).getTime())) errors.push("timestamp-invalid");
+  if (times?.openTime && times?.closeTime && instrument && calendarId(instrument) && raw.interval !== "1day" && ["exchange-hours","nyse-equities"].includes(instrument.sessionPolicy)) {
+    const calendar=tradingDay(instrument,localDate(times.openTime,instrument.timezone));
+    if(!calendar.openTime || Date.parse(times.openTime)<Date.parse(calendar.openTime) || Date.parse(times.openTime)>=Date.parse(calendar.closeTime))errors.push("outside-regular-session");
+    else {times.calendar=calendar;times.closeTime=new Date(Math.min(Date.parse(times.closeTime),Date.parse(calendar.closeTime))).toISOString();}
+  }
   const open = finite(raw.open); const high = finite(raw.high); const low = finite(raw.low); const close = finite(raw.close); const volume = raw.volume == null || raw.volume === "" ? null : finite(raw.volume);
   if ([open, high, low, close].some((value) => value == null) || (raw.volume != null && raw.volume !== "" && volume == null)) errors.push("values-not-finite");
   if (high != null && [open, close, low].some((value) => value != null && high < value)) errors.push("high-invalid");

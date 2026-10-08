@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { isIP } from "node:net";
 import { AppError } from "../../utils/error.js";
 import { safeUrl } from "../../utils/researchProjection.js";
+import { stableHash } from "../../utils/stableHash.js";
 import { parseFeedArticles } from "../news/providers/rssProvider.js";
 import { getCompany, registerCompany } from "./companyIdentity.js";
 import { registerInstruments, getInstrumentById } from "../market/instrumentRegistry.js";
@@ -55,5 +56,11 @@ export class OfficialSourceService {
     const row={instrumentId:instrument.instrumentId,isin:instrument.isin,asOf:iso(data.asOf),fetchedAt:at,sourceUrl:safeUrl(source.url),issuer:source.issuer||null,holdings,weightSum,nav:typeof data.nav==="number"&&data.nav>0?data.nav:null,navCurrency:data.navCurrency||null,navAsOf:iso(data.navAsOf),ongoingCharge:typeof data.ongoingCharge==="number"&&data.ongoingCharge>=0&&data.ongoingCharge<1?data.ongoingCharge:null,costAsOf:iso(data.costAsOf),methodVersion:"dated-issuer-holdings-v1",quality:{partial:data.complete!==true,synthetic:false}};
     return this.store.transact(state=>{const prior=state.holdings[instrument.instrumentId];state.holdings[instrument.instrumentId]={...row,revisions:[...(prior?.revisions||[]),...(prior?[{asOf:prior.asOf,fetchedAt:prior.fetchedAt,weightSum:prior.weightSum}]:[])].slice(-20)};return holdings.length;});
   }
-  holdings({instrumentId,limit=100}) {const instrument=getInstrumentById(instrumentId);if(instrument?.assetType!=="etf")throw new AppError("Requiere identidad ETF verificada.",400,"INVALID_ETF_IDENTITY");const row=this.store.state.holdings[instrumentId];return row?{...structuredClone(row),holdings:row.holdings.slice(0,limit),hasMore:row.holdings.length>limit,total:row.holdings.length}:{instrumentId,holdings:null,missingReason:"no-dated-verified-issuer-holdings",quality:{coverage:"not-available"},warnings:["No se infieren holdings a partir del nombre del ETF."]};}
+  holdings({instrumentId,limit=100,offset=0,snapshotId}) {
+    const instrument=getInstrumentById(instrumentId);if(instrument?.assetType!=="etf")throw new AppError("Requiere identidad ETF verificada.",400,"INVALID_ETF_IDENTITY");
+    const row=this.store.state.holdings[instrumentId];if(!row)return {instrumentId,holdings:null,missingReason:"no-dated-verified-issuer-holdings",quality:{coverage:"not-available"},warnings:["No se infieren holdings a partir del nombre del ETF."]};
+    const revision=stableHash(row);if((offset>0&&!snapshotId)||(snapshotId&&snapshotId!==revision))throw new AppError("Snapshot de holdings ausente o cambiado; reiniciar desde offset cero.",409,"HOLDINGS_SNAPSHOT_CHANGED");
+    const hasMore=row.holdings.length>offset+limit;
+    return {...structuredClone(row),holdings:row.holdings.slice(offset,offset+limit),snapshotId:revision,offset,nextOffset:hasMore?offset+limit:null,hasMore,total:row.holdings.length};
+  }
 }

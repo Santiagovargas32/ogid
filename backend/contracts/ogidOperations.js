@@ -1,6 +1,6 @@
 // Registro compartido: contratos de transporte, permisos e inventario API→MCP.
 // Sin imports de runtime ni secretos. Los parámetros son valores tipados; nunca URLs/rutas libres.
-export const OPERATIONS_VERSION = "1.0.0";
+export const OPERATIONS_VERSION = "1.1.0";
 const str = (maxLength = 128) => ({ type: "string", minLength: 1, maxLength });
 const int = (minimum, maximum) => ({ type: "integer", minimum, maximum });
 const choice = (...values) => ({ type: "string", enum: values });
@@ -45,6 +45,8 @@ export const OGID_OPERATIONS = Object.freeze([
   op("market.candles.metrics", "GET", "/api/market/candles/metrics"),
   op("market.indicators", "GET", "/api/market/indicators", { instrumentId: str(), interval: candles.interval, adjusted: candles.adjusted, package: choice("standard-v1"), limit: int(1,2500) }, { required: ["instrumentId"] }),
   op("market.technical-context", "GET", "/api/market/technical-context", { instrumentId: str(), interval: choice("1day","1wk","1h","30min","15min","5min"), adjusted: candles.adjusted, package: choice("standard-v1"), benchmarkInstrumentId: str(), limit: int(30,2500) }, { required:["instrumentId"] }),
+  op("research.forecast-evaluation", "GET", "/api/research/forecast-evaluation", {instrumentIds:refs.instrumentIds,modelVersion:str(100),minSamples:int(20,500),limit,asOf:date}, {effects:"stored evaluation; no forecast registration or providers"}),
+  op("research.forecast.register", "POST", "/api/research/forecasts", {}, {...mutation("forecasts:write"),body:{forecastId:str(),instrumentId:str(),benchmarkInstrumentId:str(),eventId:str(),target:choice("return","relative-return","direction"),horizonHours:int(1,720),issuedAt:date,modelVersion:str(100),predictedValue:{type:"number"},direction:choice("up","down","flat"),probability:{type:"number",minimum:0,maximum:1},probabilityModelVersion:str(100),costs:schema({commissionBps:{type:"number",minimum:0,maximum:1000},spreadBps:{type:"number",minimum:0,maximum:1000},slippageBps:{type:"number",minimum:0,maximum:1000}},["commissionBps","spreadBps","slippageBps"]),evidence:array(schema({sourceId:str(),availableAt:date},["sourceId","availableAt"]),20)},bodyRequired:["forecastId","instrumentId","target","horizonHours","modelVersion"],cost:"prospective local registration only"}),
   op("research.scenarios", "GET", "/api/research/scenarios", {instrumentIds:refs.instrumentIds,statuses:array(choice("pending-data","watch","confirmed","invalidated","expired"),5),limit}, {retention:"durable scenarios; bounded audited revisions"}),
   op("signals.delta", "GET", "/api/signals/delta", {consumerId:str(100),instrumentIds:refs.instrumentIds,cursor:str(4096),limit,maxBytes:int(4096,524288)}, {effects:"stored read; never advances consumer checkpoint",retention:"30-day change journal; explicit gap errors"}),
   op("research.scenarios.refresh", "POST", "/api/research/scenarios/refresh", {}, {...mutation("signals:generate"),body:{instrumentIds:array(str(),50)},bodyRequired:["instrumentIds"],cost:"stored calculations; no provider"}),
@@ -54,7 +56,7 @@ export const OGID_OPERATIONS = Object.freeze([
   op("research.event-impact", "GET", "/api/research/event-impact", { instrumentIds: refs.instrumentIds, eventIds: array(str()), from:date, to:date, limit }),
   op("research.companyfacts", "GET", "/api/research/companyfacts", {companyId:str()}, {required:["companyId"]}),
   op("research.sources", "GET", "/api/research/sources"),
-  op("etf.holdings", "GET", "/api/etf/holdings", {instrumentId:str(),limit}, {required:["instrumentId"]}),
+  op("etf.holdings", "GET", "/api/etf/holdings", {instrumentId:str(),limit,offset:int(0,10000),snapshotId:str()}, {required:["instrumentId"]}),
   op("market.history.job", "GET", "/api/market/history/jobs", {jobId:str()}, {required:["jobId"],retention:"durable bounded job ledger"}),
   op("market.history.create", "POST", "/api/market/history/jobs", {}, {...mutation("candles:backfill"),body:{requestId:str(),instrumentIds:array(str(),20),targetBars:int(30,2500),endAt:date},bodyRequired:["requestId","instrumentIds"],cost:"local job creation; run is explicit"}),
   op("market.history.run", "POST", "/api/market/history/run", {}, {...mutation("candles:backfill"),body:{jobId:str(),maxRequests:int(1,4)},bodyRequired:["jobId"],cost:"max 4 Yahoo requests per run; provider limits"}),

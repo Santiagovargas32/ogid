@@ -138,7 +138,7 @@ export function toolDefinitions(config, read) {
       }
     },
     {
-      name: "ogid_health", description: "Comprueba conectividad de lectura con OGID, modo Awareness y calidad. El commit corresponde al checkout, no acredita el código cargado por el proceso. No revela configuración privada.",
+      name: "ogid_health", description: "Comprueba conectividad de lectura con OGID, modo Awareness y calidad. Separa el checkout de la identidad capturada al cargar backend/adaptador; hash local no es atestación. No revela configuración privada.",
       schema: z.strictObject({}),
       async run() {
         const [health, awareness] = await Promise.all([read("/api/health"), read("/api/intel/awareness-snapshot", { limit: 1 })]);

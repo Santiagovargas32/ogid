@@ -21,7 +21,9 @@ test("standard technical context: long warmup, Wilder version, weekly closed fra
  const weekly=service.get({instrumentId:instrument.instrumentId,interval:"1wk"});assert.ok(weekly.sampleSize>40);assert.ok(Date.parse(weekly.lastClosedCandleAt)<=now);assert.equal(weekly.indicators.sma20.reason,null);assert.equal(weekly.indicators.sma200.reason,"insufficient_data");assert.equal(weekly.indicators.volatility.annualizationFactor,52);
  const prefix=aggregateWeekly(bars.slice(0,-4),instrument,new Date(now-7*86400000).toISOString());assert.ok(prefix.every(c=>Date.parse(c.closeTime)<=now-7*86400000));
  const short=new TechnicalContextService({store:{query:()=>bars.slice(-3)},now:()=>new Date(now)}).get({instrumentId:instrument.instrumentId});assert.equal(short.indicators.sma200.value,null);
+ const old=new TechnicalContextService({store:{query:()=>bars.filter(b=>b.closeTime<"2026-09-25")},now:()=>new Date(now)}).get({instrumentId:instrument.instrumentId,interval:"1wk"});assert.equal(old.quality.stale,true);
  const changed=bars.slice(-20).map((c,i)=>({...c,high:c.high+(i===1?40:0)}));assert.notEqual(wilderAtr(changed).value,out.indicators.atr14Wilder.value);
+ const crypto={timezone:"UTC",sessionPolicy:"24x7"};const week=Array.from({length:7},(_,i)=>({...bars[0],openTime:`${addDate("2026-10-05",i)}T00:00:00.000Z`,closeTime:`${addDate("2026-10-05",i+1)}T00:00:00.000Z`}));assert.equal(aggregateWeekly(week,crypto,"2026-10-11T23:59:00Z").length,0);assert.equal(aggregateWeekly(week,crypto,"2026-10-12T00:01:00Z")[0].closeTime,"2026-10-12T00:00:00.000Z");
 });
 test("history jobs are bounded, reentrant, resumable, idempotent and retain failed windows",async()=>{
  const path=join(mkdtempSync(join(tmpdir(),"ogid-jobs-")),"ledger.json");let clock=now,calls=0,fail=false;
@@ -56,5 +58,9 @@ test("ETF holdings require dated issuer evidence and preserve ISIN-specific weig
  const store=new ResearchStore();const service=new OfficialSourceService({store,now:()=>now});assert.equal(service.holdings({instrumentId:etf.instrumentId}).holdings,null);
  const source={instrumentId:etf.instrumentId,url:"https://example.org/issuer",issuer:"Fixture"};const data={instrumentId:etf.instrumentId,isin:etf.isin,asOf:"2026-10-07",holdings:[{name:"Fixture asset",weight:0.5}],complete:false};
  assert.equal(service.ingestHoldings(source,data,new Date(now).toISOString()),1);assert.equal(service.holdings({instrumentId:etf.instrumentId}).quality.partial,true);
+ const page=service.holdings({instrumentId:etf.instrumentId,limit:1});assert.ok(page.snapshotId);
+ assert.throws(()=>service.holdings({instrumentId:etf.instrumentId,offset:1}),{code:"HOLDINGS_SNAPSHOT_CHANGED"});
+ service.ingestHoldings(source,{...data,holdings:[{name:"Updated asset",weight:0.4}]},new Date(now).toISOString());
+ assert.throws(()=>service.holdings({instrumentId:etf.instrumentId,offset:1,snapshotId:page.snapshotId}),{code:"HOLDINGS_SNAPSHOT_CHANGED"});
  assert.throws(()=>service.ingestHoldings(source,{...data,isin:"wrong"},new Date(now).toISOString()));
 });

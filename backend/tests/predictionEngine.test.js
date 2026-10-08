@@ -52,3 +52,10 @@ test("generatePredictions builds deterministic sector and ticker outputs", () =>
   assert.ok(predictions.sectors.some((item) => item.sector === "defense"));
   assert.ok(predictions.tickers.some((item) => item.ticker === "GD"));
 });
+
+test("negative war headlines do not establish defense benefit; scores remain explicitly heuristic",()=>{
+  const input={tickers:["GD"],instruments:[{canonicalSymbol:"GD",displayName:"General Dynamics",sector:"defense",assetType:"equity"}],marketQuotes:{GD:{price:100,changePct:1,dataMode:"observed"}},articles:[{id:"war",title:"Conflict worsens and casualties rise",publishedAt:"2026-10-08T12:00:00Z",sentiment:{label:"negative"},conflict:{totalWeight:10}}]};
+  const result=generatePredictions(input);assert.deepEqual(result.sectors[0].basedOnArticles,[]);assert.equal(result.tickers[0].confidence,result.tickers[0].signalStrength);assert.equal(result.tickers[0].confidenceKind,"heuristic-signal-strength");assert.equal(result.tickers[0].probability,null);
+  input.articles.push({id:"contract",title:"General Dynamics awarded an official contract",publishedAt:"2026-10-08T13:00:00Z"});assert.deepEqual(generatePredictions(input).sectors[0].basedOnArticles,["contract"]);
+  input.marketQuotes.GD.changePct=null;assert.equal(generatePredictions(input).tickers[0].direction,"Unavailable");input.marketQuotes.GD.changePct=1;input.marketQuotes.GD.dataMode="seeded";assert.equal(generatePredictions(input).tickers[0].quality.marketUsable,false);
+});

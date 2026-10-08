@@ -21,7 +21,7 @@ export function resolveInstruments(req, res) {
   res.json({ ok: true, data: { generatedAt: new Date().toISOString(), registryOrigin: "verified-runtime", instruments: universe.filter(instrument => !query.references?.length || ids.has(instrument.instrumentId)).map(instrument => instrumentView(instrument, res.app.locals.marketWatchlistService.selectedInstrumentIds, snapshot.market?.quotes || {})), resolutions,
     warnings: ["La identidad de proveedor no demuestra una posición ni una clase elegida. Resolver no consulta proveedores; si falta una identidad, usar búsqueda operador y verificación explícita."] } });
 }
-export function getCapabilities(_req, res) { res.json({ ok: true, data: { contractVersion: OPERATIONS_VERSION, build: BACKEND_BUILD, generatedAt: new Date().toISOString(), operations: OGID_OPERATIONS.filter(op => op.profile === "research"), newsCoverage: res.app.locals.newsArchive.coverage(), runningCommitVerified: false } }); }
+export function getCapabilities(_req, res) { res.json({ ok: true, data: { contractVersion: OPERATIONS_VERSION, build: BACKEND_BUILD, generatedAt: new Date().toISOString(), operations: OGID_OPERATIONS.filter(op => op.profile === "research"), researchPipeline:res.app.locals.researchPipeline, newsCoverage: res.app.locals.newsArchive.coverage(), runningCommitVerified: false } }); }
 export function getDiagnostics(_req, res) {
   const snapshot = stateManager.getSnapshot(); const orchestrator = res.app.locals.orchestrator;
   res.json({ ok: true, data: { generatedAt: new Date().toISOString(), counts: { news: snapshot.news.length, quotes: Object.keys(snapshot.market?.quotes || {}).length, archived: res.app.locals.newsArchive.records.size },
@@ -36,9 +36,9 @@ export function acknowledgeAlerts(req, res) {
 }
 
 export function getTechnicalContext(req,res) { res.json({ok:true,data:res.app.locals.technicalContextService.get(params(req,"market.technical-context"))}); }
-export function getEventImpact(req,res) { res.json({ok:true,data:res.app.locals.eventLedger.search(params(req,"research.event-impact"))}); }
+export function getEventImpact(req,res) { res.json({ok:true,data:{...res.app.locals.eventLedger.search(params(req,"research.event-impact")),pipeline:res.app.locals.researchPipeline}}); }
 export function getResearchSources(_req,res) { res.json({ok:true,data:res.app.locals.officialSourceService.status()}); }
-export function getCompanyFacts(req,res) { const {companyId}=params(req,"research.companyfacts");const data=res.app.locals.researchStore.view("companyFacts")[companyId];res.json({ok:true,data:data||{companyId,metrics:null,missingReason:"no-stored-companyfacts",quality:{coverage:"not-available"}}}); }
+export function getCompanyFacts(req,res) { const {companyId}=params(req,"research.companyfacts");const table=res.app.locals.researchStore.view("companyFacts");const data=Object.hasOwn(table,companyId)?table[companyId]:null;res.json({ok:true,data:data||{companyId,metrics:null,missingReason:"no-stored-companyfacts",quality:{coverage:"not-available"}}}); }
 export function getEtfHoldings(req,res) { res.json({ok:true,data:res.app.locals.officialSourceService.holdings(params(req,"etf.holdings"))}); }
 export function getHistoryJob(req,res) {res.json({ok:true,data:res.app.locals.historicalAcquisitionService.get(params(req,"market.history.job").jobId)});}
 export function operatorBody(req,id){if(!req.mcpOperatorAuthorized)throw new AppError("Requiere credencial MCP de alcance.",403,"MCP_OPERATOR_FORBIDDEN");if(!validateValue(req.body,getOperation(id).body))throw new AppError("Cuerpo inválido.",400,"INVALID_OPERATOR_ARGUMENTS");return req.body;}
@@ -52,3 +52,6 @@ export function refreshScenarios(req,res){res.json({ok:true,data:res.app.locals.
 export function deleteScenario(req,res){res.json({ok:true,data:res.app.locals.scenarioService.remove(operatorBody(req,"research.scenarios.delete"))});}
 export function acknowledgeSignals(req,res){res.json({ok:true,data:res.app.locals.materialAlertStore.acknowledgeChanges(operatorBody(req,"signals.checkpoint"))});}
 export function recoverSignals(req,res){res.json({ok:true,data:res.app.locals.materialAlertStore.recoverCheckpoint(operatorBody(req,"signals.recover"))});}
+
+export function getForecastEvaluation(req,res){res.json({ok:true,data:res.app.locals.forecastEvaluationService.evaluate(params(req,"research.forecast-evaluation"))});}
+export function registerForecast(req,res){res.json({ok:true,data:res.app.locals.forecastEvaluationService.record(operatorBody(req,"research.forecast.register"))});}

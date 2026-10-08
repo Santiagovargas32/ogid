@@ -34,5 +34,14 @@ test("delta retention gap, expiry, byte budgets and filtered acknowledgement are
 });
 test("missing usable candles creates pending-data; expiry never claims a financial outcome",()=>{
  let now=Date.parse("2026-10-08T22:00:00Z");const alerts=new MaterialAlertStore({now:()=>now});const ctx={...context(),quality:{reason:"insufficient_data",stale:true}};
- const service=new ScenarioService({alerts,technicalContext:{get:()=>ctx},eventLedger:{search:()=>({events:[]})},candleStore:{query:()=>[]},now:()=>now});service.refresh({instrumentIds:[id]});assert.ok(service.list().scenarios.every(s=>s.status==="pending-data"));now+=8*86400000;service.refresh({instrumentIds:[]});assert.ok(service.list().scenarios.every(s=>s.status==="expired"));assert.ok(service.list().scenarios.every(s=>s.probability===null));
+ ctx.lastClosedCandleAt=null;const service=new ScenarioService({alerts,technicalContext:{get:()=>ctx},eventLedger:{search:()=>({events:[]})},candleStore:{query:()=>[]},now:()=>now});service.refresh({instrumentIds:[id]});assert.ok(service.list().scenarios.every(s=>s.status==="pending-data"));now+=60000;assert.equal(service.refresh({instrumentIds:[id]}).changes,0);now+=8*86400000;service.refresh({instrumentIds:[]});assert.ok(service.list().scenarios.every(s=>s.status==="expired"));assert.ok(service.list().scenarios.every(s=>s.probability===null));
+});
+test("configured benchmark detects relative-return anomaly with volatility normalization and hysteresis",()=>{
+ const alerts=new MaterialAlertStore();const ctx=context(100);ctx.indicators.relativeReturn={value:0.05};const service=new ScenarioService({alerts,technicalContext:{get:args=>{assert.equal(args.benchmarkInstrumentId,id);return ctx;}},eventLedger:{search:()=>({events:[]})},candleStore:{query:()=>[]},policy:{benchmarkInstrumentId:id}});
+ service.refresh({instrumentIds:[id]});const relative=Object.values(alerts.research.signals).find(s=>s.type==="relative-return-anomaly");assert.equal(relative.metric,2.5);assert.equal(relative.cause,"unknown");assert.equal(relative.active,true);
+ ctx.indicators.relativeReturn.value=0.01;service.refresh({instrumentIds:[id]});assert.equal(alerts.research.signals[relative.signalId].active,false);
+});
+test("anomalies use closed observations and exclude a future open candle",()=>{
+ const alerts=new MaterialAlertStore();const ctx=context(100);const candles=[{open:98,close:98,closeTime:"2026-10-07T20:00:00Z"},{open:99,close:100,closeTime:"2026-10-08T20:00:00Z"},{open:100,close:999,closeTime:"2026-10-09T20:00:00Z"}];
+ const service=new ScenarioService({alerts,technicalContext:{get:()=>ctx},eventLedger:{search:()=>({events:[]})},candleStore:{query:()=>candles}});service.refresh({instrumentIds:[id]});assert.ok(!Object.values(alerts.research.signals).some(s=>s.type==="return-anomaly"||s.type==="gap-anomaly"));
 });

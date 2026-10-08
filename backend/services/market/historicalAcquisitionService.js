@@ -29,7 +29,7 @@ export class HistoricalAcquisitionService {
     let job=this.get(jobId);let requests=0;
     while(job.cursor<job.chunks.length&&requests<budget) {
       const chunk=job.chunks[job.cursor];if(chunk.nextRetryAt&&Date.parse(chunk.nextRetryAt)>this.now()) break;
-      if(chunk.attempts>=3) break;
+      if(chunk.attempts>=3) {this.ledger.transact(state=>{const row=state.jobs[jobId];row.status="blocked";row.chunks[row.cursor].status="blocked";row.chunks[row.cursor].failureCode="HISTORY_ATTEMPTS_EXHAUSTED";});break;}
       const instrument=getInstrumentById(chunk.instrumentId);if(!instrument) throw new AppError("Identidad retirada; no continuar adquisición.",409,"UNRESOLVED_INSTRUMENT");
       // Claim persistido antes de HTTP; reinicio reintenta de forma idempotente la misma ventana.
       this.ledger.transact(state=>{const row=state.jobs[jobId];row.status="running";row.chunks[row.cursor].attempts++;});requests++;

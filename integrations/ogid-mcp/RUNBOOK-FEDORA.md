@@ -1,5 +1,7 @@
 # Runbook Fedora
 
+Para la evolución financiera 0.3.0, usar también [migración, verificaciones nuevas y rollback v2](../../docs/research-cartera/RUNBOOK.md).
+
 Ejecutar en terminal del host, shell sh/Bash, desde la raíz real del checkout. En IDE Flatpak, los binarios del host se ejecutan con flatpak-spawn --host. Las rutas de esta guía son genéricas; RUNBOOK-FEDORA.local contiene los comandos y observaciones de esta máquina y está ignorado por Git.
 
 ## Validar antes de reiniciar
@@ -23,7 +25,7 @@ curl --fail --silent --show-error http://127.0.0.1:3000/api/capabilities
 OGID_PROFILE=research OGID_INSTRUMENT_AUTH=runtime npm --prefix integrations/ogid-mcp run smoke
 ```
 
-Capabilities debe devolver contractVersion=1.0.0. El smoke requiere el backend nuevo y comprueba versión MCP 0.2.0, diez herramientas y cuatro modos. Puede fallar explícitamente por presupuesto o datos ausentes; eso no permite forzar un proveedor.
+Capabilities debe devolver contractVersion=1.1.0. El smoke requiere el backend nuevo y comprueba versión MCP 0.3.0, diez herramientas y cuatro modos. Puede fallar explícitamente por presupuesto o datos ausentes; eso no permite forzar un proveedor.
 
 ## Túnel existente
 
@@ -66,6 +68,6 @@ Una sesión screen no garantiza recuperación al reiniciar el host. La unidad de
 
 ## ChatGPT
 
-Abrir la conexión OGID existente en chatgpt.com/plugins. En la pantalla de gestión de la aplicación, pulsar **Actualizar herramientas** (Refresh), conservar su túnel, revisar diez herramientas/esquemas/permisos e iniciar una conversación nueva con OGID seleccionado. Comprobar `ogid_health` (versión 0.2.0) y `ogid_get_capabilities`. Este botón refresca el contrato anunciado; para cargar cambios de código hay que reiniciar primero los procesos afectados. El estado `dev mode` de la pantalla no muestra la versión del adaptador. Solo recrearla si no se puede recuperar; no duplicar tareas ni conexión. Véanse EVALUACION-CHATGPT.md y TAREAS-CARTERA.md.
+Abrir la conexión OGID existente en chatgpt.com/plugins. En la pantalla de gestión de la aplicación, pulsar **Actualizar herramientas** (Refresh), conservar su túnel, revisar diez herramientas/esquemas/permisos e iniciar una conversación nueva con OGID seleccionado. Comprobar `ogid_health` (versión 0.3.0) y `ogid_get_capabilities`. Este botón refresca el contrato anunciado; para cargar cambios de código hay que reiniciar primero los procesos afectados. El estado `dev mode` de la pantalla no muestra la versión del adaptador. Solo recrearla si no se puede recuperar; no duplicar tareas ni conexión. Véanse EVALUACION-CHATGPT.md y TAREAS-CARTERA.md.
 
 [Conectar y refrescar el plugin](https://developers.openai.com/plugins/deploy/connect-chatgpt), [Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels).

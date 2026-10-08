@@ -15,10 +15,16 @@ export function wilderAtr(bars,period=14) {
   const ranges=bars.slice(1).map((c,i)=>Math.max(c.high-c.low,Math.abs(c.high-bars[i].close),Math.abs(c.low-bars[i].close)));
   let value=mean(ranges.slice(0,period));for(const tr of ranges.slice(period)) value=(value*(period-1)+tr)/period;return {...ok(value,bars.length),method:"wilder-rma-sma-seed-v1"};
 }
+function weeklySessions(instrument,monday) {
+  return Array.from({length:instrument.sessionPolicy==="24x7"?7:5},(_,i)=>{
+    const date=addDate(monday,i);
+    return instrument.sessionPolicy==="24x7"?{date,closed:false,openTime:`${date}T00:00:00.000Z`,closeTime:`${addDate(date,1)}T00:00:00.000Z`,partial:false}:tradingDay(instrument,date);
+  }).filter(d=>!d.closed);
+}
 export function aggregateWeekly(daily,instrument,asOf) {
   const groups=new Map();for(const bar of daily) {const date=localDate(bar.openTime,instrument.timezone);const day=new Date(`${date}T12:00:00Z`).getUTCDay();const monday=addDate(date,-((day+6)%7));if(!groups.has(monday)) groups.set(monday,[]);groups.get(monday).push(bar);}
   const result=[];for(const [monday,bars] of groups) {
-    const expected=Array.from({length:5},(_,i)=>tradingDay(instrument,addDate(monday,i))).filter(d=>!d.closed);
+    const expected=weeklySessions(instrument,monday);
     if(expected.some(d=>!d.closeTime)||!expected.length||Date.parse(expected.at(-1).closeTime)>Date.parse(asOf)) continue;
     const dates=new Set(bars.map(c=>localDate(c.openTime,instrument.timezone)));const missing=expected.filter(d=>!dates.has(d.date)).map(d=>d.date);
     if(missing.some(date=>date<localDate(daily[0].openTime,instrument.timezone)))continue;
@@ -26,14 +32,21 @@ export function aggregateWeekly(daily,instrument,asOf) {
       methodVersion:"weekly-from-daily-v1",quality:missing.length?"partial":"valid",missingSessions:missing,provenance:{...bars[0].provenance,derivedFrom:"1day",seriesRevision:stableHash(bars)},calendar:{methodVersion:CALENDAR_VERSION,partial:expected.some(d=>d.partial)}});
   } return result;
 }
+function latestWeeklyClose(instrument,asOf) {
+  const date=localDate(asOf,instrument.timezone),day=new Date(`${date}T12:00:00Z`).getUTCDay();
+  const monday=addDate(date,-((day+6)%7));
+  for(let offset=0;offset>=-21;offset-=7){const sessions=weeklySessions(instrument,addDate(monday,offset));
+    if(sessions.length&&sessions.every(d=>d.closeTime)&&Date.parse(sessions.at(-1).closeTime)<=Date.parse(asOf)-(instrument.sessionPolicy==="24x7"?300000:900000))return sessions.at(-1).closeTime;
+  }return null;
+}
 function movingAverage(bars,period) {const closes=bars.map(c=>c.close);const value=sma(closes,period);if(value.value==null)return value;const prior=sma(closes.slice(0,-5),period);return {...value,distanceFraction:closes.at(-1)/value.value-1,slopePerBar:prior.value==null?null:(value.value-prior.value)/5,slopeWindow:5};}
 function levels(bars,window=60) {const sample=bars.slice(-window-1,-1);if(sample.length<20)return nd("insufficient_data",sample.length);return {...ok({support:Math.min(...sample.map(c=>c.low)),resistance:Math.max(...sample.map(c=>c.high))},sample.length),method:"prior-closed-window-extrema-v1",window,excludedLatest:true};}
-function relativeStrength(bars,benchmark) {
+function relativeStrength(bars,benchmark,window=20) {
   if(!benchmark.length)return nd("benchmark_unavailable");
-  const byTime=new Map(benchmark.map(c=>[c.closeTime,c]));const pairs=bars.map(c=>[c,byTime.get(c.closeTime)]).filter(([,b])=>b).slice(-21);
-  if(pairs.length<21)return nd("insufficient_aligned_benchmark",pairs.length);
+  const byTime=new Map(benchmark.map(c=>[c.closeTime,c]));const pairs=bars.map(c=>[c,byTime.get(c.closeTime)]).filter(([,b])=>b).slice(-(window+1));
+  if(pairs.length<window+1||pairs.at(-1)?.[0].closeTime!==bars.at(-1)?.closeTime)return nd("insufficient_aligned_benchmark",pairs.length);
   const a=pairs.at(0),b=pairs.at(-1);if(![a[0].close,a[1].close,b[0].close,b[1].close].every(x=>finite(x)&&x>0))return nd("invalid_values",pairs.length);
-  return {...ok(b[0].close/a[0].close-b[1].close/a[1].close,pairs.length),unit:"return-fraction",alignment:"exact-closed-time; no FX conversion",window:20};
+  return {...ok(b[0].close/a[0].close-b[1].close/a[1].close,pairs.length),unit:"return-fraction",alignment:"exact-closed-time; no FX conversion",window};
 }
 function relativeVolume(bars,instrument,interval) {
   const last=bars.at(-1);if(!last||!finite(last.volume))return nd("volume_unavailable");
@@ -50,21 +63,21 @@ export class TechnicalContextService {
     if(packageId!=="standard-v1"||!["1day","1wk","1h","30min","15min","5min"].includes(interval)||!["splits","none"].includes(adjusted))throw new AppError("Paquete técnico inválido.",400,"INVALID_TECHNICAL_PARAMETERS");
     const asOf=this.now().toISOString();const query=(id)=>this.store.query({instrumentId:id,interval:interval==="1wk"?"1day":interval,adjustmentMode:adjusted,limit:interval==="1wk"?Math.min(10000,limit*7):limit}).filter(c=>Date.parse(c.closeTime)<=Date.parse(asOf));
     const daily=query(instrumentId);const bars=interval==="1wk"?aggregateWeekly(daily,instrument,asOf).slice(-limit):daily;
-    const base=calculateTechnicalIndicators(bars,{interval,instrument:interval==="1day"?instrument:null,calculatedAt:asOf});
+    const base=calculateTechnicalIndicators(bars,{interval,instrument:interval!=="1wk"?instrument:null,calculatedAt:asOf});
     const invalid=base.quality.reason||base.quality.gapDetected&&"gaps_detected"||bars.some(c=>c.quality==="partial")&&"partial_series";
     const protect=value=>invalid?nd(invalid,bars.length):value;const last=bars.at(-1);
     let benchmark=[];let benchmarkReason=null;
-    if(benchmarkInstrumentId){const b=getInstrumentById(benchmarkInstrumentId);if(!b||b.verificationStatus!=="verified")throw new AppError("Benchmark no verificado.",400,"UNRESOLVED_INSTRUMENT");benchmark=query(b.instrumentId);if(interval==="1wk")benchmark=aggregateWeekly(benchmark,b,asOf);const bBase=calculateTechnicalIndicators(benchmark,{interval,calculatedAt:asOf});benchmarkReason=bBase.quality.reason||bBase.quality.gapDetected&&"benchmark_gaps";}
-    const perYear=interval==="1day"?252:interval==="1wk"?52:null;const vol=base.indicators.realizedVolatility;
+    if(benchmarkInstrumentId){const b=getInstrumentById(benchmarkInstrumentId);if(!b||b.verificationStatus!=="verified")throw new AppError("Benchmark no verificado.",400,"UNRESOLVED_INSTRUMENT");benchmark=query(b.instrumentId);if(interval==="1wk")benchmark=aggregateWeekly(benchmark,b,asOf);const bBase=calculateTechnicalIndicators(benchmark,{interval,instrument:interval!=="1wk"?b:null,calculatedAt:asOf});benchmarkReason=b.currency!==instrument.currency?"benchmark_currency_mismatch":bars.length&&benchmark.length&&(bars[0].source!==benchmark[0].source||bars[0].adjusted!==benchmark[0].adjusted)?"incompatible_benchmark_series":bBase.quality.reason||bBase.quality.gapDetected&&"benchmark_gaps";}
+    const perYear=interval==="1day"?(instrument.sessionPolicy==="24x7"?365:252):interval==="1wk"?52:null;const vol=base.indicators.realizedVolatility;
     const sessionBars=last&&!["1day","1wk"].includes(interval)?bars.filter(c=>localDate(c.openTime,instrument.timezone)===localDate(last.openTime,instrument.timezone)):[];
     const volume=sessionBars.reduce((s,c)=>s+(finite(c.volume)?c.volume:0),0);const vwap=volume>0&&sessionBars.every(c=>finite(c.volume))?ok(sessionBars.reduce((s,c)=>s+(c.high+c.low+c.close)/3*c.volume,0)/volume,sessionBars.length):nd("intraday_volume_unavailable",sessionBars.length);
-    const expected = interval === "1day" ? resolveExpectedClosedDailyCandle(instrument,this.now())?.closeTime : interval==="1wk"?null:sessionPolicyResolver.resolve(instrument,asOf,{intervalMs:candleIntervalMs(interval)}).expectedLatestCandleAt;
+    const expected = interval === "1day" ? resolveExpectedClosedDailyCandle(instrument,this.now())?.closeTime : interval==="1wk"?latestWeeklyClose(instrument,asOf):sessionPolicyResolver.resolve(instrument,asOf,{intervalMs:candleIntervalMs(interval)}).expectedLatestCandleAt;
     const staleByTime=Boolean(expected && (!last || Date.parse(last.closeTime)<Date.parse(expected)));
-    return {instrumentId,companyId:instrument.companyId||null,interval,adjusted,package:packageId,methodVersion:"technical-context-v1",asOf,snapshotId:stableHash({bars,benchmark,interval,adjusted}),seriesRevision:stableHash(bars),sampleSize:bars.length,lastClosedCandleAt:last?.closeTime||null,
+    return {instrumentId,benchmarkInstrumentId:benchmarkInstrumentId||null,companyId:instrument.companyId||null,interval,adjusted,package:packageId,methodVersion:"technical-context-v1",asOf,snapshotId:stableHash({bars,benchmark,interval,adjusted}),seriesRevision:stableHash(bars),sampleSize:bars.length,lastClosedCandleAt:last?.closeTime||null,
       observed:base.observed,
       warmup:{sma200:200,rsi14:15,macd12269:34,atr14:15,relativeStrength:21,complete:bars.length>=200},parameters:{smaPeriods:[20,50,200],slopeWindow:5,rsiPeriod:14,macd:[12,26,9],bollinger:[20,2],atrPeriod:14,volatilityPeriod:20,levelsWindow:60},
       indicators:{...base.indicators,sma20:protect(movingAverage(bars,20)),sma50:protect(movingAverage(bars,50)),sma200:protect(movingAverage(bars,200)),atr14Simple:{...protect(atr(bars,14)),method:"simple-mean-true-range-v1"},atr14Wilder:protect(wilderAtr(bars)),volatility:{...protect(vol),unit:"log-return-standard-deviation-per-bar",annualizationFactor:perYear,annualized:!invalid&&vol.value!=null&&perYear?vol.value*Math.sqrt(perYear):null,annualizedReason:perYear?null:"intraday_annualization_not_assumed"},
-      relativeStrength:protect(benchmarkReason?nd(benchmarkReason,benchmark.length):relativeStrength(bars,benchmark)),relativeVolume:protect(relativeVolume(bars,instrument,interval)),levels:protect(levels(bars)),vwapApprox:{...protect(vwap),method:"typical-price-times-bar-volume-v1",approximate:true,unit:instrument.currency,coverage:sessionBars.length?{from:sessionBars[0].openTime,sessionOpenObserved:sessionBars[0].openTime===zonedBoundary(localDate(last.openTime,instrument.timezone),tradingDay(instrument,localDate(last.openTime,instrument.timezone)).openMinute,instrument.timezone)}:null}},
+      relativeReturn:protect(benchmarkReason?nd(benchmarkReason,benchmark.length):relativeStrength(bars,benchmark,1)),relativeStrength:protect(benchmarkReason?nd(benchmarkReason,benchmark.length):relativeStrength(bars,benchmark)),relativeVolume:protect(relativeVolume(bars,instrument,interval)),levels:protect(levels(bars)),vwapApprox:{...protect(vwap),method:"typical-price-times-bar-volume-v1",approximate:true,unit:instrument.currency,coverage:sessionBars.length?{from:sessionBars[0].openTime,sessionOpenObserved:sessionBars[0].openTime===zonedBoundary(localDate(last.openTime,instrument.timezone),tradingDay(instrument,localDate(last.openTime,instrument.timezone)).openMinute,instrument.timezone)}:null}},
       quality:{...base.quality,reason:invalid||null,stale:staleByTime||bars.some(c=>c.dataMode==="stale"||c.provenance?.stale),calendarPartial:daily.some(c=>c.calendar?.partial||c.calendar==null),synthetic:bars.some(c=>c.synthetic||["synthetic","fallback","seeded"].includes(c.dataMode)),provider: [...new Set(bars.map(c=>c.source))],delay:"web-delayed-or-provider-history",currency:instrument.currency},
       coverage:{from:bars[0]?.openTime||null,to:last?.closeTime||null,gaps:interval==="1day"?expectedDailyGaps(bars,instrument).slice(0,100):[]},warnings:["Correlated indicators are not independent confirmations.","Relative strength aligns exact closes, without timezone or FX interpolation.","Weekly frames derive from complete daily sessions; historical exceptional calendars may be partial."]};
   }

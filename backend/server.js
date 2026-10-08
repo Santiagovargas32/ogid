@@ -35,7 +35,8 @@ import { createLogger, requestLogger } from "./utils/logger.js";
 import { queryParamAllowlist } from "./utils/queryParamAllowlist.js";
 import { sensitiveRouteAuth } from "./middleware/sensitiveRouteAuth.js";
 import { mcpOperatorAuth, readOperatorCredentials } from "./middleware/mcpOperatorAuth.js";
-import { ScenarioService } from "./services/research/scenarioService.js";
+import { ForecastEvaluationService } from "./services/research/forecastEvaluationService.js";
+import { ScenarioService, loadSignalPolicy } from "./services/research/scenarioService.js";
 import { ResearchStore } from "./services/research/researchStore.js";
 import { EventLedger } from "./services/research/eventLedger.js";
 import { OfficialSourceService, loadResearchSources } from "./services/research/officialSources.js";
@@ -744,6 +745,7 @@ export function createAppServer(overrides = {}) {
   });
   config.market.marketDataService = marketDataService;
   const marketSearchRateLimiter = overrides.marketSearchRateLimiter || new SlidingWindowRateLimiter({ maxRequests: 30, windowMs: 60_000, maxKeys: 1_000 });
+  const researchSources = overrides.researchSources || loadResearchSources(process.env.RESEARCH_SOURCES_FILE);
   const marketWatchlistService = new MarketWatchlistService({
     rolloutBatch: config.market.watchlistRollout,
     initialReferences: config.market.initialTickers,
@@ -771,12 +773,16 @@ export function createAppServer(overrides = {}) {
   if (process.env.NODE_ENV !== "test") {
     apiQuotaTracker.configurePersistence(path.resolve(__dirname, process.env.PROVIDER_QUOTA_STATE_FILE || "data/provider-quota-state.json"));
   }
-  const researchSources = overrides.researchSources || loadResearchSources(process.env.RESEARCH_SOURCES_FILE);
   const researchStore = overrides.researchStore || new ResearchStore({persistencePath:process.env.NODE_ENV === "test"?null:path.resolve(__dirname,process.env.RESEARCH_LEDGER_FILE || "data/intel/research-ledger.json")});
   const eventLedger = new EventLedger({store:researchStore});
   const officialSourceService = new OfficialSourceService({store:researchStore,eventLedger,sources:researchSources,userAgent:process.env.RESEARCH_SEC_USER_AGENT || null});
   const newsArchive = overrides.newsArchive || new NewsArchive({ persistencePath: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, process.env.RESEARCH_NEWS_ARCHIVE_FILE || "data/intel/research-news.json") });
-  newsArchive.onIngest = items => eventLedger.ingest(items);
+  const researchPipeline={};
+  const researchGuard=(component,work)=>{
+    try {const result=work();researchPipeline[component]={...researchPipeline[component],status:researchPipeline[component]?.pendingReplay?"partial":"healthy",lastSuccessAt:new Date().toISOString(),pendingReplay:Boolean(researchPipeline[component]?.pendingReplay)};return result;}
+    catch(error){const code=/^[A-Z0-9_]{1,64}$/.test(error.code||"")?error.code:"RESEARCH_PIPELINE_ERROR";researchPipeline[component]={...researchPipeline[component],status:"blocked",lastFailureAt:new Date().toISOString(),failureCode:code,pendingReplay:true};log.warn("research_pipeline_blocked",{component,code});return null;}
+  };
+  newsArchive.onIngest = items => researchGuard("archiveEvents",()=>{for(let offset=0;offset<items.length;offset+=500)eventLedger.ingest(items.slice(offset,offset+500));});
   const materialAlertStore = overrides.materialAlertStore || new MaterialAlertStore({ persistencePath: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, process.env.RESEARCH_ALERT_STATE_FILE || "data/intel/research-alerts.json") });
   const rssAggregator = new RssAggregatorService({
     onCollected: articles => newsArchive.ingest(articles, { awarenessMode: config.awareness.mode }),
@@ -898,15 +904,17 @@ export function createAppServer(overrides = {}) {
   });
 
   const technicalContextService = new TechnicalContextService({store:dailyCandleStore});
-  const scenarioService = new ScenarioService({alerts:materialAlertStore,technicalContext:technicalContextService,eventLedger,candleStore:dailyCandleStore,policy:overrides.signalPolicy||{}});
+  const scenarioService = new ScenarioService({alerts:materialAlertStore,technicalContext:technicalContextService,eventLedger,candleStore:dailyCandleStore,policy:overrides.signalPolicy||loadSignalPolicy(process.env.RESEARCH_SIGNAL_POLICY_FILE)});
   orchestrator.researchCycle = () => {
     const publicEvents=awarenessService.getSnapshot({limit:100},{publicView:true});
-    if(publicEvents.mode === "visible") eventLedger.ingest([...publicEvents.recent,...publicEvents.upcoming].map(e=>({...e,url:e.canonicalUrl,eventTime:e.scheduledAt})),{sourceId:"awareness"});
-    scenarioService.refresh({instrumentIds:marketWatchlistService.selectedInstrumentIds});
+    if(publicEvents.mode === "visible") researchGuard("awarenessEvents",()=>eventLedger.ingest([...publicEvents.recent,...publicEvents.upcoming].map(e=>({...e,url:e.canonicalUrl,eventTime:e.scheduledAt})),{sourceId:"awareness"}));
+    researchGuard("scenarios",()=>scenarioService.refresh({instrumentIds:marketWatchlistService.selectedInstrumentIds}));
   };
   app.locals.socketServer = socketServer;
   app.locals.newsArchive = newsArchive;
+  app.locals.researchPipeline = researchPipeline;
   app.locals.researchStore = researchStore;
+  app.locals.forecastEvaluationService = new ForecastEvaluationService({store:researchStore,candleStore:dailyCandleStore});
   app.locals.eventLedger = eventLedger;
   app.locals.officialSourceService = officialSourceService;
   app.locals.technicalContextService = technicalContextService;

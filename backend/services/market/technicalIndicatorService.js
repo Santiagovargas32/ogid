@@ -8,7 +8,7 @@ export class TechnicalIndicatorService {
     const now = this.now(); const queried = this.store.query({ instrumentId, interval, adjustmentMode, limit });
     const candles = queried.filter(c => Date.parse(c.closeTime) <= now.getTime());
     const seriesRevision = stableHash(candles);
-    const key = stableHash({ instrumentId, interval, adjustmentMode, limit, seriesRevision, parameters, calendar: CALENDAR_VERSION, method: TECHNICAL_INDICATORS_METHOD_VERSION });
+    const key = stableHash({ instrumentId, interval, adjustmentMode, limit, seriesRevision, parameters, instrument: getInstrumentById(instrumentId), calendar: CALENDAR_VERSION, method: TECHNICAL_INDICATORS_METHOD_VERSION });
     for (const [id, row] of this.cache) if (row.expiresAt <= now.getTime()) this.cache.delete(id);
     const cached = this.cache.get(key); if (cached) { this.cache.delete(key); this.cache.set(key,cached); return cached.result; }
     const result = { instrumentId, interval, adjustmentMode, seriesRevision, calendarVersion: CALENDAR_VERSION, ...calculateTechnicalIndicators(candles, { interval, instrument: getInstrumentById(instrumentId), parameters, calculatedAt: now.toISOString() }) };

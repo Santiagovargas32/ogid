@@ -1,15 +1,23 @@
+import { readFileSync } from "node:fs";
 import { stableHash } from "../../utils/stableHash.js";
 import { AppError } from "../../utils/error.js";
 import { getInstrumentById } from "../market/instrumentRegistry.js";
 export const SIGNAL_POLICY = Object.freeze({methodVersion:"scenario-signals-v1",breakoutAtr:0.25,anomalyAtr:1.5,relativeVolume:2,hysteresis:0.75,cooldownMs:1800000,expiryMs:7*86400000});
+export function loadSignalPolicy(file) {
+  if(!file)return {};
+  const value=JSON.parse(readFileSync(file,"utf8"));
+  const allowed=new Set([...Object.keys(SIGNAL_POLICY),"benchmarkInstrumentId"]);
+  if(!value||Array.isArray(value)||Object.keys(value).some(k=>!allowed.has(k))||value.methodVersion!=null&&!/^[A-Za-z0-9._-]{1,80}$/.test(value.methodVersion))throw new Error("invalid-signal-policy-file");
+  return value;
+}
 const roles=["favorable","central","adverse"];
 const terminal=new Set(["invalidated","expired"]);
-function compactContext(c){return {snapshotId:c.snapshotId,seriesRevision:c.seriesRevision,lastClosedCandleAt:c.lastClosedCandleAt,sampleSize:c.sampleSize,observed:c.observed,levels:c.indicators.levels,atr:c.indicators.atr14Wilder,relativeVolume:c.indicators.relativeVolume,quality:c.quality};}
+function compactContext(c){return {snapshotId:c.snapshotId,seriesRevision:c.seriesRevision,lastClosedCandleAt:c.lastClosedCandleAt,sampleSize:c.sampleSize,observed:c.observed,levels:c.indicators.levels,atr:c.indicators.atr14Wilder,relativeVolume:c.indicators.relativeVolume,relativeReturn:c.indicators.relativeReturn,benchmarkInstrumentId:c.benchmarkInstrumentId,quality:c.quality};}
 export class ScenarioService {
   constructor({alerts,technicalContext,eventLedger,candleStore,now=Date.now,policy={}}={}){Object.assign(this,{alerts,technicalContext,eventLedger,candleStore,now});this.policy={...SIGNAL_POLICY,...policy};for(const key of ["breakoutAtr","anomalyAtr","relativeVolume","hysteresis","cooldownMs","expiryMs"])if(typeof this.policy[key]!=="number"||!Number.isFinite(this.policy[key])||this.policy[key]<=0)throw new Error("invalid-signal-policy");if(this.policy.hysteresis>=1)throw new Error("invalid-signal-hysteresis");}
   refresh({instrumentIds=[]}={}) {
     if(instrumentIds.length>50)throw new AppError("Universo demasiado grande.",400,"INVALID_INSTRUMENTS");
-    const contexts=instrumentIds.map(id=>{if(!getInstrumentById(id))throw new AppError("Instrumento no verificado.",400,"UNRESOLVED_INSTRUMENT");return this.technicalContext.get({instrumentId:id});});
+    const contexts=instrumentIds.map(id=>{if(!getInstrumentById(id))throw new AppError("Instrumento no verificado.",400,"UNRESOLVED_INSTRUMENT");return this.technicalContext.get({instrumentId:id,benchmarkInstrumentId:this.policy.benchmarkInstrumentId});});
     const at=new Date(this.now()).toISOString();
     return this.alerts.researchTransaction(state=>{
       let changes=0;
@@ -30,7 +38,7 @@ export class ScenarioService {
             if(role==="central")status=price>=lower&&price<=upper?"confirmed":"invalidated";
             if(previous?.status==="confirmed"&&status==="watch")status="confirmed";
           }
-          const row={scenarioId:id,instrumentId:ctx.instrumentId,role,status,revision:(previous?.revision||0)+1,createdAt:previous?.createdAt||at,observedAt:ctx.lastClosedCandleAt||at,generatedAt:previous?.generatedAt||at,updatedAt:at,expiresAt:previous?.expiresAt||new Date(this.now()+this.policy.expiryMs).toISOString(),horizon:{durationDays:7,interval:"1day"},anchor,context:compactContext(ctx),evidence,
+          const row={scenarioId:id,instrumentId:ctx.instrumentId,role,status,revision:(previous?.revision||0)+1,createdAt:previous?.createdAt||at,observedAt:ctx.lastClosedCandleAt||previous?.observedAt||at,generatedAt:previous?.generatedAt||at,updatedAt:at,expiresAt:previous?.expiresAt||new Date(this.now()+this.policy.expiryMs).toISOString(),horizon:{durationDays:this.policy.expiryMs/86400000,interval:"1day"},anchor,context:compactContext(ctx),evidence,
             mechanism:evidence.length?"Evidenced channels supplied as hypotheses; conditions below use observed price levels.":"Observed price condition; economic cause unknown.",confirmation:role==="favorable"?"Closed price > prior resistance + ATR buffer":role==="adverse"?"Closed price < prior support - ATR buffer":"Closed price within anchored support/resistance plus ATR buffer",invalidation:role==="favorable"?"Closed price < anchored support - ATR buffer":role==="adverse"?"Closed price > anchored resistance + ATR buffer":"Closed price outside anchored range",quality:ctx.quality,policy:this.policy,probability:null,targetPrice:null,deliveredAt:null,acknowledgedAt:null,
             meaning:"confirmed = observable conditions met, not a guaranteed future outcome",revisions:previous?.revisions||[]};
           const semantic=x=>stableHash({...x,revision:null,updatedAt:null,revisions:null});if(previous&&semantic(previous)===semantic(row))continue;
@@ -38,8 +46,8 @@ export class ScenarioService {
           state.scenarios[id]=row;this.alerts.appendChange(state,{kind:!previous||previous.status!==row.status?"scenario-transition":"scenario-revision",entityId:id,revision:row.revision,snapshot:row,reason:correction?"data-correction":!valid?"pending-usable-data":"closed-candle-observation"});changes++;
         }
         // Return/gap anomalies preserve unknown cause; no keyword-based causal claim.
-        const bars=this.candleStore.query({instrumentId:ctx.instrumentId,interval:"1day",adjustmentMode:"splits",limit:2});const last=bars.at(-1),prior=bars.at(-2);const atr=ctx.indicators.atr14Wilder.value;
-        const metrics={"return-anomaly":valid&&prior&&last?Math.abs(last.close-prior.close)/atr:null,"gap-anomaly":valid&&prior&&last?Math.abs(last.open-prior.close)/atr:null,"volume-anomaly":valid?ctx.indicators.relativeVolume.value:null};
+        const bars=this.candleStore.query({instrumentId:ctx.instrumentId,interval:"1day",adjustmentMode:"splits",limit:5}).filter(c=>Date.parse(c.closeTime)<=Date.parse(ctx.lastClosedCandleAt)).slice(-2);const last=bars.at(-1),prior=bars.at(-2);const atr=ctx.indicators.atr14Wilder.value;
+        const metrics={"return-anomaly":valid&&prior&&last?Math.abs(last.close-prior.close)/atr:null,"gap-anomaly":valid&&prior&&last?Math.abs(last.open-prior.close)/atr:null,"volume-anomaly":valid?ctx.indicators.relativeVolume.value:null,"relative-return-anomaly":valid&&ctx.indicators.relativeReturn?.value!=null?Math.abs(ctx.indicators.relativeReturn.value)/(atr/ctx.observed.close):null};
         for(const [type,metric]of Object.entries(metrics)){
           const id=`signal-${stableHash([ctx.instrumentId,type]).slice(0,36)}`;const previous=state.signals[id];const threshold=type==="volume-anomaly"?this.policy.relativeVolume:this.policy.anomalyAtr;
           if(metric==null)continue;const active=previous?.active?metric>=threshold*this.policy.hysteresis:metric>=threshold;
