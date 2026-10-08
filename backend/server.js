@@ -530,7 +530,8 @@ function readConfig(overrides = {}) {
     },
     security: {
       adminApiToken: process.env.ADMIN_API_TOKEN || "",
-      allowLocalAdmin: toBool(process.env.ALLOW_LOCAL_ADMIN, true)
+      allowLocalAdmin: toBool(process.env.ALLOW_LOCAL_ADMIN, true),
+      allowLanAdmin: toBool(process.env.ALLOW_LAN_ADMIN, true)
     }
   };
 

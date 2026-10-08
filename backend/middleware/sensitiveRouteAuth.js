@@ -6,6 +6,16 @@ function isLoopback(value = "") {
   return ip === "127.0.0.1" || ip === "::1";
 }
 
+function isLanAddress(value = "") {
+  const ip = normalizeIp(value);
+  if (ip.includes(":")) return /^(?:f[cd][\da-f]{2}|fe[89ab][\da-f]):/.test(ip);
+  const [first, second] = ip.split(".").map(Number);
+  return first === 10 ||
+    (first === 172 && second >= 16 && second <= 31) ||
+    (first === 192 && second === 168) ||
+    (first === 169 && second === 254);
+}
+
 function readPresentedToken(req) {
   const authorization = String(req.headers.authorization || "");
   if (/^Bearer\s+/i.test(authorization)) return authorization.replace(/^Bearer\s+/i, "").trim();
@@ -31,7 +41,8 @@ export function sensitiveRouteAuth(req, res, next) {
   const security = res.app.locals.config?.security || {};
   const remoteAddress = req.clientIpInfo?.remoteAddress || req.socket?.remoteAddress || req.ip || "";
   const localAllowed = security.allowLocalAdmin !== false && isLoopback(remoteAddress);
+  const lanAllowed = security.allowLanAdmin === true && isLanAddress(remoteAddress);
   const tokenAllowed = tokensMatch(security.adminApiToken, readPresentedToken(req));
-  if (localAllowed || tokenAllowed) return next();
+  if (localAllowed || lanAllowed || tokenAllowed) return next();
   return res.status(401).json({ ok: false, error: { code: "ADMIN_AUTH_REQUIRED", message: "Authentication is required for this operation." } });
 }
