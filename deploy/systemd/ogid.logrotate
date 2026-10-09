@@ -1,0 +1,10 @@
+"@OGID_ROOT@/backend/data/logs/ogid.log" {
+    daily
+    maxsize 20M
+    rotate 7
+    compress
+    delaycompress
+    copytruncate
+    missingok
+    notifempty
+}

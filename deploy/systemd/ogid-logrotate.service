@@ -1,0 +1,8 @@
+[Unit]
+Description=Rotate OGID execution log
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/logrotate --state %h/ogid/backend/data/logs/logrotate.state %h/.config/ogid/logrotate.conf
+UMask=0077
+NoNewPrivileges=true

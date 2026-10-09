@@ -1,0 +1,11 @@
+[Unit]
+Description=Check OGID log rotation every fifteen minutes
+
+[Timer]
+OnCalendar=*:0/15
+Persistent=true
+AccuracySec=1min
+Unit=ogid-logrotate.service
+
+[Install]
+WantedBy=timers.target

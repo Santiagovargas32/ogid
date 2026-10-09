@@ -60,10 +60,19 @@ export class ProviderRuntime {
         const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 9_000);
         try {
           let response = await this.fetchImpl(url, { ...options, signal: controller.signal, retries: undefined, timeoutMs: undefined, dedupeKey: undefined, providerConcurrency: undefined, hostConcurrency: undefined, idempotent: undefined, throwHttpErrors: undefined, quotaTracker: undefined, bufferResponse: undefined });
-          // Opt-in for non-streaming model calls: hold the semaphore and abort
-          // timer until generation/body transfer finishes, not just headers.
+          // Buffered model/RSS calls keep their slot and deadline until the
+          // response body finishes, including the configured byte limit.
           if (options.bufferResponse) {
-            const body = await response.arrayBuffer();
+            let body;
+            if (options.maxResponseBytes && response.body) {
+              const chunks = []; let bytes = 0;
+              for await (const chunk of response.body) {
+                bytes += chunk.byteLength;
+                if (bytes > options.maxResponseBytes) throw new ProviderError(ProviderErrorCode.NETWORK, `${provider}-body-too-large`, { provider, retryable: false });
+                chunks.push(Buffer.from(chunk));
+              }
+              body = Buffer.concat(chunks);
+            } else body = await response.arrayBuffer();
             response = new Response([204, 205, 304].includes(response.status) ? null : body, { status: response.status, statusText: response.statusText, headers: response.headers });
           }
           if (response.status === 429 || response.status >= 500) {

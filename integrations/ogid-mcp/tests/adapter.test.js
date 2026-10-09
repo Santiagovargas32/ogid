@@ -104,10 +104,14 @@ test("catálogo separa admisión y estado operativo desconocido", async () => {
 
 test("salud no expone rutas, conexiones, tokens ni confunde checkout con proceso", async () => {
   const result = await invoke("ogid_health", {}, async route => route === "/api/health" ? {
-    status: "ok", websocket: { secret: "SECRET" }, market: { snapshotPath: "/private" }, dataQuality: { market: { synthetic: true } }
+    status: "ok", websocket: { secret: "SECRET" }, market: { snapshotPath: "/private" }, dataQuality: { market: { synthetic: true } },
+    storage: {state:"ready",businessStorage:"sqlite",databasePath:"/private/db",migrations:[{version:7,name:"/private/migration"}],failed:0,queue:{pending:1,inFlight:2,secret:"SECRET"},worker:{heartbeatAt:"2026-10-09T22:00:00Z",database:{sampledAt:"2026-10-09T22:00:00Z",counts:{articles:35000,secret:"SECRET"},checkpoints:[{body:"SECRET"}],pipelines:[{pipelineId:"news",status:"healthy",payload:"SECRET"}]}}}
   } : snapshot());
   assert.equal(result.structuredContent.data.runningCommitVerified, false);
   assert.equal(result.structuredContent.data.dataQuality.market.synthetic, true);
+  assert.equal(result.structuredContent.data.storage.worker.counts.articles, 35000);
+  assert.equal(result.structuredContent.data.storage.worker.pipelines[0].status, "healthy");
+  assert.deepEqual(result.structuredContent.data.storage.migrationVersions, [7]);
   assert.ok(!JSON.stringify(result).includes("SECRET"));
   assert.ok(!JSON.stringify(result).includes("/private"));
 });

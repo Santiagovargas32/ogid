@@ -34,7 +34,7 @@ function requestOptions(req, res, {
   return {
     countries: parseCountries(req.query.countries, countryDefaults),
     force: req.query.force === "1" || req.query.force === "true",
-    stored: req.query.stored === "1" || req.query.stored === "true",
+    stored: (res.app.locals.business && !["1","true"].includes(req.query.force)) || req.query.stored === "1" || req.query.stored === "true",
     windowHours,
     maxEvents: parsePositiveInt(req.query.maxEvents, 450, { min: 50, max: 1000 }),
     activeWindowHours: parsePositiveInt(

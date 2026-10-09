@@ -53,9 +53,11 @@ const PROVIDERS = {
       timeoutMs: config.timeoutMs
     }),
   rss: async (config) =>
-    fetchRss({
+    (config.rssWorkerFetch || fetchRss)({
       feeds: config.rssFeeds,
-      timeoutMs: config.timeoutMs
+      timeoutMs: config.timeoutMs,
+      lane: config.queryLane,
+      awarenessMode: config.awarenessMode
     }),
   gdelt: async (config) =>
     fetchGdelt({
@@ -445,6 +447,8 @@ export async function fetchAggregatedNews({
   mediastackBaseUrl,
   gdeltBaseUrl,
   rssFeeds = [],
+  rssWorkerFetch,
+  awarenessMode = "off",
   query,
   queryPacks = {},
   queryPackGroups = null,
@@ -520,6 +524,7 @@ export async function fetchAggregatedNews({
   const filteredCountByProvider = Object.fromEntries(normalizedProviders.map((providerName) => [providerName, 0]));
   const dynamicProvidersSkipped = [];
   const rssFeedStatus = [];
+  let rssAcquisition=null;
   const policySkippedProviders = new Map(
     providerResolution.providersSkipped.map((provider) => [provider.provider, provider])
   );
@@ -594,6 +599,9 @@ export async function fetchAggregatedNews({
         mediastackBaseUrl,
         gdeltBaseUrl,
         rssFeeds,
+        rssWorkerFetch,
+        queryLane: normalizedLane,
+        awarenessMode,
         query: providerQuery,
         language,
         pageSize,
@@ -625,6 +633,7 @@ export async function fetchAggregatedNews({
       filteredCountByProvider[providerName] = filteredArticles.length;
       if (providerName === "rss" && Array.isArray(providerResult.sourceMeta?.feedStatus)) {
         rssFeedStatus.push(...providerResult.sourceMeta.feedStatus);
+        rssAcquisition=Object.fromEntries(["collectedCount","returnedCount","returnedCorpusBounded","catalogSize","queriedFeedCount","partial","acquisition"].filter(key=>providerResult.sourceMeta[key]!==undefined).map(key=>[key,providerResult.sourceMeta[key]]));
       }
       attempts.push({
         provider: providerName,
@@ -717,6 +726,7 @@ export async function fetchAggregatedNews({
         queryOriginalLengthByProvider,
         queryTruncatedByProvider,
         rssFeedStatus,
+        rssAcquisition,
         queryLane: normalizedLane,
         financialQueryPackKey: normalizedLane === "financial" ? financialQueryPackKey : null,
         financialTickerCoverageByProvider: normalizedLane === "financial" && financialQueryPackKey === "corporate-watchlist"
@@ -753,6 +763,7 @@ export async function fetchAggregatedNews({
       queryOriginalLengthByProvider,
       queryTruncatedByProvider,
       rssFeedStatus,
+      rssAcquisition,
       queryLane: normalizedLane,
       financialQueryPackKey: normalizedLane === "financial" ? financialQueryPackKey : null,
       financialTickerCoverageByProvider: normalizedLane === "financial" && financialQueryPackKey === "corporate-watchlist"

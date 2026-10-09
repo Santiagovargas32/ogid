@@ -4,7 +4,7 @@ import stateManager from "../state/stateManager.js";
 import { computeMarketImpact } from "../services/market/impactEngineService.js";
 import { buildCoverageByMode, computeQuoteAgeMin, decorateQuote, resolveQuoteOriginStage } from "../services/market/quoteMetadata.js";
 import { parseCountries, parsePositiveInt, parseTickers } from "../utils/filters.js";
-import { getInstrumentByCanonicalSymbol, getInstrumentById } from "../services/market/instrumentRegistry.js";
+import { getInstrumentByCanonicalSymbol, getInstrumentById, listVerifiedInstruments } from "../services/market/instrumentRegistry.js";
 import { SUPPORTED_CANDLE_INTERVALS } from "../services/market/canonicalCandle.js";
 import { MarketDataValidationError } from "../services/marketData/normalizer.js";
 import { isRetryableYahooError, isYahooRateLimitError, SlidingWindowRateLimiter, yahooRetryAfterMs } from "../services/marketData/rateLimit.js";
@@ -108,7 +108,7 @@ function decorateImpactItems(items = [], marketQuotes = {}) {
 }
 
 export function getQuotes(req, res) {
-  const snapshot = stateManager.getSnapshot();
+  const snapshot = stateManager.getAnalysisSnapshot();
   const config = res.app.locals.config;
   const defaultTickers = config.market.tickers;
   const tickers = parseTickers(req.query.tickers, defaultTickers);
@@ -167,7 +167,7 @@ export function getQuotes(req, res) {
 export function getWatchlist(_req, res) { return res.json(mapResponse(res.app.locals.marketWatchlistService.snapshot())); }
 
 export function getProviderStatus(_req, res) {
-  const snapshot = stateManager.getSnapshot();
+  const snapshot = stateManager.getAnalysisSnapshot();
   const market = snapshot.market || {};
   return res.json(mapResponse({
     provider: res.app.locals.config.market?.provider || "yahoo",
@@ -249,6 +249,7 @@ export async function searchInstruments(req, res, next) {
 export async function updateWatchlist(req, res) {
   try {
     const snapshot = await res.app.locals.marketWatchlistService.update(req.body?.instrumentIds);
+    if(res.app.locals.business)await res.app.locals.storageManager.request("domain.registry",{instruments:listVerifiedInstruments()});
     syncMarketTickerConfig(res.app.locals.config, snapshot.selectedSymbols);
     stateManager.setMarketTickers(snapshot.selectedSymbols);
     const shouldRefresh = res.app.locals.config.market.enabled && !res.app.locals.config.runtime?.disableBackgroundRefresh;
@@ -287,6 +288,22 @@ export async function getCandles(req, res, next) {
   const from = req.query.from ? new Date(req.query.from) : null; const to = req.query.to ? new Date(req.query.to) : null;
   if (Boolean(from) !== Boolean(to) || (from && !Number.isFinite(from.getTime())) || (to && !Number.isFinite(to.getTime())) || (from && to && from >= to)) return res.status(400).json({ ok: false, error: { code: "INVALID_RANGE", message: "from/to must define a valid bounded range." } });
   const forceRefresh = yahooBacked && ["1", "true"].includes(String(req.query.force || "").trim().toLowerCase());
+  const source=String(req.query.source || "stored");
+  if(!["stored","yahoo"].includes(source))return res.status(400).json({ok:false,error:{code:"INVALID_CANDLE_SOURCE",message:"source must be stored or yahoo."}});
+  if(source==="yahoo" && (!yahooBacked || (from && !forceRefresh)))return res.status(400).json({ok:false,error:{code:"INVALID_CANDLE_SOURCE",message:"Yahoo source supports the current Yahoo market provider; absolute history requires force."}});
+  if(source==="yahoo"){
+    try{
+      const dataset=await res.app.locals.marketDataService.fetchYahooCandles(instrument.providerSymbols.yahoo,{
+        period:resolveCandlePeriod({interval,from,to,limit}),interval:{"1day":"1d","1h":"1h","30min":"30m","15min":"15m","5min":"5m"}[interval],from,to,force:forceRefresh,allowStale:true,limit
+      });
+      const candles=dataset.candles;
+      return res.json(mapResponse({instrumentId,interval,adjusted:adjustmentMode,from:from?.toISOString() || null,to:to?.toISOString() || null,limit,source:"yahoo",refreshMode:forceRefresh?"forced":"provider",status:dataset.stale?"stale":dataset.complete===false?"partial":candles.length?"fresh":"empty",error:dataset.error || null,candles,persistence:dataset.persistence,seriesRevision:stableHash(candles),snapshotId:stableHash(candles),lastClosedCandleAt:candles.at(-1)?.closeTime || null,
+        quality:{synthetic:false,stale:Boolean(dataset.stale),calendarPartial:candles.some(c=>c.calendar?.partial || !c.calendar)},coverage:{sampleSize:candles.length,from:candles[0]?.openTime || null,to:candles.at(-1)?.closeTime || null},warnings:["Yahoo split-adjusted OHLCV is not a verified total-return series."]}));
+    }catch(error){
+      if(error instanceof MarketDataValidationError)return res.status(400).json({ok:false,error:{code:error.code,message:error.message,details:error.details || null}});
+      return next(error);
+    }
+  }
   let marketDataStatus = null;
   let marketDataError = null;
   if (forceRefresh) {
@@ -303,13 +320,13 @@ export async function getCandles(req, res, next) {
       marketDataError = dataset.error || null;
     } catch (error) {
       if (error instanceof MarketDataValidationError) return res.status(400).json({ ok: false, error: { code: error.code, message: error.message, details: error.details || null } });
-      const existing = res.app.locals.dailyCandleService.query({ instrumentId, interval, adjustmentMode, from: from?.toISOString(), to: to?.toISOString(), limit });
+      const existing = await res.app.locals.dailyCandleService.query({ instrumentId, interval, adjustmentMode, from: from?.toISOString(), to: to?.toISOString(), limit });
       if (!existing.length) return next(error);
       marketDataStatus = "stale";
       marketDataError = { code: error.code || "YAHOO_REQUEST_FAILED", message: error.message };
     }
   }
-  const candles = res.app.locals.dailyCandleService.query({ instrumentId, interval, adjustmentMode, from: from?.toISOString(), to: to?.toISOString(), limit });
+  const candles = await res.app.locals.dailyCandleService.query({ instrumentId, interval, adjustmentMode, from: from?.toISOString(), to: to?.toISOString(), limit });
   return res.json(mapResponse({ instrumentId, interval, adjusted: adjustmentMode, from: from?.toISOString() || null, to: to?.toISOString() || null, limit, refreshMode: forceRefresh ? "forced" : "local", status: marketDataStatus || (candles.length ? "stored" : "empty"), error: marketDataError, candles,seriesRevision:stableHash(candles),snapshotId:stableHash(candles),lastClosedCandleAt:candles.at(-1)?.closeTime||null,
     quality:{synthetic:candles.some(c=>c.synthetic||c.dataMode==="synthetic"),stale:candles.some(c=>c.dataMode==="stale"),calendarPartial:candles.some(c=>c.calendar?.partial||!c.calendar)},coverage:{sampleSize:candles.length,from:candles[0]?.openTime||null,to:candles.at(-1)?.closeTime||null},warnings:["Yahoo split-adjusted OHLCV is not a verified total-return series."] }));
 }
@@ -340,13 +357,13 @@ export async function getConditions(req, res, next) {
   }
 }
 
-export function getTechnicalIndicators(req, res) {
+export async function getTechnicalIndicators(req, res) {
   const instrumentId = String(req.query.instrumentId || ""); const instrument = getInstrumentById(instrumentId);
   if (!instrument || instrument.verificationStatus !== "verified") return res.status(404).json({ ok: false, error: { code: "INSTRUMENT_NOT_FOUND", message: "Instrument is not enabled and verified." } });
   const interval = String(req.query.interval || "1day"); if (!SUPPORTED_CANDLE_INTERVALS.includes(interval)) return res.status(400).json({ ok: false, error: { code: "INVALID_INTERVAL", message: "The candle interval is not supported." } });
   const adjustmentMode = String(req.query.adjusted || "splits"); if (!["splits", "none"].includes(adjustmentMode)) return res.status(400).json({ ok: false, error: { code: "INVALID_ADJUSTMENT", message: "adjusted must be splits or none." } });
-  if (req.query.package) return res.json(mapResponse(res.app.locals.technicalContextService.get({instrumentId,interval,adjusted:adjustmentMode,package:String(req.query.package),limit:parsePositiveInt(req.query.limit,500,{min:1,max:2500})})));
-  return res.json(mapResponse(res.app.locals.technicalIndicatorService.calculate({ instrumentId, interval, adjustmentMode })));
+  if (req.query.package) return res.json(mapResponse(await res.app.locals.technicalContextService.get({instrumentId,interval,adjusted:adjustmentMode,package:String(req.query.package),limit:parsePositiveInt(req.query.limit,500,{min:1,max:2500})})));
+  return res.json(mapResponse(await res.app.locals.technicalIndicatorService.calculate({ instrumentId, interval, adjustmentMode })));
 }
 
 export async function backfillCandles(req, res, next) {
@@ -358,7 +375,7 @@ export async function backfillCandles(req, res, next) {
   } catch (error) { return next(error); }
 }
 
-export function getImpact(req, res) {
+export async function getImpact(req, res) {
   const snapshot = stateManager.getSnapshot();
   const config = res.app.locals.config;
 
@@ -382,7 +399,7 @@ export function getImpact(req, res) {
     predictionScores: snapshot.predictions?.predictionScoreByTicker || {}
   });
   impact.items = decorateImpactItems(impact.items || [], snapshot.market?.quotes || {});
-  impact.couplingV2 = buildCouplingV2({ req, service: res.app.locals.newsPriceCouplingService, articles: analysisArticles, impact });
+  impact.couplingV2 = await buildCouplingV2({ req, service: res.app.locals.newsPriceCouplingService, articles: analysisArticles, impact });
   impact.emptyReason = buildImpactEmptyReason(impact);
   impact.signalWindow = buildSignalWindow({
     articles: analysisArticles,
@@ -478,7 +495,7 @@ function buildTickerOutlookMatrix({ impactItems = [], predictionTickers = [], ma
   });
 }
 
-export function getAnalytics(req, res) {
+export async function getAnalytics(req, res) {
   const snapshot = stateManager.getSnapshot();
   const config = res.app.locals.config;
 
@@ -502,7 +519,7 @@ export function getAnalytics(req, res) {
     predictionScores: snapshot.predictions?.predictionScoreByTicker || {}
   });
   impact.items = decorateImpactItems(impact.items || [], snapshot.market?.quotes || {});
-  impact.couplingV2 = buildCouplingV2({ req, service: res.app.locals.newsPriceCouplingService, articles: analysisArticles, impact });
+  impact.couplingV2 = await buildCouplingV2({ req, service: res.app.locals.newsPriceCouplingService, articles: analysisArticles, impact });
   const predictions = filterPredictions(snapshot.predictions || {}, tickers);
   const predictedSectorDirection = buildPredictedSectorDirection(predictions);
   const tickerOutlookMatrix = buildTickerOutlookMatrix({

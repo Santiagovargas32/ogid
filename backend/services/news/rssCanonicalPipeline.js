@@ -23,7 +23,7 @@ export class RssCanonicalPipeline {
   state(feedId) { if (!this.states.has(feedId)) this.states.set(feedId, initialState()); return this.states.get(feedId); }
   hostSemaphore(host) { if (!this.hostSemaphores.has(host)) this.hostSemaphores.set(host, new Semaphore(this.hostConcurrency)); return this.hostSemaphores.get(host); }
   async fetch(url, options) {
-    if (!this.fetchImpl) return providerRuntime.fetch("rss", url, options);
+    if (!this.fetchImpl) return providerRuntime.fetch("rss", url, {...options, bufferResponse:true, maxResponseBytes:2*1024*1024});
     const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), options.timeoutMs);
     try { return await this.fetchImpl(url, { ...options, signal: controller.signal }); } finally { clearTimeout(timeout); }
   }
@@ -41,7 +41,7 @@ export class RssCanonicalPipeline {
     const results = await Promise.all(selected.map((feed) => global.use(() => this.#pollFeed(feed, deadlineAt))));
     const incoming = results.flatMap((result) => result.articles || []);
     // Archivo autorizado antes del límite del corpus canónico.
-    this.onCollected?.(incoming);
+    await this.onCollected?.(incoming);
     const merged = deduplicateRssArticles([...this.corpus, ...incoming], { maxItems: this.maxCorpusItems });
     this.metrics.cycles += 1; this.metrics.duplicates += Math.max(0, this.corpus.length + incoming.length - merged.items.length); this.metrics.latencyMs += Math.max(0, this.now() - startedAt);
     this.corpus = merged.items; this.persist();

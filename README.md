@@ -289,3 +289,20 @@ Includes:
 - deterministic unit tests (risk, sentiment, filters, impact)
 - provider stability tests (GNews query policy, GDELT cooldown, RSS invalid/disabled feeds)
 - integration tests (REST + WebSocket + pipeline diagnostics)
+
+## Servicio local y evolución del almacenamiento
+
+En Fedora, OGID puede ejecutarse como servicio de usuario con reinicio automático,
+archivo de log y rotación. Consulta [instalación y operación](docs/ogid-service.md).
+Las unidades y el instalador reproducible están en `deploy/systemd/`.
+
+La persistencia de noticias, eventos, velas, investigación y pipelines dispone de
+repositorios SQLite, cola acotada y un worker para almacenamiento y análisis.
+El [diagnóstico inicial](docs/storage-migration-plan.md) explica los bloqueos por
+JSON; el [estado y siguientes entregas](docs/storage-implementation-roadmap.md)
+detalla lo implementado y los límites pendientes.
+
+**La nueva versión no se ha activado ni se ha reiniciado el servicio actual.**
+Sigue la [guía de importación y arranque manual](docs/storage-cutover.md): conserva
+los datos, importa/verifica SQLite y prepara las unidades antes de iniciar OGID.
+Admin ya no carga Histórico diario; permanece accesible por petición API/MCP.

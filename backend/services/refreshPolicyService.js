@@ -95,12 +95,14 @@ export function resolveNewsPolicy({
   fallbackIntervalMs = null,
   fallbackPageSize = null
 } = {}) {
-  const band = resolveBandByProviderSnapshots(providerSnapshots);
+  const available=providerSnapshots.filter(snapshot=>!snapshot.exhausted&&!snapshot.exhaustedDay&&!snapshot.exhaustedMinute);
+  const band = resolveBandByProviderSnapshots(available.length ? available : providerSnapshots);
   const intervalMs = toFinite(intervalByBandMs[band]) ?? fallbackIntervalMs;
   const pageSize = toFinite(pageSizeByBand[band]) ?? fallbackPageSize;
 
   return {
     band,
+    skippedExhaustedProviders:available.length ? providerSnapshots.filter(snapshot=>!available.includes(snapshot)).map(snapshot=>snapshot.provider) : [],
     intervalMs: Number.isFinite(Number(intervalMs)) && Number(intervalMs) > 0 ? Number(intervalMs) : null,
     pageSize: Number.isFinite(Number(pageSize)) && Number(pageSize) > 0 ? Number(pageSize) : null
   };

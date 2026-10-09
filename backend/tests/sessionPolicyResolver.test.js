@@ -2,10 +2,19 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { resolveInstrumentSession } from "../services/market/instrumentRegistry.js";
 import { sessionPolicyResolver } from "../services/market/sessionPolicyResolver.js";
+import { tradingDay } from "../services/market/exchangeCalendar.js";
 
 const btc = Object.freeze({ canonicalSymbol: "BTC-USD", assetType: "crypto", sessionPolicy: "24x7", timezone: "UTC" });
 const spy = Object.freeze({ canonicalSymbol: "SPY", assetType: "etf", sessionPolicy: "exchange-hours", timezone: "America/New_York" });
 const crude = Object.freeze({ canonicalSymbol: "CL=F", assetType: "future", sessionPolicy: "exchange-hours", timezone: "America/New_York" });
+
+test("calendar and session caches isolate mutations and retain DST boundaries",()=>{
+  const cash={mic:"XNAS",timezone:"America/New_York",assetType:"equity",sessionPolicy:"exchange-hours"};
+  const day=tradingDay(cash,"2026-03-09");assert.equal(day.openTime,"2026-03-09T13:30:00.000Z");day.openTime="changed";day.warnings.push("changed");
+  const again=tradingDay(cash,"2026-03-09");assert.equal(again.openTime,"2026-03-09T13:30:00.000Z");assert.ok(!again.warnings.includes("changed"));
+  const time="2026-03-09T15:00:00.000Z",first=sessionPolicyResolver.resolve(cash,time);first.calendar.warnings.push("changed");assert.ok(!sessionPolicyResolver.resolve(cash,time).calendar.warnings.includes("changed"));
+  const future={...crude,sessionProfile:{verified:false}};assert.equal(sessionPolicyResolver.resolve(future,time).sessionPolicyPartial,true);future.sessionProfile.verified=true;assert.equal(sessionPolicyResolver.resolve(future,time).sessionPolicyPartial,false);
+});
 
 test("the current BTC-USD, SPY and CL=F fixtures resolve through one policy authority", () => {
   const asOf = "2026-08-03T15:00:00.000Z";

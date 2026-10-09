@@ -28,19 +28,19 @@ function parseBbox(value) {
   return [parts[0], parts[1], parts[2], parts[3]];
 }
 
-export function getMapConfig(_req, res) {
+export async function getMapConfig(_req, res) {
   const service = res.app.locals.mapLayerService;
-  res.json(mapResponse(service.getConfig()));
+  res.json(mapResponse(await service.getConfig()));
 }
 
-export function getMapPresets(_req, res) {
+export async function getMapPresets(_req, res) {
   const service = res.app.locals.mapLayerService;
-  res.json(mapResponse({ presets: service.getConfig().presets }));
+  res.json(mapResponse({ presets: (await service.getConfig()).presets }));
 }
 
-export function getMapThemes(_req, res) {
+export async function getMapThemes(_req, res) {
   const service = res.app.locals.mapLayerService;
-  res.json(mapResponse({ themes: service.getConfig().themes }));
+  res.json(mapResponse({ themes: (await service.getConfig()).themes }));
 }
 
 export async function getMapLayers(req, res) {
@@ -54,7 +54,7 @@ export async function getMapLayers(req, res) {
     bbox: parseBbox(req.query.bbox),
     limit: parsePositiveInt(req.query.limit, 250, { min: 10, max: 1000 }),
     preset: String(req.query.preset || "Global"),
-    stored: req.query.stored === "1" || req.query.stored === "true",
+    stored: (res.app.locals.business && !["1","true"].includes(req.query.force)) || req.query.stored === "1" || req.query.stored === "true",
     force: req.query.force === "1" || req.query.force === "true"
   });
   res.json(mapResponse(bundle));

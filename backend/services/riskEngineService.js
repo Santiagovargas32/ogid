@@ -33,7 +33,7 @@ function buildCountryAccumulator(country, timestamp) {
   };
 }
 
-function classifyTrend(delta) {
+export function classifyTrend(delta) {
   if (delta >= 8) {
     return "Rising";
   }
@@ -43,16 +43,17 @@ function classifyTrend(delta) {
   return "Stable";
 }
 
-export function computeCountryRisk({ articles = [], previousCountries = {} }) {
-  const timestamp = new Date().toISOString();
-  const countries = Object.fromEntries(
-    BASELINE_COUNTRIES.map((country) => [country.iso2, buildCountryAccumulator(country, timestamp)])
-  );
+export class CountryRiskAccumulator {
+  constructor(timestamp = new Date().toISOString()) {
+    this.countries = Object.fromEntries(
+      BASELINE_COUNTRIES.map((country) => [country.iso2, buildCountryAccumulator(country, timestamp)])
+    );
+  }
 
-  for (const article of articles) {
+  add(article) {
     const mentions = [...new Set(article.countryMentions || [])];
     if (!mentions.length) {
-      continue;
+      return;
     }
 
     const conflictWeight = article.conflict?.totalWeight ?? 0;
@@ -60,7 +61,7 @@ export function computeCountryRisk({ articles = [], previousCountries = {} }) {
     const tags = article.conflict?.tags || [];
 
     for (const iso2 of mentions) {
-      const target = countries[iso2];
+      const target = this.countries[iso2];
       if (!target) {
         continue;
       }
@@ -77,39 +78,48 @@ export function computeCountryRisk({ articles = [], previousCountries = {} }) {
     }
   }
 
-  for (const country of Object.values(countries)) {
-    country.score =
-      country.metrics.newsVolume * 2 +
-      country.metrics.negativeSentiment * 3 +
-      country.metrics.conflictTagWeight * 4;
-    country.level = classifyRisk(country.score);
+  finish(previousCountries = {}) {
+    const countries = this.countries;
+    for (const country of Object.values(countries)) {
+      country.score =
+        country.metrics.newsVolume * 2 +
+        country.metrics.negativeSentiment * 3 +
+        country.metrics.conflictTagWeight * 4;
+      country.level = classifyRisk(country.score);
 
-    const previousScore = previousCountries[country.iso2]?.score ?? 0;
-    country.trend = classifyTrend(country.score - previousScore);
-    country.topTags = Object.entries(country.tagCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3)
-      .map(([tag, count]) => ({ tag, count }));
+      const previousScore = previousCountries[country.iso2]?.score ?? 0;
+      country.trend = classifyTrend(country.score - previousScore);
+      country.topTags = Object.entries(country.tagCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([tag, count]) => ({ tag, count }));
 
-    delete country.tagCounts;
+      delete country.tagCounts;
+    }
+
+    const hotspots = Object.values(countries)
+      .sort((a, b) => b.score - a.score)
+      .map((country) => ({
+        iso2: country.iso2,
+        country: country.country,
+        lat: country.lat,
+        lng: country.lng,
+        score: country.score,
+        level: country.level,
+        metrics: country.metrics,
+        topTags: country.topTags,
+        updatedAt: country.updatedAt
+      }));
+
+    return {
+      countries,
+      hotspots
+    };
   }
+}
 
-  const hotspots = Object.values(countries)
-    .sort((a, b) => b.score - a.score)
-    .map((country) => ({
-      iso2: country.iso2,
-      country: country.country,
-      lat: country.lat,
-      lng: country.lng,
-      score: country.score,
-      level: country.level,
-      metrics: country.metrics,
-      topTags: country.topTags,
-      updatedAt: country.updatedAt
-    }));
-
-  return {
-    countries,
-    hotspots
-  };
+export function computeCountryRisk({ articles = [], previousCountries = {} }) {
+  const accumulator = new CountryRiskAccumulator();
+  for (const article of articles) accumulator.add(article);
+  return accumulator.finish(previousCountries);
 }

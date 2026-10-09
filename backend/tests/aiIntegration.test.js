@@ -74,7 +74,7 @@ test("visible market history reaches REST, WebSocket bootstrap/updates and front
     linkedArticles: [articles[index].id], linkedCountries: articles[index].countryMentions })) };
   stateManager.updateIntel({ news: articles, impact });
   const input = { snapshot: stateManager.getSnapshot(), signalCorpus: articles, displaySelection: articles, rawArticles: articles, instruments };
-  runtime.aiCoordinator.reconcileNewsSnapshot(input);
+  await runtime.aiCoordinator.reconcileNewsSnapshot(input);
   await waitUntil(() => runtime.aiCoordinator.active === 0);
   const baseUrl = `http://127.0.0.1:${runtime.server.address().port}`;
   const messages = [];
@@ -84,7 +84,7 @@ test("visible market history reaches REST, WebSocket bootstrap/updates and front
   const bootstrap = messages.find((message) => message.type === "snapshot");
   assert.deepEqual(bootstrap.data.ai.marketExplanationHistory.map((entry) => entry.ticker), ["LMT"]);
   setSnapshot(bootstrap.data);
-  runtime.aiCoordinator.reconcileMarketSnapshot(input);
+  await runtime.aiCoordinator.reconcileMarketSnapshot(input);
   await waitUntil(() => messages.some((message) => message.type === "ai:update:v1" && message.data.ai.marketExplanationHistory.length === 2));
   const update = messages.filter((message) => message.type === "ai:update:v1").at(-1);
   applyUpdate(update.data);

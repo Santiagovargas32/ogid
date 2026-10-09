@@ -1,4 +1,6 @@
 // Versionado desde fuentes oficiales; reglas recurrentes fuera de 2026 son parciales.
+import { dateTimeFormatter } from "../../utils/dateTimeFormat.js";
+const tradingDays=new Map();
 export const CALENDAR_VERSION = "exchange-calendar-2026.2";
 export const CALENDAR_SOURCES = Object.freeze({
   US: "https://www.nyse.com/trade/hours-calendars", XNAS: "https://www.nasdaqtrader.com/Trader.aspx?id=Calendar",
@@ -12,10 +14,10 @@ const HISTORICAL_CLOSURES = Object.freeze({
   XMIL: Object.freeze(Object.fromEntries(["2024-08-15","2025-08-15"].map(date=>[date,Object.freeze({reason:"ferragosto",sources:[CALENDAR_SOURCES.XMIL]})])))
 });
 export function addDate(date, days) { return new Date(Date.parse(`${date}T12:00:00Z`) + days * DAY).toISOString().slice(0,10); }
-export function localDate(value, zone) { return new Intl.DateTimeFormat("en-CA", { timeZone: zone, year:"numeric", month:"2-digit", day:"2-digit" }).format(new Date(value)); }
+export function localDate(value, zone) { return dateTimeFormatter("en-CA", { timeZone: zone, year:"numeric", month:"2-digit", day:"2-digit" }).format(new Date(value)); }
 export function zonedBoundary(date, minute, zone) {
   const [y,m,d] = date.split("-").map(Number); const wall = Date.UTC(y,m-1,d,Math.floor(minute/60),minute%60); let candidate = wall;
-  for(let i=0;i<4;i++) { const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: zone, hourCycle:"h23", year:"numeric", month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit" }).formatToParts(new Date(candidate)).map(p=>[p.type,p.value]));
+  for(let i=0;i<4;i++) { const parts = Object.fromEntries(dateTimeFormatter("en-CA", { timeZone: zone, hourCycle:"h23", year:"numeric", month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit" }).formatToParts(new Date(candidate)).map(p=>[p.type,p.value]));
     const actual = Date.UTC(+parts.year,+parts.month-1,+parts.day,+parts.hour%24,+parts.minute); const delta=wall-actual; candidate+=delta; if(!delta) break;
   } return new Date(candidate).toISOString();
 }
@@ -36,6 +38,13 @@ export function calendarId(instrument={}) {
   return null;
 }
 export function tradingDay(instrument, date) {
+  const key=JSON.stringify([calendarId(instrument),instrument.timezone || "UTC",date]);
+  if(tradingDays.has(key)){const day=tradingDays.get(key);tradingDays.delete(key);tradingDays.set(key,day);return structuredClone(day);}
+  const day=buildTradingDay(instrument,date);tradingDays.set(key,day);
+  if(tradingDays.size>512)tradingDays.delete(tradingDays.keys().next().value);
+  return structuredClone(day);
+}
+function buildTradingDay(instrument, date) {
   const id=calendarId(instrument); const us=["XNYS","XNAS","ARCX","XASE"].includes(id); const y=+date.slice(0,4); const e=easter(y);
   const zone=us?"America/New_York":id==="XETR"?"Europe/Berlin":id==="XAMS"?"Europe/Amsterdam":id==="XMIL"?"Europe/Rome":instrument.timezone || "UTC";
   const holidays=us?[observed(`${y}-01-01`),nth(y,1,1,3),nth(y,2,1,3),addDate(e,-2),last(y,5,1),...(y>=2022?[observed(`${y}-06-19`)]:[]),observed(`${y}-07-04`),nth(y,9,1,1),nth(y,11,4,4),observed(`${y}-12-25`)]:[`${y}-01-01`,addDate(e,-2),addDate(e,1),`${y}-05-01`,`${y}-12-25`,`${y}-12-26`,...(["XETR","XMIL"].includes(id)?[`${y}-12-24`,`${y}-12-31`]:[])];
@@ -74,9 +83,9 @@ export function expectedIntradayGapCount(previous,current,instrument,intervalMs)
 export function cashCalendarSchedule(instrument,value,intervalMs=300000) {
   const now=+new Date(value); const id=calendarId(instrument); const zone=tradingDay(instrument,new Date(value).toISOString().slice(0,10)).timezone;
   const date=localDate(value,zone); const day=tradingDay(instrument,date); const open=Date.parse(day.openTime),close=Date.parse(day.closeTime); const eligible=now>=open&&now<close;
-  const previous=adjacentTradingDay(instrument,date,-1); const next=now<open?day:adjacentTradingDay(instrument,date,1);
-  const expected=now>=close?day.closeTime:eligible&&now-open>=intervalMs?new Date(open+Math.floor((now-open)/intervalMs)*intervalMs).toISOString():previous?.closeTime || null;
-  const parts=Object.fromEntries(new Intl.DateTimeFormat("en",{timeZone:zone,hourCycle:"h23",hour:"2-digit",minute:"2-digit"}).formatToParts(new Date(now)).map(p=>[p.type,p.value])); const minute=+parts.hour*60 + +parts.minute;
+  const expected=now>=close?day.closeTime:eligible&&now-open>=intervalMs?new Date(open+Math.floor((now-open)/intervalMs)*intervalMs).toISOString():adjacentTradingDay(instrument,date,-1)?.closeTime || null;
+  const next=eligible?null:now<open?day:adjacentTradingDay(instrument,date,1);
+  const parts=Object.fromEntries(dateTimeFormatter("en",{timeZone:zone,hourCycle:"h23",hour:"2-digit",minute:"2-digit"}).formatToParts(new Date(now)).map(p=>[p.type,p.value])); const minute=+parts.hour*60 + +parts.minute;
   const trading=!day.closed&&!day.halfDayPending; const phase=eligible?"regular":trading&&day.premarket&&minute>=day.premarket.openMinute&&minute<day.premarket.closeMinute?"premarket":trading&&day.afterHours&&minute>=day.afterHours.openMinute&&minute<day.afterHours.closeMinute?"after-hours":"closed";
   return { eligible,sessionState:eligible?"open":day.halfDayPending?"unknown":"closed",sessionPhase:phase,sessionId:eligible?date:null,minute,sessionOpenMinute:day.openMinute,sessionCloseMinute:day.closeMinute,expectedLatestCandleAt:day.halfDayPending?null:expected,nextEligibleAt:eligible?null:next?.openTime || null,timezone:zone,sessionCalendar:id||"weekday_exchange_hours_approximation",sessionPolicyPartial:day.partial,calendar:day,limitations:day.warnings };
 }
