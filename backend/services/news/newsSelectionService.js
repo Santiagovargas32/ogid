@@ -153,32 +153,31 @@ function buildRecentFingerprintSet(previousArticles = [], noveltyWindowMs, nowMs
   return set;
 }
 
-function selectWithDiversity(scored = [], { limit, maxPerSource, maxSimilarHeadline }) {
+function selectWithDiversity(scored = [], { limit, maxPerSource, maxSimilarHeadline, countries = [], fillAvailable = false }) {
   const sourceCount = new Map();
   const headlineCount = new Map();
   const selected = [];
 
-  for (const article of scored) {
+  const countryLeaders = countries.map(country => scored.find(article => article.countryMentions?.includes(country))).filter(Boolean);
+  const ordered = [...new Set([...countryLeaders, ...scored])];
+  const take = (article, sourceLimit) => {
+    if (selected.includes(article)) return;
     const sourceKey = normalizeText(article.sourceName || "unknown");
     const sourceHits = sourceCount.get(sourceKey) || 0;
-    if (sourceHits >= maxPerSource) {
-      continue;
-    }
+    if (sourceHits >= sourceLimit) return;
 
     const headlineKey = buildHeadlineFingerprint(article) || "untitled";
     const headlineHits = headlineCount.get(headlineKey) || 0;
-    if (headlineHits >= maxSimilarHeadline) {
-      continue;
-    }
+    if (headlineHits >= maxSimilarHeadline) return;
 
     selected.push(article);
     sourceCount.set(sourceKey, sourceHits + 1);
     headlineCount.set(headlineKey, headlineHits + 1);
 
-    if (selected.length >= limit) {
-      break;
-    }
-  }
+  };
+  for (const article of ordered) { take(article, maxPerSource); if (selected.length >= limit) break; }
+  // Source diversity is a preference; a small source set must not hide valid news.
+  if (fillAvailable && selected.length < limit) for (const article of ordered) { take(article, limit); if (selected.length >= limit) break; }
 
   return selected;
 }
@@ -249,6 +248,9 @@ export function buildIntelNewsSelection({
   watchlistCountries = [],
   now = new Date(),
   analyzeLimit = 80,
+  displayLimit = analyzeLimit,
+  ensureCountryCoverage = false,
+  fillAvailable = false,
   candidateWindowHours = 36,
   noveltyWindowHours = 12,
   maxPerSource = 3,
@@ -277,10 +279,12 @@ export function buildIntelNewsSelection({
     });
 
   const signalCorpus = scored.slice(0, selectionCap(analyzeLimit));
-  const displaySelection = selectWithDiversity(signalCorpus, {
-    limit: selectionCap(analyzeLimit),
+  const displaySelection = selectWithDiversity(scored, {
+    limit: selectionCap(displayLimit),
     maxPerSource: Math.max(1, maxPerSource),
-    maxSimilarHeadline: Math.max(1, maxSimilarHeadline)
+    maxSimilarHeadline: Math.max(1, maxSimilarHeadline),
+    countries: ensureCountryCoverage ? watchlistCountries : [],
+    fillAvailable
   });
 
   return {
@@ -295,6 +299,7 @@ export function buildIntelNewsSelection({
       latestSelectedArticleAgeMin: latestSelectedArticleAgeMin(displaySelection, nowMs),
       selectionConfig: {
         analyzeLimit: selectionCap(analyzeLimit),
+        displayLimit: selectionCap(displayLimit),
         maxPerSource: Math.max(1, maxPerSource),
         maxSimilarHeadline: Math.max(1, maxSimilarHeadline),
         candidateWindowHours: Math.max(1, candidateWindowHours)

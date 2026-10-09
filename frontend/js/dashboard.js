@@ -43,6 +43,9 @@ let riskChart;
 let socket;
 let selectedCountries = new Set();
 let currentWatchlist = [];
+let liveNewsView = null;
+let liveNewsRequestKey = null;
+let liveNewsRequestToken = 0;
 let selectedMarketSymbols = [];
 let marketWatchlistLoaded = false;
 let marketWatchlistModel = { maxSelected: null, instruments: [] };
@@ -930,9 +933,9 @@ function handleActionClick(event) {
   }
 }
 
-function renderNews(news = [], countries = {}, ai = {}) {
+function renderNews(news = [], countries = {}, ai = {}, corpus = null) {
   const ordered = [...news].sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
-  elements.newsCount.textContent = `${ordered.length} items`;
+  elements.newsCount.textContent = corpus ? `${ordered.length} items · ${corpus.dailyCandidateCount || 0} daily candidates · ${corpus.dayTimeZone || "UTC"}` : `${ordered.length} items`;
   currentNewsById = new Map(ordered.map((article) => [String(article.id), article]));
 
   if (!ordered.length) {
@@ -1581,7 +1584,7 @@ async function loadMarketOhlcv() {
   elements.marketOhlcvStatus.textContent = `Loading ${instrument.symbol} OHLCVâ€¦`;
   let payload;
   try {
-    payload = await api.getMarketCandles({ instrumentId, interval: elements.marketOhlcvInterval.value, adjusted: "splits", limit: 240 });
+    payload = await api.getMarketCandles({ instrumentId, interval: elements.marketOhlcvInterval.value, adjusted: "splits", limit: 240, source:getState().market?.provider==="yahoo"?"yahoo":"stored" });
   } catch (error) {
     if (token === marketOhlcvRequestToken) elements.marketOhlcvStatus.textContent = `OHLCV request failed: ${error.message}`;
     return;
@@ -1656,7 +1659,11 @@ function startMarketQuotesPolling() {
 function renderDashboard(rawState) {
   const state = filterStateBySelection(rawState);
   renderMeta(rawState.meta, rawState.market || {});
-  renderNews(state.news, state.countries, rawState.ai || {});
+  const newsCorpus = rawState.meta?.sourceMeta?.corpus;
+  const newsKey = liveNewsKey(rawState);
+  renderNews(liveNewsView?.key === newsKey ? liveNewsView.news : state.news, state.countries, rawState.ai || {}, liveNewsView?.key === newsKey ? liveNewsView.meta : newsCorpus);
+  const riskCoverage = byId("risk-news-coverage");
+  if(riskCoverage) riskCoverage.textContent = newsCorpus ? `Based on all ${newsCorpus.dailyCandidateCount || 0} valid daily candidates from SQLite since ${formatDate(newsCorpus.dayStart)} (${newsCorpus.dayTimeZone}). Updated ${formatDate(newsCorpus.asOf)}. Coverage depends on collected sources.` : "";
   renderDistribution(state.countries);
   renderRiskChart(state.countries);
   renderAiCountryInsights(rawState.ai || {});
@@ -1667,6 +1674,26 @@ function renderDashboard(rawState) {
     { error: latestMarketConditionsError }
   );
   hotspotMap.render(state.hotspots, state.news, currentWatchlist, state.mapAssets || { staticPoints: [], movingSeeds: [] });
+}
+
+function liveNewsKey(state) {
+  const corpus=state.meta?.sourceMeta?.corpus;
+  return corpus ? `${selectedCountryQueryValue()}|${corpus.revision}|${corpus.dayStart}` : null;
+}
+
+async function refreshStoredLiveNews(state) {
+  const key=liveNewsKey(state);
+  if(!key || liveNewsView?.key===key || liveNewsRequestKey===key) return;
+  liveNewsRequestKey=key;
+  const token=++liveNewsRequestToken;
+  try{
+    const payload=await api.getNews({countries:selectedCountryQueryValue(),limit:40});
+    if(token!==liveNewsRequestToken || key!==liveNewsKey(getState())) return;
+    liveNewsView={key,news:payload.news || [],meta:payload.meta?.newsRead || state.meta.sourceMeta.corpus};
+    const current=filterStateBySelection(getState());
+    renderNews(liveNewsView.news,current.countries,getState().ai || {},liveNewsView.meta);
+  }catch(error){console.error("Failed to read stored daily news:",error);}
+  finally{if(token===liveNewsRequestToken)liveNewsRequestKey=null;}
 }
 
 function setWsStatus(status) {
@@ -1881,6 +1908,7 @@ async function bootstrap() {
     syncWatchlistFromState(state);
     renderCountryFilters();
     renderDashboard(state);
+    void refreshStoredLiveNews(state);
     syncManualRefreshFromMeta(state.meta);
   });
 

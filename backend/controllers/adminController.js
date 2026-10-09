@@ -269,7 +269,13 @@ export function getApiLimits(_req, res) {
 export function getPipelineStatus(_req, res) {
   const orchestrator = res.app.locals.orchestrator;
   const config = res.app.locals.config;
-  const intelSnapshot = stateManager.getSnapshot();
+  const intelSnapshot = stateManager.getAnalysisSnapshot();
+  const newsSourceMeta=orchestrator?.latestNewsAcquisition || intelSnapshot?.meta?.sourceMeta || {};
+  const cachedFeedStatus=res.app.locals.storageManager?.getStatus?.().worker?.rss?.catalogStatus || [];
+  const observedFeeds=new Map(cachedFeedStatus.map(feed=>[feed.url,feed]));
+  for(const feed of newsSourceMeta.rssFeedStatus || []){const cached=observedFeeds.get(feed.url);if(!cached?.lastAttemptAt || Date.parse(feed.lastAttemptAt || newsSourceMeta.acquiredAt || 0)>=Date.parse(cached.lastAttemptAt))observedFeeds.set(feed.url,{...cached,...feed});}
+  const queriedUrls=new Set((newsSourceMeta.rssFeedStatus || []).map(feed=>feed.url));
+  const rssCatalog=(config.news?.rssFeeds || []).map(feed=>{const url=String(feed.url || feed),observed=observedFeeds.get(url);return {...observed,url,label:feed.label || url,enabled:!feed.disabled,status:feed.disabled?"disabled":observed?.status || "not-polled",queriedInCycle:queriedUrls.has(url),error:feed.disabled?feed.reason || "feed-disabled":observed?.error || null};});
   const marketProviderSnapshots = orchestrator?.getMarketProviderSnapshots?.() || [];
   const newsProviderSnapshots = orchestrator?.getNewsProviderSnapshots?.() || [];
   const newsCycle = orchestrator?.getNewsCycleTelemetry?.() || {};
@@ -330,6 +336,7 @@ export function getPipelineStatus(_req, res) {
     ok: true,
     data: {
       generatedAt: new Date().toISOString(),
+      storage: res.app.locals.storageManager?.getStatus?.() || null,
       market: {
         enabled: marketEnabled,
         disabledReason: marketEnabled ? null : marketDisabledReason,
@@ -389,22 +396,33 @@ export function getPipelineStatus(_req, res) {
       news: {
         quotaBand: newsPolicy.band,
         nextDelayMs: newsDelayMs,
-        nextRecommendedRunAt: Number.isFinite(newsDelayMs) ? new Date(Date.now() + newsDelayMs).toISOString() : null,
+        nextRecommendedRunAt:orchestrator?.nextNewsRunAt || null,
         lastStartedAt: newsCycle.lastStartedAt || null,
         lastCompletedAt: newsCycle.lastCompletedAt || null,
-        lastDurationMs: newsCycle.lastDurationMs ?? null,
+        lastDurationMs: newsCycle.lastStatus==="running" ? Date.now()-Date.parse(newsCycle.lastStartedAt) : newsCycle.lastDurationMs ?? null,
+        stage:newsCycle.stage || null,
+        lastError:newsCycle.lastError || null,
+        acquiredAt:newsSourceMeta.acquiredAt || null,
+        rssAcquisition:newsSourceMeta.rssAcquisition || null,
+        configuredProviders:config.news?.providers || [],
+        corpus: newsSourceMeta.corpus || intelSnapshot.meta?.sourceMeta?.corpus || null,
+        projectionIntervalMs:config.news?.projectionIntervalMs || null,
+        rssPollIntervalMs:config.news?.rssPollIntervalMs || null,
+        nextProviderRunAt:orchestrator?.nextPaidCollectAt ? new Date(orchestrator.nextPaidCollectAt).toISOString() : null,
+        nextRssRunAt:orchestrator?.nextRssCollectAt ? new Date(orchestrator.nextRssCollectAt).toISOString() : null,
+        rss:{execution:config.news?.rssWorkerFetch?"worker":"backend",catalogSize:rssCatalog.length,availableFeedCount:rssCatalog.filter(feed=>feed.enabled).length,maxFeedsPerCycle:config.news?.rssWorkerFetch?18:null,concurrency:4,deadlineMs:60000,catalog:rssCatalog},
         lastStatus: newsCycle.lastStatus || "idle",
-        provider: intelSnapshot?.meta?.sourceMeta?.provider || "unknown",
+        provider: newsSourceMeta.provider || "unknown",
         pageSize: newsPolicy.pageSize,
-        providersSkipped: intelSnapshot?.meta?.sourceMeta?.providersSkipped || [],
-        attempts: intelSnapshot?.meta?.sourceMeta?.attempts || [],
-        rawCountByProvider: intelSnapshot?.meta?.sourceMeta?.rawCountByProvider || {},
-        selectedCountByProvider: intelSnapshot?.meta?.sourceMeta?.selectedCountByProvider || {},
-        selectionBySourceName: intelSnapshot?.meta?.sourceMeta?.selectionBySourceName || [],
-        latestSelectedArticleAgeMin: intelSnapshot?.meta?.sourceMeta?.latestSelectedArticleAgeMin ?? null,
-        selectionConfig: intelSnapshot?.meta?.sourceMeta?.selectionConfig || null,
-        rssFeedStatus: intelSnapshot?.meta?.sourceMeta?.rssFeedStatus || [],
-        queryLengthByProvider: intelSnapshot?.meta?.sourceMeta?.queryLengthByProvider || {},
+        providersSkipped: newsSourceMeta.providersSkipped || [],
+        attempts: newsSourceMeta.attempts || [],
+        rawCountByProvider: newsSourceMeta.rawCountByProvider || {},
+        selectedCountByProvider: newsSourceMeta.selectedCountByProvider || {},
+        selectionBySourceName: newsSourceMeta.selectionBySourceName || [],
+        latestSelectedArticleAgeMin: newsSourceMeta.latestSelectedArticleAgeMin ?? null,
+        selectionConfig: newsSourceMeta.selectionConfig || null,
+        rssFeedStatus: newsSourceMeta.rssFeedStatus || [],
+        queryLengthByProvider: newsSourceMeta.queryLengthByProvider || {},
         snapshots: newsProviderSnapshots
       },
       awareness: {
@@ -467,6 +485,13 @@ export async function getNewsRaw(req, res) {
     });
   }
 
+  if(res.app.locals.business){
+    const feed=await res.app.locals.newsArchive.getFeed({rssOnly:dataset==="rss-aggregate",limit:pageSize,paginate:true,page});
+    const total=feed.meta.totalItems, snapshot=stateManager.getAnalysisSnapshot();
+    res.json({ok:true,data:{dataset,generatedAt:feed.generatedAt,summary:{sourceMode:"sqlite-candidates",rawTotal:total,sqlEligibleTotal:feed.meta.eligibleCount,selectedTotal:snapshot.news.length,lastAcquiredAt:feed.meta.lastIngestAt,analysisTruncated:feed.meta.analysisTruncated,queryLengthTotal:0},pagination:feed.pagination,items:normalizeAdminArticles(feed.items,"sqlite")}});
+    return;
+  }
+
   if (dataset === "intel") {
     const intelRawNews = stateManager.getAdminIntelRawNews();
     const paginated = paginateItems(intelRawNews.items || [], page, pageSize);
@@ -496,7 +521,7 @@ export async function getNewsRaw(req, res) {
   const aggregateSnapshot = aggregator
     ? await aggregator.getSnapshot({
         force: false,
-        stored: req.query.stored === "1" || req.query.stored === "true",
+        stored: Boolean(res.app.locals.business) || req.query.stored === "1" || req.query.stored === "true",
         limit: config.news?.rssAggregateMaxItems
       })
     : { generatedAt: null, items: [] };
@@ -509,6 +534,9 @@ export async function getNewsRaw(req, res) {
       dataset,
       generatedAt: aggregateSnapshot.generatedAt || null,
       summary: {
+        sourceMode:aggregateSnapshot.generatedAt?"stored-rss":"not-collected",
+        lastAcquiredAt:aggregateSnapshot.generatedAt || null,
+        queriedFeedCount:aggregateSnapshot.meta?.queriedFeedCount || 0,
         rawTotal: normalizedItems.length
       },
       pagination: paginated.pagination,

@@ -1,10 +1,11 @@
 import { candleIntervalMs } from "./canonicalCandle.js";
+import { dateTimeFormatter } from "../../utils/dateTimeFormat.js";
 
 export const NEWS_PRICE_COUPLING_V2 = "news-price-coupling-v2";
 export const DEFAULT_COUPLING_PARAMETERS = Object.freeze({ interval: "15min", preEventWindowMin: 60, postEventWindowsMin: [60, 240], adjustmentMode: "splits", relativeVolumeLookback: 20 });
 
 const iso = (value) => { const date = new Date(value); return Number.isFinite(date.getTime()) ? date.toISOString() : null; };
-const localParts = (date, timeZone) => Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone, hour12: false, weekday: "short", hour: "2-digit", minute: "2-digit" }).formatToParts(date).map((part) => [part.type, part.value]));
+const localParts = (date, timeZone) => Object.fromEntries(dateTimeFormatter("en-US", { timeZone, hour12: false, weekday: "short", hour: "2-digit", minute: "2-digit" }).formatToParts(date).map((part) => [part.type, part.value]));
 const returnOf = (before, after) => Number.isFinite(before) && Number.isFinite(after) && before !== 0 ? after / before - 1 : null;
 
 export function resolveEventMarketSession(instrument, timestamp) {

@@ -84,6 +84,9 @@ export class NewsArchive {
       const provenanceByKey = new Map((previous?.provenances || []).map(p => [hash([p.provider, p.sourceId || p.publisher, p.url]), p]));
       provenanceByKey.set(hash([provenance.provider, provenance.sourceId || provenance.publisher, provenance.url]), provenance);
       const record = { ...article, id, originalIds: [...new Set([...(previous?.originalIds || []), raw.id].filter(Boolean))],
+        sourceRole: raw.sourceRole || raw.role || raw.source?.role || previous?.sourceRole || null,
+        leadImageUrl: safeUrl(raw.leadImageUrl || raw.imageUrl || raw.urlToImage) || previous?.leadImageUrl || null,
+        analysisFeatures: raw.analysisFeatures || previous?.analysisFeatures || null,
         receivedAt: previous?.receivedAt || article.receivedAt, archiveFirstSeenAt: previous?.archiveFirstSeenAt || now, archiveLastSeenAt: now,
         revision: previous?.revision || 0, provenances: [...provenanceByKey.values()],
         instrumentIds: [...new Set([...(previous?.instrumentIds || []), ...(article.instrumentIds || [])])],
@@ -204,4 +207,4 @@ export class NewsArchive {
   }
 }
 function pickContent(article) { return { title: article.title, excerpt: article.excerpt, publishedAt: article.publishedAt, updatedAt: article.updatedAt }; }
-function pickSemantic(article) { return { ...pickContent(article), synthetic: article.synthetic, dataMode: article.dataMode, instrumentIds: article.instrumentIds, topics: article.topics, sectors: article.sectors, countryMentions: article.countryMentions, provenances: article.provenances?.map(p => ({ provider: p.provider, sourceId: p.sourceId, publisher: p.publisher, url: p.url })) }; }
+function pickSemantic(article) { return { ...pickContent(article), synthetic: article.synthetic, dataMode: article.dataMode, analysisFeatures: article.analysisFeatures, instrumentIds: article.instrumentIds, topics: article.topics, sectors: article.sectors, countryMentions: article.countryMentions, provenances: article.provenances?.map(p => ({ provider: p.provider, sourceId: p.sourceId, publisher: p.publisher, url: p.url })) }; }

@@ -121,11 +121,12 @@ function filterAiProjection(ai = {}, { news = [], countries = [], impact = { ite
   };
 }
 
-export function getSnapshot(req, res) {
+export async function getSnapshot(req, res) {
   const filters = buildFilters(req, res);
   const snapshot = stateManager.getSnapshot();
   const filtered = applyCountryFilter(snapshot, filters.countries);
   filtered.news = applyNewsFilters(filtered.news, filters);
+  if(res.app.locals.business){const feed=await res.app.locals.newsArchive.getLiveFeed({...filters,limit:Math.min(filters.limit,res.app.locals.config.news.displayLimit || 40)});filtered.news=feed.news;filtered.meta={...filtered.meta,newsRead:feed.meta};}
   filtered.ai = filterAiProjection(filtered.ai || {}, {
     news: filtered.news,
     countries: filters.countries,
@@ -157,7 +158,7 @@ export function getSnapshot(req, res) {
 
 export function getHotspots(req, res) {
   const filters = buildFilters(req, res);
-  const snapshot = stateManager.getSnapshot();
+  const snapshot = stateManager.getAnalysisSnapshot();
   const filtered = applyCountryFilter(snapshot, filters.countries);
   res.json(
     mapResponse({
@@ -169,7 +170,7 @@ export function getHotspots(req, res) {
 
 export function getRisks(req, res) {
   const filters = buildFilters(req, res);
-  const snapshot = stateManager.getSnapshot();
+  const snapshot = stateManager.getAnalysisSnapshot();
   const filtered = applyCountryFilter(snapshot, filters.countries);
   res.json(
     mapResponse({
@@ -179,23 +180,24 @@ export function getRisks(req, res) {
   );
 }
 
-export function getNews(req, res) {
+export async function getNews(req, res) {
   const filters = buildFilters(req, res);
-  const snapshot = stateManager.getSnapshot();
+  const snapshot = stateManager.getAnalysisSnapshot();
   const filtered = applyCountryFilter(snapshot, filters.countries);
-  const news = applyNewsFilters(filtered.news, filters);
+  const feed=res.app.locals.business ? await res.app.locals.newsArchive.getLiveFeed({...filters,limit:Math.min(filters.limit,res.app.locals.config.news.displayLimit || 40)}) : null;
+  const news = feed?.news || applyNewsFilters(filtered.news, filters);
 
   res.json(
     mapResponse({
       news,
-      meta: withActiveFilters(filtered.meta, filters.countries, filters.sources)
+      meta: withActiveFilters({...filtered.meta,...(feed ? {newsRead:feed.meta} : {})}, filters.countries, filters.sources)
     })
   );
 }
 
 export function getInsights(req, res) {
   const filters = buildFilters(req, res);
-  const snapshot = stateManager.getSnapshot();
+  const snapshot = stateManager.getAnalysisSnapshot();
   const filtered = applyCountryFilter(snapshot, filters.countries);
   const insightsEmptyReason = buildInsightsEmptyReason({
     filteredInsights: filtered.insights,
@@ -215,7 +217,7 @@ export function getInsights(req, res) {
   );
 }
 
-export function getAwarenessSnapshot(req, res) {
+export async function getAwarenessSnapshot(req, res) {
   const service = res.app.locals.awarenessService;
   const limit = parsePositiveInt(req.query.limit, 100, { min: 1, max: 500 });
   const filters = {
@@ -239,7 +241,7 @@ export function getAwarenessSnapshot(req, res) {
   if (filters.from && filters.to && Date.parse(filters.from) > Date.parse(filters.to)) {
     throw new AppError("from must be earlier than or equal to to.", 400, "INVALID_AWARENESS_WINDOW");
   }
-  const snapshot = service?.getSnapshot?.(filters, { publicView: true }) || stateManager.getSnapshot().awareness;
+  const snapshot = res.app.locals.awarenessQuery ? await res.app.locals.awarenessQuery(filters) : service?.getSnapshot?.(filters, { publicView: true }) || stateManager.getSnapshot().awareness;
   res.json(mapResponse(snapshot));
 }
 

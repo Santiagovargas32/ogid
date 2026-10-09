@@ -473,7 +473,7 @@ export class AwarenessService {
       const latencyMs = Math.max(0, this.now() - startedAt);
       diagnostic = responseDiagnostic(response);
       if (response.status === 304) {
-        const fresh = this.store.setSourceStale(source.sourceId, false);
+        const fresh = await this.store.setSourceStale(source.sourceId, false);
         this.store.recordPoll(source.sourceId, {
           attemptedAt: new Date(startedAt).toISOString(),
           completedAt: new Date(this.now()).toISOString(),
@@ -512,12 +512,12 @@ export class AwarenessService {
       if (!allowedContentType(source, response.headers?.get?.("content-type"))) throw new Error("awareness-content-type-invalid");
       const body = await readLimitedText(response);
       const observedAt = new Date(this.now()).toISOString();
-      const events = parseAwarenessSource(body, source, { observedAt });
+      const events = await (this.parseSource || parseAwarenessSource)(body, source, { observedAt });
       const emptyResultAllowed = source.emptyResultPolicy === "healthy";
       if (!events.length && Number(previous.eventCount || 0) > 0 && !emptyResultAllowed) {
         throw new Error("awareness-parser-empty-after-data");
       }
-      const reconciliation = this.store.reconcile(events, { sourceId: source.sourceId });
+      const reconciliation = await this.store.reconcile(events, { sourceId: source.sourceId });
       const timing = sourceEventTiming(events, this.now());
       const outcome = events.length ? "ok" : emptyResultAllowed ? "empty-valid" : "empty";
       this.store.recordPoll(source.sourceId, {
@@ -548,6 +548,8 @@ export class AwarenessService {
       });
       return { sourceId: source.sourceId, ...reconciliation, status: outcome };
     } catch (error) {
+      // A failed store is not evidence that an upstream source became unhealthy.
+      if(/^(STORAGE_|SQLITE_)/.test(error.code || ""))throw error;
       const failures = Number(previous.consecutiveErrors || 0) + 1;
       const forbiddenFailures = Number(error.httpStatus) === 403 ? Number(previous.consecutiveForbidden || 0) + 1 : 0;
       const blocked = Number(error.httpStatus) === 403 && forbiddenFailures >= this.persistent403Threshold;
@@ -590,7 +592,7 @@ export class AwarenessService {
         requestId: (error.diagnostic || diagnostic)?.requestId || null,
         blocked
       });
-      const stale = this.store.setSourceStale(source.sourceId, true);
+      const stale = await this.store.setSourceStale(source.sourceId, true);
       return { sourceId: source.sourceId, changed: stale.changed || [], status: blocked ? "blocked" : "error", error: error.message };
     }
   }
@@ -600,8 +602,10 @@ export class AwarenessService {
     if (this.inFlight) return this.inFlight;
     this.inFlight = (async () => {
       const sources = this.eligibleSources();
-      const results = await Promise.all(sources.map((source) => this.globalSemaphore.use(() =>
+      const settled = await Promise.allSettled(sources.map((source) => this.globalSemaphore.use(() =>
         this.hostSemaphore(source.hostname).use(() => this.pollSource(source)))));
+      const failed=settled.find(result=>result.status==="rejected");if(failed)throw failed.reason;
+      const results=settled.map(result=>result.value);
       const changed = results.flatMap((result) => result.changed || []);
       const snapshot = this.broadcast(changed, { backfill: trigger === "startup-awareness", trigger });
       log.info("awareness_cycle_completed", { trigger, sourceCount: sources.length, changedCount: changed.length, revision: snapshot.revision, mode: this.mode });
@@ -615,15 +619,17 @@ export class AwarenessService {
     const observedAt = new Date(this.now()).toISOString();
     const events = articles.map((article) => financialEventFromArticle(article, observedAt)).filter(Boolean);
     const result = this.store.reconcile(events);
-    this.broadcast(result.changed, { backfill, trigger });
-    return result;
+    const publish = value => { this.broadcast(value.changed, { backfill, trigger }); return value; };
+    return result?.then ? result.then(publish) : publish(result);
   }
 
   schedule() {
     if (this.stopped || this.mode === "off") return;
     clearTimeout(this.timer);
     this.timer = setTimeout(async () => {
-      try { await this.runCycle("interval-awareness"); } finally { this.schedule(); }
+      try { await this.runCycle("interval-awareness"); }
+      catch(error){log.error("awareness_cycle_failed",{trigger:"interval-awareness",code:error.code || "AWARENESS_CYCLE_FAILED",errorMessage:error.message});}
+      finally { this.schedule(); }
     }, SCHEDULER_TICK_MS);
     this.timer.unref?.();
   }

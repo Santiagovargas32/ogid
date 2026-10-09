@@ -17,3 +17,17 @@ integrations/ogid-mcp/**/node_modules/
 integrations/ogid-mcp/**/.env
 integrations/ogid-mcp/**/*.local
 integrations/ogid-mcp/**/DIAGNOSTICO-LOCAL.md
+
+# Servicio local: registros, estado de rotación y documentación operativa.
+backend/data/logs/
+!/docs/ogid-service.md
+!/docs/storage-migration-plan.md
+
+# Embedded SQLite development/test state.
+backend/data/sqlite/
+
+!/docs/storage-implementation-roadmap.md
+!/docs/storage-cutover.md
+!/docs/storage-troubleshooting.md
+!/docs/news-sql-pipeline.md
+!/docs/production-readiness.md

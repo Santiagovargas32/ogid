@@ -49,7 +49,7 @@ export function loadConfig(env = process.env) {
   } catch { /* Una distribución sin .git no acredita un commit. */ }
   return Object.freeze({
     baseUrl: url.origin,
-    timeoutMs: boundedInteger(env.OGID_TIMEOUT_MS, 5000, 100, 30000),
+    timeoutMs: boundedInteger(env.OGID_TIMEOUT_MS, 30000, 100, 30000),
     maxResponseBytes: boundedInteger(env.OGID_MAX_RESPONSE_BYTES, 2097152, 1024, 4194304),
     maxOutputBytes: boundedInteger(env.OGID_MAX_OUTPUT_BYTES, 262144, 4096, 524288),
     instrumentIds: Object.freeze(instrumentIds), commit, profile, instrumentAuth, operatorCredential,

@@ -13,7 +13,7 @@ const refs = { symbols: array(str(64)), instrumentIds: array(str()) };
 const intel = { countries: array({ type: "string", pattern: "^(ALL|[A-Z]{2})$" }), sources: array(str(40)), limit };
 const advanced = { countries, windowHours: int(6, 168), maxEvents: int(50, 1000), activeWindowHours: int(1, 48), baselineDays: { type: "integer", enum: [7, 30] } };
 const awareness = { domain: array(choice("financial", "macro", "market", "corporate", "regulatory", "geopolitical", "security")), kinds: array(choice("macro_scheduled", "macro_release", "market_moving_news", "regulatory_filing", "official_security_release", "maritime_alert")), status: array(choice("scheduled", "live", "released", "updated", "cancelled")), countries, instrumentIds: refs.instrumentIds, from: date, to: date, limit };
-const candles = { instrumentId: str(), interval: choice("1day", "1h", "30min", "15min", "5min"), from: date, to: date, limit, adjusted: choice("splits", "none") };
+const candles = { instrumentId: str(), interval: choice("1day", "1h", "30min", "15min", "5min"), from: date, to: date, limit, adjusted: choice("splits", "none"), source: choice("stored", "yahoo") };
 const impact = { tickers: array(str(64)), countries, windowMin: int(10, 1440), couplingInterval: choice("1day", "1h", "30min", "15min", "5min"), couplingWindows: array(int(15, 1440), 4), benchmarkInstrumentId: str() };
 const layers = { layers: array(str(64), 30), timeWindow: choice("1h", "6h", "24h", "3d", "7d"), countries, bbox: { type: "array", items: { type: "number", minimum: -180, maximum: 180 }, minItems: 4, maxItems: 4 }, limit, preset: str(64) };
 export const NEWS_SEARCH_PARAMS = { countries, ...refs, q: str(200), topics: array(str(64), 20), sectors: array(str(64), 20), sources: array(str(128), 30), providers: array(str(40), 20), from: date, to: date, timeField: choice("publishedAt", "updatedAt", "receivedAt", "archiveChangedAt"), limit, cursor: str(2048), maxBytes: int(4096, 524288) };
@@ -41,7 +41,7 @@ export const OGID_OPERATIONS = Object.freeze([
   op("market.watchlist", "GET", "/api/market/watchlist", {}, { projection: "watchlist" }),
   op("market.quotes", "GET", "/api/market/quotes", { tickers: array(str(64)), includeSeries: { type: "boolean" }, seriesLimit: int(1,100) }, { projection: "quotes", fixed: { view: "compact" } }),
   op("market.provider-status", "GET", "/api/market/provider-status"),
-  op("market.candles", "GET", "/api/market/candles", candles, { required: ["instrumentId"] }),
+  op("market.candles", "GET", "/api/market/candles", { ...candles, source: choice("stored") }, { required: ["instrumentId"], fixed: { source: "stored" } }),
   op("market.candles.metrics", "GET", "/api/market/candles/metrics"),
   op("market.indicators", "GET", "/api/market/indicators", { instrumentId: str(), interval: candles.interval, adjusted: candles.adjusted, package: choice("standard-v1"), limit: int(1,2500) }, { required: ["instrumentId"] }),
   op("market.technical-context", "GET", "/api/market/technical-context", { instrumentId: str(), datasetId:{type:"string",pattern:"^csv-[a-f0-9]{32}$"}, interval: choice("1day","1wk","1h","30min","15min","5min"), adjusted: candles.adjusted, package: choice("standard-v1"), benchmarkInstrumentId: str(), limit: int(30,2500) }, { required:["instrumentId"] }),

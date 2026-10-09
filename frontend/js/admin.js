@@ -1,5 +1,4 @@
 import { api } from "./api.js";
-import { initAdminHistory } from "./adminHistory.js";
 
 const POLL_INTERVAL_MS = 60_000;
 const RAW_PAGE_SIZE = 100;
@@ -24,6 +23,7 @@ function cacheElements() {
   elements.pipelineGeneratedAt = byId("pipeline-generated-at");
   elements.pipelineStatusBody = byId("pipeline-status-body");
   elements.pipelineDiagnosticsBody = byId("pipeline-diagnostics-body");
+  elements.storageDiagnosticsBody = byId("storage-diagnostics-body");
   elements.marketPrimaryDiagnosticsBody = byId("market-primary-diagnostics-body");
   elements.marketRouterDiagnosticsBody = byId("market-router-diagnostics-body");
   elements.marketTransportDiagnosticsBody = byId("market-transport-diagnostics-body");
@@ -293,7 +293,7 @@ function renderServerSummary(health = {}, pipeline = {}) {
     {
       label: "Health",
       value: health.status || "unknown",
-      meta: `Uptime ${Math.max(0, Number(health.uptimeSeconds || 0))}s`
+      meta: `PID ${health.server?.pid || "--"} | ${health.server?.nodeVersion || "--"} | Uptime ${Math.max(0, Number(health.uptimeSeconds || 0))}s`
     },
     {
       label: "WebSocket",
@@ -326,12 +326,35 @@ function renderServerSummary(health = {}, pipeline = {}) {
       meta: `Status ${String(market.lastStatus || "idle")}`
     },
     {
+      label: "Storage worker",
+      value: String(health.storage?.state || "disabled"),
+      meta: `SQLite ${String(health.storage?.sqliteVersion || "--")} | queue ${Number(health.storage?.queue?.pending || 0)} | data ${String(health.storage?.businessStorage || "legacy-json")}`
+    },
+    {
       label: "Market persistence",
       value: market.historicalPersistence?.enabled ? "enabled" : "disabled",
       meta: `Last save ${formatDate(market.historicalPersistence?.lastSavedAt)}`
     }
   ]);
   elements.serverSummaryUpdated.textContent = `Updated: ${formatDate(new Date().toISOString())}`;
+}
+
+function renderStorageDiagnostics(storage={},health={}) {
+  if(!elements.storageDiagnosticsBody)return;
+  const worker=storage.worker || {},db=worker.database || {},queue=storage.queue || {};
+  const mib=value=>Number.isFinite(value)?`${(value/1048576).toFixed(1)} MiB`:"--";
+  const card=(title,lines)=>`<article class="diagnostic-item"><div class="diagnostic-item-header"><strong>${escapeHtml(title)}</strong></div>${lines.map(line=>`<div class="diagnostic-item-meta">${escapeHtml(line)}</div>`).join("")}</article>`;
+  const heartbeatAge=worker.heartbeatAt?Math.max(0,Date.now()-Date.parse(worker.heartbeatAt)):null;
+  const commands=(storage.activeCommands || []).map(command=>`${[command.operation,command.service,command.method,command.kind].filter(Boolean).join(" / ")} | ${command.phase} | ${formatDurationMs(command.elapsedMs)} / ${formatDurationMs(command.timeoutMs)}`);
+  const expired=storage.lastExpiredCommand;
+  elements.storageDiagnosticsBody.innerHTML=[
+    card("Server",[`PID ${health.server?.pid || "--"} | ${health.server?.nodeVersion || "--"} | uptime ${health.uptimeSeconds || 0}s`,`Process RSS ${mib(health.server?.memory?.rss)} | HTTP heap ${mib(health.server?.memory?.heapUsed)} | worker heap ${mib(worker.memory?.heapUsed)}`]),
+    card("SQLite",[`${storage.databasePath || "--"} | SQLite ${storage.sqliteVersion || "--"} | ${storage.businessStorage || "--"}`,`DB ${mib(storage.databaseBytes)} | WAL ${mib(storage.walBytes)} | migrations ${(storage.migrations || []).length}`,`Row counts sampled ${formatDate(db.sampledAt)} (cache, up to 30s): ${Object.entries(db.counts || {}).map(([table,n])=>`${table}: ${n}`).join(" | ") || "waiting for worker"}`]),
+    card("Worker & queue",[`State ${storage.state || "--"} | thread ${worker.threadId || "--"} | heartbeat ${heartbeatAge===null?"--":formatDurationMs(heartbeatAge)} ago${heartbeatAge>15000?" (delayed; worker may be busy)":""}`,`Queued ${queue.pending || 0} | active ${queue.inFlight || 0} | CPU ${queue.cpuInFlight || 0} / ${queue.maxCpuInFlight || "--"} | capacity ${queue.maxItems || 0} | bytes ${mib(queue.bytes)} / ${mib(queue.maxBytes)}`,`Completed ${storage.completed || 0} | failed ${storage.failed || 0} | rejected ${storage.rejected || 0} | last error ${storage.lastErrorCode || "--"}`,...(commands.length?commands:["No active commands"]),...(expired?[`Last timeout: ${[expired.operation,expired.service,expired.method,expired.kind].filter(Boolean).join(" / ")} | ${expired.phase} | ${formatDurationMs(expired.elapsedMs)}`]:[])]),
+    card("Confirmed pipeline writes",(db.checkpoints || []).map(row=>`${row.pipelineId} | ${row.kind || "--"} | committed ${formatDate(row.updatedAt)} | revision ${row.revision || "--"}`)),
+    card("SQL news corpus",worker.news?.corpus ? [`As of ${formatDate(worker.news.corpus.asOf)} | last ingest ${formatDate(worker.news.corpus.lastIngestAt)} | revision ${worker.news.corpus.revision}`,`Scanned ${worker.news.corpus.scannedCount} | valid ${worker.news.corpus.eligibleCount} | daily candidates ${worker.news.corpus.dailyCandidateCount} | sources ${worker.news.corpus.sourceCount}`,`Displayed ${worker.news.corpus.displayCount} | analysis ${worker.news.corpus.analysisCount} | market analysis ${worker.news.corpus.marketAnalysisCount} | analysis capped: ${worker.news.corpus.analysisTruncated ? "yes" : "no"} | risk uses all daily candidates`, `Window ${worker.news.corpus.windowHours}h | day ${worker.news.corpus.dayTimeZone} | read/rank ${worker.news.corpus.durationMs}ms`, `Collector ${worker.news.collection?.stage || "idle"} | completed ${formatDate(worker.news.collection?.completedAt)}`] : ["Waiting for SQL corpus evaluation"]),
+    card("SQL pipeline runs",(db.pipelines || []).map(row=>`${row.pipelineId}: ${row.status || (row.lastPersistedAt?"persisted (checkpoint)":"no recorded run")} | start ${formatDate(row.startedAt)} | end ${formatDate(row.completedAt)} | last commit ${formatDate(row.lastPersistedAt)} | ${row.errorCode || "--"}`))
+  ].join("");
 }
 
 function renderMediaSummary(media = {}, health = {}) {
@@ -411,10 +434,10 @@ function renderPipelineStatus(payload = {}) {
       nextRun: news.nextRecommendedRunAt ? `${formatShortTime(news.nextRecommendedRunAt)} (${formatDurationMs(news.nextDelayMs)})` : "--",
       lastRun: formatShortTime(news.lastCompletedAt),
       duration: formatDurationMs(news.lastDurationMs),
-      status: news.lastStatus || "idle",
+      status: `${news.lastStatus || "idle"}${news.stage ? ` / ${news.stage}` : ""}`,
       mode: news.pageSize ? `page:${news.pageSize}` : "--",
       provider: news.provider || "--",
-      lastError: (news.attempts || []).filter((item) => item.status === "error").map((item) => item.provider).join(", ") || "--"
+      lastError: news.lastError || (news.attempts || []).filter((item) => item.status === "error").map((item) => item.provider).join(", ") || "--"
     },
     {
       pipeline: "ai",
@@ -789,26 +812,30 @@ function renderPipelineDiagnostics(news = {}, market = {}) {
       .join("");
   }
 
-  const feedStatus = news.rssFeedStatus || [];
+  const acquired=news.rssAcquisition || {},rss=news.rss || {};
+  const rssOverview=`<article class="diagnostic-item"><div class="diagnostic-item-header"><strong>RSS acquisition</strong></div><div class="diagnostic-item-meta">Configured ${Number(rss.catalogSize || 0)} | available ${Number(rss.availableFeedCount ?? rss.catalogSize ?? 0)} | execution: ${escapeHtml(rss.execution || "--")} | rotating batch ${Number(acquired.queriedFeedCount || rss.maxFeedsPerCycle || 0)} / ${Number(acquired.catalogSize || rss.catalogSize || 0)} | concurrency ${Number(rss.concurrency || 0)} | network deadline ${escapeHtml(formatDurationMs(rss.deadlineMs))}</div><div class="diagnostic-item-meta">Collected ${Number(acquired.collectedCount || 0)} | returned to dashboard ${Number(acquired.returnedCount || 0)} | acquired ${escapeHtml(formatDate(news.acquiredAt))} | stage ${escapeHtml(news.stage || "idle")}</div></article>`;
+  const feedStatus = rss.catalog || news.rssFeedStatus || [];
   if (!feedStatus.length) {
     elements.rssFeedStatusBody.innerHTML =
-      '<div class="diagnostic-item diagnostic-item-meta">No RSS diagnostics available.</div>';
+      rssOverview+'<div class="diagnostic-item diagnostic-item-meta">Waiting for the first feed result; check the worker stage above.</div>';
     renderMarketProviderDiagnostics(elements.marketPrimaryDiagnosticsBody, market, market.providerSlots?.[0] || {}, "primary");
     renderMarketRouterDiagnostics(market);
     renderMarketTransportDiagnostics(market);
     return;
   }
-  elements.rssFeedStatusBody.innerHTML = feedStatus
+  elements.rssFeedStatusBody.innerHTML = rssOverview+feedStatus
     .map((feed) => {
       const status = String(feed.status || "empty").toLowerCase();
       const safeStatus = ["ok", "error", "empty", "invalid-feed", "skipped"].includes(status) ? status : "empty";
+      const statusLabel=status==="not-polled"?"available; awaiting rotation":status==="disabled"?"disabled":status;
       return `
         <article class="diagnostic-item">
           <div class="diagnostic-item-header">
             <strong>${escapeHtml(feed.label || feed.url || "RSS feed")}</strong>
-            <span class="diagnostic-pill ${safeStatus}">${escapeHtml(status)}</span>
+            <span class="diagnostic-pill ${safeStatus}">${escapeHtml(statusLabel)}</span>
           </div>
           <div class="diagnostic-item-meta">count: ${Number(feed.count || 0)} | ${escapeHtml(feed.error || feed.url || "--")}</div>
+          <div class="diagnostic-item-meta">${feed.queriedInCycle?"Queried in last cycle":"Outside last batch"} | last attempt ${escapeHtml(formatDate(feed.lastAttemptAt))} | last success ${escapeHtml(formatDate(feed.lastSuccessAt))}</div>
         </article>
       `;
     })
@@ -945,8 +972,8 @@ function applyRawNewsPayload(datasetKey, payload = {}) {
 
   const countText =
     datasetKey === "intel"
-      ? `raw: ${Number(summary.rawTotal || 0)} | selected: ${Number(summary.selectedTotal || 0)} | query length: ${Number(summary.queryLengthTotal || 0)}`
-      : `raw: ${Number(summary.rawTotal || 0)}`;
+      ? `${summary.sourceMode === "sqlite-candidates" ? "SQL candidates" : "raw"}: ${Number(summary.rawTotal || 0)} | selected: ${Number(summary.selectedTotal || 0)}${summary.sourceMode === "sqlite-candidates" ? ` | archive eligible: ${Number(summary.sqlEligibleTotal || 0)} | stored: ${formatDate(summary.lastAcquiredAt)}` : ` | query length: ${Number(summary.queryLengthTotal || 0)}`}`
+      : `raw: ${Number(summary.rawTotal || 0)} | ${summary.sourceMode || "unknown"} | acquired: ${formatDate(summary.lastAcquiredAt || payload.generatedAt)}`;
 
   renderNewsTable(payload.items || [], config.tbody, config.countLabel, {
     countText,
@@ -1053,6 +1080,7 @@ async function refreshAll({ forceMedia = false } = {}) {
   const aiEnrichments = aiEnrichmentsResult.status === "fulfilled" ? aiEnrichmentsResult.value : { items: [] };
 
   renderServerSummary(health, pipeline);
+  renderStorageDiagnostics(pipeline.storage || health.storage || {},health);
   renderMediaSummary(media, mediaHealth);
   renderPipelineStatus(pipeline);
   renderApiLimits(limits);
@@ -1078,7 +1106,6 @@ function startPolling() {
 
 async function bootstrap() {
   cacheElements();
-  initAdminHistory().catch(error=>{const node=byId("history-message");if(node)node.textContent=error.message;});
   elements.refreshMediaStreamsBtn?.addEventListener("click", async () => {
     elements.refreshMediaStreamsBtn.disabled = true;
     try {

@@ -150,13 +150,31 @@ async function fetchWithTimeout(url, options, timeoutMs, retries) {
 export async function fetchRss({
   feeds = [],
   timeoutMs = 9_000,
-  retries
+  retries,
+  concurrency = 4,
+  deadlineMs = 60000
 }) {
   const activeFeeds = Array.isArray(feeds) ? feeds.filter(Boolean) : [];
   if (!activeFeeds.length) {
     throw new Error("rss-feeds-missing");
   }
 
+  if (activeFeeds.length > 1) {
+    const deadline = Date.now() + deadlineMs, results = new Array(activeFeeds.length); let cursor = 0;
+    await Promise.all(Array.from({ length: Math.min(Math.max(1, concurrency), activeFeeds.length) }, async () => {
+      while (cursor < activeFeeds.length) {
+        const index = cursor++, feed = activeFeeds[index], remaining = deadline - Date.now();
+        results[index] = remaining <= 0
+          ? { articles: [], sourceMeta: { feedStatus: [{ label: feed.label || "RSS", url: String(feed.url || feed), status: "deadline", count: 0 }] } }
+          : await fetchRss({ feeds: [feed], timeoutMs: Math.min(timeoutMs, remaining), retries: retries ?? 0, concurrency: 1, deadlineMs: remaining });
+      }
+    }));
+    const articles = results.flatMap(r => r.articles);
+    return { provider: "rss", articles, sourceMeta: { provider: "rss", totalResults: articles.length,
+      timestampFallbackCount: results.reduce((n,r)=>n+(r.sourceMeta.timestampFallbackCount || 0),0),
+      rateLimit: results.map(r=>r.sourceMeta.rateLimit).filter(Boolean).at(-1) || null,
+      feedStatus: results.flatMap(r=>r.sourceMeta.feedStatus || []), reason: articles.length ? null : "no-valid-rss-feed-results" } };
+  }
   const articles = [];
   let lastRateLimit = null;
   const feedStatus = [];
@@ -210,7 +228,7 @@ export async function fetchRss({
           headers: {
             Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.1",
             "User-Agent": "ogid/1.0"
-          }
+          }, bufferResponse: true, maxResponseBytes: 2097152
         },
         timeoutMs,
         retries
@@ -233,6 +251,7 @@ export async function fetchRss({
           error: `rss-upstream-${response.status}`,
           ...responseMeta
         });
+        await response.body?.cancel();
         continue;
       }
 

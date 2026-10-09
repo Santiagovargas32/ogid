@@ -31,6 +31,23 @@ function describe(operation) {
   return { operationId: operation.id, method: operation.method, route: operation.path, parameters: operation.parameters, body: operation.body, pathParameters: operation.pathParameters || null,
     permission: operation.scope, effects: operation.effects, cost: operation.cost, projection: operation.projection, retention: operation.retention, tool: operation.tool };
 }
+function compactWeeklyHistory(data) {
+  if (data.mode !== "weekly" || !Array.isArray(data.history) || !data.history.length) return data;
+  const days = new Map();
+  for (const row of data.history) {
+    const key = String(row.observedAt || row.bucket).slice(0, 10);
+    const previous = days.get(key);
+    if (!previous || String(row.observedAt) > String(previous.observedAt)) days.set(key, row);
+  }
+  const daily = [...days.values()].sort((a, b) => String(a.observedAt).localeCompare(String(b.observedAt)));
+  const history = daily.length <= 8 ? daily : Array.from({ length: 8 }, (_, index) => daily[Math.round(index * (daily.length - 1) / 7)]);
+  return { ...data, history,
+    historyCoverage: { storedObservations: data.history.length, returnedObservations: history.length,
+      observedFrom: data.history[0].observedAt, observedTo: data.history.at(-1).observedAt,
+      methodVersion: "weekly-history-daily-v1", dayTimeZone: "UTC", sampled: history.length < data.history.length,
+      meaning: "Latest stored observation per UTC day; at most eight days sampled across the requested window. Full hourly history remains available through the API." },
+    warnings: [...(data.warnings || []), "Historial MCP resumido por día UTC; incluye los días extremos disponibles y no representa todas las observaciones horarias. Consultar historyCoverage y la API para el detalle."] };
+}
 export function extendedToolDefinitions(config, read) {
   const research = OGID_OPERATIONS.filter(operation => operation.profile === "research");
   const operator = OGID_OPERATIONS.filter(operation => operation.profile === "operator" && config.operatorCredential?.scopes.includes(operation.scope));
@@ -41,7 +58,9 @@ export function extendedToolDefinitions(config, read) {
     if (operation.profile === "research" && operation.id !== "instruments.resolve") await authorizeInstruments(config, read, [...(values.instrumentIds || []), ...(values.symbols || []), ...(values.tickers || []), ...(values.instrumentId ? [values.instrumentId] : []), ...(values.benchmarkInstrumentId ? [values.benchmarkInstrumentId] : [])]);
     if (["news.search","signals.delta"].includes(operation.id)) values.maxBytes = Math.min(values.maxBytes || config.maxOutputBytes, config.maxOutputBytes);
     const raw = await callOperation(read, operation, values, body, pathParams);
-    return { data: projectOperation(operation, raw), warnings: [...(raw.warnings || []), ...(operation.profile === "operator" ? ["Operación del perfil operador autorizada por credencial local; no utilizar en tareas de investigación."] : []), ...(operation.projection === "admin-counts" ? ["Solo métricas administrativas: los cuerpos internos se omiten."] : [])] };
+    const projected = projectOperation(operation, raw);
+    const data = operation.id === "portfolio.context" ? compactWeeklyHistory(projected) : projected;
+    return { data, warnings: [...(data.warnings || raw.warnings || []), ...(operation.profile === "operator" ? ["Operación del perfil operador autorizada por credencial local; no utilizar en tareas de investigación."] : []), ...(operation.projection === "admin-counts" ? ["Solo métricas administrativas: los cuerpos internos se omiten."] : [])] };
   }
   const tools = [
     { name: "ogid_get_capabilities", description: "Descubre versión, cobertura, permisos y contratos de las operaciones OGID disponibles. No acredita la identidad del proceso por el commit del checkout.", schema: z.strictObject({}), async run() {

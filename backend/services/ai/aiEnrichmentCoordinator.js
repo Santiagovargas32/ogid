@@ -93,7 +93,7 @@ export class AiEnrichmentCoordinator {
     return projection;
   }
 
-  reconcileNewsSnapshot({ snapshot = {}, signalCorpus = [], displaySelection = [], rawArticles = [], instruments = [] } = {}) {
+  async reconcileNewsSnapshot({ snapshot = {}, signalCorpus = [], displaySelection = [], rawArticles = [], instruments = [] } = {}) {
     this.lastCanonicalLayer = buildCanonicalArticleLayer({
       signalCorpus,
       displaySelection,
@@ -133,7 +133,7 @@ export class AiEnrichmentCoordinator {
     }
 
     if (this.features.has("market_explanation")) {
-      scheduled += this.#scheduleMarketJobs(snapshot, instruments, this.maxJobsPerCycle - scheduled);
+      scheduled += await this.#scheduleMarketJobs(snapshot, instruments, this.maxJobsPerCycle - scheduled);
     }
     if (this.features.has("article_summary") && scheduled < this.maxJobsPerCycle) {
       scheduled += this.#scheduleArticleJobs(contextualArticles, this.maxJobsPerCycle - scheduled, 100);
@@ -143,9 +143,9 @@ export class AiEnrichmentCoordinator {
     return { scheduled, canonicalArticles: this.lastCanonicalLayer.articles.length };
   }
 
-  reconcileMarketSnapshot({ snapshot = {}, instruments = [] } = {}) {
+  async reconcileMarketSnapshot({ snapshot = {}, instruments = [] } = {}) {
     if (!this.isEnabled() || !this.features.has("market_explanation") || !this.lastCanonicalLayer) return this.syncProjection();
-    const scheduled = this.#scheduleMarketJobs(snapshot, instruments, this.maxJobsPerCycle);
+    const scheduled = await this.#scheduleMarketJobs(snapshot, instruments, this.maxJobsPerCycle);
     this.syncProjection();
     this.#drain();
     return { scheduled };
@@ -171,7 +171,7 @@ export class AiEnrichmentCoordinator {
     return scheduled;
   }
 
-  #scheduleMarketJobs(snapshot, instruments, limit) {
+  async #scheduleMarketJobs(snapshot, instruments, limit) {
     let scheduled = 0;
     const latest = this.store.latestBySubject("market_explanation");
     const candidates = [];
@@ -199,7 +199,7 @@ export class AiEnrichmentCoordinator {
         couplingSeries: snapshot.impact?.couplingSeries || []
       }, this.lastCanonicalLayer.articles, instrument, {
         maxInputChars: this.maxInputChars,
-        deterministicAnalytics: this.#buildDeterministicMarketAnalytics(instrument)
+        deterministicAnalytics: await this.#buildDeterministicMarketAnalytics(instrument)
       });
       if (!job.eligible) {
         this.lastEligibility.market[instrument.instrumentId] = { eligible: false, reason: job.reason };
@@ -221,11 +221,11 @@ export class AiEnrichmentCoordinator {
     return scheduled;
   }
 
-  #buildDeterministicMarketAnalytics(instrument) {
+  async #buildDeterministicMarketAnalytics(instrument) {
     const result = { technicalIndicators: null, couplingV2: [], errors: [] };
     if (!instrument?.instrumentId) return result;
     try {
-      result.technicalIndicators = this.technicalIndicatorService?.calculate?.({
+      result.technicalIndicators = await this.technicalIndicatorService?.calculate?.({
         instrumentId: instrument.instrumentId,
         interval: "1day",
         adjustmentMode: "splits"
@@ -237,7 +237,7 @@ export class AiEnrichmentCoordinator {
       const links = this.lastCanonicalLayer.articles.flatMap((article) => article.instrumentLinks
         .filter((link) => link.instrumentId === instrument.instrumentId)
         .map(() => ({ newsId: article.legacyArticleId, instrumentId: instrument.instrumentId })));
-      result.couplingV2 = this.newsPriceCouplingService?.calculate?.({
+      result.couplingV2 = await this.newsPriceCouplingService?.calculate?.({
         articles: this.lastSignalCorpus,
         links
       }) || [];

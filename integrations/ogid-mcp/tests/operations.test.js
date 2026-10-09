@@ -11,6 +11,49 @@ import { createReadClient } from "../src/client.js";
 import { toolDefinitions, executeTool } from "../src/tools.js";
 import { zodSchema } from "../src/operations.js";
 const token = "fixture_" + "k".repeat(48);
+test("las velas de investigación no pueden activar Yahoo; el operador conserva su ruta autorizada", async () => {
+  let requests = 0;
+  const config = loadConfig({});
+  const read = createReadClient(config, async url => {
+    requests++;
+    assert.equal(url.searchParams.get("source"), "stored");
+    assert.equal(url.searchParams.has("force"), false);
+    return new Response(JSON.stringify({ ok: true, data: { candles: [] } }), { headers: { "content-type": "application/json" } });
+  });
+  await assert.rejects(read.operation("market.candles", { instrumentId: "fixture-id", source: "yahoo" }), { code: "INVALID_ARGUMENTS" });
+  assert.equal(requests, 0);
+  await read.operation("market.candles", { instrumentId: "fixture-id" });
+  await read.operation("market.candles", { instrumentId: "fixture-id", source: "stored" });
+  assert.equal(requests, 2);
+  const operator = OGID_OPERATIONS.find(operation => operation.id === "market.candles.fetch");
+  assert.equal(zodSchema(operator.parameters).parse({ instrumentId: "fixture-id", source: "yahoo" }).source, "yahoo");
+  assert.equal(operator.profile, "operator");
+  assert.equal(config.timeoutMs, 30000);
+});
+test("el contexto semanal compacto cabe en MCP y declara el muestreo sin modificar la historia completa", async () => {
+  const config = loadConfig({});
+  const history = Array.from({ length: 77 }, (_, index) => ({
+    bucket: new Date(Date.UTC(2026, 9, 6) + index * 3600000).toISOString().slice(0, 13),
+    observedAt: new Date(Date.UTC(2026, 9, 6) + index * 3600000).toISOString(),
+    impacts: Array.from({ length: 18 }, (_, instrument) => ({ ticker: `symbol-${instrument}`, linkedArticles: Array.from({ length: 12 }, (_, article) => ({ id: `article-${article}`, title: "title ".repeat(10) })) }))
+  }));
+  const raw = { mode: "weekly", history, news: { articles: [], hasMore: false }, warnings: [] };
+  const tools = toolDefinitions(config, async () => raw);
+  const result = await executeTool(tools.find(tool => tool.name === "ogid_get_portfolio_context"), { mode: "weekly", limit: 3 }, config);
+  assert.equal(result.isError, undefined);
+  assert.equal(result.structuredContent.data.historyCoverage.storedObservations, 77);
+  assert.equal(result.structuredContent.data.historyCoverage.returnedObservations, 4);
+  assert.equal(result.structuredContent.data.historyCoverage.sampled, true);
+  assert.equal(result.structuredContent.data.history[0].observedAt, history[23].observedAt);
+  assert.equal(result.structuredContent.data.history.at(-1).observedAt, history.at(-1).observedAt);
+  assert.ok(Buffer.byteLength(JSON.stringify(result)) <= config.maxOutputBytes);
+  assert.equal(raw.history.length, 77);
+  raw.history = Array.from({ length: 30 }, (_, index) => ({ observedAt: new Date(Date.UTC(2026, 8, 1 + index)).toISOString(), impacts: [] }));
+  const extended = await executeTool(tools.find(tool => tool.name === "ogid_get_portfolio_context"), { mode: "weekly" }, config);
+  assert.equal(extended.structuredContent.data.history.length, 8);
+  assert.equal(extended.structuredContent.data.history[0].observedAt, raw.history[0].observedAt);
+  assert.equal(extended.structuredContent.data.history.at(-1).observedAt, raw.history.at(-1).observedAt);
+});
 function requiredSample(definition) {
   return Object.fromEntries((definition.required || []).map(key => {
     const def = definition.properties[key];

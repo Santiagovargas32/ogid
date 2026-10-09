@@ -83,7 +83,7 @@ test("llama.cpp shadow persists all three features and public REST/WebSockets ex
   // Recalculation timestamps alone do not invalidate the market cache.
   runtime.aiCoordinator.technicalIndicatorService = null;
   runtime.aiCoordinator.newsPriceCouplingService = null;
-  runtime.aiCoordinator.reconcileNewsSnapshot(input);
+  await runtime.aiCoordinator.reconcileNewsSnapshot(input);
   await waitUntil(() => runtime.aiCoordinator.store.summary().counts.ready === 4 && runtime.aiCoordinator.active === 0);
   assert.deepEqual(input, originalInput);
   await waitUntil(() => messages.some((message) => message.type === "ai:update:v1"));
@@ -108,7 +108,7 @@ test("llama.cpp shadow persists all three features and public REST/WebSockets ex
   const storedText = readFileSync(join(directory, "enrichments.json"), "utf8");
   assert.doesNotMatch(storedText, /private-test-key|never-store-this-reasoning|"messages"|"reasoning_content"/);
   const restarted = coordinatorHarness({ mode: "shadow", store: new AiEnrichmentStore({ persistencePath: join(directory, "enrichments.json") }), budget: new AiBudgetService({ persistencePath: join(directory, "budget.json") }), fetchImpl: () => assert.fail("persisted cache must avoid another call") });
-  restarted.coordinator.reconcileNewsSnapshot(input);
+  await restarted.coordinator.reconcileNewsSnapshot(input);
   assert.equal(restarted.coordinator.metrics.cacheHits, 4);
   assert.equal(restarted.budget.snapshot().requestsUsed, 4);
 });
@@ -124,20 +124,20 @@ test("llama.cpp in-flight jobs deduplicate and visible accepted cache survives r
   } });
   h.coordinator.features = new Set(["article_summary"]);
   const input = snapshotInput([article()]);
-  h.coordinator.reconcileNewsSnapshot(input);
+  await h.coordinator.reconcileNewsSnapshot(input);
   await waitUntil(() => release);
-  h.coordinator.reconcileNewsSnapshot(input);
+  await h.coordinator.reconcileNewsSnapshot(input);
   assert.equal(h.store.summary().total, 1);
   hold = false;
   release();
   await waitUntil(() => h.coordinator.active === 0);
   assert.equal(h.store.summary().counts.ready, 1);
-  h.coordinator.reconcileNewsSnapshot(input);
+  await h.coordinator.reconcileNewsSnapshot(input);
   assert.equal(h.coordinator.metrics.cacheHits, 1);
   fail = true;
   for (const suffix of [" updated", " updated again"]) {
     const changed = snapshotInput([{ ...article(), title: article().title + suffix }]);
-    h.coordinator.reconcileNewsSnapshot(changed);
+    await h.coordinator.reconcileNewsSnapshot(changed);
     await waitUntil(() => h.coordinator.active === 0);
     const projection = h.coordinator.getPublicProjection();
     assert.equal(projection.articleSummaries[article().id].status, "stale");
@@ -148,7 +148,7 @@ test("llama.cpp in-flight jobs deduplicate and visible accepted cache survives r
   assert.equal(h.transport.getCircuitSnapshot("llamacpp").state, "open");
   await new Promise((resolve) => setTimeout(resolve, 5));
   fail = false;
-  h.coordinator.reconcileNewsSnapshot(snapshotInput([{ ...article(), title: article().title + " recovered" }]));
+  await h.coordinator.reconcileNewsSnapshot(snapshotInput([{ ...article(), title: article().title + " recovered" }]));
   await waitUntil(() => h.coordinator.active === 0);
   assert.equal(h.coordinator.getPublicProjection().articleSummaries[article().id].status, "ready");
   assert.equal(h.transport.getCircuitSnapshot("llamacpp").state, "closed");
@@ -156,7 +156,7 @@ test("llama.cpp in-flight jobs deduplicate and visible accepted cache survives r
 
 test("llama.cpp outputs with invented evidence are rejected by the unchanged grounding validator", async () => {
   const h = coordinatorHarness({ fetchImpl: async (_url, options) => groundedResponse(options, true) });
-  h.coordinator.reconcileNewsSnapshot(snapshotInput());
+  await h.coordinator.reconcileNewsSnapshot(snapshotInput());
   await waitUntil(() => h.coordinator.active === 0 && h.coordinator.queue.length === 0);
   assert.equal(h.store.summary().counts.rejected, 4);
   assert.ok(h.store.list().items.every((item) => item.output === null && item.validation.codes.includes("UNKNOWN_EVIDENCE_ARTICLE")));
@@ -185,7 +185,7 @@ test("a pending/unavailable llama.cpp server does not block news, market, awaren
   const broadcasts = [];
   const broadcast = runtime.socketServer.broadcast.bind(runtime.socketServer);
   runtime.socketServer.broadcast = (...args) => { broadcasts.push(args[0]); broadcast(...args); };
-  runtime.aiCoordinator.reconcileNewsSnapshot(snapshotInput([article()]));
+  await runtime.aiCoordinator.reconcileNewsSnapshot(snapshotInput([article()]));
   await waitUntil(() => started);
   assert.equal(runtime.aiCoordinator.active, 1);
   await runtime.orchestrator.runNewsCycle("test-provider-offline");
@@ -203,10 +203,10 @@ test("a pending/unavailable llama.cpp server does not block news, market, awaren
 });
 
 for (const [provider, mode] of [["llamacpp", "off"], ["nvidia", "off"], ["none", "visible"]]) {
-  test(`${provider}/${mode} does zero model work without endpoint/model credentials`, () => {
+  test(`${provider}/${mode} does zero model work without endpoint/model credentials`, async () => {
     const store = new AiEnrichmentStore();
     const coordinator = new AiEnrichmentCoordinator({ config: { provider, mode, features: ["article-summary"] }, provider: createAiProvider({ provider, mode }), store, budget: new AiBudgetService() });
-    coordinator.reconcileNewsSnapshot(snapshotInput());
+    await coordinator.reconcileNewsSnapshot(snapshotInput());
     assert.equal(store.summary().total, 0);
     assert.equal(coordinator.getAdminSnapshot().transport.calls, 0);
   });

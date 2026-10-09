@@ -10,16 +10,16 @@ import { sanitizeSensitiveData } from "../../utils/sanitize.js";
 
 function safe(value) { return String(value || "").replace(/[^a-zA-Z0-9._-]/g, "_"); }
 function parse(line) { try { return JSON.parse(line); } catch { return null; } }
-function sameMarketValues(left, right) { return ["open", "high", "low", "close", "volume", "source", "providerSymbol", "dataMode", "currency", "adjusted", "quality", "openTime", "closeTime", "providerAdjustedClose"].every((field) => left?.[field] === right?.[field]) && stableHash({calendar:left.calendar,methodVersion:left.methodVersion,adjustmentMode:left.provenance?.adjustmentMode}) === stableHash({calendar:right.calendar,methodVersion:right.methodVersion,adjustmentMode:right.provenance?.adjustmentMode}); }
+export function sameMarketValues(left, right) { return ["open", "high", "low", "close", "volume", "source", "providerSymbol", "dataMode", "currency", "adjusted", "quality", "openTime", "closeTime", "providerAdjustedClose"].every((field) => left?.[field] === right?.[field]) && stableHash({calendar:left.calendar,methodVersion:left.methodVersion,adjustmentMode:left.provenance?.adjustmentMode}) === stableHash({calendar:right.calendar,methodVersion:right.methodVersion,adjustmentMode:right.provenance?.adjustmentMode}); }
 
 // A daily bar represents one exchange-local session, even if its UTC hours are corrected.
 // Intraday bars retain their exact opening-time identity.
-function storeIdentity(candle) {
+export function storeIdentity(candle) {
   if (candle.interval !== "1day" || !Number.isFinite(Date.parse(candle.openTime))) return candleIdentity(candle);
   const zone = getInstrumentById(candle.instrumentId)?.timezone || candle.calendar?.timezone || "UTC";
   return `${candle.instrumentId}|1day|${localDate(candle.openTime, zone)}`;
 }
-function revise(previous, candle) {
+export function revise(previous, candle) {
   return { ...candle, revision: Math.max(previous.revision || 1, candle.revision || 1) + 1,
     revisions: [...(previous.revisions || []), ...(candle.revisions || []), {
       revision: previous.revision || 1, fetchedAt: previous.fetchedAt,
@@ -28,7 +28,7 @@ function revise(previous, candle) {
       volume: previous.volume, source: previous.source, adjusted: previous.adjusted
     }].slice(-20) };
 }
-function mergeStoredSession(previous, candle) {
+export function mergeStoredSession(previous, candle) {
   if (!previous || candle.interval !== "1day") return candle;
   const canonicalTimes = (bar) => {
     if (bar.interval !== "1day") return false;
