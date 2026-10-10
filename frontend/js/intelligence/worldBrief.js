@@ -76,7 +76,7 @@ export function buildWorldBriefHtml(payload = {}) {
         .join("")
     : `<div class="intel-empty-state">${
         leader
-          ? `No related headlines matched ${escapeHtml(leader.country || leader.iso2 || "the leading hotspot")} in ${escapeHtml(windowLabel)}.`
+          ? `No related headlines matched ${escapeHtml(leader.country || leader.iso2 || "the leading country")} in ${escapeHtml(windowLabel)}.`
           : "No active escalation clusters detected in the selected window."
       }</div>`;
 

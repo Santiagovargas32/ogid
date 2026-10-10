@@ -8,7 +8,7 @@ const RAW_PAGE_SIZE = 100;
 const elements = {};
 let pollHandle = null;
 let pollFailures = 0;
-let retryAfterMs = 0;
+let retryUntilMs = 0;
 const sections = new SectionRefresh({ onStatus(key, status, error, retained, dataAt) {
   const anchor = document.getElementById(key);
   if (!anchor) return;
@@ -18,7 +18,7 @@ const sections = new SectionRefresh({ onStatus(key, status, error, retained, dat
   label.dataset.state = status;
   label.textContent = error ? `${retained ? "Stale · últimos datos conservados. " : "Error · "}${error.message} (${error.status || error.code || "NETWORK_ERROR"})`
     : status === "loading" ? "Comprobando…" : `Respuesta recibida ${formatShortTime(new Date())} · Datos: ${dataAt ? formatDate(dataAt) : "fecha no disponible"}`;
-  if (error?.retryAfterSec) retryAfterMs = Math.max(retryAfterMs, error.retryAfterSec * 1000);
+  if (error?.retryAfterSec) retryUntilMs = Math.max(retryUntilMs, Date.now() + error.retryAfterSec * 1000);
 } });
 const rawPaginationState = {
   intel: 1,
@@ -812,7 +812,9 @@ function renderPipelineDiagnostics(news = {}, market = {}) {
     renderMarketTransportDiagnostics(market);
     return;
   }
-  elements.rssFeedStatusBody.innerHTML = feedStatus
+  const ingestion = news.rssIngestion || {};
+  const metrics = ingestion.metrics || {};
+  elements.rssFeedStatusBody.innerHTML = `<div class="diagnostic-item-meta">${escapeHtml(ingestion.availability || "unknown")} · Coverage ${Number(ingestion.coverage?.checked || 0)}/${Number(ingestion.coverage?.enabled || 0)} · Queue ${Number(metrics.queued || 0)} / in flight ${Number(metrics.inFlight || 0)} · Deferred ${Number(metrics.deferred || 0)} · Hosts limited ${Number(metrics.hostsLimited || 0)} · 304 ${Number(metrics.notModified || 0)} · Errors ${Number(metrics.errors || 0)} · New ${Number(metrics.newArticles || 0)} · Cycle ${Number(metrics.lastDurationMs || 0)}ms</div>` + feedStatus
     .map((feed) => {
       const status = String(feed.status || "empty").toLowerCase();
       const safeStatus = ["ok", "error", "empty", "invalid-feed", "skipped"].includes(status) ? status : "empty";
@@ -822,7 +824,7 @@ function renderPipelineDiagnostics(news = {}, market = {}) {
             <strong>${escapeHtml(feed.label || feed.url || "RSS feed")}</strong>
             <span class="diagnostic-pill ${safeStatus}">${escapeHtml(status)}</span>
           </div>
-          <div class="diagnostic-item-meta">count: ${Number(feed.count || 0)} | ${escapeHtml(feed.error || feed.url || "--")}</div>
+          <div class="diagnostic-item-meta">count: ${Number(feed.count || 0)} | ${escapeHtml(feed.error || feed.url || "--")}<br>Checked ${formatDate(feed.lastAttemptAt)} · Success ${formatDate(feed.lastSuccessAt)} · Next ${formatDate(feed.nextEligibleAt)} · Backoff ${formatDate(feed.cooldownUntil)}</div>
         </article>
       `;
     })
@@ -979,7 +981,7 @@ async function refreshRawNewsDataset(datasetKey) {
     pageSize: RAW_PAGE_SIZE,
     stored: 1
   });
-  applyRawNewsPayload(datasetKey, payload);
+  if (Number(payload.pagination?.page) === rawPaginationState[datasetKey]) applyRawNewsPayload(datasetKey, payload);
   return payload;
 }
 
@@ -996,9 +998,7 @@ async function handleRawPaginationClick(datasetKey, direction) {
 
 function renderMediaStreams(payload = {}) {
   elements.mediaStreamsUpdated.textContent = `Updated: ${formatDate(payload.generatedAt)}`;
-  const rows = []
-    .concat((payload?.sections?.situational || []).map((item) => ({ ...item, section: "situational" })))
-    .concat((payload?.sections?.webcams || []).map((item) => ({ ...item, section: "webcams" })));
+  const rows = (payload?.sections?.situational || []).map((item) => ({ ...item, section: "situational" }));
 
   if (!rows.length) {
     elements.mediaStreamsBody.innerHTML = renderEmptyRow(11, "No media stream data available.");
@@ -1030,6 +1030,7 @@ function renderMediaStreams(payload = {}) {
 }
 
 async function refreshAll({ forceMedia = false } = {}) {
+  if (forceMedia && sections.inFlight) await sections.inFlight;
   const definitions = [
     {key:"server-summary-body", load: signal => api.getHealth({signal}), render: (v, values) => renderServerSummary(v, values.get("pipeline-status-body") || {})},
     {key:"api-limits-body", load: signal => api.getApiLimits({signal}), render: renderApiLimits},
@@ -1049,7 +1050,7 @@ async function refreshAll({ forceMedia = false } = {}) {
 
 function startPolling() {
   pollHandle = new SmartPollLoop({ immediate:false, intervalMs:POLL_INTERVAL_MS, hiddenIntervalMs:300_000, task:refreshAll,
-    delayResolver:({hidden}) => Math.max(retryAfterMs, (hidden?300_000:POLL_INTERVAL_MS) * 2 ** pollFailures) * (0.9 + Math.random()*0.2)
+    delayResolver:({hidden}) => Math.max(retryUntilMs - Date.now(), (hidden?300_000:POLL_INTERVAL_MS) * 2 ** pollFailures * (0.9 + Math.random()*0.2))
   });
   pollHandle.start();
 }

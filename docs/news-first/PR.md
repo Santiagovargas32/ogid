@@ -1,0 +1,11 @@
+Título: fix: news-first dashboard, stored Admin reads and bounded shared RSS
+
+Admin podía quedar vacío esperando una petición RSS indefinida y la selección/agregado consultaban feeds por dos caminos. Ahora cada sección renderiza su último dato independientemente, las lecturas rutinarias usan estado almacenado con timeout/cancelación, y una pipeline canónica compartida recoge RSS con presupuestos completos, equidad por host y persistencia JSON atómica coalescida. Se preservan refresco explícito, cuotas, investigación, agenda, OHLCV, IA y contratos API/MCP.
+
+Live News Feed ocupa todo el ancho, conserva imagen lazy en cada noticia y ofrece criticidad del artículo, filtros, ventana/páginas, drawer y novedades integradas sin toast. Se retiran Geopolitical Map, Escalation Hotspots, Hotspot Webcams, Leaflet e Histórico diario/CSV/replay del formulario Admin; sus servicios y APIs públicas siguen disponibles donde tienen consumidores.
+
+Validación: backend `npm run check` y 592/592 tests; MCP check/inventory y 21/21 tests. Browser Chromium verifica 1920/1366/390 px, imágenes/fallback, scroll/foco/drawer, DOM estable ante mercados, desconexión/fallback/reconexión y Admin parcial con RSS pendiente. Fixture comparable: primera selección 2977→451 ms, upstream 36→18, update WS 77.7→25.0 kB; lecturas almacenadas calientes p95 <23 ms en el ensayo de 1/10 clientes. Persistencia 10k conserva los mismos bytes con una escritura coalescida.
+
+Límites para revisión: la LAN `192.168.1.50:3000` agotó timeout desde el entorno; no se declara resuelta la conectividad real ni se validó proxy/Tailscale. `.env` del operador se conserva y fuerza legacy/15 min/deadline60 s: adoptar canonical exige ajustar configuración. Ingestión/serialización del archivo siguen teniendo CPU síncrona; el ensayo de 3 min conserva heap usado/colas acotados pero RSS del proceso crece, pendiente de seguimiento. No hay merge/deploy ni integración de PR #11 SQLite.
+
+Informe, capturas, medidas exactas, auditoría de consumidores, configuración, diagnóstico remoto y rollback: [docs/news-first/README.md](https://github.com/Santiagovargas32/ogid/blob/fix/news-first-dashboard-rss-performance/docs/news-first/README.md) y [MEASUREMENTS.md](https://github.com/Santiagovargas32/ogid/blob/fix/news-first-dashboard-rss-performance/docs/news-first/MEASUREMENTS.md).

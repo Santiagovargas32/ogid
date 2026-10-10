@@ -32,7 +32,7 @@ test("dashboard and admin share valid branding and primary navigation", async ()
   assert.match(brandMark, /href="data:image\/png;base64,/);
 });
 
-test("dashboard keeps map and news contracts without retired admin selectors", async () => {
+test("dashboard gives news full width and keeps active charts without retired components", async () => {
   const [dashboard, script, styles, apiScript, conditionsModel] = await Promise.all([
     frontendFile("index.html"),
     frontendFile("js/dashboard.js"),
@@ -41,7 +41,9 @@ test("dashboard keeps map and news contracts without retired admin selectors", a
     frontendFile("js/marketConditionsModel.js")
   ]);
 
-  assert.match(dashboard, /id="hotspot-map"/);
+  assert.doesNotMatch(dashboard, /hotspot-map|panel-hotspots|leaflet|Escalation Hotspots/);
+  assert.match(dashboard, /col-12[\s\S]*?id="panel-news"/);
+  assert.doesNotMatch(script, /HotspotMap|map\.js/);
   assert.match(dashboard, /id="news-feed"/);
   assert.match(dashboard, /Choose instruments/);
   assert.doesNotMatch(dashboard, /up to seven|Choose 7/i);
@@ -66,7 +68,7 @@ test("dashboard keeps map and news contracts without retired admin selectors", a
   assert.match(apiScript, /getMarketConditions: \(params = \{\}, options = \{\}\) => request\("\/api\/market\/conditions"/);
   assert.match(apiScript, /getMarketAnalytics: \(params = \{\}, options = \{\}\) => request\("\/api\/market\/analytics"/);
   assert.match(script, /message\.type === "awareness:update:v1"[\s\S]*?scheduleMarketConditionsRefresh\(\)/);
-  assert.match(script, /await refreshMarketConditions\(\)/);
+  assert.match(script, /void refreshMarketConditions\(\)/);
   assert.match(conditionsModel, /DEFAULT_MARKET_CONDITIONS_WINDOW_MIN = 240/);
   assert.match(conditionsModel, /minutes: 15/);
   assert.match(conditionsModel, /minutes: 60/);
@@ -120,4 +122,11 @@ test("AI enrichment surfaces remain explicitly separated from deterministic cont
   assert.doesNotMatch(`${dashboard}\n${script}`, /AI:\s*live/i);
   assert.match(adminScript, /const storedCounts = ai\.store\?\.counts \|\| \{\}/);
   assert.match(adminScript, /stored ready:/);
+});
+
+test("Admin removes daily history and replay controls while keeping diagnostics", async () => {
+ const [html,js]=await Promise.all([frontendFile("admin.html"),frontendFile("js/admin.js")]);
+ assert.doesNotMatch(html,/history-title|history-form|history-import-form|events-replay|Consultar 500/);
+ assert.doesNotMatch(js,/initAdminHistory|setInterval/);
+ assert.match(js,/stored:1/);
 });

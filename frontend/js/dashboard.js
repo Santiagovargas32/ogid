@@ -4,7 +4,8 @@ import { RealtimeSocket } from "./websocket.js";
 import { SmartPollLoop } from "./smartPollLoop.js";
 import { resolveMarketQuotesPollDelayMs } from "./marketPolling.js";
 import { renderMarketExplanationHistory } from "./aiMarketHistory.js";
-import { HotspotMap, getLevelColor } from "./map.js";
+import { getLevelColor } from "./levelColors.js";
+import { filterNews, newsIdentity, newsContentRevision, NewsSelectionTracker } from "./newsFeedModel.js";
 import { mountSituationalWorkspace } from "./media/situationalWorkspace.js";
 import { startAdvancedIntelligence } from "./intelligence/advancedIntelligence.js";
 import { mountAwarenessCenter } from "./awareness.js";
@@ -38,7 +39,6 @@ const LEVEL_RANK = {
 const NEWS_PLACEHOLDER_SRC = "/assets/news-placeholder.svg";
 const MARKET_CONDITIONS_WINDOW_MINUTES = new Set(MARKET_CONDITIONS_WINDOWS.map((option) => option.minutes));
 
-let hotspotMap;
 let riskChart;
 let socket;
 let selectedCountries = new Set();
@@ -123,10 +123,8 @@ function cacheElements() {
   elements.marketConditionsSymbols = byId("market-conditions-symbols");
   elements.marketConditionsCountries = byId("market-conditions-countries");
   elements.marketConditionsLimitations = byId("market-conditions-limitations");
-  elements.qualityHotspotsBadge = byId("quality-hotspots-badge");
   elements.qualityNewsBadge = byId("quality-news-badge");
   elements.qualityMarketBadge = byId("quality-market-badge");
-  elements.panelHotspots = byId("panel-hotspots");
   elements.panelNews = byId("panel-news");
   elements.panelRisk = byId("panel-risk");
   elements.panelMarket = byId("panel-market");
@@ -279,6 +277,8 @@ function openNewsDrawer(articleId = "") {
   elements.newsDrawerLink.classList.toggle("disabled", !article.url);
   elements.newsDrawerLink.setAttribute("aria-disabled", article.url ? "false" : "true");
 
+  elements.newsDrawer.dataset.identity = newsIdentity(article);
+  elements.newsDrawer.dataset.articleId = String(article.id);
   newsDrawerInstance?.show();
 }
 
@@ -596,26 +596,6 @@ function intersectsCountries(mentions = [], countriesSet) {
   return mentions.some((iso2) => countriesSet.has(iso2));
 }
 
-function filterMapAssetsBySelection(mapAssets = {}, countriesSet) {
-  if (!countriesSet?.size) {
-    return mapAssets;
-  }
-
-  const filterItems = (items = []) =>
-    items.filter((item) => {
-      if (item?.alwaysVisible) {
-        return true;
-      }
-      return intersectsCountries(item.countries || (item.country ? [item.country] : []), countriesSet);
-    });
-
-  return {
-    ...mapAssets,
-    staticPoints: filterItems(mapAssets.staticPoints || []),
-    movingSeeds: filterItems(mapAssets.movingSeeds || [])
-  };
-}
-
 function filterStateBySelection(state) {
   if (selectedIncludesAll()) {
     return state;
@@ -623,7 +603,6 @@ function filterStateBySelection(state) {
 
   const countriesSet = new Set(activeCountryList());
   const filteredNews = state.news.filter((article) => intersectsCountries(article.countryMentions || [], countriesSet));
-  const filteredHotspots = state.hotspots.filter((hotspot) => countriesSet.has(hotspot.iso2));
   const filteredCountries = Object.fromEntries(
     Object.entries(state.countries || {}).filter(([iso2]) => countriesSet.has(iso2))
   );
@@ -631,15 +610,12 @@ function filterStateBySelection(state) {
   const filteredImpactItems = (state.impact?.items || []).filter((item) =>
     intersectsCountries(item.linkedCountries || [], countriesSet)
   );
-  const filteredMapAssets = filterMapAssetsBySelection(state.mapAssets || { staticPoints: [], movingSeeds: [] }, countriesSet);
 
   return {
     ...state,
     news: filteredNews,
-    hotspots: filteredHotspots,
     countries: filteredCountries,
     insights: filteredInsights,
-    mapAssets: filteredMapAssets,
     impact: {
       ...(state.impact || {}),
       items: filteredImpactItems
@@ -647,15 +623,8 @@ function filterStateBySelection(state) {
   };
 }
 
-function deriveArticleLevel(article, countries) {
-  let selectedLevel = "Stable";
-  for (const iso2 of article.countryMentions || []) {
-    const level = countries?.[iso2]?.level || "Stable";
-    if ((LEVEL_RANK[level] || 0) > (LEVEL_RANK[selectedLevel] || 0)) {
-      selectedLevel = level;
-    }
-  }
-  return selectedLevel;
+function deriveArticleLevel(article) {
+  return ({critical:"Critical", elevated:"Elevated", monitoring:"Monitoring", low:"Stable"})[article.threatLevel] || "Unknown";
 }
 
 function setPanelMode(panel, mode) {
@@ -722,16 +691,19 @@ function renderMeta(meta, market) {
   }
 
   const dq = meta.dataQuality || {};
-  setQualityBadge(elements.qualityHotspotsBadge, "Hotspots", dq.news || {});
   setQualityBadge(elements.qualityNewsBadge, "News", dq.news || {});
+  const ingestion = meta.sourceMeta?.rssIngestion;
+  if (ingestion?.active === false) {
+    elements.qualityNewsBadge.textContent = "News: stored";
+    elements.qualityNewsBadge.className = "badge text-bg-secondary";
+    if ((getState().news || []).every(a=>a.provider === "rss")) elements.sourceModeBadge.textContent = "Source: stored";
+  }
   setQualityBadge(elements.qualityMarketBadge, "Market", dq.market || {});
 
-  setPanelMode(elements.panelHotspots, dq.news?.mode || "fallback");
   setPanelMode(elements.panelNews, dq.news?.mode || "fallback");
   setPanelMode(elements.panelRisk, dq.news?.mode || "fallback");
   setPanelMode(elements.panelMarket, dq.market?.mode || "fallback");
   setPanelMode(elements.panelSituational, dq.news?.mode || "fallback");
-  setPanelMode(elements.panelWebcams, dq.news?.mode || "fallback");
 }
 
 function renderCountryFilters() {
@@ -930,62 +902,120 @@ function handleActionClick(event) {
   }
 }
 
-function renderNews(news = [], countries = {}, ai = {}) {
-  const ordered = [...news].sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
-  elements.newsCount.textContent = `${ordered.length} items`;
-  currentNewsById = new Map(ordered.map((article) => [String(article.id), article]));
+const dashboardController = new AbortController();
+let wsConnected=false, fallbackFailures=0, newsFallback=null, newsTransportToken=0;
+const newsOptions={q:'',severity:'',order:'critical',page:1,pageSize:40,windowHours:36};
+let baseline=null;
+try { baseline=JSON.parse(sessionStorage.getItem('ogid-news-baseline') || 'null'); } catch {}
+const newsTracker=new NewsSelectionTracker({baseline});
+const pendingNews=new Set(), updatedNews=new Set(), rowNodes=new Map(), renderedArticles=new Map();
+let olderNews=null, olderRequestToken=0;
+let visibleNewsOrder=[], forceNewsRender=false, lastNewsRenderKey='';
 
-  if (!ordered.length) {
-    elements.newsFeed.innerHTML = '<div class="p-3 small text-light-emphasis">No intelligence items available.</div>';
-    return;
+function safeFeedInsertion(){
+  return elements.newsFeed.scrollTop < 40 && !document.activeElement?.closest('.news-item') && !elements.newsDrawer?.classList.contains('show');
+}
+function observeNewsSelection(state){
+  // Sólo revisiones del conjunto seleccionado completo, antes de filtros/paginación.
+  if(!state.meta?.newsRevision) return;
+  const change=newsTracker.observe(state.news||[],state.meta.newsRevision);
+  for(const id of change.newIds)pendingNews.add(id);
+  for(const id of change.updatedIds)updatedNews.add(id);
+  for (const set of [pendingNews, updatedNews]) while (set.size > 10000) set.delete(set.values().next().value);
+  if(change.newIds.length){byId('news-announcement').textContent=`${change.newIds.length} noticias nuevas seleccionadas`;}
+  if(change.newIds.length||change.updatedIds.length){try{sessionStorage.setItem('ogid-news-baseline',JSON.stringify(newsTracker.baseline()));}catch{}}
+  const button=byId('news-new-button');button.hidden=!pendingNews.size;button.textContent=`${pendingNews.size} noticias nuevas`;
+  const ingestion=state.meta?.sourceMeta?.rssIngestion||{};
+  const successes=(ingestion.feedStatus||[]).map(f=>f.lastSuccessAt).filter(Boolean).sort();
+  const success=ingestion.lastSuccessAt||successes.at(-1);
+  byId('news-ingestion-status').textContent=`Ingestión: ${ingestion.active===false?'parada':ingestion.availability||'sin datos'} · Último éxito: ${success?formatDate(success):'--'}`;
+}
+function newsRowMarkup(article,ai){
+  const identity=newsIdentity(article),level=deriveArticleLevel(article);
+  const image=String(article.leadImageUrl||article.imageUrl||'');
+  const safeImage=/^https?:\/\//i.test(image)?image:'';
+  const source=/^https?:\/\//i.test(article.url||'')?`<a class="news-source-link" href="${escapeHtml(article.url)}" target="_blank" rel="noopener noreferrer">Fuente ↗</a>`:'';
+  const entry=articleAiEntry(article.id,ai);
+  const quality=article.publishedAtQuality||article.provenance?.publishedAtQuality||'missing';
+  const date=article.publishedAt?formatDate(article.publishedAt):`Fecha fuente ${quality}`;
+  return `<img class="news-thumb${safeImage?'':' news-thumb-placeholder news-thumb-fallback'}" src="${escapeHtml(safeImage||NEWS_PLACEHOLDER_SRC)}" alt="${safeImage?'Imagen de la noticia':'OGID: imagen no disponible'}" loading="lazy" referrerpolicy="no-referrer" />
+    <div class="news-content"><div class="news-row-heading"><h3><button class="news-title-button" type="button" data-action="open-news" data-news-id="${escapeHtml(article.id)}">${escapeHtml(article.title||'Untitled headline')}</button></h3>
+    ${pendingNews.has(identity)?'<span class="news-new-marker">Nueva</span>':updatedNews.has(identity)?'<span class="news-updated-marker">Actualizada</span>':''}</div>
+    <p class="news-item-excerpt">${escapeHtml(resolveNewsExcerpt(article))}</p>
+    <div class="news-item-footer"><div class="news-item-meta">
+      <span class="news-publisher">${escapeHtml(article.publisher||article.sourceName||'Unknown publisher')}</span>
+      <time datetime="${escapeHtml(article.publishedAt||'')}">${escapeHtml(date)}</time>
+      <span class="news-meta-pill" title="${escapeHtml(article.severityOrigin||'unknown')}">${escapeHtml(level)}</span>
+      <span>${escapeHtml((article.countryMentions||[]).join(' · ')||'Global')}</span>
+      ${(article.topicTags||[]).slice(0,3).map(tag=>`<span class="news-topic">${escapeHtml(tag)}</span>`).join('')}
+      ${article.provenance?.sourceType==='generated_search'?'<span>Búsqueda RSS</span>':''}
+      ${article.provenance?.stale||article.dataMode==='stale'?'<span>Stale</span>':''}
+      ${article.synthetic?'<span class="news-flag">SIMULATED</span>':''}
+      ${entry?`<span class="news-ai-badge">${escapeHtml(aiStatusLabel(entry))}</span>`:''}
+    </div><div class="news-card-actions"><button class="btn btn-sm btn-outline-info" type="button" data-action="open-news" data-news-id="${escapeHtml(article.id)}">Open brief</button>${source}</div></div></div>`;
+}
+function renderNews(news=[],countries={},ai={}){
+  if (newsOptions.windowHours === 0 && olderNews) news=olderNews;
+  const page=filterNews(news,newsOptions);
+  if(newsOptions.page>page.pages){newsOptions.page=page.pages;return renderNews(news,countries,ai);}
+  currentNewsById=new Map(news.map(a=>[String(a.id),a]));
+  // Resolver el drawer por identidad aunque el proveedor cambie su alias externo.
+  if(elements.newsDrawer?.classList.contains('show')){
+    const identity=elements.newsDrawer.dataset.identity;
+    const article=news.find(a=>newsIdentity(a)===identity);
+    if(article){
+      currentNewsById.set(String(elements.newsDrawer.dataset.articleId),article);
+      elements.newsDrawerTitle.textContent=article.title || "Headline";
+      const revision=newsContentRevision(article);
+      if(elements.newsDrawerBody.dataset.revision!==revision){const scroll=elements.newsDrawerBody.scrollTop;elements.newsDrawerBody.innerHTML=buildNewsParagraphs(article).map(p=>`<p>${escapeHtml(p)}</p>`).join("");elements.newsDrawerBody.dataset.revision=revision;elements.newsDrawerBody.scrollTop=scroll;}
+      renderArticleAiDetail(articleAiEntry(article.id,ai));
+    }
   }
-
-  elements.newsFeed.innerHTML = ordered
-    .slice(0, 40)
-    .map((article) => {
-      const level = deriveArticleLevel(article, countries);
-      const mentions = article.countryMentions?.length ? article.countryMentions.join(", ") : "Global";
-      const title = String(article.title || "").trim() || "Untitled headline";
-      const description = resolveNewsExcerpt(article);
-      const safeImageUrl = String(article.leadImageUrl || article.imageUrl || "").trim();
-      const thumbnail = safeImageUrl
-        ? `<img class="news-thumb" src="${escapeHtml(safeImageUrl)}" alt="news image" loading="lazy" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src='${NEWS_PLACEHOLDER_SRC}';this.classList.add('news-thumb-fallback')" />`
-        : `<img class="news-thumb news-thumb-placeholder news-thumb-fallback" src="${NEWS_PLACEHOLDER_SRC}" alt="No image" loading="lazy" />`;
-      const flag = article.synthetic ? '<span class="news-flag">SIMULATED</span>' : "";
-      const provider = String(article.provider || "").toUpperCase() || "RSS";
-      const aiEntry = articleAiEntry(article.id, ai);
-      const aiFlag = aiEntry
-        ? `<span class="news-ai-badge ai-status-${escapeHtml(aiEntry.status || "unknown")}">${escapeHtml(aiStatusLabel(aiEntry))}</span>`
-        : "";
-
-      return `
-      <article class="news-item ${newsLevelClass(level)}">
-        ${thumbnail}
-        <div class="news-content">
-          <h3>${escapeHtml(title)}</h3>
-          <p class="news-item-excerpt">${escapeHtml(description)}</p>
-          <div class="news-item-footer">
-            <div class="news-item-meta">
-              <span class="news-meta-pill">${escapeHtml(article.sourceName)}</span>
-              <span class="news-meta-pill">${formatDate(article.publishedAt)}</span>
-              <span class="news-meta-pill">${escapeHtml(level)}</span>
-              <span class="news-meta-pill">${escapeHtml(mentions)}</span>
-              <span class="news-meta-pill">${escapeHtml(provider)}</span>
-              ${flag}
-              ${aiFlag}
-            </div>
-            <div class="news-card-actions">
-              <button class="btn btn-sm btn-outline-info news-card-cta" type="button" data-action="open-news" data-news-id="${escapeHtml(
-        article.id
-      )}">Open brief</button>
-              <a class="btn btn-sm btn-outline-light" href="${escapeHtml(article.url || "#")}" target="_blank" rel="noopener noreferrer">Source</a>
-            </div>
-          </div>
-        </div>
-      </article>
-    `;
-    })
-    .join("");
+  elements.newsCount.textContent=`${page.total} items`;
+  byId('news-page').textContent=`Página ${newsOptions.page} de ${page.pages}`;
+  byId('news-prev').disabled=newsOptions.page<=1;byId('news-next').disabled=newsOptions.page>=page.pages;
+  const canReorder=forceNewsRender||!visibleNewsOrder.length||safeFeedInsertion();
+  let ordered=page.items;
+  if(!canReorder){const byIdentity=new Map(news.map(a=>[newsIdentity(a),a]));ordered=visibleNewsOrder.map(id=>byIdentity.get(id)||renderedArticles.get(id)).filter(Boolean);}
+  for (const article of ordered) currentNewsById.set(String(article.id), article);
+  const renderKey=JSON.stringify(ordered.map(a=>[newsIdentity(a),newsContentRevision(a),articleAiEntry(a.id,ai)?.updatedAt||articleAiEntry(a.id,ai)?.status,pendingNews.has(newsIdentity(a)),updatedNews.has(newsIdentity(a))]));
+  if(renderKey===lastNewsRenderKey&&!forceNewsRender)return;
+  lastNewsRenderKey=renderKey;
+  if(!ordered.length){
+    for(const node of rowNodes.values())node.remove();rowNodes.clear();renderedArticles.clear();visibleNewsOrder=[];
+    let empty=elements.newsFeed.querySelector('.news-empty');if(!empty){empty=document.createElement('p');empty.className='news-empty p-3 small text-light-emphasis';elements.newsFeed.append(empty);}empty.textContent='No hay noticias seleccionadas para estos filtros. La ingestión continúa en segundo plano.';
+    forceNewsRender=false;return;
+  }
+  elements.newsFeed.querySelector('.news-empty')?.remove();
+  const active=document.activeElement, keep=new Set(ordered.map(newsIdentity));
+  for(const [id,node] of rowNodes)if(!keep.has(id)){node.remove();rowNodes.delete(id);renderedArticles.delete(id);}
+  ordered.forEach((article,index)=>{
+    const id=newsIdentity(article);renderedArticles.set(id,article);let node=rowNodes.get(id);
+    const isNew=!node;
+    if(!node){node=document.createElement('article');node.dataset.newsIdentity=id;rowNodes.set(id,node);}
+    const markup=newsRowMarkup(article,ai),revision=newsContentRevision(article)+JSON.stringify(articleAiEntry(article.id,ai))+pendingNews.has(id)+updatedNews.has(id);
+    node.className=`news-item ${newsLevelClass(deriveArticleLevel(article))}${isNew&&pendingNews.has(id)?' news-arrival':''}`;
+    if(node.dataset.revision!==revision&&(!node.contains(active)||forceNewsRender)){node.innerHTML=markup;node.dataset.revision=revision;}
+    if(canReorder&&elements.newsFeed.children[index]!==node)elements.newsFeed.insertBefore(node,elements.newsFeed.children[index]||null);
+  });
+  visibleNewsOrder=ordered.map(newsIdentity);forceNewsRender=false;
+}
+function bindNewsControls(){
+  elements.newsFeed.addEventListener("error", event => {
+    const image = event.target;
+    if (image.matches?.("img.news-thumb") && !image.classList.contains("news-thumb-fallback")) {
+      image.classList.add("news-thumb-fallback"); image.alt = "OGID: imagen no disponible"; image.src = NEWS_PLACEHOLDER_SRC;
+    }
+  }, { capture:true, signal:dashboardController.signal });
+  const update=()=>{newsOptions.q=byId('news-search').value;newsOptions.order=byId('news-order').value;newsOptions.severity=byId('news-severity').value;newsOptions.windowHours=Number(byId('news-window').value);newsOptions.page=1;forceNewsRender=true;renderDashboard(getState());
+    if(newsOptions.windowHours===0){const token=++olderRequestToken;api.getNews({countries:"ALL",limit:500,includeOlder:1,order:newsOptions.order,q:newsOptions.q||undefined},{signal:dashboardController.signal}).then(data=>{if(token===olderRequestToken){olderNews=data.news||[];forceNewsRender=true;renderDashboard(getState());}}).catch(error=>{byId('news-ingestion-status').textContent=`Archivo no disponible: ${error.message}`;});}
+    else { olderRequestToken++; olderNews=null; }
+  };
+  for(const id of ['news-order','news-severity','news-window'])byId(id).addEventListener('change',update,{signal:dashboardController.signal});
+  byId('news-search').addEventListener('input',update,{signal:dashboardController.signal});
+  byId('news-prev').addEventListener('click',()=>{newsOptions.page--;forceNewsRender=true;renderDashboard(getState());},{signal:dashboardController.signal});
+  byId('news-next').addEventListener('click',()=>{newsOptions.page++;forceNewsRender=true;renderDashboard(getState());},{signal:dashboardController.signal});
+  byId('news-new-button').addEventListener('click',()=>{newsOptions.page=1;forceNewsRender=true;renderDashboard(getState());elements.newsFeed.scrollTo({top:0,behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});pendingNews.clear();updatedNews.clear();lastNewsRenderKey='';renderDashboard(getState());},{signal:dashboardController.signal});
 }
 
 function distributionFromCountries(countries) {
@@ -1523,7 +1553,7 @@ async function saveMarketWatchlist() {
       : `${marketWatchlistDraft.length}/${marketWatchlistModel.maxSelected} selected Â· saved`;
     renderMarketQuotes(getState().market || { quotes: {} });
     marketQuotesPoller?.trigger(0);
-    await refreshMarketConditions();
+    void refreshMarketConditions();
   } catch (error) { elements.marketWatchlistStatus.textContent = `Save failed: ${error.message}`; }
   finally { elements.marketWatchlistSave.disabled = false; }
 }
@@ -1656,6 +1686,7 @@ function startMarketQuotesPolling() {
 function renderDashboard(rawState) {
   const state = filterStateBySelection(rawState);
   renderMeta(rawState.meta, rawState.market || {});
+  observeNewsSelection(rawState);
   renderNews(state.news, state.countries, rawState.ai || {});
   renderDistribution(state.countries);
   renderRiskChart(state.countries);
@@ -1666,10 +1697,11 @@ function renderDashboard(rawState) {
     marketConditionsMatchesCurrentContext() ? latestMarketConditions : null,
     { error: latestMarketConditionsError }
   );
-  hotspotMap.render(state.hotspots, state.news, currentWatchlist, state.mapAssets || { staticPoints: [], movingSeeds: [] });
 }
 
 function setWsStatus(status) {
+  wsConnected = status === "connected";
+  if (wsConnected) { fallbackFailures = 0; newsFallback?.stop(); } else if (newsFallback?.stopped) newsFallback.start();
   elements.wsStatusBadge.className = `badge ${wsBadgeClass(status)}`;
   elements.wsStatusBadge.textContent = `WS: ${status}`;
 }
@@ -1731,13 +1763,9 @@ async function requestFilteredSnapshot() {
     latestMarketConditions = null;
     latestMarketConditionsContext = "";
     latestMarketConditionsError = "";
-    const snapshot = await api.getSnapshot({
-      countries: selectedCountryQueryValue(),
-      limit: 100
-    });
-    setSnapshot(snapshot);
-    awarenessController?.syncCompact(snapshot?.awareness);
-    await refreshMarketConditions();
+    newsOptions.page = 1; forceNewsRender = true;
+    renderDashboard(getState());
+    void refreshMarketConditions();
   } catch (error) {
     console.error("Failed to refresh filtered snapshot:", error);
   }
@@ -1786,6 +1814,7 @@ function mountWebSocket() {
         return;
       }
       if (message.type === "snapshot") {
+        newsTransportToken++;
         setSnapshot(message.data);
         awarenessController?.syncCompact(message.data?.awareness);
         void advancedIntelligenceController?.refresh();
@@ -1793,6 +1822,7 @@ function mountWebSocket() {
         return;
       }
       if (message.type === "update") {
+        if (message.data?.news) newsTransportToken++;
         applyUpdate(message.data);
         awarenessController?.syncCompact(message.data?.awareness);
         void advancedIntelligenceController?.refresh();
@@ -1851,12 +1881,8 @@ function syncWatchlistFromState(state) {
 async function bootstrap() {
   cacheElements();
   initNewsDrawer();
+  bindNewsControls();
   renderMarketConditionsWindowSelector();
-  hotspotMap = new HotspotMap("hotspot-map");
-  hotspotMap.init();
-  const handleAwarenessMapEvents = (event) => hotspotMap?.setAwarenessEvents(event.detail?.events || []);
-  window.addEventListener("awareness:map-events:v1", handleAwarenessMapEvents);
-  teardownHandlers.push(() => window.removeEventListener("awareness:map-events:v1", handleAwarenessMapEvents));
   teardownHandlers.push(mountSituationalWorkspace({ api }));
   advancedIntelligenceController = startAdvancedIntelligence({ api, getCountries: selectedCountryQueryValue });
   teardownHandlers.push(() => advancedIntelligenceController?.stop());
@@ -1875,7 +1901,7 @@ async function bootstrap() {
   elements.marketWatchlistSelected.addEventListener("click", handleMarketWatchlistAction);
   elements.marketOhlcvInstrument.addEventListener("change", loadMarketOhlcv);
   elements.marketOhlcvInterval.addEventListener("change", loadMarketOhlcv);
-  await loadMarketWatchlist();
+  void loadMarketWatchlist().catch(error => console.error("Watchlist unavailable", error));
 
   subscribe((state) => {
     syncWatchlistFromState(state);
@@ -1884,14 +1910,24 @@ async function bootstrap() {
     syncManualRefreshFromMeta(state.meta);
   });
 
+  newsFallback = new SmartPollLoop({ immediate:false, intervalMs:15_000, hiddenIntervalMs:90_000,
+    task: async signal => {
+      if (wsConnected) return;
+      const requestToken = newsTransportToken;
+      const snapshot = await api.getSnapshot({countries:"ALL",limit:500,order:"critical"},{signal});
+      if (!wsConnected && requestToken === newsTransportToken) { setSnapshot(snapshot); fallbackFailures=0; }
+    }, onError:()=>{fallbackFailures=Math.min(5,fallbackFailures+1);},
+    delayResolver:({hidden})=>(hidden?90_000:15_000)*2**fallbackFailures*(.9+Math.random()*.2)
+  });
   setWsStatus("connecting");
   mountWebSocket();
 
   try {
-    const snapshot = await api.getSnapshot({ countries: selectedCountryQueryValue(), limit: 100 });
-    setSnapshot(snapshot);
+    const requestToken = newsTransportToken;
+    const snapshot = await api.getSnapshot({ countries: "ALL", limit: 500, order: "critical" }, {signal: dashboardController.signal});
+    if (requestToken === newsTransportToken) setSnapshot(snapshot);
     awarenessController?.syncCompact(snapshot?.awareness);
-    await refreshMarketConditions();
+    void refreshMarketConditions();
   } catch (error) {
     console.error("Failed to fetch initial snapshot:", error);
     elements.newsFeed.innerHTML =
@@ -1903,6 +1939,8 @@ async function bootstrap() {
   startMarketProviderPolling();
 
   window.addEventListener("beforeunload", () => {
+    dashboardController.abort();
+    newsFallback?.stop();
     socket?.close();
     marketQuotesPoller?.stop();
     clearInterval(marketProviderPoller);

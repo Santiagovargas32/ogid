@@ -1,10 +1,8 @@
 import { SmartPollLoop } from "../smartPollLoop.js";
 import { mountVideoStreams, VIDEO_STREAMS } from "./videoStreams.js";
-import { mountWebcamStreams, WEBCAM_STREAMS } from "./webcamStreams.js";
 
 const VIEW_LABELS = {
-  situational: "Live Situational Awareness",
-  webcams: "Hotspot Webcams"
+  situational: "Live Situational Awareness"
 };
 
 const TRANSITION_MS = 190;
@@ -15,16 +13,12 @@ function normalizeMediaPayload(payload = {}) {
   const situational = Array.isArray(payload?.sections?.situational) && payload.sections.situational.length
     ? payload.sections.situational
     : VIDEO_STREAMS;
-  const webcams = Array.isArray(payload?.sections?.webcams) && payload.sections.webcams.length
-    ? payload.sections.webcams
-    : WEBCAM_STREAMS;
 
   return {
     generatedAt: payload?.generatedAt || null,
     summary: payload?.summary || {},
     sections: {
-      situational,
-      webcams
+      situational
     }
   };
 }
@@ -48,9 +42,7 @@ function renderToggleMarkup(activeView = "situational") {
         <button class="situational-view-option ${activeView === "situational" ? "active" : ""}" type="button" data-situational-view="situational">
           ${VIEW_LABELS.situational}
         </button>
-        <button class="situational-view-option ${activeView === "webcams" ? "active" : ""}" type="button" data-situational-view="webcams">
-          ${VIEW_LABELS.webcams}
-        </button>
+
       </div>
     </details>
   `;
@@ -99,10 +91,7 @@ export function mountSituationalWorkspace({
       return;
     }
 
-    if (activeView === "webcams") {
-      currentController.update?.(mediaPayload.sections.webcams);
-      return;
-    }
+
 
     currentController.update?.(mediaPayload.sections.situational, viewState.situational);
   }
@@ -173,13 +162,7 @@ export function mountSituationalWorkspace({
 
   function mountCurrentView() {
     destroyCurrentView();
-    if (activeView === "webcams") {
-      currentController = mountWebcamStreams({
-        rootId: workspaceId,
-        streams: mediaPayload.sections.webcams
-      });
-      return;
-    }
+
 
     currentController = mountVideoStreams({
       rootId: workspaceId,

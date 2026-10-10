@@ -1,0 +1,32 @@
+[
+  {
+    "path": "/",
+    "ms": 5019,
+    "error": "timed out"
+  },
+  {
+    "path": "/admin",
+    "ms": 5017,
+    "error": "timed out"
+  },
+  {
+    "path": "/api/health",
+    "ms": 5016,
+    "error": "timed out"
+  },
+  {
+    "path": "/api/intel/snapshot?countries=ALL&limit=40",
+    "ms": 5012,
+    "error": "timed out"
+  },
+  {
+    "path": "/api/news/aggregate?stored=1&limit=40",
+    "ms": 5016,
+    "error": "timed out"
+  },
+  {
+    "path": "/api/admin/news-raw?dataset=rss-aggregate&stored=1&pageSize=10",
+    "ms": 5014,
+    "error": "timed out"
+  }
+]

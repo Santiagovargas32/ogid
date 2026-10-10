@@ -12,7 +12,7 @@ function frontendFile(relativePath) {
 }
 
 test("advanced intelligence panels share one filtered snapshot polling contract", async () => {
-  const [dashboard, api, page, coordinator, worldBrief, risk, severity, terms, hotspots, anomalies] = await Promise.all([
+  const [dashboard, api, page, coordinator, worldBrief, risk, severity, terms, anomalies] = await Promise.all([
     frontendFile("js/dashboard.js"),
     frontendFile("js/api.js"),
     frontendFile("index.html"),
@@ -21,7 +21,6 @@ test("advanced intelligence panels share one filtered snapshot polling contract"
     frontendFile("js/intelligence/riskEngine.js"),
     frontendFile("js/intelligence/threatClassifier.js"),
     frontendFile("js/intelligence/trendDetector.js"),
-    frontendFile("js/intelligence/escalationHotspots.js"),
     frontendFile("js/intelligence/signalAnomalies.js")
   ]);
 
@@ -33,14 +32,14 @@ test("advanced intelligence panels share one filtered snapshot polling contract"
   assert.match(dashboard, /startAdvancedIntelligence\(\{ api, getCountries: selectedCountryQueryValue \}\)/);
   assert.doesNotMatch(dashboard, /startWorldBrief|startThreatClassifier|startRiskEngine|startTrendDetector|startEscalationHotspots|startSignalAnomalies/);
 
-  const intelligenceScripts = [coordinator, worldBrief, risk, severity, terms, hotspots, anomalies].join("\n");
+  const intelligenceScripts = [coordinator, worldBrief, risk, severity, terms, anomalies].join("\n");
   assert.equal((intelligenceScripts.match(/new SmartPollLoop/g) || []).length, 1);
   assert.match(coordinator, /pendingRefresh/);
   assert.match(coordinator, /requestToken/);
   assert.match(worldBrief, /brief\.articles/);
   assert.match(worldBrief, /safeHttpUrl/);
   assert.doesNotMatch(worldBrief, /getAggregateNews|getHotspotsV2/);
-  assert.match(hotspots, /item\.components/);
+  assert.doesNotMatch(`${page}\n${coordinator}`, /Escalation Hotspots|buildEscalationHotspotsHtml|escalation-hotspots-body/);
   assert.match(risk, /explanation\.formula/);
   assert.match(anomalies, /item\.status === "ready"/);
   assert.match(anomalies, /item\.anomalyScore !== null/);

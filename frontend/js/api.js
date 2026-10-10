@@ -41,6 +41,7 @@ export async function request(path, params = {}, options = {}) {
 
   const payload = await response.json().catch(error => {
     if (signal.aborted) throw error;
+    if (!response.ok) return null;
     throw Object.assign(new Error("Respuesta JSON inválida."), { status: response.status, code: "INVALID_RESPONSE", cause: error });
   });
   if (!response.ok) {
@@ -73,7 +74,6 @@ export const api = {
   getAdvancedIntelligenceSnapshot: (params = {}, options = {}) => request("/api/intel/advanced-snapshot", params, { ...options, cache: "no-store" }),
   getAwarenessSnapshot: () => request("/api/intel/awareness-snapshot", {}, { cache: "no-store" }),
   refreshIntel: (payload = {}) => request("/api/intel/refresh", {}, { method: "POST", body: payload }),
-  getHotspotsV2: (params = {}, options = {}) => request("/api/intel/hotspots-v2", params, options),
   getNews: (params = {}, options = {}) => request("/api/intel/news", params, options),
   getAggregateNews: (params = {}, options = {}) => request("/api/news/aggregate", params, options),
   getMediaStreams: (params = {}, options = {}) => request("/api/media/streams", params, options),
