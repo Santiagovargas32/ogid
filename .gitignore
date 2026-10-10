@@ -17,3 +17,7 @@ integrations/ogid-mcp/**/node_modules/
 integrations/ogid-mcp/**/.env
 integrations/ogid-mcp/**/*.local
 integrations/ogid-mcp/**/DIAGNOSTICO-LOCAL.md
+
+!/docs/news-first/
+!/docs/news-first/**
+backend/data/rss-canonical-state.json

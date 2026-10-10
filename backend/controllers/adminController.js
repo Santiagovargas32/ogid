@@ -403,7 +403,8 @@ export function getPipelineStatus(_req, res) {
         selectionBySourceName: intelSnapshot?.meta?.sourceMeta?.selectionBySourceName || [],
         latestSelectedArticleAgeMin: intelSnapshot?.meta?.sourceMeta?.latestSelectedArticleAgeMin ?? null,
         selectionConfig: intelSnapshot?.meta?.sourceMeta?.selectionConfig || null,
-        rssFeedStatus: intelSnapshot?.meta?.sourceMeta?.rssFeedStatus || [],
+        rssFeedStatus: res.app.locals.rssAggregator?.canonicalPipeline?.snapshot().meta?.feedStatus || intelSnapshot?.meta?.sourceMeta?.rssFeedStatus || [],
+        rssIngestion: res.app.locals.rssAggregator?.getStatus() || null,
         queryLengthByProvider: intelSnapshot?.meta?.sourceMeta?.queryLengthByProvider || {},
         snapshots: newsProviderSnapshots
       },

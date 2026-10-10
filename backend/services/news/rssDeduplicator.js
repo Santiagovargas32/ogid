@@ -1,32 +1,5 @@
-function normalizeText(value = "") {
-  return String(value)
-    .toLowerCase()
-    .replace(/https?:\/\/\S+/g, " ")
-    .replace(/[^\w\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function headlineFingerprint(value = "") {
-  return normalizeText(value)
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 12)
-    .join("|");
-}
-
-function sourceKey(value = "") {
-  return normalizeText(value).replace(/\s+/g, "-");
-}
-
-function dedupeKey(item = {}) {
-  const url = String(item.url || "").trim().toLowerCase();
-  if (url) {
-    return `url:${url}`;
-  }
-
-  return `headline:${sourceKey(item.sourceName || item.provider || "rss")}:${headlineFingerprint(item.title || "")}`;
-}
+import { articleIdentity } from "./articleIdentity.js";
+function dedupeKey(item = {}) { return articleIdentity(item); }
 
 export function deduplicateRssArticles(items = [], { maxItems = 800 } = {}) {
   const deduped = new Map();
@@ -48,22 +21,23 @@ export function deduplicateRssArticles(items = [], { maxItems = 800 } = {}) {
       continue;
     }
 
-    const existingScore = Number(existing.credibilityScore || 0) + Number(existing.duplicateCount || 1) * 0.02;
-    const candidateScore = Number(item.credibilityScore || 0) + 0.05;
-    const existingTime = new Date(existing.publishedAt || 0).getTime();
-    const candidateTime = new Date(item.publishedAt || 0).getTime();
-
-    if (candidateScore > existingScore || candidateTime > existingTime) {
-      deduped.set(key, {
-        ...existing,
-        ...item
-      });
-    }
+    const provenanceKey = p => JSON.stringify([p.feedId, p.sourceId, p.provider, p.canonicalUrl]);
+    const provenances = new Map([...(existing.provenances || [existing.provenance || {}]), ...(item.provenances || [item.provenance || {}])].map(p => [provenanceKey(p), p]));
+    const preferExisting = existing.provenance?.sourceType !== "generated_search" && item.provenance?.sourceType === "generated_search";
+    deduped.set(key, { ...(preferExisting ? { ...item, ...existing } : { ...existing, ...item }), id: existing.id || item.id,
+      receivedAt: existing.receivedAt || item.receivedAt,
+      firstSeenAt: existing.firstSeenAt || existing.receivedAt || item.firstSeenAt || item.receivedAt,
+      provenances: [...provenances.values()],
+      publisher: item.publisher || existing.publisher,
+      aliases: [...new Set([...(existing.aliases || []), ...(item.aliases || []), existing.id, item.id].filter(Boolean))]
+    });
   }
 
   const ordered = [...deduped.entries()]
     .map(([key, item]) => ({
       ...item,
+      id: articleIdentity(item),
+      aliases: [...new Set([...(item.aliases || []), item.id].filter(Boolean))],
       dedupeKey: key,
       duplicateCount: (clusters.get(key) || []).length,
       duplicateIds: (clusters.get(key) || []).slice(0, 10)

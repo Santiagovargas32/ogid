@@ -21,6 +21,9 @@ function normalizeFeed(feed, origin, defaults) {
   return {
     feedId: String(feed?.feedId || deriveFeedId(canonicalUrl)),
     sourceId: feed?.sourceId || null,
+    role: feed?.role || null,
+    topics: feed?.topics || [],
+    instrumentIds: feed?.instrumentIds || [],
     type: feed?.type || (feed?.generated || origin === "secondary" ? "generated_search" : "rss"),
     label: String(feed?.label || new URL(canonicalUrl).hostname),
     publisher: feed?.publisher ?? null,

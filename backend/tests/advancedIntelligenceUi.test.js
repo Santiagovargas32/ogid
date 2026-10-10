@@ -1,25 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildEscalationHotspotsHtml } from "../../frontend/js/intelligence/escalationHotspots.js";
 import { buildCountryInstabilityHtml } from "../../frontend/js/intelligence/riskEngine.js";
 import { buildSignalAnomaliesHtml } from "../../frontend/js/intelligence/signalAnomalies.js";
 import { buildWorldBriefHtml } from "../../frontend/js/intelligence/worldBrief.js";
 
-test("advanced UI renders hotspot components and the CII explanation", () => {
+test("advanced UI retains CII explanation after retiring hotspot renderer", () => {
   const payload = {
     window: { label: "last 24h" },
     corpus: { eventCount: 4, availableEventCount: 4 },
-    hotspots: [{
-      country: "United States",
-      hotspotScore: 95.2,
-      components: {
-        news: { score: 100 },
-        cii: { score: 80.8 },
-        geo: { score: 100 },
-        military: { score: 100 }
-      },
-      explanation: ["Weighted composite"]
-    }],
     countryInstability: {
       sampleSize: 4,
       ranking: [{
@@ -31,9 +19,6 @@ test("advanced UI renders hotspot components and the CII explanation", () => {
       }]
     }
   };
-  const hotspotHtml = buildEscalationHotspotsHtml(payload);
-  assert.match(hotspotHtml, /News 100\.0 .* CII 80\.8 .* Geo 100\.0 .* Military 100\.0/);
-  assert.match(hotspotHtml, /Weighted composite/);
   const ciiHtml = buildCountryInstabilityHtml(payload);
   assert.match(ciiHtml, /4 country-linked articles/);
   assert.match(ciiHtml, /baselineRisk\*0\.40/);

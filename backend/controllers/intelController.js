@@ -1,3 +1,6 @@
+import { publicationDate, articleIdentity } from "../services/news/articleIdentity.js";
+import { classifyRssArticle } from "../services/news/rssClassifier.js";
+import { compareNews } from "../utils/newsOrder.js";
 import stateManager from "../state/stateManager.js";
 import {
   applyCountryFilter,
@@ -93,19 +96,23 @@ function buildFilters(req, res) {
   const sources = parseSources(req.query.sources);
   const limit = parsePositiveInt(req.query.limit, 50, { min: 1, max: 500 });
 
-  return {
-    countries,
-    sources,
-    limit
+  const order = String(req.query.order || "recent");
+  if (!["critical", "recent"].includes(order)) throw new AppError("Unsupported news order.", 400, "INVALID_NEWS_ORDER");
+  const q = String(req.query.q || "").trim().toLowerCase();
+  if (q.length > 200) throw new AppError("Search too long.", 400, "INVALID_NEWS_SEARCH");
+  return { countries, sources, limit, order, q,
+    page: parsePositiveInt(req.query.page, 1, {min:1,max:10000}),
+    windowHours: req.query.windowHours ? parsePositiveInt(req.query.windowHours, 36, {min:1,max:720}) : null
   };
 }
 
-function applyNewsFilters(news, { sources, limit }) {
-  const bySource = filterNewsBySources(news, sources);
-  return bySource
-    .slice()
-    .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime())
-    .slice(0, limit);
+export function applyNewsFilters(news, { sources, limit, order = "recent", q = "", page = 1, windowHours = null }) {
+  const cutoff = windowHours ? Date.now() - windowHours * 3600_000 : null;
+  return filterNewsBySources(news, sources)
+    .filter(a => !q || `${a.title || ""} ${a.excerpt || a.description || ""} ${a.sourceName || ""}`.toLowerCase().includes(q))
+    .filter(a => cutoff === null || (Date.parse(a.publishedAt || a.firstSeenAt || a.receivedAt) || 0) >= cutoff)
+    .sort((a,b) => compareNews(a,b,order))
+    .slice((page - 1) * limit, page * limit);
 }
 
 function filterAiProjection(ai = {}, { news = [], countries = [], impact = { items: [] } } = {}) {
@@ -182,13 +189,15 @@ export function getRisks(req, res) {
 export function getNews(req, res) {
   const filters = buildFilters(req, res);
   const snapshot = stateManager.getSnapshot();
-  const filtered = applyCountryFilter(snapshot, filters.countries);
+  const includeOlder = req.query.includeOlder === "1" || req.query.includeOlder === "true";
+  const source = includeOlder ? { ...snapshot, news: [...res.app.locals.newsArchive.records.values()].map(a=>({...classifyRssArticle(a),...publicationDate(a.publishedAt),identity:articleIdentity(a),firstSeenAt:a.archiveFirstSeenAt||a.receivedAt,severityOrigin:"rss-classifier-rules"})) } : snapshot;
+  const filtered = applyCountryFilter(source, filters.countries);
   const news = applyNewsFilters(filtered.news, filters);
 
   res.json(
     mapResponse({
       news,
-      meta: withActiveFilters(filtered.meta, filters.countries, filters.sources)
+      meta: { ...withActiveFilters(filtered.meta, filters.countries, filters.sources), collection: includeOlder ? "archive-permitted-metadata" : "selected-news" }
     })
   );
 }

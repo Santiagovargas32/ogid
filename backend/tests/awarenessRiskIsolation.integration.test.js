@@ -44,7 +44,7 @@ test("country-free Fed release reaches Markets while geopolitical country risk r
   await runtime.start();
   try {
     const before = projectCountryRisk(runtime.app.locals.orchestrator.stateManager.getSnapshot().countries);
-    await runtime.orchestrator.runNewsCycle("financial-risk-isolation");
+    await runtime.orchestrator.runCycle("financial-risk-isolation");
     const after = runtime.app.locals.orchestrator.stateManager.getSnapshot();
     assert.deepEqual(projectCountryRisk(after.countries), before);
     assert.equal(after.news.some((article) => /FOMC/i.test(article.title)), false);

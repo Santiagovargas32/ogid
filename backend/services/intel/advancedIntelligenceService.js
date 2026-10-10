@@ -461,7 +461,7 @@ export class AdvancedIntelligenceService {
     const promise = this.#buildSnapshot({
       countries: resolvedCountries,
       force,
-      stored,
+      stored: !force,
       windowHours: resolvedWindowHours,
       maxEvents,
       activeWindowHours: resolvedActiveWindowHours,
@@ -479,7 +479,7 @@ export class AdvancedIntelligenceService {
   async #buildSnapshot({ countries, force, stored, windowHours, maxEvents, activeWindowHours, baselineDays }) {
     const aggregateNews = await this.rssAggregator.getSnapshot({
       force,
-      stored,
+      stored: !force,
       countries: [],
       limit: Math.max(500, Number(this.rssAggregator.maxCorpusItems || 500))
     });

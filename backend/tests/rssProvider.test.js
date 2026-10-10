@@ -10,8 +10,9 @@ test("namespaced Atom entries preserve source update dates and links through nor
   const [raw] = parseFeedArticles(xml, "Council");
   assert.equal(raw.title, "Official statement");
   assert.equal(raw.url, "https://example.org/2026/09/28/statement");
-  assert.equal(raw.publishedAt, "2026-10-05T19:30:00Z");
-  assert.equal(raw.provenance.publishedAtQuality, "source");
+  assert.equal(raw.publishedAt, null);
+  assert.equal(raw.updatedAt, "2026-10-05T19:30:00.000Z");
+  assert.equal(raw.provenance.publishedAtQuality, "missing");
   assert.equal(raw.provenance.publishedAtBasis, "updated");
   const { normalizeArticles } = await import("../services/normalizeService.js");
   const [normalized] = normalizeArticles([raw]);
@@ -20,10 +21,10 @@ test("namespaced Atom entries preserve source update dates and links through nor
 
 test("publication wins over an update; similarly named XML tags cannot invent dates", () => {
   const [article] = parseFeedArticles(`<feed><entry><title>Release</title><link href="https://example.org/release"/><updated>2026-10-05T19:30:00Z</updated><published>2026-09-28T12:00:00Z</published></entry></feed>`);
-  assert.equal(article.publishedAt, "2026-09-28T12:00:00Z");
+  assert.equal(article.publishedAt, "2026-09-28T12:00:00.000Z");
   assert.equal(article.provenance.publishedAtBasis, "published");
   const [missing] = parseFeedArticles(`<rss><channel><item><title>Release</title><pubDateExtra>2026-09-28T12:00:00Z</pubDateExtra></item></channel></rss>`);
-  assert.equal(missing.provenance.publishedAtQuality, "fallback-missing");
+  assert.equal(missing.provenance.publishedAtQuality, "missing");
 });
 
 test("rss provider marks html pages as invalid feeds and caches the invalid result", async () => {
@@ -175,7 +176,7 @@ test("rss provider sanitizes html content and extracts an embedded image when fe
   }
 });
 
-test("rss provider replaces invalid publication dates and exposes timestamp fallback diagnostics", async () => {
+test("rss provider keeps invalid publication dates unknown without renewing them", async () => {
   resetRssFeedValidationCacheForTests();
 
   const originalFetch = global.fetch;
@@ -206,8 +207,8 @@ test("rss provider replaces invalid publication dates and exposes timestamp fall
     });
 
     assert.equal(result.articles.length, 1);
-    assert.equal(result.articles[0].provenance.publishedAtQuality, "fallback-invalid");
-    assert.equal(new Date(result.articles[0].publishedAt).toISOString(), result.articles[0].publishedAt);
+    assert.equal(result.articles[0].provenance.publishedAtQuality, "invalid");
+    assert.equal(result.articles[0].publishedAt, null);
     assert.equal(result.sourceMeta.timestampFallbackCount, 1);
     assert.equal(result.sourceMeta.feedStatus[0].timestampFallbackCount, 1);
   } finally {
@@ -222,13 +223,13 @@ test("RSS parser preserves official Dublin Core and central-bank publication dat
     <dc:date>2026-07-29T10:30:00Z</dc:date>
     <cb:occurrenceDate>2026-07-28T10:30:00Z</cb:occurrenceDate>
   </item></channel></rss>`);
-  assert.equal(dcArticle.publishedAt, "2026-07-29T10:30:00Z");
+  assert.equal(dcArticle.publishedAt, "2026-07-29T10:30:00.000Z");
   assert.equal(dcArticle.provenance.publishedAtQuality, "source");
 
   const [cbArticle] = parseFeedArticles(`<?xml version="1.0"?><rss><channel><item>
     <title>Central bank release</title><link>https://example.test/release</link>
     <cb:publicationDate>2026-07-27T09:00:00Z</cb:publicationDate>
   </item></channel></rss>`);
-  assert.equal(cbArticle.publishedAt, "2026-07-27T09:00:00Z");
+  assert.equal(cbArticle.publishedAt, "2026-07-27T09:00:00.000Z");
   assert.equal(cbArticle.provenance.publishedAtQuality, "source");
 });

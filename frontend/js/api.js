@@ -15,7 +15,10 @@ function buildPath(path, params = {}) {
   return `${url.pathname}${url.search}`;
 }
 
-async function request(path, params = {}, options = {}) {
+const pageController = new AbortController();
+window.addEventListener("pagehide", () => pageController.abort(), { once: true });
+
+export async function request(path, params = {}, options = {}) {
   const method = options.method || "GET";
   const headers = {
     Accept: "application/json",
@@ -26,58 +29,68 @@ async function request(path, params = {}, options = {}) {
     headers["Content-Type"] = "application/json";
   }
 
+  const signal = AbortSignal.any([pageController.signal, options.signal || new AbortController().signal, AbortSignal.timeout(options.timeoutMs ?? 12_000)]);
+  try {
   const response = await fetch(buildPath(path, params), {
     method,
     headers,
     cache: options.cache || "default",
+    signal,
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined
   });
 
-  const payload = await response.json().catch(() => null);
+  const payload = await response.json().catch(error => {
+    if (signal.aborted) throw error;
+    if (!response.ok) return null;
+    throw Object.assign(new Error("Respuesta JSON inválida."), { status: response.status, code: "INVALID_RESPONSE", cause: error });
+  });
   if (!response.ok) {
-    const message = payload?.error?.message || `Request failed: ${response.status}`;
+    const message = [401, 403].includes(response.status)
+      ? "Acceso administrativo no autorizado. Usa una ruta LAN autorizada o el proxy autenticado configurado por el operador."
+      : payload?.error?.message || `Request failed: ${response.status}`;
     const error = new Error(message);
     error.status = response.status;
     error.code = payload?.error?.code || null;
     error.details = payload?.error?.details || null;
-    const retryAfter = Number.parseInt(response.headers.get("Retry-After") || "", 10);
+    const retryHeader = response.headers.get("Retry-After");
+    const retryAfter = /^\d+$/.test(retryHeader || "") ? Number(retryHeader) : Math.max(0, (Date.parse(retryHeader) - Date.now()) / 1000);
     error.retryAfterSec = Number.isFinite(retryAfter) ? retryAfter : null;
     throw error;
   }
 
   return payload?.data;
+  } catch (error) {
+    if (signal.aborted) {
+      const timedOut = signal.reason?.name === "TimeoutError";
+      throw Object.assign(new Error(timedOut ? "La petición excedió su tiempo de espera." : "Petición cancelada."), { code: timedOut ? "REQUEST_TIMEOUT" : "REQUEST_CANCELLED", cause: error });
+    }
+    throw error;
+  }
 }
 
 export const api = {
-  getHealth: () => request("/api/health"),
-  getSnapshot: (params = {}) => request("/api/intel/snapshot", params),
-  getAdvancedIntelligenceSnapshot: (params = {}) => request("/api/intel/advanced-snapshot", params, { cache: "no-store" }),
+  getHealth: (options = {}) => request("/api/health", {}, options),
+  getSnapshot: (params = {}, options = {}) => request("/api/intel/snapshot", params, options),
+  getAdvancedIntelligenceSnapshot: (params = {}, options = {}) => request("/api/intel/advanced-snapshot", params, { ...options, cache: "no-store" }),
   getAwarenessSnapshot: () => request("/api/intel/awareness-snapshot", {}, { cache: "no-store" }),
   refreshIntel: (payload = {}) => request("/api/intel/refresh", {}, { method: "POST", body: payload }),
-  getHotspotsV2: (params = {}) => request("/api/intel/hotspots-v2", params),
-  getNews: (params = {}) => request("/api/intel/news", params),
-  getAggregateNews: (params = {}) => request("/api/news/aggregate", params),
-  getMediaStreams: (params = {}) => request("/api/media/streams", params),
-  getCountryInstability: (params = {}) => request("/api/country-instability", params),
-  getIntelAnomalies: (params = {}) => request("/api/intel/anomalies", params),
-  getMarketQuotes: (params = {}) => request("/api/market/quotes", params),
+  getNews: (params = {}, options = {}) => request("/api/intel/news", params, options),
+  getAggregateNews: (params = {}, options = {}) => request("/api/news/aggregate", params, options),
+  getMediaStreams: (params = {}, options = {}) => request("/api/media/streams", params, options),
+  getCountryInstability: (params = {}, options = {}) => request("/api/country-instability", params, options),
+  getIntelAnomalies: (params = {}, options = {}) => request("/api/intel/anomalies", params, options),
+  getMarketQuotes: (params = {}, options = {}) => request("/api/market/quotes", params, options),
   getMarketProviderStatus: () => request("/api/market/provider-status"),
-  getMarketInstrumentSearch: (params = {}) => request("/api/market/instruments/search", params),
+  getMarketInstrumentSearch: (params = {}, options = {}) => request("/api/market/instruments/search", params, options),
   getMarketWatchlist: () => request("/api/market/watchlist"),
   updateMarketWatchlist: (instrumentIds) => request("/api/market/watchlist", {}, { method: "PUT", body: { instrumentIds } }),
-  getMarketCandles: (params = {}) => request("/api/market/candles", params, { cache: "no-store" }),
-  getMarketConditions: (params = {}) => request("/api/market/conditions", params, { cache: "no-store" }),
-  getMarketAnalytics: (params = {}) => request("/api/market/analytics", params),
-  getApiLimits: () => request("/api/admin/api-limits"),
-  getPipelineStatus: () => request("/api/admin/pipeline-status"),
-  getAdminNewsRaw: (params = {}) => request("/api/admin/news-raw", params),
-  getAdminAiEnrichments: (params = {}) => request("/api/admin/ai-enrichments", params),
-  getAdminHistory: () => request("/api/admin/history", {}, { cache: "no-store" }),
-  replayAdminEvents: (body) => request("/api/admin/events/replay", {}, { method: "POST", body }),
-  createHistoryJob: (body) => request("/api/admin/history/jobs", {}, { method: "POST", body }),
-  runHistoryJob: (body) => request("/api/admin/history/run", {}, { method: "POST", body }),
-  importHistory: (body) => request("/api/admin/history/import", {}, { method: "POST", body }),
-  getTechnicalContext: (params) => request("/api/market/technical-context", params, { cache: "no-store" }),
+  getMarketCandles: (params = {}, options = {}) => request("/api/market/candles", params, { ...options, cache: "no-store" }),
+  getMarketConditions: (params = {}, options = {}) => request("/api/market/conditions", params, { ...options, cache: "no-store" }),
+  getMarketAnalytics: (params = {}, options = {}) => request("/api/market/analytics", params, options),
+  getApiLimits: (options = {}) => request("/api/admin/api-limits", {}, options),
+  getPipelineStatus: (options = {}) => request("/api/admin/pipeline-status", {}, options),
+  getAdminNewsRaw: (params = {}, options = {}) => request("/api/admin/news-raw", params, options),
+  getAdminAiEnrichments: (params = {}, options = {}) => request("/api/admin/ai-enrichments", params, options),
   refreshMediaStreams: (payload = {}) => request("/api/media/streams/refresh", {}, { method: "POST", body: payload }),
-  getMediaStreamsHealth: () => request("/api/media/streams/health")
+  getMediaStreamsHealth: (options = {}) => request("/api/media/streams/health", {}, options)
 };

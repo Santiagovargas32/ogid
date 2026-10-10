@@ -445,6 +445,7 @@ export async function fetchAggregatedNews({
   mediastackBaseUrl,
   gdeltBaseUrl,
   rssFeeds = [],
+  rssSnapshot = null,
   query,
   queryPacks = {},
   queryPackGroups = null,
@@ -585,7 +586,7 @@ export async function fetchAggregatedNews({
     });
 
     try {
-      const providerResult = await PROVIDERS[providerName]({
+      const providerResult = providerName === "rss" && rssSnapshot ? { provider: "rss", articles: rssSnapshot.items || [], sourceMeta: {provider:"rss",feedStatus:rssSnapshot.meta?.feedStatus || []} } : await PROVIDERS[providerName]({
         newsApiKey,
         newsApiBaseUrl,
         gnewsApiKey,
@@ -594,6 +595,7 @@ export async function fetchAggregatedNews({
         mediastackBaseUrl,
         gdeltBaseUrl,
         rssFeeds,
+  rssSnapshot,
         query: providerQuery,
         language,
         pageSize,
@@ -617,7 +619,7 @@ export async function fetchAggregatedNews({
       }).map((article) => ({
         ...article,
         synthetic: false,
-        dataMode: "observed"
+        dataMode: article.dataMode || "observed"
       }));
 
       rateLimitsByProvider[providerName] = rateLimit;

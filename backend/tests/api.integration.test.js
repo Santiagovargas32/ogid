@@ -472,7 +472,7 @@ test("pipeline status exposes provider and rss diagnostics for ok, error and ski
 
   try {
     await new Promise((resolve) => setTimeout(resolve, 50));
-    await runtime.orchestrator.runNewsCycle("test-pipeline");
+    await runtime.orchestrator.runCycle("test-pipeline");
 
     const address = runtime.server.address();
     const baseUrl = `http://127.0.0.1:${address.port}`;

@@ -1,5 +1,4 @@
 import { SmartPollLoop } from "../smartPollLoop.js";
-import { buildEscalationHotspotsHtml } from "./escalationHotspots.js";
 import { buildCountryInstabilityHtml } from "./riskEngine.js";
 import { buildSignalAnomaliesHtml } from "./signalAnomalies.js";
 import { buildNewsSeverityHtml } from "./threatClassifier.js";
@@ -11,7 +10,6 @@ const DEFAULT_ROOT_IDS = Object.freeze({
   countryInstability: "strategic-risk-body",
   severity: "threat-classifier-body",
   frequentTerms: "trend-detector-body",
-  hotspots: "escalation-hotspots-body",
   anomalies: "signal-anomalies-body",
   meta: "advanced-intel-meta",
   panel: "panel-advanced-intel"
@@ -22,7 +20,6 @@ const SECTION_BUILDERS = Object.freeze({
   countryInstability: buildCountryInstabilityHtml,
   severity: buildNewsSeverityHtml,
   frequentTerms: buildFrequentTermsHtml,
-  hotspots: buildEscalationHotspotsHtml,
   anomalies: buildSignalAnomaliesHtml
 });
 

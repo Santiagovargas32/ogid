@@ -1,0 +1,26 @@
+{
+  "node": "v24.10.0",
+  "items": 10000,
+  "ingestMs": 654.703775,
+  "contextMs": 0.16971200000000408,
+  "flushMs": 116.41564500000004,
+  "totalMs": 771.289132,
+  "bytes": 10595917,
+  "writes": {
+    "writes": 1,
+    "bytes": 10595917,
+    "serializeMs": 85.99186699999996,
+    "writeMs": 25.548271
+  },
+  "cpu": {
+    "user": 854642,
+    "system": 83655
+  },
+  "memory": {
+    "rss": 145149952,
+    "heapTotal": 103829504,
+    "heapUsed": 34877768,
+    "external": 12711422,
+    "arrayBuffers": 10625984
+  }
+}

@@ -185,15 +185,14 @@ test("high scheduled alerts trigger only at T-60 and T-15 and remain revision-sc
   assert.equal(scheduledAlertThreshold({ ...event, importance: "medium" }, {}, Date.parse("2026-07-29T17:30:00Z")), null);
 });
 
-test("dashboard exposes the additive awareness REST, WS, inbox and map contracts", async () => {
-  const [page, api, dashboard, state, awareness, model, map] = await Promise.all([
+test("dashboard exposes the additive awareness REST, WS and inbox while dashboard map listener is retired", async () => {
+  const [page, api, dashboard, state, awareness, model] = await Promise.all([
     frontendFile("index.html"),
     frontendFile("js/api.js"),
     frontendFile("js/dashboard.js"),
     frontendFile("js/state.js"),
     frontendFile("js/awareness.js"),
-    frontendFile("js/awarenessModel.js"),
-    frontendFile("js/map.js")
+    frontendFile("js/awarenessModel.js")
   ]);
   assert.match(page, /id="panel-awareness"/);
   assert.match(page, /data-awareness-tab="geopolitical">Geopolítica</);
@@ -212,10 +211,7 @@ test("dashboard exposes the additive awareness REST, WS, inbox and map contracts
   assert.match(awareness, /AWARENESS_PREFERENCES_KEY/);
   assert.match(model, /AWARENESS_MAP_EVENT_NAME = "awareness:map-events:v1"/);
   assert.match(model, /location\.precision !== "none"/);
-  assert.match(dashboard, /addEventListener\("awareness:map-events:v1"/);
-  assert.match(map, /setAwarenessEvents\(events = \[\]\)/);
-  assert.match(map, /Official Releases/);
-  assert.match(map, /Number\(lat\) === 0 && Number\(lng\) === 0/);
+  assert.doesNotMatch(dashboard, /addEventListener\("awareness:map-events:v1"/);
   assert.doesNotMatch(awareness, /bootstrap\.Toast/);
   assert.doesNotMatch(awareness, /new Notification|Notification\.requestPermission/);
 });

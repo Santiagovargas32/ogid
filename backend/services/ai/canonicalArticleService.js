@@ -121,6 +121,7 @@ export function buildCanonicalArticleLayer({
       schemaVersion: "canonical-article-v1",
       canonicalArticleId,
       legacyArticleId: String(article.id || ""),
+      aliases: article.aliases || [],
       clusterId,
       canonicalUrl: canonicalUrl || null,
       provider: article.provider || "unknown",

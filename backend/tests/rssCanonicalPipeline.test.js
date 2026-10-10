@@ -47,7 +47,7 @@ test("selection is fair after the first bounded batch", async () => {
 
 test("state, validators and corpus survive restart", async () => {
   let now = 7_000; const stateFile = join(mkdtempSync(join(tmpdir(), "rss-canonical-")), "state.json"); const catalog = buildCanonicalRssCatalog({ primaryFeeds: [feed("restart")] });
-  const first = new RssCanonicalPipeline({ catalog, now: () => now, persistencePath: stateFile, fetchImpl: async () => response(xml(), 200, { ETag: '"restart"' }) }); await first.runCycle();
+  const first = new RssCanonicalPipeline({ catalog, now: () => now, persistencePath: stateFile, fetchImpl: async () => response(xml(), 200, { ETag: '"restart"' }) }); await first.runCycle(); await first.flush();
   const second = new RssCanonicalPipeline({ catalog, now: () => now, persistencePath: stateFile, fetchImpl: async () => response(null, 304) });
   assert.equal(second.corpus.length, 1); assert.equal(second.state("restart").etag, '"restart"');
 });

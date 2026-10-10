@@ -1,6 +1,6 @@
 # Inventario API → MCP
 
-Contrato 1.2.0. Generado desde backend/contracts/ogidOperations.js; no editar a mano.
+Contrato 1.3.0. Generado desde backend/contracts/ogidOperations.js; no editar a mano.
 
 68 rutas JSON con método; 45 operaciones de investigación y 32 de operador. Las variantes almacenadas/proveedor comparten algunas rutas.
 
@@ -16,10 +16,10 @@ Las cuatro herramientas compatibles se conservan. ogid_get_awareness_sources com
 | intel.news | GET /api/intel/news | ogid_get_news | research / read:stored | news | stored/local-calculation; no-provider |
 | intel.insights | GET /api/intel/insights | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
 | awareness | GET /api/intel/awareness-snapshot | ogid_get_awareness | research / read:stored | awareness | stored/local-calculation; no-provider |
-| intel.advanced-snapshot | GET /api/intel/advanced-snapshot | ogid_query | research / read:stored | public | stored/local-calculation; normal API may fetch RSS; no-provider |
-| intel.hotspots-v2 | GET /api/intel/hotspots-v2 | ogid_query | research / read:stored | public | stored/local-calculation; normal API may fetch RSS; no-provider |
-| intel.anomalies | GET /api/intel/anomalies | ogid_query | research / read:stored | public | stored/local-calculation; normal API may fetch RSS; no-provider |
-| intel.country-instability | GET /api/intel/country-instability | ogid_query | research / read:stored | public | stored/local-calculation; normal API may fetch RSS; no-provider |
+| intel.advanced-snapshot | GET /api/intel/advanced-snapshot | ogid_query | research / read:stored | public | stored/local-calculation; explicit force preserves refresh contract; no-provider |
+| intel.hotspots-v2 | GET /api/intel/hotspots-v2 | ogid_query | research / read:stored | public | stored/local-calculation; explicit force preserves refresh contract; no-provider |
+| intel.anomalies | GET /api/intel/anomalies | ogid_query | research / read:stored | public | stored/local-calculation; explicit force preserves refresh contract; no-provider |
+| intel.country-instability | GET /api/intel/country-instability | ogid_query | research / read:stored | public | stored/local-calculation; explicit force preserves refresh contract; no-provider |
 | country-instability.alias | GET /api/country-instability | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
 | news.aggregate | GET /api/news/aggregate | ogid_query | research / read:stored | aggregate | stored/local-calculation; no-provider |
 | news.search | GET /api/news/search | ogid_search_news | research / read:stored | archive | stored/local-calculation; no-provider |
@@ -60,7 +60,7 @@ Las cuatro herramientas compatibles se conservan. ogid_get_awareness_sources com
 | map.config | GET /api/map/config | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
 | map.presets | GET /api/map/presets | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
 | map.themes | GET /api/map/themes | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
-| map.layers | GET /api/map/layers | ogid_query | research / read:stored | public | stored/local-calculation; normal API may fetch RSS; no-provider |
+| map.layers | GET /api/map/layers | ogid_query | research / read:stored | public | stored/local-calculation; explicit force preserves refresh contract; no-provider |
 | media.streams | GET /api/media/streams | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
 | media.health | GET /api/media/streams/health | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
 | media.item | GET /api/media/streams/:id | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
@@ -162,6 +162,31 @@ Retención: current snapshot; consult response coverage. Procedencia: OGID runti
         "type": "integer",
         "minimum": 1,
         "maximum": 100
+      },
+      "order": {
+        "type": "string",
+        "enum": [
+          "critical",
+          "recent"
+        ]
+      },
+      "q": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "page": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10000
+      },
+      "windowHours": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 720
+      },
+      "includeOlder": {
+        "type": "boolean"
       }
     },
     "required": [],
@@ -207,6 +232,31 @@ Retención: current snapshot; consult response coverage. Procedencia: OGID runti
         "type": "integer",
         "minimum": 1,
         "maximum": 100
+      },
+      "order": {
+        "type": "string",
+        "enum": [
+          "critical",
+          "recent"
+        ]
+      },
+      "q": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "page": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10000
+      },
+      "windowHours": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 720
+      },
+      "includeOlder": {
+        "type": "boolean"
       }
     },
     "required": [],
@@ -252,6 +302,31 @@ Retención: current snapshot; consult response coverage. Procedencia: OGID runti
         "type": "integer",
         "minimum": 1,
         "maximum": 100
+      },
+      "order": {
+        "type": "string",
+        "enum": [
+          "critical",
+          "recent"
+        ]
+      },
+      "q": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "page": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10000
+      },
+      "windowHours": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 720
+      },
+      "includeOlder": {
+        "type": "boolean"
       }
     },
     "required": [],
@@ -297,6 +372,31 @@ Retención: current snapshot; consult response coverage. Procedencia: OGID runti
         "type": "integer",
         "minimum": 1,
         "maximum": 100
+      },
+      "order": {
+        "type": "string",
+        "enum": [
+          "critical",
+          "recent"
+        ]
+      },
+      "q": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "page": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10000
+      },
+      "windowHours": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 720
+      },
+      "includeOlder": {
+        "type": "boolean"
       }
     },
     "required": [],
@@ -342,6 +442,31 @@ Retención: current snapshot; consult response coverage. Procedencia: OGID runti
         "type": "integer",
         "minimum": 1,
         "maximum": 100
+      },
+      "order": {
+        "type": "string",
+        "enum": [
+          "critical",
+          "recent"
+        ]
+      },
+      "q": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "page": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10000
+      },
+      "windowHours": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 720
+      },
+      "includeOlder": {
+        "type": "boolean"
       }
     },
     "required": [],
