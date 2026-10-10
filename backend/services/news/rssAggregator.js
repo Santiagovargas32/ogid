@@ -1,3 +1,4 @@
+import { articleIdentity } from "./articleIdentity.js";
 import { createLogger } from "../../utils/logger.js";
 import { BoundedCache } from "../shared/boundedCache.js";
 import { deduplicateRssArticles } from "./rssDeduplicator.js";
@@ -30,6 +31,7 @@ export class RssAggregatorService {
     this.generatedCursor = 0;
     this.corpus = [];
     this.lastSnapshot = null;
+    this.scheduler = null; this.stopped = true; this.onSnapshot = null;
     this.onCollected = config.onCollected || null;
     this.shadowComparisonStats = { cycles: 0, equivalentCycles: 0 };
     this.canonicalPipeline = new RssCanonicalPipeline({
@@ -40,16 +42,41 @@ export class RssAggregatorService {
       globalConcurrency: config.globalConcurrency || config.news?.rssGlobalConcurrency || 4,
       hostConcurrency: config.hostConcurrency || config.news?.rssHostConcurrency || 1,
       maxFeedsPerCycle: this.maxFeedsPerRun,
-      cycleDeadlineMs: config.cycleDeadlineMs || config.news?.rssCycleDeadlineMs || 60_000,
+      cycleDeadlineMs: config.cycleDeadlineMs || config.news?.rssCycleDeadlineMs || 25_000,
       timeoutMs: this.timeoutMs,
       maxCorpusItems: this.maxCorpusItems,
-      onCollected: articles => { if (this.pipelineMode === "canonical") this.onCollected?.(articles); }
+      onCollected: articles => { if (this.pipelineMode === "canonical") this.onCollected?.(articles); },
+      maxResponseBytes: config.news?.rssMaxResponseBytes || 2_000_000,
+      maxItemsPerFeed: config.news?.rssMaxItemsPerFeed || 200
     });
+    if (this.pipelineMode === "canonical") {
+      this.corpus = this.canonicalPipeline.corpus;
+      const restored = this.canonicalPipeline.snapshot();
+      if (this.corpus.length) this.lastSnapshot = { ...restored, meta: { ...restored.meta, pipelineMode: this.pipelineMode, restored: true } };
+    }
   }
+
+  start() {
+    if (!this.stopped) return;
+    this.stopped = false;
+    const tick = async () => {
+      try { const snapshot = await this.refresh(); if (!this.stopped) await this.onSnapshot?.(snapshot); }
+      catch (error) { log.warn("rss_scheduler_failed", { message: error.message }); }
+      finally { if (!this.stopped) this.scheduler = setTimeout(tick, this.refreshIntervalMs || 30_000); }
+    };
+    void tick();
+  }
+  getStatus() {
+    if (this.pipelineMode === "legacy") {
+      const meta = this.lastSnapshot?.meta || {};
+      return {...meta, pipelineMode:"legacy", active:!this.stopped, lastSuccessAt:this.corpus.length?this.lastSnapshot?.generatedAt:null, availability:this.corpus.length?(meta.feedStatus?.some(f=>f.status==="error")?"degraded":"healthy"):"no-recoverable-data"};
+    }
+    const meta = this.canonicalPipeline.snapshot().meta; const successes = meta.feedStatus.map(f=>f.lastSuccessAt).filter(Boolean).sort(); return {...meta, active:!this.stopped, lastSuccessAt:successes.at(-1) || null}; }
+  async stop() { this.stopped = true; clearTimeout(this.scheduler); await this.canonicalPipeline.stop(); await this.inFlight; }
 
   configure(config = {}) {
     this.config = config;
-    this.refreshIntervalMs = toPositiveInt(config.refreshIntervalMs || config.news?.rssAggregateIntervalMs, config.news?.intervalMs);
+    this.refreshIntervalMs = toPositiveInt(config.refreshIntervalMs || config.news?.rssAggregateIntervalMs, 30_000);
     this.timeoutMs = toPositiveInt(config.timeoutMs || config.news?.timeoutMs, 9_000);
     const catalog = buildExtendedRssFeedCatalog(config.rssFeeds || config.news?.rssFeeds || []);
     this.feedCatalog = catalog.feeds;
@@ -105,7 +132,7 @@ export class RssAggregatorService {
 
   async refresh({ force = false } = {}) {
     const cacheKey = "rss-aggregate";
-    const cached = !force ? this.cache.get(cacheKey) : null;
+    const cached = (!force || Date.now() - (this.lastAttemptMs || 0) < this.refreshIntervalMs) ? this.cache.get(cacheKey) : null;
     if (cached?.value) {
       return cached.value;
     }
@@ -114,6 +141,7 @@ export class RssAggregatorService {
       return this.inFlight;
     }
 
+    this.lastAttemptMs = Date.now();
     this.inFlight = this.runRefresh()
       .finally(() => {
         this.inFlight = null;
@@ -139,7 +167,7 @@ export class RssAggregatorService {
       ? (providerResult.articles || [])
       : (providerResult.articles || []).map((article, index) => classifyRssArticle({
           ...article,
-          id: article.id || `rss-aggregate-${Date.now()}-${index + 1}`
+          id: article.id || articleIdentity(article)
         }));
     const merged = deduplicateRssArticles([...this.corpus, ...enriched], {
       maxItems: this.maxCorpusItems
@@ -152,14 +180,16 @@ export class RssAggregatorService {
       meta: {
         catalogSize: this.feedCatalog.length,
         catalogStats: this.feedCatalogStats,
-        queriedFeedCount: feeds.length,
+        queriedFeedCount: canonicalSnapshot?.meta?.selectedFeedCount ?? feeds.length,
         queriedFeeds: feeds.map((feed) => ({ label: feed.label, url: feed.url, generated: Boolean(feed.generated) })),
         totalItems: this.corpus.length,
         dedupedClusters: Object.keys(merged.clusters || {}).length,
         feedStatus: providerResult.sourceMeta?.feedStatus || [],
         provider: "rss-aggregate",
         pipelineMode: this.pipelineMode,
-        canonicalCatalogStats: this.canonicalCatalog.stats
+        canonicalCatalogStats: this.canonicalCatalog.stats,
+        coverage: canonicalSnapshot?.meta?.coverage || null,
+        availability: canonicalSnapshot?.meta?.availability || null
       }
     };
 
@@ -184,11 +214,11 @@ export class RssAggregatorService {
     }
 
     this.lastSnapshot = snapshot;
-    this.onCollected?.(enriched);
+    if (this.pipelineMode !== "canonical") this.onCollected?.(enriched);
     this.cache.set("rss-aggregate", snapshot, this.refreshIntervalMs);
     log.info("rss_aggregate_refreshed", {
       catalogSize: this.feedCatalog.length,
-      queriedFeedCount: feeds.length,
+      queriedFeedCount: canonicalSnapshot?.meta?.selectedFeedCount ?? feeds.length,
       totalItems: this.corpus.length,
       pipelineMode: this.pipelineMode,
       coverage: snapshot.meta.equivalence?.coverage ?? null,

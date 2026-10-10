@@ -107,6 +107,7 @@ class RefreshOrchestratorService {
     this.aiCoordinator = aiCoordinator;
     this.newsArchive = newsArchive;
     this.awarenessService = awarenessService;
+    this.pendingCycles = new Set();
     this.newsInFlight = false;
     this.marketInFlight = false;
     this.manualRefreshInFlight = false;
@@ -144,6 +145,7 @@ class RefreshOrchestratorService {
     try {
       return await this.rssAggregator.getSnapshot({
         force: false,
+        stored: true,
         limit: this.config.news?.rssAggregateMaxItems
       });
     } catch (error) {
@@ -167,26 +169,6 @@ class RefreshOrchestratorService {
       log.warn("signal_correlator_record_failed", {
         message: error.message
       });
-    }
-  }
-
-  async enrichSnapshotWithMapAssets(snapshot, aggregateNews = { items: [] }) {
-    if (!this.mapLayerService) {
-      return snapshot;
-    }
-
-    try {
-      const mapAssets = await this.mapLayerService.getDashboardMapAssets({
-        snapshot,
-        signalCorpus: this.stateManager.getSignalCorpus(),
-        rssSnapshot: aggregateNews
-      });
-      return this.stateManager.setMapAssets(mapAssets);
-    } catch (error) {
-      log.warn("dashboard_map_assets_refresh_failed", {
-        message: error.message
-      });
-      return snapshot;
     }
   }
 
@@ -353,13 +335,20 @@ class RefreshOrchestratorService {
     }, delayMs);
   }
 
-  async runNewsCycle(trigger = "scheduled-news", options = {}) {
-    if (this.newsInFlight) {
+  runNewsCycle(trigger = "scheduled-news", options = {}) {
+    const task = this.executeNewsCycle(trigger, options);
+    this.pendingCycles.add(task);
+    task.then(() => this.pendingCycles.delete(task), () => this.pendingCycles.delete(task));
+    return task;
+  }
+
+  async executeNewsCycle(trigger, options) {
+    if (this.newsInFlight && !options.rssOnly) {
       log.warn("news_cycle_skipped", { reason: "in-flight", trigger });
       return;
     }
 
-    this.newsInFlight = true;
+    if (!options.rssOnly) this.newsInFlight = true;
     const startedAt = Date.now();
     this.newsCycleTelemetry = {
       ...this.newsCycleTelemetry,
@@ -370,7 +359,7 @@ class RefreshOrchestratorService {
     };
 
     try {
-      const previousSnapshot = this.stateManager.getSnapshot();
+      let previousSnapshot = this.stateManager.getSnapshot();
       const countryFilter = options.countries?.length ? options.countries : this.config.watchlistCountries;
       const policy = this.resolveCurrentNewsPolicy();
       const pageSize = options.forcePageSize || policy.pageSize;
@@ -387,6 +376,8 @@ class RefreshOrchestratorService {
       const financialTickerOffset = this.financialTickerOffset;
       const newsResult = await fetchRawNews({
         ...this.config.news,
+        rssSnapshot: await this.resolveAggregateNewsSnapshot(),
+        ...(options.rssOnly ? {providers:["rss"]} : {}),
         pageSize,
         countries: countryFilter,
         queryLane,
@@ -402,14 +393,18 @@ class RefreshOrchestratorService {
         const rotationStep = coveredCounts.length ? Math.min(...coveredCounts) : 1;
         this.financialTickerOffset = (this.financialTickerOffset + rotationStep) % tickerCount;
       }
-      const normalizedNews = normalizeArticles(newsResult.articles, newsResult.sourceMeta?.provider || "aggregated");
+      previousSnapshot = this.stateManager.getSnapshot();
+      const normalizedNews = mergeArticleCorpora(
+        normalizeArticles(newsResult.articles, newsResult.sourceMeta?.provider || "aggregated"),
+        this.stateManager.getSignalCorpus().filter(a => options.rssOnly ? a.provider !== "rss" : a.provider === "rss")
+      );
       const newsBranches = awarenessCollectionEnabled
         ? partitionNewsArticles(normalizedNews)
         : { geopolitical: normalizedNews, financial: [], hybrid: [] };
       const rawIntelNews = normalizeAdminArticles(newsResult.rawArticles || [], newsResult.sourceMeta?.provider || "aggregated");
       const geopoliticalAwareness = this.awarenessService?.getGeopoliticalArticles?.() || [];
       const shadowFinancialCycle = awarenessMode === "shadow" && queryLane === "financial";
-      this.newsArchive?.ingest(newsResult.rawArticles?.length ? newsResult.rawArticles : normalizedNews, { lane: queryLane, awarenessMode });
+      if (!options.rssOnly) this.newsArchive?.ingest((newsResult.rawArticles?.length ? newsResult.rawArticles : normalizedNews).filter(a => a.provider !== "rss"), { lane: queryLane, awarenessMode });
       const selection = shadowFinancialCycle
         ? {
             signalCorpus: this.stateManager.getSignalCorpus(),
@@ -454,6 +449,7 @@ class RefreshOrchestratorService {
         : signalCorpus;
       const newsSourceMeta = {
         ...(newsResult.sourceMeta || {}),
+        rssIngestion: this.rssAggregator ? (({feedStatus, ...summary}) => summary)(this.rssAggregator.getStatus()) : null,
         selectedCountByProvider: countByProvider(selectedNews, this.config.news?.providers || []),
         signalCountByProvider: countByProvider(signalCorpus, this.config.news?.providers || []),
         selectionBySourceName: selection.selectionMeta?.selectionBySourceName || [],
@@ -530,12 +526,12 @@ class RefreshOrchestratorService {
         watchlistCountries: this.config.watchlistCountries
       });
 
+      this.socketServer.broadcast("update", this.buildUpdatePayload(snapshot), snapshot.meta);
       const aggregateNews = await this.resolveAggregateNewsSnapshot();
-      snapshot = await this.enrichSnapshotWithMapAssets(snapshot, aggregateNews);
+      // Las capas públicas se calculan al solicitarlas; la publicación no espera assets del mapa.
       this.newsArchive?.recordContext(snapshot);
       this.researchCycle?.(snapshot);
       await this.refreshSecondaryIntel(snapshot, aggregateNews);
-      this.socketServer.broadcast("update", this.buildUpdatePayload(snapshot), snapshot.meta);
       void Promise.resolve(this.aiCoordinator?.reconcileNewsSnapshot?.({
         snapshot,
         signalCorpus,
@@ -588,15 +584,23 @@ class RefreshOrchestratorService {
         lastError: error.message
       };
     } finally {
-      this.newsInFlight = false;
+      if (!options.rssOnly) this.newsInFlight = false;
     }
   }
 
   async runCycle(trigger = "scheduled-news") {
+    await this.rssAggregator?.refresh();
     return this.runNewsCycle(trigger);
   }
 
-  async runMarketCycle(trigger = "scheduled-market", options = {}) {
+  runMarketCycle(trigger = "scheduled-market", options = {}) {
+    const task = this.executeMarketCycle(trigger, options);
+    this.pendingCycles.add(task);
+    task.then(() => this.pendingCycles.delete(task), () => this.pendingCycles.delete(task));
+    return task;
+  }
+
+  async executeMarketCycle(trigger, options) {
     if (!this.isMarketEnabled()) {
       log.info("market_cycle_skipped", {
         trigger,
@@ -720,7 +724,7 @@ class RefreshOrchestratorService {
       });
 
       const aggregateNews = await this.resolveAggregateNewsSnapshot();
-      snapshot = await this.enrichSnapshotWithMapAssets(snapshot, aggregateNews);
+      // Map assets are available on demand through the map API.
       this.newsArchive?.recordContext(snapshot);
       this.researchCycle?.(snapshot);
       await this.refreshSecondaryIntel(snapshot, aggregateNews);
@@ -811,6 +815,7 @@ class RefreshOrchestratorService {
 
     try {
       await this.waitForIdle();
+      await this.rssAggregator?.refresh({force:true});
       await this.runNewsCycle(`${trigger}-news`, {
         allowExhaustedProviders: true,
         countries: activeCountries
@@ -836,6 +841,7 @@ class RefreshOrchestratorService {
 
   start() {
     this.stopped = false;
+    if (this.rssAggregator) { this.rssAggregator.onSnapshot = () => this.runNewsCycle("rss-selected", {rssOnly:true}); this.rssAggregator.start(); }
 
     if (!this.newsTimerHandle) {
       this.runNewsCycle("startup-news", { allowExhaustedProviders: false })
@@ -860,7 +866,7 @@ class RefreshOrchestratorService {
     }
   }
 
-  stop() {
+  async stop() {
     this.stopped = true;
     if (this.newsTimerHandle) {
       clearTimeout(this.newsTimerHandle);
@@ -871,6 +877,7 @@ class RefreshOrchestratorService {
       clearTimeout(this.marketTimerHandle);
       this.marketTimerHandle = null;
     }
+    await Promise.allSettled([...this.pendingCycles]);
   }
 }
 

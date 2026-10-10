@@ -6,7 +6,7 @@ export const ROUTE_QUERY_PARAMS = new Map(
     "GET /api/country-instability": ["countries", "force", "windowHours", "maxEvents", "activeWindowHours", "baselineDays"],
 
     "GET /api/admin/api-limits": [],
-    "GET /api/admin/news-raw": ["dataset", "page", "pageSize"],
+    "GET /api/admin/news-raw": ["dataset", "page", "pageSize", "stored"],
     "GET /api/admin/pipeline-status": [],
     "GET /api/admin/ai-enrichments": ["status", "kind", "page", "pageSize"],
 
@@ -40,7 +40,7 @@ export const ROUTE_QUERY_PARAMS = new Map(
     "GET /api/media/streams/health": [],
     "GET /api/media/streams/:id": ["force", "resolve"],
     "POST /api/media/streams/refresh": [],
-    "GET /api/news/aggregate": ["countries", "force", "topic", "threat", "limit"]
+    "GET /api/news/aggregate": ["countries", "force", "topic", "threat", "limit", "stored"]
   }).map(([route, params]) => [route, new Set(params)])
 );
 

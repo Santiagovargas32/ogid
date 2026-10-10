@@ -1,0 +1,10 @@
+import {mkdtemp,stat} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {performance} from 'node:perf_hooks';
+const {NewsArchive}=await import(process.env.OGID_ARCHIVE_MODULE||'../services/research/newsArchive.js');
+const path=join(await mkdtemp(join(tmpdir(),'ogid-persistence-fixture-')),'archive.json');
+const archive=new NewsArchive({persistencePath:path});
+const items=Array.from({length:10000},(_,i)=>({id:`fixture-${i}`,title:`News fixture ${i}`,url:`https://fixture.test/story/${i}`,provider:'rss',sourceName:'Fixture publisher',publishedAt:new Date(Date.now()-i*1000).toISOString(),receivedAt:new Date().toISOString(),excerpt:'Representative permitted excerpt. '.repeat(8),countryMentions:['US'],topicTags:['conflict']}));
+const cpu=process.cpuUsage(),start=performance.now();archive.ingest(items);const ingested=performance.now();archive.recordContext({meta:{},countries:{US:{level:'monitoring',score:20}}});const marked=performance.now();await archive.flush?.();const finished=performance.now();
+console.log(JSON.stringify({node:process.version,items:items.length,ingestMs:ingested-start,contextMs:marked-ingested,flushMs:finished-marked,totalMs:finished-start,bytes:(await stat(path)).size,writes:archive.writer?.metrics||null,cpu:process.cpuUsage(cpu),memory:process.memoryUsage()},null,2));

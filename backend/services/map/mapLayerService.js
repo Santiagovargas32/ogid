@@ -1600,7 +1600,7 @@ export class MapLayerService {
     }
 
     try {
-      return await this.rssAggregator.getSnapshot({ force: false, stored });
+      return await this.rssAggregator.getSnapshot({ force: false, stored: true });
     } catch (error) {
       log.warn("map_layer_rss_snapshot_failed", { message: error.message });
       return { items: [], meta: { source: "error", reason: error.message } };

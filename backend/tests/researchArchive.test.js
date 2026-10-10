@@ -47,12 +47,13 @@ test("filtros antes de paginar, revisión estable ante llegadas/correcciones y c
   assert.ok(received.every(article => article.title !== "NVIDIA corrected results"));
   assert.equal(archive.search({ countries: ["TW"] }).total, 119);
 });
-test("cursor caduca explícitamente; persistencia de semana, poda y archivo corrupto conservado", () => {
+test("cursor caduca explícitamente; persistencia de semana, poda y archivo corrupto conservado", async () => {
   const root = mkdtempSync(join(tmpdir(), "ogid-archive-test-")); const file = join(root, "news.json"); let now = instant;
   const archive = new NewsArchive({ persistencePath: file, now: () => now, cursorTtlMs: 1000 }); archive.ingest([fixture(1), fixture(2)]);
   archive.recordContext({ meta: { lastRefreshAt: new Date(now).toISOString() }, countries: { TW: { score: 7, level: "Monitoring" } }, impact: { items: [] } });
   const first = archive.search({ limit: 1 }); now += 1001;
   assert.throws(() => archive.search({ cursor: first.nextCursor }), error => error.code === "CURSOR_EXPIRED");
+  await archive.flush();
   const restored = new NewsArchive({ persistencePath: file, now: () => now }); assert.equal(restored.records.size, 2); assert.equal(restored.getHistory({}).length, 1); assert.equal(restored.coverage({ from: "2026-09-29T12:00:00Z" }).partial, true);
   assert.throws(() => restored.search({ cursor: first.nextCursor }), error => error.code === "CURSOR_EXPIRED");
   now += 31 * 86400000; restored.prune(); assert.equal(restored.records.size, 0);

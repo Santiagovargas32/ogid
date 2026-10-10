@@ -1,3 +1,4 @@
+import { AtomicJsonWriter } from "../shared/atomicJsonWriter.js";
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -33,6 +34,7 @@ export class NewsArchive {
     this.records = new Map(); this.history = new Map(); this.revision = 0; this.startedAt = new Date(now()).toISOString(); this.lastIngestAt = null;
     this.recoveryStatus = "new"; this.capacityPrunedAt = null;
     this.hydrate(); this.prune();
+    this.writer = new AtomicJsonWriter(this.path, () => { this.prune(); return { schemaVersion: "news-archive-v1", revision: this.revision, startedAt: this.startedAt, lastIngestAt: this.lastIngestAt, capacityPrunedAt: this.capacityPrunedAt, articles: [...this.records.values()], history: [...this.history.values()] }; });
   }
   hydrate() {
     if (!this.path) return;
@@ -49,13 +51,8 @@ export class NewsArchive {
       throw new AppError("El archivo de noticias no puede recuperarse; conservarlo y revisar el respaldo.", 503, "ARCHIVE_RECOVERY_FAILED");
     }
   }
-  persist() {
-    if (!this.path) return;
-    const value = { schemaVersion: "news-archive-v1", revision: this.revision, startedAt: this.startedAt, lastIngestAt: this.lastIngestAt, capacityPrunedAt: this.capacityPrunedAt, articles: [...this.records.values()], history: [...this.history.values()] };
-    mkdirSync(dirname(this.path), { recursive: true, mode: 0o700 });
-    const temporary = `${this.path}.${process.pid}.tmp`;
-    writeFileSync(temporary, JSON.stringify(value), { mode: 0o600 }); renameSync(temporary, this.path);
-  }
+  persist() { this.writer.mark(); }
+  async flush() { await this.writer.flush(); }
   prune() {
     const cutoff = this.now() - this.retentionDays * DAY;
     const retained = [...this.records.values()].filter(article => temporal(article.archiveLastSeenAt) >= cutoff).sort((a, b) => temporal(b.archiveLastSeenAt) - temporal(a.archiveLastSeenAt));
@@ -83,7 +80,7 @@ export class NewsArchive {
       const provenance = { provider: article.provider || "unknown", sourceId: article.sourceId || null, publisher: article.publisher || article.sourceName || null, url: article.url, ...article.provenance };
       const provenanceByKey = new Map((previous?.provenances || []).map(p => [hash([p.provider, p.sourceId || p.publisher, p.url]), p]));
       provenanceByKey.set(hash([provenance.provider, provenance.sourceId || provenance.publisher, provenance.url]), provenance);
-      const record = { ...article, id, originalIds: [...new Set([...(previous?.originalIds || []), raw.id].filter(Boolean))],
+      const record = { ...article, id, originalIds: [...new Set([...(previous?.originalIds || []), raw.id, ...(raw.aliases || [])].filter(Boolean))],
         receivedAt: previous?.receivedAt || article.receivedAt, archiveFirstSeenAt: previous?.archiveFirstSeenAt || now, archiveLastSeenAt: now,
         revision: previous?.revision || 0, provenances: [...provenanceByKey.values()],
         instrumentIds: [...new Set([...(previous?.instrumentIds || []), ...(article.instrumentIds || [])])],
@@ -99,7 +96,7 @@ export class NewsArchive {
       if (changed) { record.revision++; this.revision++; }
       this.records.set(id, record); if (changed) collected.push(record); accepted++;
     }
-    this.lastIngestAt = now; this.prune(); this.persist(); this.onIngest?.(collected);
+    this.lastIngestAt = now; if (this.records.size > this.maxItems) this.prune(); this.persist(); this.onIngest?.(collected);
     return { accepted, revision: this.revision };
   }
   recordContext(snapshot) {
@@ -107,7 +104,7 @@ export class NewsArchive {
     this.history.set(bucket, { bucket, observedAt, dataAsOf: snapshot.meta?.lastRefreshAt || null, quality: snapshot.meta?.dataQuality || {},
       risks: Object.fromEntries(Object.entries(snapshot.countries || {}).map(([iso, country]) => [iso, { score: country.score ?? null, level: country.level || null, updatedAt: country.updatedAt || null }])),
       impacts: (snapshot.impact?.items || []).slice(0, 100).map(item => ({ ticker: item.ticker, eventScore: item.eventScore ?? null, impactScore: item.impactScore ?? null, linkedArticles: item.linkedArticles || [], level: item.level || null })) });
-    this.prune(); this.persist();
+    this.persist();
   }
   getHistory({ from, to }) { return [...this.history.values()].filter(row => (!from || temporal(row.observedAt) >= temporal(from)) && (!to || temporal(row.observedAt) <= temporal(to))).sort((a, b) => a.observedAt.localeCompare(b.observedAt)); }
   coverage(filters = {}) {

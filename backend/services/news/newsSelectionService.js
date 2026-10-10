@@ -1,3 +1,5 @@
+import { compareNews } from "../../utils/newsOrder.js";
+import { articleIdentity } from "./articleIdentity.js";
 const SOURCE_RELIABILITY = Object.freeze({
   reuters: 1,
   "associated press": 0.98,
@@ -25,7 +27,7 @@ function normalizeText(value = "") {
 function buildBaseDedupKey(article) {
   const normalizedUrl = String(article.url || "").trim().toLowerCase();
   const normalizedTitle = normalizeText(article.title || "");
-  return `${normalizedUrl}|${normalizedTitle}`;
+  return articleIdentity(article);
 }
 
 function buildHeadlineFingerprint(article) {
@@ -116,11 +118,11 @@ function scoreArticle(article, context) {
 
 function filterCandidateWindow(articles = [], nowMs, candidateWindowMs) {
   return articles.filter((article) => {
-    const publishedMs = new Date(article.publishedAt || 0).getTime();
+    const publishedMs = Date.parse(article.publishedAt || article.firstSeenAt || article.receivedAt || "");
     if (!Number.isFinite(publishedMs)) {
       return false;
     }
-    return nowMs - publishedMs <= candidateWindowMs;
+    return publishedMs <= nowMs + 300_000 && nowMs - publishedMs <= candidateWindowMs;
   });
 }
 
@@ -269,12 +271,7 @@ export function buildIntelNewsSelection({
         seenFingerprints
       })
     )
-    .sort((left, right) => {
-      if (right.analysisScore !== left.analysisScore) {
-        return right.analysisScore - left.analysisScore;
-      }
-      return new Date(right.publishedAt).getTime() - new Date(left.publishedAt).getTime();
-    });
+    .sort((left, right) => compareNews(left, right) || right.analysisScore - left.analysisScore);
 
   const signalCorpus = scored.slice(0, selectionCap(analyzeLimit));
   const displaySelection = selectWithDiversity(signalCorpus, {

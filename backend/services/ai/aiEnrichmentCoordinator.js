@@ -158,7 +158,7 @@ export class AiEnrichmentCoordinator {
       const job = buildArticleSummaryJob(article, { maxInputChars: this.maxInputChars, priorityBase });
       const legacyArticleIds = this.lastCanonicalLayer.articles
         .filter((candidate) => candidate.clusterId === article.clusterId)
-        .map((candidate) => candidate.legacyArticleId)
+        .flatMap((candidate) => [candidate.legacyArticleId, ...(candidate.aliases || [])])
         .filter(Boolean);
       if (this.#enqueue(job, {
         subjectKey: `article:${article.canonicalArticleId}`,

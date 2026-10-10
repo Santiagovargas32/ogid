@@ -1,3 +1,5 @@
+import { articleIdentity, publicationDate } from "./news/articleIdentity.js";
+import { classifyRssArticle } from "./news/rssClassifier.js";
 import { createHash } from "node:crypto";
 import { detectCountryMentions } from "../utils/countryCatalog.js";
 import { analyzeSentiment } from "../utils/sentimentRules.js";
@@ -50,7 +52,8 @@ function normalizeArticle(rawArticle, index, provider) {
     return null;
   }
 
-  const publishedAt = toIsoDate(rawArticle?.publishedAt, Date.now() - index * 60_000);
+  const date = publicationDate(rawArticle?.publishedAt);
+  const publishedAt = date.publishedAt;
   const receivedAt = toIsoDate(rawArticle?.receivedAt || rawArticle?.fetchedAt, Date.now());
   const textBlob = `${title}. ${description}. ${content}`;
   const countryMentions = detectCountryMentions(textBlob);
@@ -58,7 +61,10 @@ function normalizeArticle(rawArticle, index, provider) {
   const conflict = extractConflictSignal(textBlob);
 
   return {
-    id: hashId(`${rawArticle?.url || title}-${publishedAt}-${index}`),
+    id: rawArticle.id || articleIdentity({...rawArticle, publishedAt}),
+    identity: articleIdentity({...rawArticle, publishedAt}),
+    aliases: [...new Set([...(rawArticle.aliases || []), hashId(`${rawArticle?.url || title}-${rawArticle?.publishedAt || publishedAt}-${index}`)])],
+    publishedAtQuality: rawArticle?.provenance?.publishedAtQuality || date.publishedAtQuality,
     provider: rawArticle?.provider || provider,
     sourceName: rawArticle?.source?.name || rawArticle?.sourceName || "Unknown Source",
     ...normalizeSourceMetadata(rawArticle),
@@ -67,11 +73,16 @@ function normalizeArticle(rawArticle, index, provider) {
     content,
     excerpt: sanitized.excerpt,
     fullText: sanitized.fullText,
-    url: rawArticle?.url || `https://local.osint/article/${index}`,
+    url: rawArticle?.url || null,
     imageUrl: sanitized.leadImageUrl,
     leadImageUrl: sanitized.leadImageUrl,
     publishedAt,
     receivedAt,
+    firstSeenAt: rawArticle.firstSeenAt || receivedAt,
+    updatedAt: rawArticle.updatedAt || null,
+    threatLevel: rawArticle.threatLevel || classifyRssArticle({title, description, content}).threatLevel,
+    severityOrigin: rawArticle.severityOrigin || "rss-classifier-rules",
+    topicTags: rawArticle.topicTags || classifyRssArticle({title, description, content}).topicTags,
     countryMentions,
     synthetic: Boolean(rawArticle?.synthetic),
     dataMode: normalizeDataMode(
@@ -95,13 +106,13 @@ function normalizeAdminArticle(rawArticle, index, provider) {
     "Untitled";
 
   return {
-    id: hashId(`${rawArticle?.url || title}-${index}`),
+    id: rawArticle.id || articleIdentity(rawArticle),
     provider: rawArticle?.provider || provider,
     sourceName: rawArticle?.source?.name || rawArticle?.sourceName || "Unknown Source",
     ...normalizeSourceMetadata(rawArticle),
     title: String(title).trim() || "Untitled",
     url: rawArticle?.url || `https://local.osint/admin-raw/${index}`,
-    publishedAt: toIsoDate(rawArticle?.publishedAt, Date.now() - index * 60_000)
+    publishedAt: publicationDate(rawArticle?.publishedAt).publishedAt
   };
 }
 

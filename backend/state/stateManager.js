@@ -1,3 +1,4 @@
+import { newsRevision } from "../utils/newsOrder.js";
 import { buildBaselineCountryMap } from "../utils/countryCatalog.js";
 import { buildInitialMarketState } from "../services/market/marketStateService.js";
 
@@ -541,6 +542,7 @@ class StateManager {
       meta: {
         ...this.state.meta,
         lastRefreshAt: timestamp,
+        newsRevision: newsRevision(nextNews),
         watchlistCountries: watchlistCountries || this.state.meta.watchlistCountries,
         sourceMode: resolvedNewsMode,
         sourceMeta: resolvedNewsMeta,

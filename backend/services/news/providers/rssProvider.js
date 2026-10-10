@@ -1,3 +1,4 @@
+import { publicationDate } from "../articleIdentity.js";
 import { parseRateLimitHeaders } from "../../admin/apiQuotaTrackerService.js";
 import { providerRuntime } from "../../providers/providerRuntime.js";
 import { sanitizeArticleContent } from "../newsContentSanitizer.js";
@@ -40,25 +41,12 @@ function extractImage(block) {
   return enclosureMatch ? decodeEntities(enclosureMatch[1].trim()) : null;
 }
 
-function resolvePublishedAt(value, fallbackMs) {
-  const candidate = String(value || "").trim();
-  const parsed = candidate ? new Date(candidate) : null;
-  if (parsed && Number.isFinite(parsed.getTime())) {
-    return { value: candidate, quality: "source" };
-  }
-
-  return {
-    value: new Date(fallbackMs).toISOString(),
-    quality: candidate ? "fallback-invalid" : "fallback-missing"
-  };
-}
-
-export function parseFeedArticles(xml = "", feedLabel = "RSS Feed", sourceDefinition = {}) {
+export function parseFeedArticles(xml = "", feedLabel = "RSS Feed", sourceDefinition = {}, maxItems = 200) {
   const sourceName = extractTag(xml, "title") || feedLabel;
   const sourceType = sourceDefinition.type || "rss";
   const items = String(xml || "").match(/<((?:[A-Za-z_][\w.-]*:)?item)\b[\s\S]*?<\/\1\s*>/gi) || String(xml || "").match(/<((?:[A-Za-z_][\w.-]*:)?entry)\b[\s\S]*?<\/\1\s*>/gi) || [];
 
-  return items.map((item, index) => {
+  return items.slice(0, maxItems).map((item, index) => {
     const title = extractTag(item, "title");
     const description =
       extractTag(item, "description") ||
@@ -76,7 +64,7 @@ export function parseFeedArticles(xml = "", feedLabel = "RSS Feed", sourceDefini
     const dateTags = ["pubDate", "dc:date", "published", "cb:publicationDate", "cb:occurrenceDate", "updated"];
     const publishedAtBasis = dateTags.find(tag => extractTag(item, tag)) || null;
     const rawPublishedAt = publishedAtBasis ? extractTag(item, publishedAtBasis) : "";
-    const publishedAt = resolvePublishedAt(rawPublishedAt, Date.now() - index * 60_000);
+    const publishedAt = publicationDate(publishedAtBasis === "updated" ? null : rawPublishedAt);
 
     return {
       provider: "rss",
@@ -102,7 +90,8 @@ export function parseFeedArticles(xml = "", feedLabel = "RSS Feed", sourceDefini
       url: link,
       urlToImage: sanitized.leadImageUrl,
       leadImageUrl: sanitized.leadImageUrl,
-      publishedAt: publishedAt.value,
+      publishedAt: publishedAt.publishedAt,
+      updatedAt: publishedAtBasis === "updated" ? publicationDate(rawPublishedAt).publishedAt : null,
       usagePolicy: "headline-only-link-out",
       dataMode: "observed",
       provenance: {
@@ -110,7 +99,7 @@ export function parseFeedArticles(xml = "", feedLabel = "RSS Feed", sourceDefini
         sourceType,
         queryProvider: sourceDefinition.queryProvider || null,
         methodVersion: sourceDefinition.provenance?.methodVersion || "rss-parser-v1",
-        publishedAtQuality: publishedAt.quality,
+        publishedAtQuality: publishedAt.publishedAtQuality,
         publishedAtBasis
       }
     };
@@ -267,7 +256,7 @@ export async function fetchRss({
 
       const parsedArticles = parseFeedArticles(payload, label, feed);
       const timestampFallbackCount = parsedArticles.filter((article) =>
-        String(article.provenance?.publishedAtQuality || "").startsWith("fallback-")
+        !article.publishedAt
       ).length;
       articles.push(...parsedArticles);
       feedStatus.push({
@@ -298,7 +287,7 @@ export async function fetchRss({
       provider: "rss",
       totalResults: articles.length,
       timestampFallbackCount: articles.filter((article) =>
-        String(article.provenance?.publishedAtQuality || "").startsWith("fallback-")
+        !article.publishedAt
       ).length,
       rateLimit: lastRateLimit,
       feedStatus,

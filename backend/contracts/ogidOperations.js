@@ -1,6 +1,6 @@
 // Registro compartido: contratos de transporte, permisos e inventario API→MCP.
 // Sin imports de runtime ni secretos. Los parámetros son valores tipados; nunca URLs/rutas libres.
-export const OPERATIONS_VERSION = "1.2.0";
+export const OPERATIONS_VERSION = "1.3.0";
 const str = (maxLength = 128) => ({ type: "string", minLength: 1, maxLength });
 const int = (minimum, maximum) => ({ type: "integer", minimum, maximum });
 const choice = (...values) => ({ type: "string", enum: values });
@@ -10,7 +10,7 @@ const country = { type: "string", pattern: "^[A-Z]{2}$" };
 const countries = array(country);
 const limit = int(1, 100);
 const refs = { symbols: array(str(64)), instrumentIds: array(str()) };
-const intel = { countries: array({ type: "string", pattern: "^(ALL|[A-Z]{2})$" }), sources: array(str(40)), limit };
+const intel = { countries: array({ type: "string", pattern: "^(ALL|[A-Z]{2})$" }), sources: array(str(40)), limit, order: choice("critical", "recent"), q: str(200), page: int(1,10000), windowHours: int(1,720), includeOlder: { type: "boolean" } };
 const advanced = { countries, windowHours: int(6, 168), maxEvents: int(50, 1000), activeWindowHours: int(1, 48), baselineDays: { type: "integer", enum: [7, 30] } };
 const awareness = { domain: array(choice("financial", "macro", "market", "corporate", "regulatory", "geopolitical", "security")), kinds: array(choice("macro_scheduled", "macro_release", "market_moving_news", "regulatory_filing", "official_security_release", "maritime_alert")), status: array(choice("scheduled", "live", "released", "updated", "cancelled")), countries, instrumentIds: refs.instrumentIds, from: date, to: date, limit };
 const candles = { instrumentId: str(), interval: choice("1day", "1h", "30min", "15min", "5min"), from: date, to: date, limit, adjusted: choice("splits", "none") };
@@ -32,7 +32,7 @@ export const OGID_OPERATIONS = Object.freeze([
   op("capabilities", "GET", "/api/capabilities", {}, { tool: "ogid_get_capabilities" }),
   ...["snapshot", "hotspots", "risks", "news", "insights"].map(name => op(`intel.${name}`, "GET", `/api/intel/${name}`, intel, { projection: name === "news" ? "news" : "public", ...(name === "news" ? { tool: "ogid_get_news" } : {}) })),
   op("awareness", "GET", "/api/intel/awareness-snapshot", awareness, { tool: "ogid_get_awareness", projection: "awareness", retention: "backend retention policy (365-day default); public admission only" }),
-  ...["advanced-snapshot", "hotspots-v2", "anomalies", "country-instability"].map(name => op(`intel.${name}`, "GET", `/api/intel/${name}`, advanced, { fixed: { stored: true }, effects: "stored/local-calculation; normal API may fetch RSS" })),
+  ...["advanced-snapshot", "hotspots-v2", "anomalies", "country-instability"].map(name => op(`intel.${name}`, "GET", `/api/intel/${name}`, advanced, { fixed: { stored: true }, effects: "stored/local-calculation; explicit force preserves refresh contract" })),
   op("country-instability.alias", "GET", "/api/country-instability", advanced, { fixed: { stored: true } }),
   op("news.aggregate", "GET", "/api/news/aggregate", { countries, topic: str(64), threat: choice("critical", "elevated", "monitoring", "low"), limit }, { fixed: { stored: true }, projection: "aggregate" }),
   op("news.search", "GET", "/api/news/search", NEWS_SEARCH_PARAMS, { tool: "ogid_search_news", retention: "30 days of permitted metadata, starting on activation", projection: "archive" }),
@@ -70,7 +70,7 @@ export const OGID_OPERATIONS = Object.freeze([
   ...["impact", "analytics"].map(name => op(`market.${name}`, "GET", `/api/market/${name}`, impact)),
   op("market.conditions", "GET", "/api/market/conditions", { windowMin: { type: "integer", enum: [15, 60, 240, 1440] }, countries }),
   ...["config", "presets", "themes"].map(name => op(`map.${name}`, "GET", `/api/map/${name}`)),
-  op("map.layers", "GET", "/api/map/layers", layers, { fixed: { stored: true }, effects: "stored/local-calculation; normal API may fetch RSS" }),
+  op("map.layers", "GET", "/api/map/layers", layers, { fixed: { stored: true }, effects: "stored/local-calculation; explicit force preserves refresh contract" }),
   op("media.streams", "GET", "/api/media/streams", { ids: array(str(80), 50) }, { fixed: { stored: true, resolve: "none" } }),
   op("media.health", "GET", "/api/media/streams/health"),
   op("media.item", "GET", "/api/media/streams/:id", {}, { pathParameters: schema({ id: str(80) }, ["id"]), fixed: { stored: true, resolve: "none" } }),

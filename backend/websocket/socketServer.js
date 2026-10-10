@@ -15,6 +15,12 @@ function createEnvelope(type, data, meta = {}) {
   });
 }
 
+export function sendBoundedEnvelope(client, envelope) {
+  if (client.readyState !== WebSocket.OPEN) return;
+  if (client.bufferedAmount > 1_000_000) { client.close(1013, "resync-required"); client.terminate(); return; }
+  client.send(envelope);
+}
+
 function normalizeHeader(value = "") {
   if (Array.isArray(value)) {
     return value.map((entry) => String(entry || "").trim()).filter(Boolean).join(", ");
@@ -271,8 +277,8 @@ export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000,
 
     const snapshot = stateManager.getSnapshot();
     if (client.readyState === WebSocket.OPEN) {
-      client.send(createEnvelope("market:quotes-bootstrap:v1", buildMarketBootstrapPayload(snapshot), snapshot.meta));
-      client.send(createEnvelope("snapshot", snapshot, snapshot.meta));
+      sendBoundedEnvelope(client, createEnvelope("market:quotes-bootstrap:v1", buildMarketBootstrapPayload(snapshot), snapshot.meta));
+      sendBoundedEnvelope(client, createEnvelope("snapshot", snapshot, snapshot.meta));
     }
 
     websocketState.lastConnection = summarizeConnection(client.connectionInfo);
@@ -307,7 +313,7 @@ export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000,
       client.isAlive = false;
       if (client.readyState === WebSocket.OPEN) {
         client.ping();
-        client.send(createEnvelope("heartbeat", { ok: true }, { clients: clients.size }));
+        sendBoundedEnvelope(client, createEnvelope("heartbeat", { ok: true }, { clients: clients.size }));
       }
     }
   }, heartbeatMs);
@@ -318,9 +324,7 @@ export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000,
     broadcast(type, data, meta = {}) {
       const envelope = createEnvelope(type, data, meta);
       for (const client of clients) {
-        if (client.readyState === WebSocket.OPEN) {
-          client.send(envelope);
-        }
+        sendBoundedEnvelope(client, envelope);
       }
     },
     clientCount() {

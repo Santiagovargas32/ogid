@@ -309,14 +309,14 @@ function readConfig(overrides = {}) {
   const refreshIntervalMs = toPositiveInt(process.env.REFRESH_INTERVAL_MS);
   const newsPageSize = toPositiveInt(process.env.NEWS_PAGE_SIZE);
   const newsIntervalMs = toPositiveInt(process.env.NEWS_INTERVAL_MS, refreshIntervalMs);
-  const rssAggregateIntervalMs = toPositiveInt(process.env.NEWS_RSS_AGGREGATE_INTERVAL_MS, newsIntervalMs);
+  const rssAggregateIntervalMs = toPositiveInt(process.env.NEWS_RSS_AGGREGATE_INTERVAL_MS, 30_000);
   const rssAggregateFeedsPerRun = toPositiveInt(
     process.env.NEWS_RSS_AGGREGATE_FEEDS_PER_RUN,
-    (rssActiveFeeds || []).length || DEFAULT_RSS_FEEDS.length
+    18
   );
   const rssAggregateMaxItems = toPositiveInt(
     process.env.NEWS_RSS_AGGREGATE_MAX_ITEMS,
-    Math.max(newsPageSize, rssAggregateFeedsPerRun * newsPageSize)
+    900
   );
   const envMarketProvider = toTrimmedString(process.env.MARKET_PROVIDER);
   const envMarketFallbackProvider = toTrimmedString(process.env.MARKET_PROVIDER_FALLBACK);
@@ -390,10 +390,12 @@ function readConfig(overrides = {}) {
       rssAggregateIntervalMs,
       rssAggregateFeedsPerRun,
       rssAggregateMaxItems,
-      rssPipelineMode: process.env.NEWS_RSS_PIPELINE_MODE || "legacy",
+      rssPipelineMode: process.env.NEWS_RSS_PIPELINE_MODE || "canonical",
       rssGlobalConcurrency: toPositiveInt(process.env.NEWS_RSS_GLOBAL_CONCURRENCY, 4),
       rssHostConcurrency: toPositiveInt(process.env.NEWS_RSS_HOST_CONCURRENCY, 1),
-      rssCycleDeadlineMs: toPositiveInt(process.env.NEWS_RSS_CYCLE_DEADLINE_MS, 60_000),
+      rssCycleDeadlineMs: toPositiveInt(process.env.NEWS_RSS_CYCLE_DEADLINE_MS, 25_000),
+      rssMaxResponseBytes: toPositiveInt(process.env.NEWS_RSS_MAX_RESPONSE_BYTES, 2_000_000),
+      rssMaxItemsPerFeed: toPositiveInt(process.env.NEWS_RSS_MAX_ITEMS_PER_FEED, 200),
       rssCanonicalStateFile: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, process.env.NEWS_RSS_CANONICAL_STATE_FILE || "data/rss-canonical-state.json"),
       sourceAllowlist: newsSourceAllowlist,
       domainAllowlist: newsDomainAllowlist,
@@ -1034,7 +1036,10 @@ export function createAppServer(overrides = {}) {
       log.info("server_started", { port: server.address().port, refreshIntervalMs: config.news.intervalMs });
     },
     async stop() {
-      orchestrator.stop();
+      const cyclesStopped = orchestrator.stop();
+      await rssAggregator.stop();
+      await cyclesStopped;
+      await newsArchive.flush();
       awarenessService.stop();
       mediaStreamService.stop();
       await aiCoordinator.stop();

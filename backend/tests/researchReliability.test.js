@@ -63,7 +63,7 @@ test("null and synthetic candles never become numeric observations",()=>{
   const series=bars();series[1].dataMode="synthetic";assert.equal(calculateTechnicalIndicators(series,{interval:"1day"}).indicators.sma.reason,"synthetic_series");
   series[1].dataMode="observed";series[2].currency="EUR";assert.equal(calculateTechnicalIndicators(series,{interval:"1day"}).indicators.sma.reason,"incompatible_series");
 });
-test("semantic cursor filters, concurrent arrival, restart and expiry preserve bounded snapshots",()=>{
+test("semantic cursor filters, concurrent arrival, restart and expiry preserve bounded snapshots",async()=>{
   let now=Date.parse("2026-10-08T12:00:00Z");const path=join(mkdtempSync(join(tmpdir(),"ogid-news-")),"news.json");
   const archive=new NewsArchive({persistencePath:path,now:()=>now,cursorTtlMs:1000});
   const item=(i)=>({title:`NVIDIA earnings ${i}`,url:`https://example.org/${i}`,provider:"rss",publishedAt:"2026-10-08T11:00:00Z"});
@@ -74,6 +74,7 @@ test("semantic cursor filters, concurrent arrival, restart and expiry preserve b
   assert.equal(next.total,3);assert.notEqual(next.articles[0].id,first.articles[0].id);
   assert.equal(archive.search({cursor:next.nextCursor,limit:1}).total,3);
   assert.throws(()=>archive.search({cursor:first.nextCursor,q:"different"}),e=>e.code==="CURSOR_FILTER_MISMATCH");
+  await archive.flush();
   const restored=new NewsArchive({persistencePath:path,now:()=>now});assert.equal(restored.search().total,4);
   assert.throws(()=>restored.search({cursor:first.nextCursor}),e=>e.code==="CURSOR_EXPIRED");
   now+=2000;assert.throws(()=>archive.search({cursor:first.nextCursor}),e=>e.code==="CURSOR_EXPIRED");
