@@ -63,8 +63,8 @@ test("dashboard keeps map and news contracts without retired admin selectors", a
   assert.match(dashboard, /Inputs: initializing/);
   assert.doesNotMatch(dashboard, /dashboard-analytics-row|market-impact-list|impact-timeline-chart|sector-breakdown-chart|impact-scatter-chart/);
   assert.doesNotMatch(script, /getMarketAnalytics|initImpactTimelineChart|initSectorBreakdownChart|initImpactScatterChart/);
-  assert.match(apiScript, /getMarketConditions: \(params = \{\}\) => request\("\/api\/market\/conditions"/);
-  assert.match(apiScript, /getMarketAnalytics: \(params = \{\}\) => request\("\/api\/market\/analytics"/);
+  assert.match(apiScript, /getMarketConditions: \(params = \{\}, options = \{\}\) => request\("\/api\/market\/conditions"/);
+  assert.match(apiScript, /getMarketAnalytics: \(params = \{\}, options = \{\}\) => request\("\/api\/market\/analytics"/);
   assert.match(script, /message\.type === "awareness:update:v1"[\s\S]*?scheduleMarketConditionsRefresh\(\)/);
   assert.match(script, /await refreshMarketConditions\(\)/);
   assert.match(conditionsModel, /DEFAULT_MARKET_CONDITIONS_WINDOW_MIN = 240/);

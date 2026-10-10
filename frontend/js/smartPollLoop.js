@@ -18,6 +18,7 @@ export class SmartPollLoop {
     this.timer = null;
     this.inFlight = false;
     this.stopped = true;
+    this.controller = null;
     this.handleVisibilityChange = () => {
       if (!this.stopped) {
         this.schedule();
@@ -47,13 +48,14 @@ export class SmartPollLoop {
     }
 
     this.inFlight = true;
+    this.controller = new AbortController();
     try {
-      const payload = await this.task();
-      if (typeof this.onData === "function") {
+      const payload = await this.task(this.controller.signal);
+      if (!this.stopped && typeof this.onData === "function") {
         this.onData(payload);
       }
     } catch (error) {
-      if (typeof this.onError === "function") {
+      if (!this.stopped && typeof this.onError === "function") {
         this.onError(error);
       }
     } finally {
@@ -94,6 +96,7 @@ export class SmartPollLoop {
 
   stop() {
     this.stopped = true;
+    this.controller?.abort();
     clearTimeout(this.timer);
     this.timer = null;
     document.removeEventListener("visibilitychange", this.handleVisibilityChange);

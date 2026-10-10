@@ -1,11 +1,25 @@
 import { api } from "./api.js";
-import { initAdminHistory } from "./adminHistory.js";
+import { SectionRefresh } from "./adminRefresh.js";
+import { SmartPollLoop } from "./smartPollLoop.js";
 
 const POLL_INTERVAL_MS = 60_000;
 const RAW_PAGE_SIZE = 100;
 
 const elements = {};
 let pollHandle = null;
+let pollFailures = 0;
+let retryAfterMs = 0;
+const sections = new SectionRefresh({ onStatus(key, status, error, retained, dataAt) {
+  const anchor = document.getElementById(key);
+  if (!anchor) return;
+  const panel = anchor.closest("section") || anchor.parentElement;
+  let label = panel.querySelector(`[data-section-status="${key}"]`);
+  if (!label) { label = document.createElement("p"); label.className = "section-status small px-3"; label.dataset.sectionStatus = key; label.setAttribute("role", "status"); panel.prepend(label); }
+  label.dataset.state = status;
+  label.textContent = error ? `${retained ? "Stale · últimos datos conservados. " : "Error · "}${error.message} (${error.status || error.code || "NETWORK_ERROR"})`
+    : status === "loading" ? "Comprobando…" : `Respuesta recibida ${formatShortTime(new Date())} · Datos: ${dataAt ? formatDate(dataAt) : "fecha no disponible"}`;
+  if (error?.retryAfterSec) retryAfterMs = Math.max(retryAfterMs, error.retryAfterSec * 1000);
+} });
 const rawPaginationState = {
   intel: 1,
   rssAggregate: 1
@@ -962,7 +976,8 @@ async function refreshRawNewsDataset(datasetKey) {
   const payload = await api.getAdminNewsRaw({
     dataset,
     page: rawPaginationState[datasetKey],
-    pageSize: RAW_PAGE_SIZE
+    pageSize: RAW_PAGE_SIZE,
+    stored: 1
   });
   applyRawNewsPayload(datasetKey, payload);
   return payload;
@@ -1015,70 +1030,32 @@ function renderMediaStreams(payload = {}) {
 }
 
 async function refreshAll({ forceMedia = false } = {}) {
-  const [
-    healthResult,
-    limitsResult,
-    pipelineResult,
-    intelNewsResult,
-    aggregateNewsResult,
-    intelRawResult,
-    aggregateRawResult,
-    mediaResult,
-    mediaHealthResult,
-    aiEnrichmentsResult
-  ] =
-    await Promise.allSettled([
-      api.getHealth(),
-      api.getApiLimits(),
-      api.getPipelineStatus(),
-      api.getNews({ limit: 40, countries: "ALL" }),
-      api.getAggregateNews({ limit: 40 }),
-      api.getAdminNewsRaw({ dataset: "intel", page: rawPaginationState.intel, pageSize: RAW_PAGE_SIZE }),
-      api.getAdminNewsRaw({ dataset: "rss-aggregate", page: rawPaginationState.rssAggregate, pageSize: RAW_PAGE_SIZE }),
-      api.getMediaStreams(forceMedia ? { resolve: "all", force: 1 } : { resolve: "none" }),
-      api.getMediaStreamsHealth(),
-      api.getAdminAiEnrichments({ page: 1, pageSize: 50 })
-    ]);
-
-  const health = healthResult.status === "fulfilled" ? healthResult.value : {};
-  const limits = limitsResult.status === "fulfilled" ? limitsResult.value : { providers: [] };
-  const pipeline = pipelineResult.status === "fulfilled" ? pipelineResult.value : {};
-  const intelNews = intelNewsResult.status === "fulfilled" ? intelNewsResult.value?.news || [] : [];
-  const aggregateNews =
-    aggregateNewsResult.status === "fulfilled" ? aggregateNewsResult.value?.items || [] : [];
-  const intelRaw = intelRawResult.status === "fulfilled" ? intelRawResult.value : null;
-  const aggregateRaw = aggregateRawResult.status === "fulfilled" ? aggregateRawResult.value : null;
-  const media = mediaResult.status === "fulfilled" ? mediaResult.value : {};
-  const mediaHealth = mediaHealthResult.status === "fulfilled" ? mediaHealthResult.value : {};
-  const aiEnrichments = aiEnrichmentsResult.status === "fulfilled" ? aiEnrichmentsResult.value : { items: [] };
-
-  renderServerSummary(health, pipeline);
-  renderMediaSummary(media, mediaHealth);
-  renderPipelineStatus(pipeline);
-  renderApiLimits(limits);
-  renderNewsTable(intelNews, elements.intelNewsBody, elements.intelNewsCount);
-  renderNewsTable(aggregateNews, elements.aggregateNewsBody, elements.aggregateNewsCount);
-  applyRawNewsPayload("intel", intelRaw || {});
-  applyRawNewsPayload("rssAggregate", aggregateRaw || {});
-  renderMediaStreams(media);
-  renderAiEnrichments(aiEnrichments);
-
-  const now = formatDate(new Date().toISOString());
-  elements.adminLastRefresh.textContent = `Updated: ${now}`;
+  const definitions = [
+    {key:"server-summary-body", load: signal => api.getHealth({signal}), render: (v, values) => renderServerSummary(v, values.get("pipeline-status-body") || {})},
+    {key:"api-limits-body", load: signal => api.getApiLimits({signal}), render: renderApiLimits},
+    {key:"pipeline-status-body", load: signal => api.getPipelineStatus({signal}), render: (v, values) => {renderPipelineStatus(v); renderServerSummary(values.get("server-summary-body") || {}, v);}},
+    {key:"intel-news-body", load: signal => api.getNews({limit:40,countries:"ALL"},{signal}), render: v => renderNewsTable(v.news || [],elements.intelNewsBody,elements.intelNewsCount)},
+    {key:"aggregate-news-body", load: signal => api.getAggregateNews({limit:40,stored:1},{signal}), render: v => renderNewsTable(v.items || [],elements.aggregateNewsBody,elements.aggregateNewsCount)},
+    {key:"intel-news-raw-body", load: signal => api.getAdminNewsRaw({dataset:"intel",page:rawPaginationState.intel,pageSize:RAW_PAGE_SIZE,stored:1},{signal}), render:v=>applyRawNewsPayload("intel",v)},
+    {key:"aggregate-news-raw-body", load: signal => api.getAdminNewsRaw({dataset:"rss-aggregate",page:rawPaginationState.rssAggregate,pageSize:RAW_PAGE_SIZE,stored:1},{signal}), render:v=>applyRawNewsPayload("rssAggregate",v)},
+    {key:"media-streams-body", load: signal => api.getMediaStreams(forceMedia?{resolve:"all",force:1}:{resolve:"none"},{signal}), render:(v, values)=>{renderMediaStreams(v);renderMediaSummary(v, values.get("media-stream-summary-body") || {});}},
+    {key:"media-stream-summary-body", load: signal => api.getMediaStreamsHealth({signal}), render:(v, values)=>renderMediaSummary(values.get("media-streams-body") || {},v)},
+    {key:"ai-enrichments-body", load: signal => api.getAdminAiEnrichments({page:1,pageSize:50},{signal}), render:renderAiEnrichments}
+  ];
+  const results = await sections.refresh(definitions);
+  pollFailures = results?.some(v => !v?.ok) ? Math.min(5, pollFailures + 1) : 0;
+  elements.adminLastRefresh.textContent = `Última comprobación: ${formatDate(new Date())}`;
 }
 
 function startPolling() {
-  window.clearInterval(pollHandle);
-  pollHandle = window.setInterval(() => {
-    refreshAll().catch((error) => {
-      console.error("admin refresh failed", error);
-    });
-  }, POLL_INTERVAL_MS);
+  pollHandle = new SmartPollLoop({ immediate:false, intervalMs:POLL_INTERVAL_MS, hiddenIntervalMs:300_000, task:refreshAll,
+    delayResolver:({hidden}) => Math.max(retryAfterMs, (hidden?300_000:POLL_INTERVAL_MS) * 2 ** pollFailures) * (0.9 + Math.random()*0.2)
+  });
+  pollHandle.start();
 }
 
 async function bootstrap() {
   cacheElements();
-  initAdminHistory().catch(error=>{const node=byId("history-message");if(node)node.textContent=error.message;});
   elements.refreshMediaStreamsBtn?.addEventListener("click", async () => {
     elements.refreshMediaStreamsBtn.disabled = true;
     try {
@@ -1094,8 +1071,9 @@ async function bootstrap() {
 
   await refreshAll();
   startPolling();
-  window.addEventListener("beforeunload", () => {
-    window.clearInterval(pollHandle);
+  window.addEventListener("pagehide", () => {
+    pollHandle?.stop();
+    sections.stop();
   });
 }
 
