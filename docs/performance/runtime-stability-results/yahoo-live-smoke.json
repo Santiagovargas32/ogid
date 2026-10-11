@@ -1,0 +1,34 @@
+{
+  "date": "2026-10-11",
+  "library": "yahoo-finance2@4.0.2",
+  "profile": "three sequential real operations; retries=0; stop on first failure",
+  "results": [
+    {
+      "operation": "search",
+      "query": "General Dynamics",
+      "durationMs": 231.95,
+      "results": 5,
+      "status": "success"
+    },
+    {
+      "operation": "quote",
+      "symbol": "GD",
+      "durationMs": 491.98,
+      "positivePrice": true,
+      "asOf": "2026-10-09T20:00:03Z",
+      "status": "success"
+    },
+    {
+      "operation": "chart",
+      "symbol": "GD",
+      "range": "7 days",
+      "interval": "1d",
+      "durationMs": 108.54,
+      "bars": 5,
+      "status": "success"
+    }
+  ],
+  "retries": 0,
+  "failures": 0,
+  "note": "Captured from tool stdout; no credentials or response payload persisted. This is a punctual availability observation, not a quota or resilience benchmark."
+}

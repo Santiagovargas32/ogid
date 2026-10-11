@@ -4,6 +4,27 @@ import { createAppServer } from '../server.js';
 import { AwarenessService } from '../services/awareness/awarenessService.js';
 import { AwarenessStore } from '../services/awareness/awarenessStore.js';
 import { YahooRequestQueue, isRetryableYahooError } from '../services/marketData/rateLimit.js';
+import RefreshOrchestratorService from '../services/refreshOrchestratorService.js';
+
+test('repeated scheduler startup admits one periodic chain and recovers after rejection',async t=>{
+  t.mock.timers.enable({apis:['setTimeout']});
+  let rssStarts=0,news=0,market=0;
+  const orchestrator=new RefreshOrchestratorService({stateManager:{},socketServer:{},
+    config:{news:{intervalMs:100},market:{enabled:true}},rssAggregator:{start(){rssStarts++;}}});
+  orchestrator.resolveNextNewsDelayMs=()=>100;
+  orchestrator.resolveNextMarketDelayMs=()=>100;
+  orchestrator.executeNewsCycle=async()=>{news++;if(news===2)throw Error('fixture-cycle-failure');};
+  orchestrator.executeMarketCycle=async()=>{market++;};
+  const settled=()=>new Promise(resolve=>setImmediate(resolve));
+  orchestrator.start();orchestrator.start();await settled();
+  assert.deepEqual([rssStarts,news,market],[1,1,1]);
+  t.mock.timers.tick(100);await settled();
+  t.mock.timers.tick(100);await settled();
+  assert.deepEqual([rssStarts,news,market],[1,3,3]);
+  await orchestrator.stop();t.mock.timers.tick(120_000);await settled();
+  assert.deepEqual([rssStarts,news,market],[1,3,3]);
+  assert.equal(orchestrator.pendingCycles.size,0);
+});
 
 test('runtime starts and stops idempotently; readiness differs from provider availability',async()=>{
   const runtime=createAppServer({port:0,host:'127.0.0.1',disableBackgroundRefresh:true,news:{providers:[],rssFeeds:[]},market:{enabled:false,historyPersist:false},security:{allowLocalAdmin:false,adminApiToken:'fixture-secret'}});

@@ -1,0 +1,139 @@
+{
+  "node": "v22.23.3",
+  "config": {
+    "pipeline": "canonical",
+    "feeds": 18,
+    "global": 4,
+    "host": 1,
+    "deadline": 25000,
+    "corpus": 17
+  },
+  "samples": {
+    "1:/": {
+      "p50": 3.6496849999999768,
+      "p95": 26.08544799999993,
+      "bytes": 20367
+    },
+    "1:/admin": {
+      "p50": 2.4346429999999373,
+      "p95": 4.039731999999958,
+      "bytes": 15228
+    },
+    "1:/api/health": {
+      "p50": 1.6022029999999177,
+      "p95": 16.90989400000001,
+      "bytes": 2168
+    },
+    "1:/api/intel/snapshot?countries=ALL&limit=100": {
+      "p50": 1.8404370000000654,
+      "p95": 2.90754400000003,
+      "bytes": 12479
+    },
+    "1:/api/news/aggregate?stored=1&limit=40": {
+      "p50": 1.3853390000000445,
+      "p95": 2.2050360000000637,
+      "bytes": 145
+    },
+    "1:/api/admin/news-raw?dataset=rss-aggregate&stored=1": {
+      "p50": 2.163859000000002,
+      "p95": 3.4425289999999222,
+      "bytes": 170
+    },
+    "10:/": {
+      "p50": 9.6071179999999,
+      "p95": 22.195145000000025,
+      "bytes": 20367
+    },
+    "10:/admin": {
+      "p50": 8.742568000000006,
+      "p95": 12.550197000000026,
+      "bytes": 15228
+    },
+    "10:/api/health": {
+      "p50": 11.07867699999997,
+      "p95": 43.79382999999996,
+      "bytes": 2169
+    },
+    "10:/api/intel/snapshot?countries=ALL&limit=100": {
+      "p50": 13.303049000000101,
+      "p95": 17.527213000000074,
+      "bytes": 25547
+    },
+    "10:/api/news/aggregate?stored=1&limit=40": {
+      "p50": 10.870148999999856,
+      "p95": 15.248430999999982,
+      "bytes": 36500
+    },
+    "10:/api/admin/news-raw?dataset=rss-aggregate&stored=1": {
+      "p50": 12.898976999999832,
+      "p95": 16.99983199999997,
+      "bytes": 11085
+    }
+  },
+  "warmStored": {
+    "1:/api/health": {
+      "p50": 1.7665600000000268,
+      "p95": 2.5579320000001644,
+      "bytes": 2169
+    },
+    "1:/api/intel/snapshot?countries=ALL&limit=100": {
+      "p50": 1.5886780000000726,
+      "p95": 1.981318999999985,
+      "bytes": 25547
+    },
+    "1:/api/news/aggregate?stored=1&limit=40": {
+      "p50": 2.034497999999985,
+      "p95": 2.889499999999998,
+      "bytes": 36500
+    },
+    "1:/api/admin/news-raw?dataset=rss-aggregate&stored=1": {
+      "p50": 1.5667570000000524,
+      "p95": 2.7361140000000432,
+      "bytes": 11085
+    },
+    "10:/api/health": {
+      "p50": 10.141251999999895,
+      "p95": 14.728172000000086,
+      "bytes": 2169
+    },
+    "10:/api/intel/snapshot?countries=ALL&limit=100": {
+      "p50": 12.103485000000092,
+      "p95": 18.31756500000006,
+      "bytes": 25547
+    },
+    "10:/api/news/aggregate?stored=1&limit=40": {
+      "p50": 8.604389999999967,
+      "p95": 18.329517000000124,
+      "bytes": 36500
+    },
+    "10:/api/admin/news-raw?dataset=rss-aggregate&stored=1": {
+      "p50": 9.811427999999978,
+      "p95": 20.92739400000005,
+      "bytes": 11085
+    }
+  },
+  "firstSelectionMs": 452.7045979999999,
+  "upstreamRequests": 18,
+  "elapsedMs": 1539.3196090000001,
+  "cpu": {
+    "user": 1833837,
+    "system": 211584
+  },
+  "memory": {
+    "rss": 190783488,
+    "heapTotal": 96137216,
+    "heapUsed": 44976616,
+    "external": 7091196,
+    "arrayBuffers": 3237390
+  },
+  "eventLoopP95Ms": 18.251775,
+  "cycle": {
+    "lastStartedAt": "2026-10-11T19:52:30.686Z",
+    "lastCompletedAt": "2026-10-11T19:52:30.705Z",
+    "lastDurationMs": 19,
+    "lastStatus": "ok",
+    "lastTrigger": "benchmark",
+    "lastError": null
+  },
+  "wsBytes": 25146
+}

@@ -43,7 +43,9 @@ try{
   await page.waitForTimeout(1000);
   await page.evaluate(()=>{window.__row=document.querySelector('.news-item');window.__chartBefore=window.__chartUpdates;});
   const snapshot=manager.getSnapshot();
-  for(let i=0;i<20;i++)runtime.socketServer.broadcast('update',{meta:snapshot.meta,market:snapshot.market},snapshot.meta);
+  const marketUpdate=runtime.orchestrator.buildMarketUpdatePayload(snapshot);
+  result.payloadBytes={full:Buffer.byteLength(JSON.stringify(runtime.orchestrator.buildUpdatePayload(snapshot))),market:Buffer.byteLength(JSON.stringify(marketUpdate))};
+  for(let i=0;i<20;i++)runtime.socketServer.broadcast('update',marketUpdate,snapshot.meta);
   await page.waitForTimeout(200);
   const rendering=await page.evaluate(()=>({newsRowPreserved:window.__row===document.querySelector('.news-item'),chartUpdatesForUnchangedData:window.__chartUpdates-window.__chartBefore}));
   assert.equal(rendering.newsRowPreserved,true);assert.equal(rendering.chartUpdatesForUnchangedData,0);result.rendering=rendering;

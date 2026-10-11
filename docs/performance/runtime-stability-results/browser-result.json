@@ -1,0 +1,38 @@
+{
+  "checks": [
+    "20 unchanged updates preserve news DOM and perform zero chart updates",
+    "HTTP stored fallback recovers selected news during WS outage",
+    "reconnect uses one WS snapshot without a duplicate HTTP resync",
+    "Admin diagnostics render",
+    "two simultaneous dashboard tabs; mobile viewport without overflow"
+  ],
+  "errors": [],
+  "requests": {
+    "/api/media/streams": 5,
+    "/api/intel/advanced-snapshot": 5,
+    "/api/intel/awareness-snapshot": 2,
+    "/api/market/watchlist": 2,
+    "/api/intel/snapshot": 3,
+    "/api/market/candles": 2,
+    "/api/market/conditions": 5,
+    "/api/market/provider-status": 3,
+    "/api/market/quotes": 2,
+    "/api/health": 1,
+    "/api/admin/api-limits": 1,
+    "/api/admin/pipeline-status": 1,
+    "/api/intel/news": 1,
+    "/api/news/aggregate": 1,
+    "/api/admin/news-raw": 2,
+    "/api/media/streams/health": 1,
+    "/api/admin/ai-enrichments": 1
+  },
+  "browser": "156.0.8078.4",
+  "payloadBytes": {
+    "full": 32510,
+    "market": 3003
+  },
+  "rendering": {
+    "newsRowPreserved": true,
+    "chartUpdatesForUnchangedData": 0
+  }
+}
