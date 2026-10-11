@@ -7,6 +7,13 @@ const router = Router();
 router.get("/api-limits", getApiLimits);
 router.get("/news-raw", getNewsRaw);
 router.get("/pipeline-status", getPipelineStatus);
+router.get("/runtime", (_req,res) => res.json({ ok: true, data: {
+  runtime: res.app.locals.runtimeMetrics.snapshot(),
+  websocket: res.app.locals.socketServer.getHealth(),
+  refresh: { news:res.app.locals.orchestrator.newsCycleTelemetry, market:res.app.locals.orchestrator.marketCycleTelemetry,
+    pending:res.app.locals.orchestrator.pendingCycles.size, coalescing:res.app.locals.orchestrator.cycleMetrics },
+  rss:res.app.locals.rssAggregator.getStatus()
+} }));
 router.get("/ai-enrichments", getAiEnrichments);
 router.get("/history", historyStatus);
 router.post("/history/jobs", createAdminHistory);

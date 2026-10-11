@@ -52,6 +52,8 @@ import { AiEnrichmentCoordinator } from "./services/ai/aiEnrichmentCoordinator.j
 import { AiProviderError, createAiProvider } from "./services/ai/aiProviders.js";
 import { AwarenessStore } from "./services/awareness/awarenessStore.js";
 import { AwarenessService, normalizeAwarenessMode } from "./services/awareness/awarenessService.js";
+import { RuntimeMetrics } from "./services/runtimeMetrics.js";
+import { setImmediate as yieldToRuntime } from "node:timers/promises";
 
 const log = createLogger("backend/server");
 
@@ -356,6 +358,8 @@ function readConfig(overrides = {}) {
     host: toTrimmedString(process.env.HOST) || undefined,
     refreshIntervalMs: refreshIntervalMs ?? newsIntervalMs ?? marketRefreshIntervalMs ?? null,
     wsHeartbeatMs: toInt(process.env.WS_HEARTBEAT_MS, 15_000),
+    wsTrustedProxyIps: toList(process.env.WS_TRUSTED_PROXY_IPS),
+    wsAllowedOrigins: toList(process.env.WS_ALLOWED_ORIGINS),
     wsPath: "/ws",
     watchlistCountries,
     manualRefresh: {
@@ -689,6 +693,9 @@ export function createAppServer(overrides = {}) {
   const config = readConfig(overrides);
   const frontendPath = path.resolve(__dirname, "../frontend");
   const app = express();
+  const runtimeMetrics = new RuntimeMetrics();
+  app.locals.runtimeMetrics = runtimeMetrics;
+  app.use(runtimeMetrics.middleware());
 
   app.disable("x-powered-by");
   app.use(
@@ -789,7 +796,12 @@ export function createAppServer(overrides = {}) {
   newsArchive.onIngest = items => researchGuard("archiveEvents",()=>{for(let offset=0;offset<items.length;offset+=500)eventLedger.ingest(items.slice(offset,offset+500));});
   const materialAlertStore = overrides.materialAlertStore || new MaterialAlertStore({ persistencePath: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, process.env.RESEARCH_ALERT_STATE_FILE || "data/intel/research-alerts.json") });
   const rssAggregator = new RssAggregatorService({
-    onCollected: articles => newsArchive.ingest(articles, { awarenessMode: config.awareness.mode }),
+    onCollected: async articles => {
+      for (let offset=0; offset<articles.length; offset+=500) {
+        newsArchive.ingest(articles.slice(offset,offset+500), { awarenessMode:config.awareness.mode });
+        if (offset+500<articles.length) await yieldToRuntime();
+      }
+    },
     news: config.news,
     rssFeeds: config.news.rssFeeds,
     refreshIntervalMs: config.news.rssAggregateIntervalMs,
@@ -845,6 +857,8 @@ export function createAppServer(overrides = {}) {
     server,
     path: config.wsPath,
     heartbeatMs: config.wsHeartbeatMs,
+    trustedProxyIps: config.wsTrustedProxyIps,
+    allowedOrigins: config.wsAllowedOrigins,
     stateManager
   });
   const awarenessStore = overrides.awarenessStore || new AwarenessStore({
@@ -951,6 +965,8 @@ export function createAppServer(overrides = {}) {
   app.locals.awarenessService = awarenessService;
   app.locals.awarenessStore = awarenessStore;
   app.locals.marketConditionsService = marketConditionsService;
+  let startTask = null;
+  let stopTask = null;
 
   return {
     app,
@@ -965,7 +981,10 @@ export function createAppServer(overrides = {}) {
     awarenessService,
     marketConditionsService,
     config,
-    async start() {
+    start() {
+      if (startTask) return startTask;
+      startTask = (async () => {
+      const startupAt = performance.now();
       const hydratedWatchlist = await marketWatchlistService.hydrate();
       config.market.tickers = hydratedWatchlist.selectedSymbols;
       config.news.marketTickers = hydratedWatchlist.selectedSymbols;
@@ -983,6 +1002,7 @@ export function createAppServer(overrides = {}) {
           resolve();
         });
       });
+      runtimeMetrics.start(performance.now() - startupAt);
       const aiStatus = aiCoordinator.getAdminSnapshot();
       log.info("api_config_status", {
         newsApiKeyConfigured: isRealKey(config.news.newsApiKey),
@@ -1034,26 +1054,32 @@ export function createAppServer(overrides = {}) {
         mediaStreamService.start();
       }
       log.info("server_started", { port: server.address().port, refreshIntervalMs: config.news.intervalMs });
+      })();
+      return startTask;
     },
-    async stop() {
+    stop() {
+      if (stopTask) return stopTask;
+      stopTask = (async () => {
+      runtimeMetrics.stop();
+      // Stop accepting HTTP/upgrade work before draining owners of background jobs.
+      const httpStopped = new Promise((resolve,reject) => {
+        if (!server.listening) return resolve();
+        server.close(error => error ? reject(error) : resolve());
+      });
+      const websocketStopped = socketServer.close();
+      const awarenessStopped = awarenessService.stop();
+      const mediaStopped = mediaStreamService.stop();
+      const marketDataStopped = marketDataService.close?.();
       const cyclesStopped = orchestrator.stop();
       await rssAggregator.stop();
       await cyclesStopped;
       await newsArchive.flush();
-      awarenessService.stop();
-      mediaStreamService.stop();
+      await Promise.all([awarenessStopped, mediaStopped, marketDataStopped]);
       await aiCoordinator.stop();
-      socketServer.close();
-      await new Promise((resolve, reject) => {
-        server.close((error) => {
-          if (error) {
-            reject(error);
-            return;
-          }
-          resolve();
-        });
-      });
+      await Promise.all([websocketStopped,httpStopped]);
       log.info("server_stopped");
+      })();
+      return stopTask;
     }
   };
 }
@@ -1061,12 +1087,17 @@ export function createAppServer(overrides = {}) {
 async function run() {
   dotenv.config({ path: path.resolve(__dirname, ".env") });
   const runtime = createAppServer();
+  let shuttingDown = false;
 
-  const shutdown = async (signal) => {
+  const shutdown = async (signal, exitCode = 0) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    const deadline = setTimeout(() => process.exit(1), 30_000);
+    deadline.unref();
     log.info("shutdown_signal_received", { signal });
     try {
       await runtime.stop();
-      process.exit(0);
+      process.exit(exitCode);
     } catch (error) {
       log.error("shutdown_failed", { message: error.message });
       process.exit(1);
@@ -1075,6 +1106,12 @@ async function run() {
 
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));
+  const fatal = (event, error) => {
+    log.error("fatal_runtime_error", { event, name:error?.name || "Error", message:error?.message || "Unhandled runtime failure" });
+    void shutdown(event, 1);
+  };
+  process.on("unhandledRejection", error => fatal("unhandledRejection", error));
+  process.on("uncaughtException", error => fatal("uncaughtException", error));
 
   try {
     await runtime.start();

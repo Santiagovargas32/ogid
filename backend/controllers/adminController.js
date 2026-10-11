@@ -330,6 +330,7 @@ export function getPipelineStatus(_req, res) {
     ok: true,
     data: {
       generatedAt: new Date().toISOString(),
+      runtime: res.app.locals.runtimeMetrics?.snapshot?.() || null,
       market: {
         enabled: marketEnabled,
         disabledReason: marketEnabled ? null : marketDisabledReason,

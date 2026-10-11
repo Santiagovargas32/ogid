@@ -29,6 +29,9 @@ const costly = { profile: "operator", scope: "provider:query", effects: "provide
 const mutation = (scope) => ({ profile: "operator", scope, effects: "mutation", cost: "see runtime quotas" });
 export const OGID_OPERATIONS = Object.freeze([
   op("health", "GET", "/api/health", {}, { tool: "ogid_health", projection: "health" }),
+  op("health.live", "GET", "/api/health/live", {}, { projection: "health" }),
+  op("health.ready", "GET", "/api/health/ready", {}, { projection: "health" }),
+  op("admin.runtime", "GET", "/api/admin/runtime", {}, { profile:"operator", scope:"admin:read", projection:"admin-counts", retention:"last minute event-loop; last 512 HTTP samples; last 20 WS events", effects:"bounded administrative metrics" }),
   op("capabilities", "GET", "/api/capabilities", {}, { tool: "ogid_get_capabilities" }),
   ...["snapshot", "hotspots", "risks", "news", "insights"].map(name => op(`intel.${name}`, "GET", `/api/intel/${name}`, intel, { projection: name === "news" ? "news" : "public", ...(name === "news" ? { tool: "ogid_get_news" } : {}) })),
   op("awareness", "GET", "/api/intel/awareness-snapshot", awareness, { tool: "ogid_get_awareness", projection: "awareness", retention: "backend retention policy (365-day default); public admission only" }),
