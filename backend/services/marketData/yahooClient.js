@@ -78,13 +78,14 @@ export function createGuardedYahooFetch(fetchImpl) {
       error.name = "YahooHttpError";
       error.code = status;
       error.status = status;
-      if (status === 429) {
+      if (status === 429 || status >= 500) {
         const retryAfter = String(response?.headers?.get?.("retry-after") || "").trim();
         const seconds = Number(retryAfter);
         const dateMs = Date.parse(retryAfter);
         if (retryAfter && Number.isFinite(seconds) && seconds >= 0) error.retryAfterMs = Math.ceil(seconds * 1_000);
         else if (Number.isFinite(dateMs)) error.retryAfterMs = Math.max(1, dateMs - Date.now());
       }
+      await response.body?.cancel();
       throw error;
     }
     return response;
@@ -170,4 +171,6 @@ export class YahooClient {
       queue: this.requestQueue.snapshot(),
     };
   }
+
+  close() { return this.requestQueue.close(); }
 }

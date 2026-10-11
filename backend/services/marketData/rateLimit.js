@@ -1,4 +1,5 @@
 import { sanitizeSensitiveData } from "../../utils/sanitize.js";
+import { setTimeout as delay } from "node:timers/promises";
 
 const NETWORK_ERROR_CODES = new Set([
   "ECONNABORTED",
@@ -91,6 +92,7 @@ export class SlidingWindowRateLimiter {
 export function isRetryableYahooError(error) {
   const status = errorStatus(error);
   if (status === 429 || (status != null && status >= 500)) return true;
+  if (status != null && status >= 400) return false;
   if (error?.code === "YAHOO_TIMEOUT" || error?.name === "AbortError") return true;
   const code = String(error?.code || "").toUpperCase();
   if (NETWORK_ERROR_CODES.has(code) || code.startsWith("UND_ERR_")) return true;
@@ -125,9 +127,12 @@ export class YahooRequestQueue {
     maxDelayMs = 5_000,
     rateLimitCooldownMs = 60_000,
     maxRateLimitCooldownMs = 15 * 60_000,
+    maxPending = 200,
+    failureThreshold = 5,
+    recoveryMs = 30_000,
     now = Date.now,
     random = Math.random,
-    sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    sleep = (ms, signal) => delay(ms, undefined, { signal }),
   } = {}) {
     this.concurrency = positiveInteger(concurrency, 3, { min: 1, max: 16 });
     this.timeoutMs = positiveInteger(timeoutMs, 10_000, { min: 1 });
@@ -136,10 +141,17 @@ export class YahooRequestQueue {
     this.maxDelayMs = positiveInteger(maxDelayMs, 5_000, { min: this.baseDelayMs });
     this.rateLimitCooldownMs = positiveInteger(rateLimitCooldownMs, 60_000, { min: 1 });
     this.maxRateLimitCooldownMs = positiveInteger(maxRateLimitCooldownMs, 15 * 60_000, { min: this.rateLimitCooldownMs });
+    this.maxPending = positiveInteger(maxPending, 200, { min: 1, max: 10_000 });
     this.now = now;
     this.random = random;
     this.sleep = sleep;
     this.active = 0;
+    this.closed = false;
+    this.shutdownController = new AbortController();
+    this.failureThreshold = positiveInteger(failureThreshold,5,{min:1});
+    this.recoveryMs = positiveInteger(recoveryMs,30_000,{min:1});
+    this.consecutiveFailures = 0;
+    this.circuitOpenUntil = 0;
     this.pending = [];
     this.inFlight = new Map();
     this.cooldowns = new Map();
@@ -149,6 +161,7 @@ export class YahooRequestQueue {
   }
 
   run(key, operation, { timeoutMs = this.timeoutMs, retries = this.retries, scope = "global" } = {}) {
+    if (this.closed) return Promise.reject(Object.assign(new Error("Yahoo queue is closed"), {code:"YAHOO_QUEUE_CLOSED"}));
     if (typeof operation !== "function") throw new TypeError("Yahoo request operation must be a function");
     const requestKey = String(key || "").trim();
     if (!requestKey) throw new TypeError("Yahoo request key is required");
@@ -168,7 +181,13 @@ export class YahooRequestQueue {
       this.#recordOperationFailure(requestScope, error, 0, true);
       return Promise.reject(error);
     }
+    if (this.circuitOpenUntil > nowMilliseconds(this.now())) return Promise.reject(this.#circuitError());
 
+    if (this.pending.length >= this.maxPending) {
+      const error = Object.assign(new Error("Yahoo request queue is full"), { code: "YAHOO_QUEUE_FULL" });
+      this.#recordOperationFailure(requestScope, error, 0);
+      return Promise.reject(error);
+    }
     let resolveTask;
     let rejectTask;
     const promise = new Promise((resolve, reject) => {
@@ -197,6 +216,9 @@ export class YahooRequestQueue {
     );
     return {
       concurrency: this.concurrency,
+      maxPending: this.maxPending,
+      closed: this.closed,
+      circuit: { state:this.circuitOpenUntil>nowMilliseconds(this.now())?'open':'closed', failures:this.consecutiveFailures, retryAfterMs:Math.max(0,this.circuitOpenUntil-nowMilliseconds(this.now())) },
       active: this.active,
       queued: this.pending.length,
       inFlight: this.inFlight.size,
@@ -214,8 +236,12 @@ export class YahooRequestQueue {
   }
 
   #drain() {
-    while (this.active < this.concurrency && this.pending.length > 0) {
+    while (!this.closed && this.active < this.concurrency && this.pending.length > 0) {
       const task = this.pending.shift();
+      if (this.circuitOpenUntil > nowMilliseconds(this.now())) {
+        const error=this.#circuitError();this.inFlight.delete(task.key);this.metrics.failed++;
+        this.#recordOperationFailure(task.scope,error,0);task.reject(error);continue;
+      }
       const cooldownRemainingMs = this.#cooldownRemainingMs(task.scope);
       if (cooldownRemainingMs > 0) {
         this.inFlight.delete(task.key);
@@ -234,6 +260,7 @@ export class YahooRequestQueue {
       operationMetrics.lastAttemptAt = new Date(startedAt).toISOString();
       this.#executeWithRetry(task)
         .then((value) => {
+          this.consecutiveFailures=0;this.circuitOpenUntil=0;
           this.metrics.completed += 1;
           operationMetrics.completed += 1;
           operationMetrics.lastSuccessAt = new Date(nowMilliseconds(this.now())).toISOString();
@@ -242,6 +269,10 @@ export class YahooRequestQueue {
           task.resolve(value);
         })
         .catch((error) => {
+          if (!this.closed && !isYahooRateLimitError(error) && isRetryableYahooError(error)) {
+            this.consecutiveFailures++;
+            if (this.consecutiveFailures>=this.failureThreshold) this.circuitOpenUntil=nowMilliseconds(this.now())+this.recoveryMs;
+          }
           this.metrics.failed += 1;
           this.#recordOperationFailure(task.scope, error, startedAt);
           task.reject(error);
@@ -259,6 +290,7 @@ export class YahooRequestQueue {
       try {
         return await this.#executeAttempt(task.operation, task.timeoutMs, attempt);
       } catch (error) {
+        if (this.closed) throw error;
         if (isYahooRateLimitError(error)) {
           this.#activateRateLimitCooldown(error, task.scope);
           throw error;
@@ -268,14 +300,20 @@ export class YahooRequestQueue {
         this.#operationMetrics(task.scope).retries += 1;
         const exponential = Math.min(this.maxDelayMs, this.baseDelayMs * (2 ** attempt));
         const jitter = 0.75 + (Math.max(0, Math.min(1, Number(this.random()) || 0)) * 0.5);
-        await this.sleep(Math.max(1, Math.round(exponential * jitter)));
+        await this.sleep(Math.max(1, yahooRetryAfterMs(error), Math.round(exponential * jitter)), this.shutdownController.signal);
       }
     }
   }
 
   async #executeAttempt(operation, timeoutMs, attempt) {
     const controller = new AbortController();
+    this.shutdownController.signal.throwIfAborted();
     let timer;
+    let abort;
+    const shutdown = new Promise((_,reject) => {
+      abort = () => { controller.abort(this.shutdownController.signal.reason); reject(this.shutdownController.signal.reason); };
+      this.shutdownController.signal.addEventListener('abort',abort,{once:true});
+    });
     const timeout = new Promise((_, reject) => {
       timer = setTimeout(() => {
         controller.abort();
@@ -286,10 +324,27 @@ export class YahooRequestQueue {
       return await Promise.race([
         Promise.resolve().then(() => operation({ signal: controller.signal, attempt })),
         timeout,
+        shutdown,
       ]);
     } finally {
       clearTimeout(timer);
+      this.shutdownController.signal.removeEventListener('abort',abort);
     }
+  }
+
+  close() {
+    if (this.closeTask) return this.closeTask;
+    this.closed = true;
+    const tasks = [...this.inFlight.values()];
+    const error = Object.assign(new Error('Yahoo shutdown'), {name:'AbortError',code:'YAHOO_QUEUE_CLOSED'});
+    this.shutdownController.abort(error);
+    for (const task of this.pending.splice(0)) { this.inFlight.delete(task.key); task.reject(error); }
+    this.closeTask = Promise.allSettled(tasks).then(() => new Promise(resolve=>setImmediate(resolve)));
+    return this.closeTask;
+  }
+
+  #circuitError() {
+    return Object.assign(new Error('Yahoo upstream circuit is temporarily open'), {code:'YAHOO_CIRCUIT_OPEN',status:503,retryAfterMs:Math.max(1,this.circuitOpenUntil-nowMilliseconds(this.now()))});
   }
 
   #cooldownRemainingMs(scope = null) {
@@ -309,7 +364,7 @@ export class YahooRequestQueue {
 
   #activateRateLimitCooldown(error, scope = "global") {
     const hintedMs = yahooRetryAfterMs(error);
-    const cooldownMs = Math.min(this.maxRateLimitCooldownMs, Math.max(this.rateLimitCooldownMs, hintedMs));
+    const cooldownMs = Math.max(hintedMs, Math.min(this.maxRateLimitCooldownMs, this.rateLimitCooldownMs));
     const normalizedScope = normalizeScope(scope);
     const cooldownUntil = nowMilliseconds(this.now()) + cooldownMs;
     this.cooldowns.set(normalizedScope, Math.max(Number(this.cooldowns.get(normalizedScope) || 0), cooldownUntil));
