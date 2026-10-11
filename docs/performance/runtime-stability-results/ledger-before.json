@@ -1,0 +1,24 @@
+{
+  "rows": 10000,
+  "rounds": 20,
+  "p50Ms": 120.42998699999998,
+  "p95Ms": 154.545659,
+  "cpu": {
+    "user": 2758812,
+    "system": 141498
+  },
+  "memoryBefore": {
+    "rss": 72224768,
+    "heapTotal": 29868032,
+    "heapUsed": 12167584,
+    "external": 2050503,
+    "arrayBuffers": 24811
+  },
+  "memoryAfter": {
+    "rss": 213807104,
+    "heapTotal": 137330688,
+    "heapUsed": 108472872,
+    "external": 2050523,
+    "arrayBuffers": 24827
+  }
+}

@@ -2,13 +2,16 @@
 
 Contrato 1.3.0. Generado desde backend/contracts/ogidOperations.js; no editar a mano.
 
-68 rutas JSON con método; 45 operaciones de investigación y 32 de operador. Las variantes almacenadas/proveedor comparten algunas rutas.
+71 rutas JSON con método; 47 operaciones de investigación y 33 de operador. Las variantes almacenadas/proveedor comparten algunas rutas.
 
 Las cuatro herramientas compatibles se conservan. ogid_get_awareness_sources compone el catálogo local versionado y la salud pública Awareness, sin una ruta adicional. El inventario cubre las rutas de backend/routes montadas bajo /api; WebSocket, archivos estáticos y transporte del túnel tienen contratos independientes.
 
 | Operación | Método y ruta | Herramienta | Perfil / permiso | Proyección | Efectos / coste |
 | --- | --- | --- | --- | --- | --- |
 | health | GET /api/health | ogid_health | research / read:stored | health | stored/local-calculation; no-provider |
+| health.live | GET /api/health/live | ogid_query | research / read:stored | health | stored/local-calculation; no-provider |
+| health.ready | GET /api/health/ready | ogid_query | research / read:stored | health | stored/local-calculation; no-provider |
+| admin.runtime | GET /api/admin/runtime | ogid_operator | operator / admin:read | admin-counts | bounded administrative metrics; no-provider |
 | capabilities | GET /api/capabilities | ogid_get_capabilities | research / read:stored | public | stored/local-calculation; no-provider |
 | intel.snapshot | GET /api/intel/snapshot | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
 | intel.hotspots | GET /api/intel/hotspots | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
@@ -95,6 +98,60 @@ researchRoutes.integration.test.js compara todas las rutas montadas con este reg
 ### health
 
 Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### health.live
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### health.ready
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### admin.runtime
+
+Retención: last minute event-loop; last 512 HTTP samples; last 20 WS events. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
 
 ```json
 {

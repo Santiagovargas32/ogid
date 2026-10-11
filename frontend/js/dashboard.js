@@ -787,20 +787,14 @@ function renderMarketProviderStatus(payload = {}) {
   ].join(" | ") + searchSuffix + policySuffix;
 }
 
-async function refreshMarketProviderStatus() {
-  try {
-    renderMarketProviderStatus(await api.getMarketProviderStatus());
-  } catch (error) {
-    if (elements.marketProviderStatusText) {
-      elements.marketProviderStatusText.textContent = `Yahoo transport diagnostics unavailable: ${error.message}`;
-    }
-  }
-}
-
 function startMarketProviderPolling() {
-  clearInterval(marketProviderPoller);
-  refreshMarketProviderStatus();
-  marketProviderPoller = setInterval(refreshMarketProviderStatus, 15_000);
+  if (marketProviderPoller) return;
+  marketProviderPoller = new SmartPollLoop({ intervalMs:15_000, hiddenIntervalMs:90_000,
+    task:signal=>api.getMarketProviderStatus({signal}),
+    onData:renderMarketProviderStatus,
+    onError:error=>{ if(elements.marketProviderStatusText) elements.marketProviderStatusText.textContent=`Yahoo transport diagnostics unavailable: ${error.message}`; }
+  });
+  marketProviderPoller.start();
 }
 
 function handleFilterClick(event) {
@@ -903,7 +897,7 @@ function handleActionClick(event) {
 }
 
 const dashboardController = new AbortController();
-let wsConnected=false, fallbackFailures=0, newsFallback=null, newsTransportToken=0;
+let wsConnected=false, wsHasSnapshot=false, fallbackFailures=0, newsFallback=null, newsTransportToken=0;
 const newsOptions={q:'',severity:'',order:'critical',page:1,pageSize:40,windowHours:36};
 let baseline=null;
 try { baseline=JSON.parse(sessionStorage.getItem('ogid-news-baseline') || 'null'); } catch {}
@@ -1659,14 +1653,14 @@ function startMarketQuotesPolling() {
         marketOpen: Boolean(getState().market?.session?.open),
         dataMode: getState().market?.sourceMode || "live"
       }),
-    task: async () => {
+    task: async (signal) => {
       const currentState = getState();
       const tickers = marketWatchlistLoaded ? selectedMarketSymbols : Object.keys(currentState.market?.quotes || {});
       if (!tickers.length) {
         return null;
       }
 
-      return api.getMarketQuotes({ tickers });
+      return api.getMarketQuotes({ tickers }, { signal });
     },
     onData: (payload) => {
       if (!payload) {
@@ -1683,27 +1677,42 @@ function startMarketQuotesPolling() {
   return marketQuotesPoller;
 }
 
+const renderedPanels = new Map();
+function renderWhenChanged(panel, data, render) {
+  const revision = JSON.stringify(data);
+  if (renderedPanels.get(panel) === revision) return;
+  render();
+  renderedPanels.set(panel, revision);
+}
+
 function renderDashboard(rawState) {
   const state = filterStateBySelection(rawState);
   renderMeta(rawState.meta, rawState.market || {});
   observeNewsSelection(rawState);
   renderNews(state.news, state.countries, rawState.ai || {});
-  renderDistribution(state.countries);
-  renderRiskChart(state.countries);
-  renderAiCountryInsights(rawState.ai || {});
-  renderMarketQuotes(rawState.market || {});
-  renderAiMarketExplanations(rawState.ai || {});
-  renderMarketConditions(
+  renderWhenChanged("countries",state.countries,()=>{
+    renderDistribution(state.countries);
+    renderRiskChart(state.countries);
+  });
+  renderWhenChanged("ai",[rawState.ai || {},selectedCountryQueryValue(),selectedMarketSymbols],()=>{
+    renderAiCountryInsights(rawState.ai || {});
+    renderAiMarketExplanations(rawState.ai || {});
+  });
+  renderWhenChanged("market",[rawState.market,selectedMarketSymbols,marketWatchlistLoaded,Math.floor(Date.now()/60_000)],()=>renderMarketQuotes(rawState.market || {}));
+  renderWhenChanged("conditions",[latestMarketConditions,latestMarketConditionsContext,latestMarketConditionsError?.message || latestMarketConditionsError,marketConditionsContextKey()],()=>renderMarketConditions(
     marketConditionsMatchesCurrentContext() ? latestMarketConditions : null,
     { error: latestMarketConditionsError }
-  );
+  ));
 }
 
-function setWsStatus(status) {
-  wsConnected = status === "connected";
+function setWsStatus(status, diagnostics = null) {
+  if (status !== "connected") wsHasSnapshot = false;
+  wsConnected = status === "connected" && wsHasSnapshot;
   if (wsConnected) { fallbackFailures = 0; newsFallback?.stop(); } else if (newsFallback?.stopped) newsFallback.start();
-  elements.wsStatusBadge.className = `badge ${wsBadgeClass(status)}`;
-  elements.wsStatusBadge.textContent = `WS: ${status}`;
+  const displayStatus = status === "connected" && !wsHasSnapshot ? "syncing" : status;
+  elements.wsStatusBadge.className = `badge ${wsBadgeClass(displayStatus)}`;
+  elements.wsStatusBadge.textContent = `WS: ${displayStatus}`;
+  elements.wsStatusBadge.title = diagnostics && status !== "connected" ? `Último cierre: ${diagnostics.code} ${diagnostics.reason || "sin motivo recibido"}` : "";
 }
 
 function selectedCountryQueryValue() {
@@ -1814,19 +1823,21 @@ function mountWebSocket() {
         return;
       }
       if (message.type === "snapshot") {
+        wsHasSnapshot = true;
+        setWsStatus("connected");
         newsTransportToken++;
         setSnapshot(message.data);
         awarenessController?.syncCompact(message.data?.awareness);
-        void advancedIntelligenceController?.refresh();
-        scheduleMarketConditionsRefresh();
+        if (message.data?.news || message.data?.countries) void advancedIntelligenceController?.refresh();
+        if (message.data?.news || message.data?.market) scheduleMarketConditionsRefresh();
         return;
       }
       if (message.type === "update") {
         if (message.data?.news) newsTransportToken++;
         applyUpdate(message.data);
         awarenessController?.syncCompact(message.data?.awareness);
-        void advancedIntelligenceController?.refresh();
-        scheduleMarketConditionsRefresh();
+        if (message.data?.news || message.data?.countries) void advancedIntelligenceController?.refresh();
+        if (message.data?.news || message.data?.market) scheduleMarketConditionsRefresh();
         return;
       }
       if (message.type === "ai:update:v1") {
@@ -1943,7 +1954,7 @@ async function bootstrap() {
     newsFallback?.stop();
     socket?.close();
     marketQuotesPoller?.stop();
-    clearInterval(marketProviderPoller);
+    marketProviderPoller?.stop();
     clearTimeout(marketConditionsRefreshTimer);
     clearTimeout(marketSearchTimer);
     marketOhlcvChart?.destroy();

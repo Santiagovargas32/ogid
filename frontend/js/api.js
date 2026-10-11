@@ -80,7 +80,7 @@ export const api = {
   getCountryInstability: (params = {}, options = {}) => request("/api/country-instability", params, options),
   getIntelAnomalies: (params = {}, options = {}) => request("/api/intel/anomalies", params, options),
   getMarketQuotes: (params = {}, options = {}) => request("/api/market/quotes", params, options),
-  getMarketProviderStatus: () => request("/api/market/provider-status"),
+  getMarketProviderStatus: (options = {}) => request("/api/market/provider-status", {}, options),
   getMarketInstrumentSearch: (params = {}, options = {}) => request("/api/market/instruments/search", params, options),
   getMarketWatchlist: () => request("/api/market/watchlist"),
   updateMarketWatchlist: (instrumentIds) => request("/api/market/watchlist", {}, { method: "PUT", body: { instrumentIds } }),

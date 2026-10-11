@@ -1,0 +1,242 @@
+{
+  "durationMs": 1800000,
+  "elapsedMs": 1800792.9354639999,
+  "cycles": 617,
+  "cpu": {
+    "user": 666079420,
+    "system": 23352302
+  },
+  "eventLoopUtilization": {
+    "idle": 1233115.957482,
+    "active": 567677.2856250058,
+    "utilization": 0.31523734765106154
+  },
+  "eventLoopDelayMs": {
+    "p50": 10.158079,
+    "p95": 11.173887,
+    "p99": 44.204031,
+    "max": 2024.800255
+  },
+  "httpMs": {
+    "samples": 6170,
+    "p50": 837.6500899998937,
+    "p95": 885.2369930001441,
+    "p99": 965.3868329999968
+  },
+  "wsMessages": 28100,
+  "wsBytes": 966075710,
+  "unexpectedCloses": 0,
+  "profile": "intermediate correction state, before ledger allocation/partial market updates; not main baseline",
+  "afterGcSamples": [
+    {
+      "elapsedMs": 351.369862,
+      "heapUsed": 32467184,
+      "rss": 159735808,
+      "clients": 10,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 62552.435429,
+      "heapUsed": 67480592,
+      "rss": 443412480,
+      "clients": 10,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 124851.881135,
+      "heapUsed": 89772344,
+      "rss": 586199040,
+      "clients": 10,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 185768.370997,
+      "heapUsed": 89929440,
+      "rss": 586604544,
+      "clients": 10,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 246709.859842,
+      "heapUsed": 90131512,
+      "rss": 587780096,
+      "clients": 10,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 306837.508145,
+      "heapUsed": 90309664,
+      "rss": 588005376,
+      "clients": 10,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 367998.583754,
+      "heapUsed": 90482224,
+      "rss": 590200832,
+      "clients": 10,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 428955.088126,
+      "heapUsed": 90501448,
+      "rss": 590278656,
+      "clients": 10,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 490210.816225,
+      "heapUsed": 90639440,
+      "rss": 588345344,
+      "clients": 10,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 551370.411091,
+      "heapUsed": 90777656,
+      "rss": 589295616,
+      "clients": 10,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 612189.0122850001,
+      "heapUsed": 90865080,
+      "rss": 589508608,
+      "clients": 10,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 673376.505452,
+      "heapUsed": 90960560,
+      "rss": 589250560,
+      "clients": 10,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 735500.566847,
+      "heapUsed": 91064784,
+      "rss": 591663104,
+      "clients": 10,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 797575.374284,
+      "heapUsed": 90982552,
+      "rss": 591527936,
+      "clients": 10,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 858565.943584,
+      "heapUsed": 90850992,
+      "rss": 591814656,
+      "clients": 10,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 919765.445147,
+      "heapUsed": 91563920,
+      "rss": 592076800,
+      "clients": 10,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 980919.854587,
+      "heapUsed": 91577624,
+      "rss": 593195008,
+      "clients": 10,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 1041922.975536,
+      "heapUsed": 91541904,
+      "rss": 592330752,
+      "clients": 10,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 1103171.3461679998,
+      "heapUsed": 91563456,
+      "rss": 606773248,
+      "clients": 10,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 1164251.6885849999,
+      "heapUsed": 91903112,
+      "rss": 593547264,
+      "clients": 10,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 1224817.6748839999,
+      "heapUsed": 91924768,
+      "rss": 592334848,
+      "clients": 10,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 1285952.5961789999,
+      "heapUsed": 91956928,
+      "rss": 592592896,
+      "clients": 10,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 1346988.031761,
+      "heapUsed": 92028048,
+      "rss": 590422016,
+      "clients": 10,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 1408092.2536159998,
+      "heapUsed": 92278992,
+      "rss": 590626816,
+      "clients": 10,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 1469167.8355969999,
+      "heapUsed": 92263152,
+      "rss": 594145280,
+      "clients": 10,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 1530232.4093169998,
+      "heapUsed": 92029328,
+      "rss": 593006592,
+      "clients": 10,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 1591359.9510529998,
+      "heapUsed": 92005488,
+      "rss": 592879616,
+      "clients": 10,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 1652492.5175539998,
+      "heapUsed": 92183944,
+      "rss": 594001920,
+      "clients": 10,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 1713809.35457,
+      "heapUsed": 91974520,
+      "rss": 592625664,
+      "clients": 10,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 1774965.5860549998,
+      "heapUsed": 92198624,
+      "rss": 594046976,
+      "clients": 10,
+      "pending": 0
+    }
+  ]
+}

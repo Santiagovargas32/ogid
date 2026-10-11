@@ -73,6 +73,7 @@ export class AiEnrichmentCoordinator {
     this.marketSubjects = new Map();
     this.active = 0;
     this.stopped = false;
+    this.shutdownController = new AbortController();
     this.subjectRefs = new Map();
     this.lastCanonicalLayer = null;
     this.lastSignalCorpus = [];
@@ -353,7 +354,8 @@ export class AiEnrichmentCoordinator {
         messages: item.job.messages,
         schema: getAiOutputSchema(item.job.kind),
         inputHash: item.job.inputHash,
-        budget: this.budget
+        budget: this.budget,
+        signal: this.shutdownController.signal
       });
       const validation = validateAiOutput(item.job.kind, result.output, item.job.validationContext);
       const timestamp = nowIso(this.now);
@@ -493,6 +495,7 @@ export class AiEnrichmentCoordinator {
 
   async stop({ timeoutMs = 5_000 } = {}) {
     this.stopped = true;
+    this.shutdownController.abort(new DOMException('AI shutdown','AbortError'));
     const deadline = this.now() + timeoutMs;
     while (this.active > 0 && this.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 25));
   }

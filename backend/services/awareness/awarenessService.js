@@ -7,6 +7,7 @@ import { AWARENESS_SOURCES } from "./awarenessCatalog.js";
 import { createAwarenessEvent, parseAwarenessSource } from "./awarenessParsers.js";
 import { normalizeAwarenessAdmissionState } from "./awarenessStore.js";
 import { sourceEventTiming } from "./awarenessEventTime.js";
+import { readBoundedBody } from "../shared/boundedResponse.js";
 
 const log = createLogger("backend/services/awareness/awarenessService");
 const MAX_RESPONSE_BYTES = 1_000_000;
@@ -238,6 +239,7 @@ export class AwarenessService {
     this.timer = null;
     this.inFlight = null;
     this.stopped = true;
+    this.shutdownController = new AbortController();
     this.store?.registerSources?.(sources);
     this.migratePersistentForbiddenBlocks();
     this.syncProjection();
@@ -420,15 +422,28 @@ export class AwarenessService {
       timeoutMs: this.timeoutMs,
       providerConcurrency: 2,
       hostConcurrency: 1,
-      throwHttpErrors: false
+      throwHttpErrors: false,
+      signal: this.shutdownController.signal,
+      bufferResponse: true,
+      maxResponseBytes: MAX_RESPONSE_BYTES
     };
     let response;
+    try {
     if (this.fetchImpl) {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
-      try { response = await this.fetchImpl(url, { ...options, signal: controller.signal }); } finally { clearTimeout(timeout); }
+      const signal = AbortSignal.any([controller.signal, this.shutdownController.signal]);
+      try {
+        const upstream = await this.fetchImpl(url, { ...options, signal });
+        const bytes = await readBoundedBody(upstream, {signal, maxBytes:MAX_RESPONSE_BYTES});
+        response = new Response([204,205,304].includes(upstream.status)?null:bytes,{status:upstream.status,statusText:upstream.statusText,headers:upstream.headers});
+      } finally { clearTimeout(timeout); }
     } else {
       response = await providerRuntime.fetch(`awareness:${source.sourceId}`, url, options);
+    }
+    } catch (error) {
+      if (error.message === 'response-too-large' || error.cause?.message === 'response-too-large') throw new Error('awareness-response-too-large');
+      throw error;
     }
     if (response.status >= 300 && response.status < 400 && response.headers?.get?.("location")) {
       if (redirectCount >= 2) throw new Error("awareness-redirect-limit");
@@ -601,7 +616,7 @@ export class AwarenessService {
     this.inFlight = (async () => {
       const sources = this.eligibleSources();
       const results = await Promise.all(sources.map((source) => this.globalSemaphore.use(() =>
-        this.hostSemaphore(source.hostname).use(() => this.pollSource(source)))));
+        this.hostSemaphore(source.hostname).use(() => this.pollSource(source),this.shutdownController.signal),this.shutdownController.signal)));
       const changed = results.flatMap((result) => result.changed || []);
       const snapshot = this.broadcast(changed, { backfill: trigger === "startup-awareness", trigger });
       log.info("awareness_cycle_completed", { trigger, sourceCount: sources.length, changedCount: changed.length, revision: snapshot.revision, mode: this.mode });
@@ -623,12 +638,16 @@ export class AwarenessService {
     if (this.stopped || this.mode === "off") return;
     clearTimeout(this.timer);
     this.timer = setTimeout(async () => {
-      try { await this.runCycle("interval-awareness"); } finally { this.schedule(); }
+      try { await this.runCycle("interval-awareness"); }
+      catch (error) { if (!this.stopped) log.warn("awareness_scheduler_failed",{message:error.message}); }
+      finally { this.schedule(); }
     }, SCHEDULER_TICK_MS);
     this.timer.unref?.();
   }
 
   async start() {
+    if (!this.stopped) return this.inFlight;
+    if (this.shutdownController.signal.aborted) this.shutdownController = new AbortController();
     this.stopped = false;
     if (this.mode === "off") return this.syncProjection();
     const result = await this.runCycle("startup-awareness");
@@ -636,10 +655,12 @@ export class AwarenessService {
     return result.snapshot;
   }
 
-  stop() {
+  async stop() {
     this.stopped = true;
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+    this.shutdownController.abort(new DOMException('Awareness shutdown','AbortError'));
+    await Promise.allSettled([this.inFlight]);
   }
 }
 

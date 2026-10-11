@@ -115,6 +115,17 @@ test("Yahoo provider rejects malformed public codes and redacts secret-bearing m
   assert.equal(serialized.includes("code-secret"), false);
 });
 
+test('Yahoo symbol fallback stops after one bounded batch when the upstream fails globally',async()=>{
+  let calls=0;
+  const result=await fetchYahooQuotes({tickers:['GD','BA','NOC','LMT','RTX'],marketDataService:{fetchQuotes:async symbols=>{
+    calls++;
+    if(symbols.length>1)throw Object.assign(Error('batch validation'),{name:'FailedYahooValidationError',errors:[{keyword:'required'}]});
+    throw Object.assign(Error('upstream outage'),{status:503});
+  }}});
+  assert.equal(calls,4); // original batch plus at most three in-flight fallbacks
+  assert.equal(result.returnedTickers.length,0);assert.equal(result.missingTickers.length,5);
+});
+
 test("Yahoo candle adapter maps normalized bars into the legacy candle contract", async () => {
   let requestedOptions = null;
   const marketDataService = {

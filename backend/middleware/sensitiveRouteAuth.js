@@ -35,14 +35,17 @@ function isSensitiveRequest(req) {
   return force === "1" || force === "true";
 }
 
-export function sensitiveRouteAuth(req, res, next) {
-  if (req.mcpOperatorAuthorized === true) return next();
-  if (!isSensitiveRequest(req)) return next();
-  const security = res.app.locals.config?.security || {};
+export function isAdminAuthorized(req, security = {}) {
+  if (req.mcpOperatorAuthorized === true) return true;
   const remoteAddress = req.clientIpInfo?.remoteAddress || req.socket?.remoteAddress || req.ip || "";
   const localAllowed = security.allowLocalAdmin !== false && isLoopback(remoteAddress);
   const lanAllowed = security.allowLanAdmin === true && isLanAddress(remoteAddress);
   const tokenAllowed = tokensMatch(security.adminApiToken, readPresentedToken(req));
-  if (localAllowed || lanAllowed || tokenAllowed) return next();
+  return localAllowed || lanAllowed || tokenAllowed;
+}
+
+export function sensitiveRouteAuth(req, res, next) {
+  if (!isSensitiveRequest(req)) return next();
+  if (isAdminAuthorized(req, res.app.locals.config?.security)) return next();
   return res.status(401).json({ ok: false, error: { code: "ADMIN_AUTH_REQUIRED", message: "Authentication is required for this operation." } });
 }

@@ -1,7 +1,8 @@
 import { BACKEND_BUILD } from "../utils/buildIdentity.js";
 import stateManager from "../state/stateManager.js";
+import { isAdminAuthorized } from "../middleware/sensitiveRouteAuth.js";
 
-export function getHealth(_req, res) {
+export function getHealth(req, res) {
   const socketServer = res.app.locals.socketServer;
   const config = res.app.locals.config;
   const orchestrator = res.app.locals.orchestrator;
@@ -16,6 +17,10 @@ export function getHealth(_req, res) {
     lastConnection: null,
     lastDisconnection: null
   };
+  const administrative = isAdminAuthorized(req, config?.security);
+  const publicWebsocket = { clientCount:websocket.clientCount, path:websocket.path, heartbeatMs:websocket.heartbeatMs,
+    metrics:websocket.metrics, activeConnections:[], lastConnection:null, lastDisconnection:null };
+  const persistence = orchestrator?.getMarketHistoryStatus?.() || null;
 
   res.json({
     ok: true,
@@ -25,7 +30,7 @@ export function getHealth(_req, res) {
       timestamp: new Date().toISOString(),
       uptimeSeconds: Math.floor(process.uptime()),
       websocketClients: websocket.clientCount ?? 0,
-      websocket,
+      websocket: administrative ? websocket : publicWebsocket,
       lastRefreshAt: meta.lastRefreshAt,
       refreshIntervalMs: meta.refreshIntervalMs,
       sourceMode: meta.sourceMode,
@@ -43,7 +48,7 @@ export function getHealth(_req, res) {
         providerLatencyMs: snapshot?.market?.sourceMeta?.providerLatencyMs ?? null,
         revision: snapshot?.market?.revision || null,
         session: snapshot?.market?.session || null,
-        historicalPersistence: orchestrator?.getMarketHistoryStatus?.() || null
+        historicalPersistence: administrative ? persistence : persistence && { enabled:persistence.enabled, lastLoadedAt:persistence.lastLoadedAt, lastSavedAt:persistence.lastSavedAt }
       }
     }
   });

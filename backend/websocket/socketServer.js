@@ -1,6 +1,7 @@
 import { WebSocket, WebSocketServer } from "ws";
 import { normalizeIp, resolveClientIp } from "../utils/clientIp.js";
 import { createLogger } from "../utils/logger.js";
+import { sanitizeSensitiveData } from "../utils/sanitize.js";
 
 const log = createLogger("backend/websocket/socketServer");
 const MAX_ACTIVE_CONNECTIONS = 5;
@@ -15,10 +16,29 @@ function createEnvelope(type, data, meta = {}) {
   });
 }
 
+function closeBounded(client, code, reason) {
+  if (client.runtimeCloseReason) return;
+  client.runtimeCloseReason = reason;
+  client.close(code, reason);
+  // Give the close frame a chance to reach the peer; bound a stalled TCP close.
+  const timer = setTimeout(() => client.terminate(), 1_000);
+  timer.unref?.();
+  client.once("close", () => clearTimeout(timer));
+}
+
 export function sendBoundedEnvelope(client, envelope) {
-  if (client.readyState !== WebSocket.OPEN) return;
-  if (client.bufferedAmount > 1_000_000) { client.close(1013, "resync-required"); client.terminate(); return; }
-  client.send(envelope);
+  if (client.readyState !== WebSocket.OPEN || client.runtimeCloseReason) return false;
+  if (client.bufferedAmount + Buffer.byteLength(envelope) > 1_000_000) {
+    closeBounded(client, 1013, "resync-required");
+    return false;
+  }
+  try {
+    client.send(envelope, error => { if (error) closeBounded(client, 1011, "send-failed"); });
+    return true;
+  } catch {
+    closeBounded(client, 1011, "send-failed");
+    return false;
+  }
 }
 
 function normalizeHeader(value = "") {
@@ -49,22 +69,23 @@ function isLoopbackHost(host = "", protocol = "http") {
   }
 }
 
-function resolveRequestProtocol(request = {}) {
-  const forwarded = normalizeHeader(request.headers?.["x-forwarded-proto"])
-    .split(",")[0]
-    .trim()
-    .toLowerCase();
-  if (forwarded === "http" || forwarded === "https") {
-    return forwarded;
-  }
-  return request.socket?.encrypted ? "https" : "http";
-}
-
-export function validateWebSocketUpgradeOrigin(request = {}) {
+export function validateWebSocketUpgradeOrigin(request = {}, { trustedProxyIps = [], allowedOrigins = [] } = {}) {
   const origin = normalizeHeader(request.headers?.origin);
   const remoteAddress = resolveClientIp(request).remoteAddress;
-  const host = normalizeHeader(request.headers?.host);
-  const protocol = resolveRequestProtocol(request);
+  let host = normalizeHeader(request.headers?.host);
+  let protocol = request.socket?.encrypted ? "https" : "http";
+  const trustedProxy = trustedProxyIps.some(ip => normalizeIp(ip) === remoteAddress && remoteAddress);
+  if (trustedProxy && hasForwardingHeaders(request)) {
+    // One trusted reverse proxy must overwrite these headers, never append a chain.
+    const forwarded = normalizeHeader(request.headers?.forwarded);
+    const proxyHost = normalizeHeader(request.headers?.["x-forwarded-host"]) || forwarded.match(/(?:^|;)\s*host="?([^";,\s]+)"?/i)?.[1];
+    const proxyProtocol = normalizeHeader(request.headers?.["x-forwarded-proto"]) || forwarded.match(/(?:^|;)\s*proto="?(https?)"?(?:;|$)/i)?.[1];
+    if (forwarded.includes(",") || !proxyHost || !["http", "https"].includes(proxyProtocol)) {
+      return { allowed: false, reason: "invalid-proxy-headers" };
+    }
+    host = proxyHost;
+    protocol = proxyProtocol;
+  }
   const directLoopback = isLoopbackAddress(remoteAddress) && isLoopbackHost(host, protocol) && !hasForwardingHeaders(request);
   if (!origin) {
     return {
@@ -78,11 +99,18 @@ export function validateWebSocketUpgradeOrigin(request = {}) {
   }
 
   try {
-    const expectedOrigin = new URL(`${protocol}://${host}`).origin;
+    const expected = new URL(`${protocol}://${host}`);
+    if (expected.username || expected.password || expected.pathname !== "/" || expected.search || expected.hash || host.includes(",")) {
+      return { allowed: false, reason: "invalid-host" };
+    }
+    const expectedOrigin = expected.origin;
     const presentedOrigin = new URL(origin);
     const validProtocol = presentedOrigin.protocol === "http:" || presentedOrigin.protocol === "https:";
-    const sameOrigin = validProtocol && presentedOrigin.origin === expectedOrigin;
-    if (sameOrigin && isLoopbackAddress(remoteAddress) && !hasForwardingHeaders(request) && !isLoopbackHost(host, protocol)) {
+    const strictOrigin = validProtocol && !presentedOrigin.username && !presentedOrigin.password && presentedOrigin.pathname === "/" && !presentedOrigin.search && !presentedOrigin.hash;
+    const sameOrigin = strictOrigin && presentedOrigin.origin === expectedOrigin;
+    const explicitlyAllowed = allowedOrigins.includes(expectedOrigin);
+    const directLocalHost = normalizeIp(new URL(expectedOrigin).hostname) === normalizeIp(request.socket?.localAddress) && normalizeIp(request.socket?.localAddress);
+    if (sameOrigin && isLoopbackAddress(remoteAddress) && !trustedProxy && !isLoopbackHost(host, protocol) && !explicitlyAllowed && !directLocalHost) {
       return { allowed: false, reason: "untrusted-loopback-host" };
     }
     return {
@@ -117,13 +145,16 @@ function buildConnectionInfo(request = {}, path = "/ws") {
     clientIp: clientIpInfo.clientIp || null,
     remoteAddress: clientIpInfo.remoteAddress || null,
     expressIp: clientIpInfo.expressIp || null,
-    userAgent: normalizeHeader(request.headers?.["user-agent"]) || null,
-    origin: normalizeHeader(request.headers?.origin) || null,
-    referer: normalizeHeader(request.headers?.referer || request.headers?.referrer) || null,
-    host: host || null,
+    userAgent: sanitizeSensitiveData(normalizeHeader(request.headers?.["user-agent"])).slice(0, 240) || null,
+    origin: safeOrigin(request.headers?.origin),
+    host: safeOrigin(`http://${host}`),
     path: requestPath || path,
     connectedAt: new Date().toISOString()
   };
+}
+
+function safeOrigin(value) {
+  try { return new URL(normalizeHeader(value)).origin; } catch { return null; }
 }
 
 function summarizeConnection(connection = {}) {
@@ -182,16 +213,22 @@ function buildMarketBootstrapPayload(snapshot = {}) {
   };
 }
 
-export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000, stateManager }) {
-  const wss = new WebSocketServer({ noServer: true });
+export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000, stateManager, trustedProxyIps = [], allowedOrigins = [] }) {
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
   const clients = new Set();
   const recentEvents = [];
   const websocketState = {
     lastConnection: null,
     lastDisconnection: null
   };
+  const metrics = { upgradeRejected: 0, envelopes: 0, bytes: 0, dropped: 0, maxBufferedBytes: 0, heartbeatTimeouts: 0, closeCodes: {} };
+  function send(client, envelope) {
+    metrics.maxBufferedBytes = Math.max(metrics.maxBufferedBytes, client.bufferedAmount);
+    if (sendBoundedEnvelope(client, envelope)) { metrics.envelopes++; metrics.bytes += Buffer.byteLength(envelope); }
+    else metrics.dropped++;
+  }
 
-  server.on("upgrade", (request, socket, head) => {
+  const handleUpgrade = (request, socket, head) => {
     let pathname = "";
     try {
       const host = normalizeHeader(request.headers?.host);
@@ -207,8 +244,9 @@ export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000,
     }
 
     const connectionInfo = buildConnectionInfo(request, path);
-    const originValidation = validateWebSocketUpgradeOrigin(request);
+    const originValidation = validateWebSocketUpgradeOrigin(request, { trustedProxyIps, allowedOrigins });
     if (!originValidation.allowed) {
+      metrics.upgradeRejected++;
       log.warn("ws_upgrade_rejected", {
         reason: originValidation.reason,
         ...connectionInfo
@@ -221,15 +259,18 @@ export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000,
     wss.handleUpgrade(request, socket, head, (client) => {
       wss.emit("connection", client, request);
     });
-  });
+  };
+  server.on("upgrade", handleUpgrade);
 
   wss.on("connection", (client, request) => {
     client.isAlive = true;
+    client.missedPongs = 0;
     client.connectionInfo = request?.wsConnectionInfo || buildConnectionInfo(request, path);
     clients.add(client);
 
     client.on("pong", () => {
       client.isAlive = true;
+      client.missedPongs = 0;
     });
 
     client.on("message", (raw) => {
@@ -237,10 +278,10 @@ export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000,
         const payload = JSON.parse(raw.toString());
         if (payload?.type === "pong") {
           client.isAlive = true;
+          client.missedPongs = 0;
         }
       } catch {
         log.warn("ws_invalid_message", {
-          payload: String(raw).slice(0, 100),
           ...client.connectionInfo
         });
       }
@@ -248,13 +289,14 @@ export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000,
 
     client.on("close", (closeCode, closeReasonBuffer) => {
       clients.delete(client);
+      metrics.closeCodes[closeCode] = (metrics.closeCodes[closeCode] || 0) + 1;
       const closeReason = Buffer.isBuffer(closeReasonBuffer) ? closeReasonBuffer.toString() : String(closeReasonBuffer || "").trim();
       const disconnectedAt = new Date().toISOString();
       const connectionInfo = {
         ...client.connectionInfo,
         disconnectedAt,
         closeCode,
-        closeReason: closeReason || null
+        closeReason: client.runtimeCloseReason || sanitizeSensitiveData(closeReason).slice(0, 123) || null
       };
 
       websocketState.lastDisconnection = summarizeConnection(connectionInfo);
@@ -277,8 +319,8 @@ export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000,
 
     const snapshot = stateManager.getSnapshot();
     if (client.readyState === WebSocket.OPEN) {
-      sendBoundedEnvelope(client, createEnvelope("market:quotes-bootstrap:v1", buildMarketBootstrapPayload(snapshot), snapshot.meta));
-      sendBoundedEnvelope(client, createEnvelope("snapshot", snapshot, snapshot.meta));
+      send(client, createEnvelope("market:quotes-bootstrap:v1", buildMarketBootstrapPayload(snapshot), snapshot.meta));
+      send(client, createEnvelope("snapshot", snapshot, snapshot.meta));
     }
 
     websocketState.lastConnection = summarizeConnection(client.connectionInfo);
@@ -291,29 +333,24 @@ export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000,
     });
   });
 
+  let lastHeartbeatAt = performance.now();
   const heartbeatTimer = setInterval(() => {
+    const now = performance.now();
+    const delayed = now - lastHeartbeatAt > heartbeatMs * 1.5;
+    lastHeartbeatAt = now;
     for (const client of clients) {
-      if (client.isAlive === false) {
-        const connectionInfo = {
-          ...client.connectionInfo,
-          disconnectedAt: new Date().toISOString(),
-          closeCode: 1006,
-          closeReason: "heartbeat-timeout"
-        };
-        client.terminate();
-        clients.delete(client);
-        websocketState.lastDisconnection = summarizeConnection(connectionInfo);
-        trackEvent(recentEvents, "disconnect", connectionInfo, {
-          clients: clients.size,
-          reason: "heartbeat-timeout"
-        });
+      if (client.readyState !== WebSocket.OPEN || client.runtimeCloseReason) continue;
+      if (!client.isAlive && !delayed) client.missedPongs++;
+      if (client.missedPongs >= 2) {
+        metrics.heartbeatTimeouts++;
+        closeBounded(client, 1001, "heartbeat-timeout");
         continue;
       }
 
       client.isAlive = false;
       if (client.readyState === WebSocket.OPEN) {
         client.ping();
-        sendBoundedEnvelope(client, createEnvelope("heartbeat", { ok: true }, { clients: clients.size }));
+        send(client, createEnvelope("heartbeat", { ok: true }, { clients: clients.size }));
       }
     }
   }, heartbeatMs);
@@ -322,9 +359,10 @@ export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000,
 
   return {
     broadcast(type, data, meta = {}) {
+      if (!clients.size) return;
       const envelope = createEnvelope(type, data, meta);
       for (const client of clients) {
-        sendBoundedEnvelope(client, envelope);
+        send(client, envelope);
       }
     },
     clientCount() {
@@ -335,6 +373,7 @@ export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000,
         clientCount: clients.size,
         path,
         heartbeatMs,
+        metrics: { ...metrics, closeCodes: { ...metrics.closeCodes } },
         activeConnections: Array.from(clients)
           .slice(0, MAX_ACTIVE_CONNECTIONS)
           .map((client) => summarizeConnection(client.connectionInfo)),
@@ -345,12 +384,13 @@ export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000,
     },
     close() {
       clearInterval(heartbeatTimer);
+      server.removeListener("upgrade", handleUpgrade);
       for (const client of clients) {
         if (client.readyState === WebSocket.OPEN) {
-          client.close(1001, "server-shutdown");
+          closeBounded(client, 1001, "server-shutdown");
         }
       }
-      wss.close();
+      return new Promise(resolve => wss.close(resolve));
     }
   };
 }

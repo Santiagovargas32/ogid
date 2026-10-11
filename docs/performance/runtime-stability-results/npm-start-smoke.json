@@ -1,0 +1,11 @@
+{
+  "command": "npm start",
+  "host": "0.0.0.0",
+  "profile": "isolated; no external requests or operator persistence",
+  "startupMs": 680.9001039999999,
+  "ready": true,
+  "snapshot": true,
+  "closeCode": 1001,
+  "closeReason": "server-shutdown",
+  "portReleased": true
+}

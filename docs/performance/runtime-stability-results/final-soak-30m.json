@@ -1,0 +1,1192 @@
+{
+  "node": "v22.23.3",
+  "durationMs": 1800000,
+  "elapsedMs": 1800531.8501249999,
+  "startupMs": 6.553908000000092,
+  "cycles": 712,
+  "cpu": {
+    "user": 440921121,
+    "system": 26819185
+  },
+  "memory": {
+    "rss": 569688064,
+    "heapTotal": 336171008,
+    "heapUsed": 301580168,
+    "external": 68044487,
+    "arrayBuffers": 64202144
+  },
+  "eventLoopUtilization": {
+    "idle": 1415586.31639,
+    "active": 384945.7205029952,
+    "utilization": 0.21379554077097065
+  },
+  "eventLoopDelayMs": {
+    "p50": 10.149887,
+    "p95": 11.173887,
+    "p99": 44.204031,
+    "max": 1044.905983
+  },
+  "httpMs": {
+    "samples": 7120,
+    "p50": 447.4514809998218,
+    "p95": 473.1081430000486,
+    "p99": 545.0286530000158
+  },
+  "externalRequests": 476,
+  "marketRequests": 712,
+  "unexpectedCloses": 0,
+  "wsMessages": 32060,
+  "wsBytes": 991182520,
+  "websocket": {
+    "upgradeRejected": 0,
+    "envelopes": 32060,
+    "bytes": 991182520,
+    "dropped": 0,
+    "maxBufferedBytes": 0,
+    "heartbeatTimeouts": 0,
+    "closeCodes": {}
+  },
+  "samples": [
+    {
+      "elapsedMs": 350.47552200000007,
+      "memory": {
+        "rss": 162414592,
+        "heapTotal": 71495680,
+        "heapUsed": 32461576,
+        "external": 4086557,
+        "arrayBuffers": 286656
+      },
+      "pending": 0,
+      "clients": 10,
+      "rss": {
+        "cycles": 1,
+        "externalRequests": 18,
+        "notModified": 0,
+        "errors": 0,
+        "staleServed": 0,
+        "duplicates": 0,
+        "latencyMs": 205,
+        "lastDurationMs": 205,
+        "deferred": 0,
+        "queued": 0,
+        "inFlight": 0,
+        "newArticles": 360,
+        "lastParseMs": 13.189327000000048,
+        "lastClassifyMs": 27.563787999999818,
+        "lastDedupeMs": 6.7380620000000135,
+        "lastArchiveMs": 35.95567600000004,
+        "hostsLimited": 0,
+        "persistence": {
+          "writes": 0,
+          "bytes": 0,
+          "serializeMs": 0,
+          "writeMs": 0,
+          "error": null
+        }
+      }
+    },
+    {
+      "elapsedMs": 61736.43162,
+      "memory": {
+        "rss": 351608832,
+        "heapTotal": 120336384,
+        "heapUsed": 71704200,
+        "external": 19945262,
+        "arrayBuffers": 294908
+      },
+      "pending": 0,
+      "clients": 10,
+      "rss": {
+        "cycles": 23,
+        "externalRequests": 414,
+        "notModified": 0,
+        "errors": 0,
+        "staleServed": 0,
+        "duplicates": 0,
+        "latencyMs": 13076,
+        "lastDurationMs": 727,
+        "deferred": 0,
+        "queued": 0,
+        "inFlight": 0,
+        "newArticles": 360,
+        "lastParseMs": 7.865937000002305,
+        "lastClassifyMs": 20.19265500002075,
+        "lastDedupeMs": 25.54166599999735,
+        "lastArchiveMs": 161.29115499999898,
+        "hostsLimited": 0,
+        "persistence": {
+          "writes": 22,
+          "bytes": 14668868,
+          "serializeMs": 37.27631999999721,
+          "writeMs": 25.505827999993926,
+          "error": null
+        }
+      }
+    },
+    {
+      "elapsedMs": 122109.124223,
+      "memory": {
+        "rss": 501800960,
+        "heapTotal": 133750784,
+        "heapUsed": 90159440,
+        "external": 39611393,
+        "arrayBuffers": 16858546
+      },
+      "pending": 0,
+      "clients": 10,
+      "rss": {
+        "cycles": 46,
+        "externalRequests": 453,
+        "notModified": 0,
+        "errors": 0,
+        "staleServed": 0,
+        "duplicates": 0,
+        "latencyMs": 16791,
+        "lastDurationMs": 82,
+        "deferred": 0,
+        "queued": 0,
+        "inFlight": 0,
+        "newArticles": 0,
+        "lastParseMs": 0,
+        "lastClassifyMs": 0,
+        "lastDedupeMs": 15.34056199999759,
+        "lastArchiveMs": 0.0001900000061141327,
+        "hostsLimited": 0,
+        "persistence": {
+          "writes": 45,
+          "bytes": 16555565,
+          "serializeMs": 51.3886199999979,
+          "writeMs": 28.327814000003855,
+          "error": null
+        }
+      }
+    },
+    {
+      "elapsedMs": 182461.717728,
+      "memory": {
+        "rss": 497688576,
+        "heapTotal": 135847936,
+        "heapUsed": 90382728,
+        "external": 41353944,
+        "arrayBuffers": 16858588
+      },
+      "pending": 0,
+      "clients": 10,
+      "rss": {
+        "cycles": 70,
+        "externalRequests": 453,
+        "notModified": 0,
+        "errors": 0,
+        "staleServed": 0,
+        "duplicates": 0,
+        "latencyMs": 18718,
+        "lastDurationMs": 78,
+        "deferred": 0,
+        "queued": 0,
+        "inFlight": 0,
+        "newArticles": 0,
+        "lastParseMs": 0,
+        "lastClassifyMs": 0,
+        "lastDedupeMs": 15.413177999987965,
+        "lastArchiveMs": 0.00031999999191612005,
+        "hostsLimited": 0,
+        "persistence": {
+          "writes": 69,
+          "bytes": 16555567,
+          "serializeMs": 44.40531800000463,
+          "writeMs": 54.07071400000132,
+          "error": null
+        }
+      }
+    },
+    {
+      "elapsedMs": 242971.828372,
+      "memory": {
+        "rss": 473083904,
+        "heapTotal": 138993664,
+        "heapUsed": 90507216,
+        "external": 27529088,
+        "arrayBuffers": 16858549
+      },
+      "pending": 0,
+      "clients": 10,
+      "rss": {
+        "cycles": 94,
+        "externalRequests": 453,
+        "notModified": 0,
+        "errors": 0,
+        "staleServed": 0,
+        "duplicates": 0,
+        "latencyMs": 20644,
+        "lastDurationMs": 80,
+        "deferred": 0,
+        "queued": 0,
+        "inFlight": 0,
+        "newArticles": 0,
+        "lastParseMs": 0,
+        "lastClassifyMs": 0,
+        "lastDedupeMs": 18.446054999978514,
+        "lastArchiveMs": 0.00013000000035390258,
+        "hostsLimited": 0,
+        "persistence": {
+          "writes": 93,
+          "bytes": 16555567,
+          "serializeMs": 50.191239999985555,
+          "writeMs": 44.38328599999659,
+          "error": null
+        }
+      }
+    },
+    {
+      "elapsedMs": 303790.654691,
+      "memory": {
+        "rss": 497938432,
+        "heapTotal": 130080768,
+        "heapUsed": 90609016,
+        "external": 20721217,
+        "arrayBuffers": 16858549
+      },
+      "pending": 0,
+      "clients": 10,
+      "rss": {
+        "cycles": 118,
+        "externalRequests": 453,
+        "notModified": 0,
+        "errors": 0,
+        "staleServed": 0,
+        "duplicates": 0,
+        "latencyMs": 22593,
+        "lastDurationMs": 79,
+        "deferred": 0,
+        "queued": 0,
+        "inFlight": 0,
+        "newArticles": 0,
+        "lastParseMs": 0,
+        "lastClassifyMs": 0,
+        "lastDedupeMs": 15.591039000020828,
+        "lastArchiveMs": 0.0002400000230409205,
+        "hostsLimited": 0,
+        "persistence": {
+          "writes": 117,
+          "bytes": 16555567,
+          "serializeMs": 42.90146800002549,
+          "writeMs": 21.048760000034235,
+          "error": null
+        }
+      }
+    },
+    {
+      "elapsedMs": 364076.836032,
+      "memory": {
+        "rss": 526827520,
+        "heapTotal": 136896512,
+        "heapUsed": 90911832,
+        "external": 40002036,
+        "arrayBuffers": 16858549
+      },
+      "pending": 0,
+      "clients": 10,
+      "rss": {
+        "cycles": 142,
+        "externalRequests": 453,
+        "notModified": 0,
+        "errors": 0,
+        "staleServed": 0,
+        "duplicates": 0,
+        "latencyMs": 24560,
+        "lastDurationMs": 84,
+        "deferred": 0,
+        "queued": 0,
+        "inFlight": 0,
+        "newArticles": 0,
+        "lastParseMs": 0,
+        "lastClassifyMs": 0,
+        "lastDedupeMs": 17.434351000003517,
+        "lastArchiveMs": 0.0002500000409781933,
+        "hostsLimited": 0,
+        "persistence": {
+          "writes": 141,
+          "bytes": 16555567,
+          "serializeMs": 57.06613099999959,
+          "writeMs": 25.10309899999993,
+          "error": null
+        }
+      }
+    },
+    {
+      "elapsedMs": 424559.536919,
+      "memory": {
+        "rss": 503640064,
+        "heapTotal": 137945088,
+        "heapUsed": 91010776,
+        "external": 28115260,
+        "arrayBuffers": 16858549
+      },
+      "pending": 0,
+      "clients": 10,
+      "rss": {
+        "cycles": 166,
+        "externalRequests": 453,
+        "notModified": 0,
+        "errors": 0,
+        "staleServed": 0,
+        "duplicates": 0,
+        "latencyMs": 26493,
+        "lastDurationMs": 94,
+        "deferred": 0,
+        "queued": 0,
+        "inFlight": 0,
+        "newArticles": 0,
+        "lastParseMs": 0,
+        "lastClassifyMs": 0,
+        "lastDedupeMs": 19.15557100001024,
+        "lastArchiveMs": 0.00039000000106170774,
+        "hostsLimited": 0,
+        "persistence": {
+          "writes": 165,
+          "bytes": 16555567,
+          "serializeMs": 42.92331700003706,
+          "writeMs": 33.23110299999826,
+          "error": null
+        }
+      }
+    },
+    {
+      "elapsedMs": 484946.318403,
+      "memory": {
+        "rss": 515469312,
+        "heapTotal": 136896512,
+        "heapUsed": 91106624,
+        "external": 40050272,
+        "arrayBuffers": 16858590
+      },
+      "pending": 0,
+      "clients": 10,
+      "rss": {
+        "cycles": 190,
+        "externalRequests": 453,
+        "notModified": 0,
+        "errors": 0,
+        "staleServed": 0,
+        "duplicates": 0,
+        "latencyMs": 28426,
+        "lastDurationMs": 80,
+        "deferred": 0,
+        "queued": 0,
+        "inFlight": 0,
+        "newArticles": 0,
+        "lastParseMs": 0,
+        "lastClassifyMs": 0,
+        "lastDedupeMs": 15.549251999997068,
+        "lastArchiveMs": 0.00015000003622844815,
+        "hostsLimited": 0,
+        "persistence": {
+          "writes": 189,
+          "bytes": 16555568,
+          "serializeMs": 60.15284500003327,
+          "writeMs": 46.16156899998896,
+          "error": null
+        }
+      }
+    },
+    {
+      "elapsedMs": 545662.596798,
+      "memory": {
+        "rss": 523558912,
+        "heapTotal": 130080768,
+        "heapUsed": 91204880,
+        "external": 22382797,
+        "arrayBuffers": 16858548
+      },
+      "pending": 0,
+      "clients": 10,
+      "rss": {
+        "cycles": 214,
+        "externalRequests": 453,
+        "notModified": 0,
+        "errors": 0,
+        "staleServed": 0,
+        "duplicates": 0,
+        "latencyMs": 30372,
+        "lastDurationMs": 76,
+        "deferred": 0,
+        "queued": 0,
+        "inFlight": 0,
+        "newArticles": 0,
+        "lastParseMs": 0,
+        "lastClassifyMs": 0,
+        "lastDedupeMs": 14.66435099998489,
+        "lastArchiveMs": 0.0005009999731555581,
+        "hostsLimited": 0,
+        "persistence": {
+          "writes": 213,
+          "bytes": 16555566,
+          "serializeMs": 45.07504200004041,
+          "writeMs": 35.15601399994921,
+          "error": null
+        }
+      }
+    },
+    {
+      "elapsedMs": 605967.344813,
+      "memory": {
+        "rss": 524025856,
+        "heapTotal": 137158656,
+        "heapUsed": 91383928,
+        "external": 41712201,
+        "arrayBuffers": 16858550
+      },
+      "pending": 0,
+      "clients": 10,
+      "rss": {
+        "cycles": 238,
+        "externalRequests": 453,
+        "notModified": 0,
+        "errors": 0,
+        "staleServed": 0,
+        "duplicates": 0,
+        "latencyMs": 32347,
+        "lastDurationMs": 78,
+        "deferred": 0,
+        "queued": 0,
+        "inFlight": 0,
+        "newArticles": 0,
+        "lastParseMs": 0,
+        "lastClassifyMs": 0,
+        "lastDedupeMs": 15.43044100003317,
+        "lastArchiveMs": 0.00022099993657320738,
+        "hostsLimited": 0,
+        "persistence": {
+          "writes": 237,
+          "bytes": 16555567,
+          "serializeMs": 56.17125599994324,
+          "writeMs": 40.37844900006894,
+          "error": null
+        }
+      }
+    },
+    {
+      "elapsedMs": 666549.992528,
+      "memory": {
+        "rss": 515878912,
+        "heapTotal": 136896512,
+        "heapUsed": 91365216,
+        "external": 40021067,
+        "arrayBuffers": 16858549
+      },
+      "pending": 0,
+      "clients": 10,
+      "rss": {
+        "cycles": 262,
+        "externalRequests": 453,
+        "notModified": 0,
+        "errors": 0,
+        "staleServed": 0,
+        "duplicates": 0,
+        "latencyMs": 34289,
+        "lastDurationMs": 82,
+        "deferred": 0,
+        "queued": 0,
+        "inFlight": 0,
+        "newArticles": 0,
+        "lastParseMs": 0,
+        "lastClassifyMs": 0,
+        "lastDedupeMs": 16.92510900006164,
+        "lastArchiveMs": 0.0005410000449046493,
+        "hostsLimited": 0,
+        "persistence": {
+          "writes": 261,
+          "bytes": 16555566,
+          "serializeMs": 55.95590300008189,
+          "writeMs": 35.68235699995421,
+          "error": null
+        }
+      }
+    },
+    {
+      "elapsedMs": 727284.0930850001,
+      "memory": {
+        "rss": 524242944,
+        "heapTotal": 137420800,
+        "heapUsed": 91314304,
+        "external": 41741257,
+        "arrayBuffers": 16858551
+      },
+      "pending": 0,
+      "clients": 10,
+      "rss": {
+        "cycles": 286,
+        "externalRequests": 453,
+        "notModified": 0,
+        "errors": 0,
+        "staleServed": 0,
+        "duplicates": 0,
+        "latencyMs": 36297,
+        "lastDurationMs": 77,
+        "deferred": 0,
+        "queued": 0,
+        "inFlight": 0,
+        "newArticles": 0,
+        "lastParseMs": 0,
+        "lastClassifyMs": 0,
+        "lastDedupeMs": 15.954558999976143,
+        "lastArchiveMs": 0.00020999996922910213,
+        "hostsLimited": 0,
+        "persistence": {
+          "writes": 285,
+          "bytes": 16555568,
+          "serializeMs": 43.72371100005694,
+          "writeMs": 36.07771500002127,
+          "error": null
+        }
+      }
+    },
+    {
+      "elapsedMs": 787739.183942,
+      "memory": {
+        "rss": 524333056,
+        "heapTotal": 137682944,
+        "heapUsed": 91716256,
+        "external": 40049271,
+        "arrayBuffers": 16858590
+      },
+      "pending": 0,
+      "clients": 10,
+      "rss": {
+        "cycles": 310,
+        "externalRequests": 453,
+        "notModified": 0,
+        "errors": 0,
+        "staleServed": 0,
+        "duplicates": 0,
+        "latencyMs": 38266,
+        "lastDurationMs": 81,
+        "deferred": 0,
+        "queued": 0,
+        "inFlight": 0,
+        "newArticles": 0,
+        "lastParseMs": 0,
+        "lastClassifyMs": 0,
+        "lastDedupeMs": 16.64390399993863,
+        "lastArchiveMs": 0.00024999992456287146,
+        "hostsLimited": 0,
+        "persistence": {
+          "writes": 309,
+          "bytes": 16555567,
+          "serializeMs": 45.230601999908686,
+          "writeMs": 25.994642000063322,
+          "error": null
+        }
+      }
+    },
+    {
+      "elapsedMs": 848250.279003,
+      "memory": {
+        "rss": 516460544,
+        "heapTotal": 137158656,
+        "heapUsed": 91679560,
+        "external": 40018346,
+        "arrayBuffers": 16858551
+      },
+      "pending": 0,
+      "clients": 10,
+      "rss": {
+        "cycles": 334,
+        "externalRequests": 453,
+        "notModified": 0,
+        "errors": 0,
+        "staleServed": 0,
+        "duplicates": 0,
+        "latencyMs": 40224,
+        "lastDurationMs": 79,
+        "deferred": 0,
+        "queued": 0,
+        "inFlight": 0,
+        "newArticles": 0,
+        "lastParseMs": 0,
+        "lastClassifyMs": 0,
+        "lastDedupeMs": 16.909098999924026,
+        "lastArchiveMs": 0.00014000001829117537,
+        "hostsLimited": 0,
+        "persistence": {
+          "writes": 333,
+          "bytes": 16555568,
+          "serializeMs": 51.627196000074036,
+          "writeMs": 20.694972999976017,
+          "error": null
+        }
+      }
+    },
+    {
+      "elapsedMs": 909817.638257,
+      "memory": {
+        "rss": 516386816,
+        "heapTotal": 132767744,
+        "heapUsed": 91793816,
+        "external": 22867891,
+        "arrayBuffers": 16923773
+      },
+      "pending": 0,
+      "clients": 10,
+      "rss": {
+        "cycles": 358,
+        "externalRequests": 462,
+        "notModified": 0,
+        "errors": 0,
+        "staleServed": 0,
+        "duplicates": 0,
+        "latencyMs": 43494,
+        "lastDurationMs": 166,
+        "deferred": 0,
+        "queued": 0,
+        "inFlight": 0,
+        "newArticles": 0,
+        "lastParseMs": 0,
+        "lastClassifyMs": 0,
+        "lastDedupeMs": 32.23632699996233,
+        "lastArchiveMs": 0.0002899999963119626,
+        "hostsLimited": 0,
+        "persistence": {
+          "writes": 357,
+          "bytes": 16620790,
+          "serializeMs": 75.51168100000359,
+          "writeMs": 83.14631600002758,
+          "error": null
+        }
+      }
+    },
+    {
+      "elapsedMs": 970414.078606,
+      "memory": {
+        "rss": 525545472,
+        "heapTotal": 138600448,
+        "heapUsed": 92262272,
+        "external": 40283124,
+        "arrayBuffers": 36440781
+      },
+      "pending": 0,
+      "clients": 10,
+      "rss": {
+        "cycles": 382,
+        "externalRequests": 471,
+        "notModified": 0,
+        "errors": 0,
+        "staleServed": 0,
+        "duplicates": 0,
+        "latencyMs": 46415,
+        "lastDurationMs": 77,
+        "deferred": 0,
+        "queued": 0,
+        "inFlight": 0,
+        "newArticles": 0,
+        "lastParseMs": 0,
+        "lastClassifyMs": 0,
+        "lastDedupeMs": 15.023891999968328,
+        "lastArchiveMs": 0.0002210000529885292,
+        "hostsLimited": 0,
+        "persistence": {
+          "writes": 381,
+          "bytes": 16686049,
+          "serializeMs": 47.08271800004877,
+          "writeMs": 22.968033999903128,
+          "error": null
+        }
+      }
+    },
+    {
+      "elapsedMs": 1030931.796984,
+      "memory": {
+        "rss": 525553664,
+        "heapTotal": 131522560,
+        "heapUsed": 92271880,
+        "external": 22514400,
+        "arrayBuffers": 16989033
+      },
+      "pending": 0,
+      "clients": 10,
+      "rss": {
+        "cycles": 406,
+        "externalRequests": 471,
+        "notModified": 0,
+        "errors": 0,
+        "staleServed": 0,
+        "duplicates": 0,
+        "latencyMs": 48407,
+        "lastDurationMs": 80,
+        "deferred": 0,
+        "queued": 0,
+        "inFlight": 0,
+        "newArticles": 0,
+        "lastParseMs": 0,
+        "lastClassifyMs": 0,
+        "lastDedupeMs": 15.29028900002595,
+        "lastArchiveMs": 0.00022000004537403584,
+        "hostsLimited": 0,
+        "persistence": {
+          "writes": 405,
+          "bytes": 16686049,
+          "serializeMs": 43.647077000001445,
+          "writeMs": 16.842694999999367,
+          "error": null
+        }
+      }
+    },
+    {
+      "elapsedMs": 1091245.63518,
+      "memory": {
+        "rss": 521445376,
+        "heapTotal": 131260416,
+        "heapUsed": 92360296,
+        "external": 20851868,
+        "arrayBuffers": 16989074
+      },
+      "pending": 0,
+      "clients": 10,
+      "rss": {
+        "cycles": 430,
+        "externalRequests": 471,
+        "notModified": 0,
+        "errors": 0,
+        "staleServed": 0,
+        "duplicates": 0,
+        "latencyMs": 50405,
+        "lastDurationMs": 79,
+        "deferred": 0,
+        "queued": 0,
+        "inFlight": 0,
+        "newArticles": 0,
+        "lastParseMs": 0,
+        "lastClassifyMs": 0,
+        "lastDedupeMs": 14.614989000139758,
+        "lastArchiveMs": 0.00015999982133507729,
+        "hostsLimited": 0,
+        "persistence": {
+          "writes": 429,
+          "bytes": 16686050,
+          "serializeMs": 46.75646900013089,
+          "writeMs": 39.72814500005916,
+          "error": null
+        }
+      }
+    },
+    {
+      "elapsedMs": 1151361.014789,
+      "memory": {
+        "rss": 554868736,
+        "heapTotal": 131260416,
+        "heapUsed": 92304144,
+        "external": 22520338,
+        "arrayBuffers": 16989034
+      },
+      "pending": 0,
+      "clients": 10,
+      "rss": {
+        "cycles": 454,
+        "externalRequests": 471,
+        "notModified": 0,
+        "errors": 0,
+        "staleServed": 0,
+        "duplicates": 0,
+        "latencyMs": 52343,
+        "lastDurationMs": 83,
+        "deferred": 0,
+        "queued": 0,
+        "inFlight": 0,
+        "newArticles": 0,
+        "lastParseMs": 0,
+        "lastClassifyMs": 0,
+        "lastDedupeMs": 15.793156999861822,
+        "lastArchiveMs": 0.00022099982015788555,
+        "hostsLimited": 0,
+        "persistence": {
+          "writes": 453,
+          "bytes": 16686050,
+          "serializeMs": 47.2815680000931,
+          "writeMs": 29.10109700006433,
+          "error": null
+        }
+      }
+    },
+    {
+      "elapsedMs": 1211414.7303799998,
+      "memory": {
+        "rss": 514252800,
+        "heapTotal": 137289728,
+        "heapUsed": 92319800,
+        "external": 40281145,
+        "arrayBuffers": 16989033
+      },
+      "pending": 0,
+      "clients": 10,
+      "rss": {
+        "cycles": 478,
+        "externalRequests": 471,
+        "notModified": 0,
+        "errors": 0,
+        "staleServed": 0,
+        "duplicates": 0,
+        "latencyMs": 54288,
+        "lastDurationMs": 82,
+        "deferred": 0,
+        "queued": 0,
+        "inFlight": 0,
+        "newArticles": 0,
+        "lastParseMs": 0,
+        "lastClassifyMs": 0,
+        "lastDedupeMs": 14.373970999848098,
+        "lastArchiveMs": 0.0001409999094903469,
+        "hostsLimited": 0,
+        "persistence": {
+          "writes": 477,
+          "bytes": 16686049,
+          "serializeMs": 43.8954139999114,
+          "writeMs": 24.04455200000666,
+          "error": null
+        }
+      }
+    },
+    {
+      "elapsedMs": 1271683.2166099998,
+      "memory": {
+        "rss": 538738688,
+        "heapTotal": 139649024,
+        "heapUsed": 92219888,
+        "external": 28196056,
+        "arrayBuffers": 16989034
+      },
+      "pending": 0,
+      "clients": 10,
+      "rss": {
+        "cycles": 502,
+        "externalRequests": 471,
+        "notModified": 0,
+        "errors": 0,
+        "staleServed": 0,
+        "duplicates": 0,
+        "latencyMs": 56229,
+        "lastDurationMs": 83,
+        "deferred": 0,
+        "queued": 0,
+        "inFlight": 0,
+        "newArticles": 0,
+        "lastParseMs": 0,
+        "lastClassifyMs": 0,
+        "lastDedupeMs": 18.595562000060454,
+        "lastArchiveMs": 0.00022000004537403584,
+        "hostsLimited": 0,
+        "persistence": {
+          "writes": 501,
+          "bytes": 16686050,
+          "serializeMs": 43.978307999903336,
+          "writeMs": 36.05848200013861,
+          "error": null
+        }
+      }
+    },
+    {
+      "elapsedMs": 1332002.50895,
+      "memory": {
+        "rss": 539172864,
+        "heapTotal": 138338304,
+        "heapUsed": 92294952,
+        "external": 41995630,
+        "arrayBuffers": 16989034
+      },
+      "pending": 0,
+      "clients": 10,
+      "rss": {
+        "cycles": 526,
+        "externalRequests": 471,
+        "notModified": 0,
+        "errors": 0,
+        "staleServed": 0,
+        "duplicates": 0,
+        "latencyMs": 58168,
+        "lastDurationMs": 78,
+        "deferred": 0,
+        "queued": 0,
+        "inFlight": 0,
+        "newArticles": 0,
+        "lastParseMs": 0,
+        "lastClassifyMs": 0,
+        "lastDedupeMs": 15.864900999935344,
+        "lastArchiveMs": 0.00016000005416572094,
+        "hostsLimited": 0,
+        "persistence": {
+          "writes": 525,
+          "bytes": 16686050,
+          "serializeMs": 46.48592399992049,
+          "writeMs": 27.526824000058696,
+          "error": null
+        }
+      }
+    },
+    {
+      "elapsedMs": 1392315.1596769998,
+      "memory": {
+        "rss": 539148288,
+        "heapTotal": 138338304,
+        "heapUsed": 92343312,
+        "external": 40311511,
+        "arrayBuffers": 16989074
+      },
+      "pending": 0,
+      "clients": 10,
+      "rss": {
+        "cycles": 550,
+        "externalRequests": 471,
+        "notModified": 0,
+        "errors": 0,
+        "staleServed": 0,
+        "duplicates": 0,
+        "latencyMs": 60099,
+        "lastDurationMs": 78,
+        "deferred": 0,
+        "queued": 0,
+        "inFlight": 0,
+        "newArticles": 0,
+        "lastParseMs": 0,
+        "lastClassifyMs": 0,
+        "lastDedupeMs": 14.531453999923542,
+        "lastArchiveMs": 0.00022000004537403584,
+        "hostsLimited": 0,
+        "persistence": {
+          "writes": 549,
+          "bytes": 16686050,
+          "serializeMs": 43.33029999979772,
+          "writeMs": 24.49596400000155,
+          "error": null
+        }
+      }
+    },
+    {
+      "elapsedMs": 1452622.43459,
+      "memory": {
+        "rss": 539271168,
+        "heapTotal": 139386880,
+        "heapUsed": 92462024,
+        "external": 41971480,
+        "arrayBuffers": 16989034
+      },
+      "pending": 0,
+      "clients": 10,
+      "rss": {
+        "cycles": 574,
+        "externalRequests": 471,
+        "notModified": 0,
+        "errors": 0,
+        "staleServed": 0,
+        "duplicates": 0,
+        "latencyMs": 62023,
+        "lastDurationMs": 78,
+        "deferred": 0,
+        "queued": 0,
+        "inFlight": 0,
+        "newArticles": 0,
+        "lastParseMs": 0,
+        "lastClassifyMs": 0,
+        "lastDedupeMs": 15.601869999896735,
+        "lastArchiveMs": 0.00014999997802078724,
+        "hostsLimited": 0,
+        "persistence": {
+          "writes": 573,
+          "bytes": 16686050,
+          "serializeMs": 45.865167000098154,
+          "writeMs": 71.15224500000477,
+          "error": null
+        }
+      }
+    },
+    {
+      "elapsedMs": 1513105.3551389999,
+      "memory": {
+        "rss": 539287552,
+        "heapTotal": 131260416,
+        "heapUsed": 92478688,
+        "external": 25170714,
+        "arrayBuffers": 16989032
+      },
+      "pending": 0,
+      "clients": 10,
+      "rss": {
+        "cycles": 598,
+        "externalRequests": 471,
+        "notModified": 0,
+        "errors": 0,
+        "staleServed": 0,
+        "duplicates": 0,
+        "latencyMs": 64016,
+        "lastDurationMs": 92,
+        "deferred": 0,
+        "queued": 0,
+        "inFlight": 0,
+        "newArticles": 0,
+        "lastParseMs": 0,
+        "lastClassifyMs": 0,
+        "lastDedupeMs": 14.67813800019212,
+        "lastArchiveMs": 0.0001309998333454132,
+        "hostsLimited": 0,
+        "persistence": {
+          "writes": 597,
+          "bytes": 16686048,
+          "serializeMs": 49.257371000014246,
+          "writeMs": 21.284805999835953,
+          "error": null
+        }
+      }
+    },
+    {
+      "elapsedMs": 1574577.7401379999,
+      "memory": {
+        "rss": 539508736,
+        "heapTotal": 131522560,
+        "heapUsed": 92417744,
+        "external": 22520357,
+        "arrayBuffers": 16989033
+      },
+      "pending": 0,
+      "clients": 10,
+      "rss": {
+        "cycles": 622,
+        "externalRequests": 471,
+        "notModified": 0,
+        "errors": 0,
+        "staleServed": 0,
+        "duplicates": 0,
+        "latencyMs": 66107,
+        "lastDurationMs": 79,
+        "deferred": 0,
+        "queued": 0,
+        "inFlight": 0,
+        "newArticles": 0,
+        "lastParseMs": 0,
+        "lastClassifyMs": 0,
+        "lastDedupeMs": 15.327398000052199,
+        "lastArchiveMs": 0.0001300000585615635,
+        "hostsLimited": 0,
+        "persistence": {
+          "writes": 621,
+          "bytes": 16686049,
+          "serializeMs": 44.74363599997014,
+          "writeMs": 21.36583700007759,
+          "error": null
+        }
+      }
+    },
+    {
+      "elapsedMs": 1634863.4064119998,
+      "memory": {
+        "rss": 552947712,
+        "heapTotal": 131260416,
+        "heapUsed": 92633384,
+        "external": 22514421,
+        "arrayBuffers": 16989034
+      },
+      "pending": 0,
+      "clients": 10,
+      "rss": {
+        "cycles": 646,
+        "externalRequests": 471,
+        "notModified": 0,
+        "errors": 0,
+        "staleServed": 0,
+        "duplicates": 0,
+        "latencyMs": 68083,
+        "lastDurationMs": 81,
+        "deferred": 0,
+        "queued": 0,
+        "inFlight": 0,
+        "newArticles": 0,
+        "lastParseMs": 0,
+        "lastClassifyMs": 0,
+        "lastDedupeMs": 14.555377000011504,
+        "lastArchiveMs": 0.00041099986992776394,
+        "hostsLimited": 0,
+        "persistence": {
+          "writes": 645,
+          "bytes": 16686050,
+          "serializeMs": 48.42657500016503,
+          "writeMs": 37.23904100013897,
+          "error": null
+        }
+      }
+    },
+    {
+      "elapsedMs": 1695068.595276,
+      "memory": {
+        "rss": 553402368,
+        "heapTotal": 138600448,
+        "heapUsed": 92783768,
+        "external": 40319503,
+        "arrayBuffers": 16989074
+      },
+      "pending": 0,
+      "clients": 10,
+      "rss": {
+        "cycles": 670,
+        "externalRequests": 471,
+        "notModified": 0,
+        "errors": 0,
+        "staleServed": 0,
+        "duplicates": 0,
+        "latencyMs": 70042,
+        "lastDurationMs": 78,
+        "deferred": 0,
+        "queued": 0,
+        "inFlight": 0,
+        "newArticles": 0,
+        "lastParseMs": 0,
+        "lastClassifyMs": 0,
+        "lastDedupeMs": 15.717075000051409,
+        "lastArchiveMs": 0.00048099993728101254,
+        "hostsLimited": 0,
+        "persistence": {
+          "writes": 669,
+          "bytes": 16686050,
+          "serializeMs": 49.472246000077575,
+          "writeMs": 17.95366799994372,
+          "error": null
+        }
+      }
+    },
+    {
+      "elapsedMs": 1755542.445692,
+      "memory": {
+        "rss": 529190912,
+        "heapTotal": 131784704,
+        "heapUsed": 92615040,
+        "external": 20851705,
+        "arrayBuffers": 16989031
+      },
+      "pending": 0,
+      "clients": 10,
+      "rss": {
+        "cycles": 694,
+        "externalRequests": 472,
+        "notModified": 0,
+        "errors": 0,
+        "staleServed": 0,
+        "duplicates": 0,
+        "latencyMs": 72111,
+        "lastDurationMs": 79,
+        "deferred": 0,
+        "queued": 0,
+        "inFlight": 0,
+        "newArticles": 0,
+        "lastParseMs": 0,
+        "lastClassifyMs": 0,
+        "lastDedupeMs": 15.9838630000595,
+        "lastArchiveMs": 0.0001400001347064972,
+        "hostsLimited": 0,
+        "persistence": {
+          "writes": 693,
+          "bytes": 16686047,
+          "serializeMs": 56.41588200000115,
+          "writeMs": 44.90075600007549,
+          "error": null
+        }
+      }
+    }
+  ],
+  "artifact": "/tmp/ogid-runtime-soak-Hws275/result.json"
+}

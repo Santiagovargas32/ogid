@@ -4,6 +4,7 @@ import { computeProviderScore, normalizeRequestedTickers, summarizeAttempt } fro
 import { sanitizeSensitiveData } from "../../../utils/sanitize.js";
 import { createLogger } from "../../../utils/logger.js";
 import { summarizeYahooError } from "../../marketData/yahooClient.js";
+import { isRetryableYahooError } from "../../marketData/rateLimit.js";
 
 let defaultMarketDataService = null;
 const log = createLogger("market/yahooProvider");
@@ -49,10 +50,13 @@ function logYahooFailure(event, error, { ticker = null, tickerCount = 0 } = {}) 
 }
 
 async function fetchQuotesPerSymbol(service, tickers, { timestamp, errors }) {
-  const settled = await Promise.allSettled(tickers.map((ticker) => service.fetchQuotes([ticker])));
   const quotes = [];
-  settled.forEach((result, index) => {
-    const ticker = tickers[index];
+  for (let offset=0; offset<tickers.length; offset+=3) {
+    const batch=tickers.slice(offset,offset+3);
+    const settled=await Promise.allSettled(batch.map(ticker=>service.fetchQuotes([ticker])));
+    let systemicFailure=false;
+    settled.forEach((result, index) => {
+    const ticker = batch[index];
     if (result.status === "fulfilled") {
       quotes.push(...(Array.isArray(result.value) ? result.value : []));
       apiQuotaTracker.recordCall("yahoo", {
@@ -63,10 +67,14 @@ async function fetchQuotesPerSymbol(service, tickers, { timestamp, errors }) {
       });
       return;
     }
+    const status=summarizeYahooError(result.reason).httpStatus;
+    if (isRetryableYahooError(result.reason) || [401,403].includes(status) || ["YAHOO_QUEUE_FULL","YAHOO_QUEUE_CLOSED"].includes(result.reason?.code)) systemicFailure=true;
     errors.push(publicProviderError(result.reason, { ticker, scope: "symbol" }));
     logYahooFailure("yahoo_quote_symbol_fallback_failed", result.reason, { ticker, tickerCount: 1 });
     apiQuotaTracker.recordCall("yahoo", { status: "error", fallback: true, timestamp, units: 1 });
-  });
+    });
+    if (systemicFailure) break;
+  }
   return quotes;
 }
 
@@ -137,7 +145,11 @@ export async function fetchYahooQuotes({
     errors.push(publicProviderError(error));
     logYahooFailure("yahoo_quote_batch_failed", error, { tickerCount: requestedTickers.length });
     apiQuotaTracker.recordCall("yahoo", { status: "error", fallback: true, timestamp, units: 1 });
-    if (requestedTickers.length > 1) {
+    // Split only a batch-specific validation failure. A transport/auth/upstream
+    // outage affects every symbol and must not multiply the request volume.
+    const diagnostics = summarizeYahooError(error);
+    const batchValidationFailure = diagnostics.errorName === "FailedYahooValidationError" && diagnostics.validationIssues.length > 0;
+    if (requestedTickers.length > 1 && batchValidationFailure && !isRetryableYahooError(error)) {
       normalizedQuotes = await fetchQuotesPerSymbol(service, requestedTickers, { timestamp, errors });
     }
   }

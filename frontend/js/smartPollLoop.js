@@ -49,13 +49,14 @@ export class SmartPollLoop {
 
     this.inFlight = true;
     this.controller = new AbortController();
+    const controller = this.controller;
     try {
-      const payload = await this.task(this.controller.signal);
-      if (!this.stopped && typeof this.onData === "function") {
+      const payload = await this.task(controller.signal);
+      if (!this.stopped && !controller.signal.aborted && typeof this.onData === "function") {
         this.onData(payload);
       }
     } catch (error) {
-      if (!this.stopped && typeof this.onError === "function") {
+      if (!this.stopped && !controller.signal.aborted && typeof this.onError === "function") {
         this.onError(error);
       }
     } finally {

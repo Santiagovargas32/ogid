@@ -45,7 +45,7 @@ export class RssAggregatorService {
       cycleDeadlineMs: config.cycleDeadlineMs || config.news?.rssCycleDeadlineMs || 25_000,
       timeoutMs: this.timeoutMs,
       maxCorpusItems: this.maxCorpusItems,
-      onCollected: articles => { if (this.pipelineMode === "canonical") this.onCollected?.(articles); },
+      onCollected: articles => { if (this.pipelineMode === "canonical") return this.onCollected?.(articles); },
       maxResponseBytes: config.news?.rssMaxResponseBytes || 2_000_000,
       maxItemsPerFeed: config.news?.rssMaxItemsPerFeed || 200
     });
@@ -162,7 +162,7 @@ export class RssAggregatorService {
     return this.#buildSnapshot(providerResult, feeds, { canonicalSnapshot });
   }
 
-  #buildSnapshot(providerResult, feeds, { canonicalSnapshot = null } = {}) {
+  async #buildSnapshot(providerResult, feeds, { canonicalSnapshot = null } = {}) {
     const enriched = providerResult.sourceMeta?.canonical
       ? (providerResult.articles || [])
       : (providerResult.articles || []).map((article, index) => classifyRssArticle({
@@ -214,7 +214,7 @@ export class RssAggregatorService {
     }
 
     this.lastSnapshot = snapshot;
-    if (this.pipelineMode !== "canonical") this.onCollected?.(enriched);
+    if (this.pipelineMode !== "canonical") await this.onCollected?.(enriched);
     this.cache.set("rss-aggregate", snapshot, this.refreshIntervalMs);
     log.info("rss_aggregate_refreshed", {
       catalogSize: this.feedCatalog.length,

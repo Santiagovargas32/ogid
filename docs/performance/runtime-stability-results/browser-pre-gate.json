@@ -1,0 +1,28 @@
+{
+  "checks": [
+    "20 unchanged updates preserve news DOM and perform zero chart updates"
+  ],
+  "errors": [],
+  "requests": {
+    "/api/media/streams": 2,
+    "/api/intel/advanced-snapshot": 2,
+    "/api/intel/awareness-snapshot": 1,
+    "/api/market/watchlist": 1,
+    "/api/intel/snapshot": 1,
+    "/api/market/candles": 1,
+    "/api/market/conditions": 3,
+    "/api/market/provider-status": 2,
+    "/api/market/quotes": 1
+  },
+  "browser": "156.0.8078.4",
+  "rendering": {
+    "newsRowPreserved": true,
+    "chartUpdatesForUnchangedData": 0
+  },
+  "failure": "page.waitForFunction: Timeout 25000ms exceeded.",
+  "state": {
+    "ws": "WS: connected",
+    "newButton": "0 noticias nuevas",
+    "offlineRows": 0
+  }
+}

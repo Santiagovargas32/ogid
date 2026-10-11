@@ -402,6 +402,8 @@ export class MarketDataService {
     };
   }
 
+  close() { return this.yahooClient.close?.(); }
+
   #dataset(symbol, range, bars, { cached, stale, complete = true, fetchedAt, error = null, persistence = null }) {
     return {
       symbol,

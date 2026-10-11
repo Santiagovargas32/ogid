@@ -1,0 +1,77 @@
+{
+  "node": "v22.23.3",
+  "durationMs": 30000,
+  "elapsedMs": 30469.049772,
+  "startupMs": 8.867635000000064,
+  "cycles": 12,
+  "cpu": {
+    "user": 7080229,
+    "system": 310124
+  },
+  "memory": {
+    "rss": 293588992,
+    "heapTotal": 175890432,
+    "heapUsed": 140582544,
+    "external": 8180418,
+    "arrayBuffers": 4395493
+  },
+  "eventLoopUtilization": {
+    "idle": 24575.311661,
+    "active": 5893.780218993677,
+    "utilization": 0.19343471877032195
+  },
+  "eventLoopDelayMs": {
+    "p50": 10.100735,
+    "p95": 12.247039,
+    "p99": 30.359551,
+    "max": 415.498239
+  },
+  "httpMs": {
+    "samples": 120,
+    "p50": 94.99258599999848,
+    "p95": 427.3482409999997,
+    "p99": 428.2797590000009
+  },
+  "externalRequests": 198,
+  "marketRequests": 18,
+  "unexpectedCloses": 0,
+  "wsMessages": 550,
+  "wsBytes": 12752880,
+  "samples": [
+    {
+      "elapsedMs": 357.76957200000004,
+      "memory": {
+        "rss": 156405760,
+        "heapTotal": 71495680,
+        "heapUsed": 32374456,
+        "external": 4094594,
+        "arrayBuffers": 286656
+      },
+      "pending": 0,
+      "clients": 10,
+      "rss": {
+        "cycles": 1,
+        "externalRequests": 18,
+        "notModified": 0,
+        "errors": 0,
+        "staleServed": 0,
+        "duplicates": 0,
+        "latencyMs": 202,
+        "lastDurationMs": 202,
+        "deferred": 0,
+        "queued": 0,
+        "inFlight": 0,
+        "newArticles": 360,
+        "hostsLimited": 0,
+        "persistence": {
+          "writes": 0,
+          "bytes": 0,
+          "serializeMs": 0,
+          "writeMs": 0,
+          "error": null
+        }
+      }
+    }
+  ],
+  "artifact": "/tmp/ogid-runtime-soak-unl07j/result.json"
+}
