@@ -78,7 +78,7 @@ export class LlamaCppProvider {
     }
   }
 
-  async generateCompletion({ kind, messages, schema, inputHash, budget }) {
+  async generateCompletion({ kind, messages, schema, inputHash, budget, signal }) {
     const model = this.modelForKind(kind);
     const endpoint = new URL(`${this.baseUrl.pathname}/chat/completions`.replace(/\/{2,}/g, "/"), this.baseUrl);
     const headers = { "Content-Type": "application/json", Accept: "application/json" };
@@ -88,6 +88,7 @@ export class LlamaCppProvider {
     // One allowance for all additional POSTs: a transient retry OR a format
     // fallback, never nested retry loops. Every POST reserves its own budget.
     for (let attempt = 0; attempt <= this.maxRetries; attempt += 1) {
+      signal?.throwIfAborted();
       const body = JSON.stringify({
         model, messages, temperature: 0.1,
         max_tokens: this.maxOutputTokens, stream: false,
@@ -100,6 +101,7 @@ export class LlamaCppProvider {
       try {
         const response = await this.runtime.fetch(this.name, endpoint, {
           method: "POST", headers, body,
+          signal,
           timeoutMs: this.timeoutMs, retries: 0, idempotent: false,
           throwHttpErrors: true, bufferResponse: true, redirect: "error",
           providerConcurrency: this.concurrency, hostConcurrency: this.concurrency,
@@ -156,9 +158,9 @@ export class LlamaCppProvider {
           const noCompletion = Number(error?.status) >= 400 || error?.code === ProviderErrorCode.CIRCUIT_OPEN;
           budget?.settleAttempt(lease?.leaseId, { actualTokens: noCompletion ? 0 : null, conservative: !noCompletion });
         }
-        if (error?.retryable === true && attempt < this.maxRetries) {
+        if (!signal?.aborted && error?.retryable === true && attempt < this.maxRetries) {
           this.metrics.retries += 1;
-          await this.wait(Math.max(50, Math.min(30_000, Number(error.retryAfterMs) || 250)));
+          await this.wait(Math.max(50, Math.min(30_000, Number(error.retryAfterMs) || 250)),undefined,{signal});
           continue;
         }
         const code = error instanceof AiProviderError || RUNTIME_ERROR_CODES.has(error?.code) ? error.code : "AI_PROVIDER_FAILED";

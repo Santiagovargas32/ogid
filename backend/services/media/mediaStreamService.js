@@ -213,11 +213,12 @@ class MediaStreamService {
     }, this.refreshIntervalMs);
   }
 
-  stop() {
+  async stop() {
     if (this.timerHandle) {
       clearInterval(this.timerHandle);
       this.timerHandle = null;
     }
+    await Promise.allSettled([...this.requestInFlight.values()]);
   }
 
   selectStreams({ resolve = "critical", ids = [] } = {}) {

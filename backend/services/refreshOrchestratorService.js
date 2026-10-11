@@ -108,6 +108,10 @@ class RefreshOrchestratorService {
     this.newsArchive = newsArchive;
     this.awarenessService = awarenessService;
     this.pendingCycles = new Set();
+    this.newsTask = null;
+    this.marketTask = null;
+    this.rssSelectionPending = false;
+    this.cycleMetrics = { newsJoined: 0, marketJoined: 0, rssCoalesced: 0 };
     this.newsInFlight = false;
     this.marketInFlight = false;
     this.manualRefreshInFlight = false;
@@ -188,6 +192,19 @@ class RefreshOrchestratorService {
       ai: snapshot.ai,
       awareness: snapshot.awareness
     };
+  }
+
+  buildMarketUpdatePayload(snapshot) {
+    // The existing update envelope supports partial state (manual refresh and AI
+    // already use it). News/countries/map assets are unchanged by market cycles.
+    return { meta:snapshot.meta, market:snapshot.market, insights:snapshot.insights,
+      predictions:snapshot.predictions, impact:snapshot.impact, impactHistory:snapshot.impactHistory };
+  }
+
+  trackBackground(task) {
+    if (!task) return;
+    this.pendingCycles.add(task);
+    task.then(() => this.pendingCycles.delete(task), () => this.pendingCycles.delete(task));
   }
 
   getNewsBaseIntervalMs() {
@@ -317,8 +334,9 @@ class RefreshOrchestratorService {
     const backoffCapMs = this.getNewsBackoffMaxMs() ?? baseIntervalMs;
     const delayMs = Math.min(baseIntervalMs + this.newsBackoffMs, backoffCapMs);
     this.newsTimerHandle = setTimeout(async () => {
-      await this.runNewsCycle(trigger, { allowExhaustedProviders: false });
-      this.scheduleNextNewsCycle("interval-news");
+      try { await this.runNewsCycle(trigger, { allowExhaustedProviders: false }); }
+      catch (error) { log.error("news_scheduler_failed", { message: error.message }); }
+      finally { this.scheduleNextNewsCycle("interval-news"); }
     }, delayMs);
   }
 
@@ -330,25 +348,40 @@ class RefreshOrchestratorService {
     clearTimeout(this.marketTimerHandle);
     const delayMs = this.resolveNextMarketDelayMs();
     this.marketTimerHandle = setTimeout(async () => {
-      await this.runMarketCycle(trigger);
-      this.scheduleNextMarketCycle("interval-market");
+      try { await this.runMarketCycle(trigger); }
+      catch (error) { log.error("market_scheduler_failed", { message: error.message }); }
+      finally { this.scheduleNextMarketCycle("interval-market"); }
     }, delayMs);
   }
 
   runNewsCycle(trigger = "scheduled-news", options = {}) {
-    const task = this.executeNewsCycle(trigger, options);
+    if (this.newsTask) {
+      this.cycleMetrics.newsJoined++;
+      if (options.rssOnly) { this.rssSelectionPending = true; this.cycleMetrics.rssCoalesced++; }
+      return this.newsTask;
+    }
+    const task = (async () => {
+      await this.executeNewsCycle(trigger, options);
+      // An RSS notification arriving during a provider fetch must use the newest
+      // stored corpus after that fetch completes, without concurrent state writes.
+      while (this.rssSelectionPending) {
+        this.rssSelectionPending = false;
+        await this.executeNewsCycle("rss-selected-coalesced", { rssOnly: true });
+      }
+    })().finally(() => { this.newsTask = null; });
+    this.newsTask = task;
     this.pendingCycles.add(task);
     task.then(() => this.pendingCycles.delete(task), () => this.pendingCycles.delete(task));
     return task;
   }
 
   async executeNewsCycle(trigger, options) {
-    if (this.newsInFlight && !options.rssOnly) {
+    if (this.newsInFlight) {
       log.warn("news_cycle_skipped", { reason: "in-flight", trigger });
       return;
     }
 
-    if (!options.rssOnly) this.newsInFlight = true;
+    this.newsInFlight = true;
     const startedAt = Date.now();
     this.newsCycleTelemetry = {
       ...this.newsCycleTelemetry,
@@ -584,7 +617,7 @@ class RefreshOrchestratorService {
         lastError: error.message
       };
     } finally {
-      if (!options.rssOnly) this.newsInFlight = false;
+      this.newsInFlight = false;
     }
   }
 
@@ -594,7 +627,9 @@ class RefreshOrchestratorService {
   }
 
   runMarketCycle(trigger = "scheduled-market", options = {}) {
-    const task = this.executeMarketCycle(trigger, options);
+    if (this.marketTask) { this.cycleMetrics.marketJoined++; return this.marketTask; }
+    const task = this.executeMarketCycle(trigger, options).finally(() => { this.marketTask = null; });
+    this.marketTask = task;
     this.pendingCycles.add(task);
     task.then(() => this.pendingCycles.delete(task), () => this.pendingCycles.delete(task));
     return task;
@@ -628,7 +663,7 @@ class RefreshOrchestratorService {
     try {
       if (this.shouldSkipAutomatedOffHoursMarketCycle(trigger, options)) {
         try { await this.dailyCandleService?.runScheduled?.(); } catch (error) { log.warn("daily_candle_cycle_failed", { message: error.message }); }
-        void this.intradayCandleService?.runScheduled?.().catch((error) => log.warn("intraday_candle_cycle_failed", { message: error.message }));
+        this.trackBackground(this.intradayCandleService?.runScheduled?.().catch((error) => log.warn("intraday_candle_cycle_failed", { message: error.message })));
         const previousSnapshot = this.stateManager.getSnapshot();
         const cycleDate = this.resolveMarketCycleDate(options.now);
         const pausedMarketState = refreshMarketSessionMetadata(previousSnapshot.market, {
@@ -637,7 +672,7 @@ class RefreshOrchestratorService {
           upstreamPaused: true
         });
         const snapshot = this.stateManager.hydrateMarketState(pausedMarketState);
-        this.socketServer.broadcast("update", this.buildUpdatePayload(snapshot), snapshot.meta);
+        this.socketServer.broadcast("update", this.buildMarketUpdatePayload(snapshot), snapshot.meta);
 
         log.info("market_cycle_skipped", {
           trigger,
@@ -685,13 +720,14 @@ class RefreshOrchestratorService {
         timestamp: cycleDate.toISOString()
       });
       const marketState = mergeMarketState(previousSnapshot.market, marketResult);
+      const analysisSnapshot = this.stateManager.getSnapshot();
       const inputMode = resolveInputMode(previousSnapshot.meta?.sourceMode, marketState.sourceMode);
       const countryFilter = options.countries?.length ? options.countries : this.config.watchlistCountries;
       const selectedMarketInstruments = this.config.market.watchlistService?.selectedInstruments?.() || [];
 
       const predictions = generatePredictions({
         articles: mergeArticleCorpora(this.stateManager.getMarketSignalCorpus(), this.awarenessService?.getMarketArticles?.() || []),
-        countries: previousSnapshot.countries,
+        countries: analysisSnapshot.countries,
         marketQuotes: marketState.quotes,
         tickers: this.config.market.tickers,
         instruments: selectedMarketInstruments,
@@ -699,7 +735,7 @@ class RefreshOrchestratorService {
       });
       const impact = computeMarketImpact({
         articles: mergeArticleCorpora(this.stateManager.getMarketSignalCorpus(), this.awarenessService?.getMarketArticles?.() || []),
-        countries: previousSnapshot.countries,
+        countries: analysisSnapshot.countries,
         marketQuotes: marketState.quotes,
         tickers: this.config.market.tickers,
         instruments: selectedMarketInstruments,
@@ -710,8 +746,8 @@ class RefreshOrchestratorService {
         predictionScores: predictions.predictionScoreByTicker || {}
       });
       const insights = generateInsights({
-        countries: previousSnapshot.countries,
-        previousCountries: previousSnapshot.countries,
+        countries: analysisSnapshot.countries,
+        previousCountries: analysisSnapshot.countries,
         inputMode
       });
 
@@ -739,9 +775,9 @@ class RefreshOrchestratorService {
       }
       if (isAutomatedMarketTrigger(trigger)) {
         try { await this.dailyCandleService?.runScheduled?.(); } catch (error) { log.warn("daily_candle_cycle_failed", { message: error.message }); }
-        void this.intradayCandleService?.runScheduled?.().catch((error) => log.warn("intraday_candle_cycle_failed", { message: error.message }));
+        this.trackBackground(this.intradayCandleService?.runScheduled?.().catch((error) => log.warn("intraday_candle_cycle_failed", { message: error.message })));
       }
-      this.socketServer.broadcast("update", this.buildUpdatePayload(snapshot), snapshot.meta);
+      this.socketServer.broadcast("update", this.buildMarketUpdatePayload(snapshot), snapshot.meta);
       void Promise.resolve(this.aiCoordinator?.reconcileMarketSnapshot?.({
         snapshot,
         instruments: selectedMarketInstruments
@@ -840,6 +876,7 @@ class RefreshOrchestratorService {
   }
 
   start() {
+    if (!this.stopped) return;
     this.stopped = false;
     if (this.rssAggregator) { this.rssAggregator.onSnapshot = () => this.runNewsCycle("rss-selected", {rssOnly:true}); this.rssAggregator.start(); }
 

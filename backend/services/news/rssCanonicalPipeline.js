@@ -7,12 +7,13 @@ import {classifyRssArticle} from './rssClassifier.js';
 import {deduplicateRssArticles} from './rssDeduplicator.js';
 import {hasFeedEnvelope,parseFeedArticles} from './providers/rssProvider.js';
 import {articleIdentity} from './articleIdentity.js';
+import {performance} from 'node:perf_hooks';
 function initialState(){return {etag:null,lastModified:null,lastAttemptAt:null,lastSuccessAt:null,nextEligibleAt:null,cooldownUntil:null,consecutiveErrors:0,healthStatus:'unknown',articles:[],status:'unqueried'};}
 export class RssCanonicalPipeline {
   constructor({catalog,fetchImpl,now=Date.now,random=Math.random,persistencePath=null,globalConcurrency=4,hostConcurrency=1,maxFeedsPerCycle=18,cycleDeadlineMs=25_000,timeoutMs=8_000,maxCorpusItems=900,maxResponseBytes=2_000_000,maxItemsPerFeed=200,onCollected=null}={}){
     Object.assign(this,{catalog,fetchImpl,now,random,persistencePath,globalConcurrency,hostConcurrency,cycleDeadlineMs,timeoutMs,maxCorpusItems,maxResponseBytes,maxItemsPerFeed,onCollected});
     this.maxFeedsPerCycle=Math.max(1,Math.min(18,maxFeedsPerCycle));this.states=new Map();this.hostSemaphores=new Map();this.corpus=[];this.inFlight=null;this.controller=null;
-    this.metrics={cycles:0,externalRequests:0,notModified:0,errors:0,staleServed:0,duplicates:0,latencyMs:0,lastDurationMs:0,deferred:0,queued:0,inFlight:0,newArticles:0};this.hostCooldowns=new Map();
+    this.metrics={cycles:0,externalRequests:0,notModified:0,errors:0,staleServed:0,duplicates:0,latencyMs:0,lastDurationMs:0,deferred:0,queued:0,inFlight:0,newArticles:0,lastParseMs:0,lastClassifyMs:0,lastDedupeMs:0,lastArchiveMs:0};this.hostCooldowns=new Map();
     this.hydrate();this.writer=new AtomicJsonWriter(persistencePath,()=>({version:1,states:Object.fromEntries(this.states),corpus:this.corpus,metrics:this.metrics}));
   }
   state(id){if(!this.states.has(id))this.states.set(id,initialState());return this.states.get(id);}
@@ -30,6 +31,7 @@ export class RssCanonicalPipeline {
     const started=this.now(),deadline=started+this.cycleDeadlineMs,selected=this.selectEligible(started),global=new Semaphore(this.globalConcurrency);
     this.controller=new AbortController();const signal=this.controller.signal;const timer=setTimeout(()=>this.controller.abort(new DOMException('RSS cycle deadline','TimeoutError')),this.cycleDeadlineMs);
     this.metrics.queued=selected.length;this.metrics.deferred=0;const known=new Set([...this.corpus,...[...this.states.values()].flatMap(s=>s.articles||[])].map(articleIdentity));
+    this.metrics.lastParseMs=0;this.metrics.lastClassifyMs=0;
     try {
       const results=await Promise.all(selected.map(async feed=>{
         let startedFeed=false;const host=new URL(feed.canonicalUrl).host;
@@ -44,8 +46,12 @@ export class RssCanonicalPipeline {
       const incoming=results.filter(r=>r.status==='ok'||r.status==='empty').flatMap(r=>r.articles||[]);
       this.metrics.newArticles=new Set(incoming.map(articleIdentity).filter(id=>!known.has(id))).size;
       // Un callback por lote; 304/fallo/deferred no reingieren el corpus antiguo.
-      if(incoming.length)this.onCollected?.(incoming);
+      const archiveStarted=performance.now();
+      if(incoming.length)await this.onCollected?.(incoming);
+      this.metrics.lastArchiveMs=performance.now()-archiveStarted;
+      const dedupeStarted=performance.now();
       const merged=deduplicateRssArticles([...this.corpus,...results.flatMap(r=>r.articles||[])],{maxItems:this.maxCorpusItems});
+      this.metrics.lastDedupeMs=performance.now()-dedupeStarted;
       this.corpus=merged.items;this.metrics.cycles++;this.metrics.lastDurationMs=Math.max(0,this.now()-started);this.metrics.latencyMs+=this.metrics.lastDurationMs;
       this.generatedAt=new Date(this.now()).toISOString();this.persist();
       return { ...this.snapshot(selected.length), selectedFeedIds: selected.map(f=>f.feedId) };
@@ -73,7 +79,12 @@ export class RssCanonicalPipeline {
       const body=await readBoundedBody(response,{signal,maxBytes:this.maxResponseBytes});signal.throwIfAborted();const xml=body.toString('utf8');
       if(!hasFeedEnvelope(xml)||!(/<\/(?:[\w.-]+:)?(?:rss|feed)\s*>/i.test(xml)||/<(?:[\w.-]+:)?(?:rss|feed)\b[^>]*\/\s*>/i.test(xml)) || ((xml.match(/<(?:[\w.-]+:)?(?:item|entry)\b/g)||[]).length !== (xml.match(/<\/(?:[\w.-]+:)?(?:item|entry)\s*>/g)||[]).length))throw Error('rss-malformed-xml');
       const fetchedAt=new Date(this.now()).toISOString();
-      const articles=parseFeedArticles(xml,feed.label,feed,this.maxItemsPerFeed).map(a=>classifyRssArticle({...a,id:articleIdentity(a),receivedAt:fetchedAt,provenance:{...a.provenance,feedId:feed.feedId,sourceId:feed.sourceId,sourceType:feed.type,queryProvider:feed.queryProvider,canonicalUrl:feed.canonicalUrl,fetchedAt,pipeline:'canonical-rss',stale:false}}));
+      const parseStarted=performance.now();
+      const parsed=parseFeedArticles(xml,feed.label,feed,this.maxItemsPerFeed);
+      this.metrics.lastParseMs+=performance.now()-parseStarted;
+      const classifyStarted=performance.now();
+      const articles=parsed.map(a=>classifyRssArticle({...a,id:articleIdentity(a),receivedAt:fetchedAt,provenance:{...a.provenance,feedId:feed.feedId,sourceId:feed.sourceId,sourceType:feed.type,queryProvider:feed.queryProvider,canonicalUrl:feed.canonicalUrl,fetchedAt,pipeline:'canonical-rss',stale:false}}));
+      this.metrics.lastClassifyMs+=performance.now()-classifyStarted;
       signal.throwIfAborted();
       if (this.now() >= Math.min(deadline, now + this.timeoutMs)) throw new DOMException('RSS parse budget exceeded','TimeoutError');
       state.etag=response.headers.get('etag')||null;state.lastModified=response.headers.get('last-modified')||null;state.lastSuccessAt=this.now();state.consecutiveErrors=0;state.healthStatus='healthy';state.cooldownUntil=null;state.error=null;state.articles=articles;state.status=articles.length?'ok':'empty';

@@ -2,12 +2,13 @@ import { Semaphore } from "../shared/cancellableSemaphore.js";
 import { readBoundedBody } from "../shared/boundedResponse.js";
 import { ProviderError, ProviderErrorCode, errorFromResponse } from "./providerErrors.js";
 import apiQuotaTracker from "../admin/apiQuotaTrackerService.js";
+import { setTimeout as delay } from "node:timers/promises";
 
 export class ProviderRuntime {
   constructor(options = {}) {
     this.fetchImpl = options.fetchImpl || ((...args) => globalThis.fetch(...args));
     this.now = options.now || Date.now;
-    this.sleep = options.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+    this.sleep = options.sleep || ((ms, signal) => delay(ms,undefined,{signal}));
     this.random = options.random || Math.random;
     this.globalSemaphore = new Semaphore(options.globalConcurrency || 12);
     this.providerConcurrency = options.providerConcurrency || 4;
@@ -76,7 +77,7 @@ export class ProviderRuntime {
         } catch (error) {
           let normalized = error;
           if (!(error instanceof ProviderError)) normalized = new ProviderError(["AbortError", "TimeoutError"].includes(error?.name) ? ProviderErrorCode.TIMEOUT : ProviderErrorCode.NETWORK, `${provider}-${["AbortError", "TimeoutError"].includes(error?.name) ? "timeout" : "network-error"}`, { provider, cause: error, retryable: true });
-          if (!options.signal?.aborted && attempt < retries && normalized.retryable) { metric.retries += 1; const base = normalized.retryAfterMs ?? Math.min(5_000, 250 * (2 ** attempt)); await this.sleep(Math.ceil(base * (0.8 + this.random() * 0.4))); continue; }
+          if (!options.signal?.aborted && attempt < retries && normalized.retryable) { metric.retries += 1; const base = normalized.retryAfterMs ?? Math.min(5_000, 250 * (2 ** attempt)); await this.sleep(Math.max(normalized.retryAfterMs || 0,Math.ceil(base * (0.8 + this.random() * 0.4))),options.signal); continue; }
           const circuit = this.circuit(circuitKey); circuit.failures += 1; if (normalized.retryable && circuit.failures >= this.failureThreshold) { circuit.state = "open"; circuit.openedAt = this.now(); }
           metric.errors += 1; metric.results[normalized.code] = (metric.results[normalized.code] || 0) + 1; throw normalized;
         } finally { clearTimeout(timeout); }

@@ -96,13 +96,14 @@ export class NvidiaNimProvider {
     };
   }
 
-  async resolveAsyncResponse(initialResponse, { headers, model, kind, inputHash, deadline }) {
+  async resolveAsyncResponse(initialResponse, { headers, model, kind, inputHash, deadline, signal }) {
     let response = initialResponse;
     let requestId = resolveRequestId(response);
     let pollCount = 0;
     const maxPolls = Math.max(1, Math.ceil(this.timeoutMs / this.pollIntervalMs));
 
     while (true) {
+      signal?.throwIfAborted();
       let payload;
       try {
         payload = await response.json();
@@ -123,10 +124,12 @@ export class NvidiaNimProvider {
       }
 
       const delay = Math.min(this.pollIntervalMs, Math.max(0, deadline - Date.now()));
-      if (delay > 0) await this.wait(delay);
+      if (delay > 0) await this.wait(delay,undefined,{signal});
       const statusEndpoint = new URL(`${this.baseUrl.pathname}/status/${encodeURIComponent(requestId)}`.replace(/\/{2,}/g, "/"), this.baseUrl);
       response = await this.runtime.fetch("nvidia", statusEndpoint, {
         method: "GET",
+        signal,
+        bufferResponse: true,
         headers,
         timeoutMs: Math.max(1_000, deadline - Date.now()),
         retries: 0,
@@ -141,7 +144,7 @@ export class NvidiaNimProvider {
     }
   }
 
-  async generate({ kind, messages, schema, inputHash, budget }) {
+  async generate({ kind, messages, schema, inputHash, budget, signal }) {
     const model = this.modelForKind(kind);
     const body = JSON.stringify({
       model,
@@ -155,6 +158,7 @@ export class NvidiaNimProvider {
     const endpoint = new URL(`${this.baseUrl.pathname}/chat/completions`.replace(/\/{2,}/g, "/"), this.baseUrl);
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt += 1) {
+      signal?.throwIfAborted();
       const lease = budget?.reserveAttempt({ estimatedTokens });
       let leaseSettled = false;
       try {
@@ -163,6 +167,8 @@ export class NvidiaNimProvider {
         if (this.apiKey) headers.Authorization = `Bearer ${this.apiKey}`;
         const response = await this.runtime.fetch("nvidia", endpoint, {
           method: "POST",
+          signal,
+          bufferResponse: true,
           headers,
           body,
           timeoutMs: Math.max(1_000, deadline - Date.now()),
@@ -177,7 +183,7 @@ export class NvidiaNimProvider {
         if (!response.ok) {
           throw new AiProviderError("AI_UPSTREAM_4XX", `NVIDIA request failed with status ${response.status}.`, { status: response.status });
         }
-        const { payload, responseMetadata } = await this.resolveAsyncResponse(response, { headers, model, kind, inputHash, deadline });
+        const { payload, responseMetadata } = await this.resolveAsyncResponse(response, { headers, model, kind, inputHash, deadline, signal });
         const usage = responseMetadata.usage;
         budget?.settleAttempt(lease?.leaseId, { actualTokens: usage.totalTokens || null, conservative: usage.totalTokens === 0 });
         leaseSettled = true;
@@ -204,9 +210,9 @@ export class NvidiaNimProvider {
         if (!leaseSettled) {
           budget?.settleAttempt(lease?.leaseId, { actualTokens: explicitHttpFailure ? 0 : null, conservative: !explicitHttpFailure });
         }
-        if (attempt < this.maxRetries && retryable) {
+        if (!signal?.aborted && attempt < this.maxRetries && retryable) {
           const delay = Math.max(50, Math.min(30_000, Number(error.retryAfterMs) || 250 * (2 ** attempt)));
-          await this.wait(delay);
+          await this.wait(delay,undefined,{signal});
           continue;
         }
         if (error instanceof AiProviderError) throw error;
