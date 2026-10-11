@@ -9,11 +9,15 @@ export class RealtimeSocket {
     this.baseBackoffMs = 750;
     this.reconnectTimer = null;
     this.closedByClient = false;
+    this.stableTimer = null;
+    this.lastClose = null;
+    this.handlePageHide = () => this.close();
+    window.addEventListener("pagehide", this.handlePageHide);
   }
 
   setStatus(status) {
     if (typeof this.onStatusChange === "function") {
-      this.onStatusChange(status);
+      this.onStatusChange(status, this.lastClose);
     }
   }
 
@@ -23,16 +27,22 @@ export class RealtimeSocket {
   }
 
   connect() {
+    if (this.socket && this.socket.readyState <= WebSocket.OPEN) return;
+    clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
     this.closedByClient = false;
     this.setStatus("connecting");
-    this.socket = new WebSocket(this.buildUrl());
+    const socket = this.socket = new WebSocket(this.buildUrl());
 
-    this.socket.addEventListener("open", () => {
-      this.reconnectAttempts = 0;
+    socket.addEventListener("open", () => {
+      if (this.socket !== socket || this.closedByClient) return;
+      // A server repeatedly accepting then closing must still back off.
+      this.stableTimer = setTimeout(() => { this.reconnectAttempts = 0; }, 30_000);
       this.setStatus("connected");
     });
 
-    this.socket.addEventListener("message", (event) => {
+    socket.addEventListener("message", (event) => {
+      if (this.socket !== socket || this.closedByClient) return;
       try {
         const payload = JSON.parse(event.data);
         if (typeof this.onMessage === "function") {
@@ -43,35 +53,43 @@ export class RealtimeSocket {
       }
     });
 
-    this.socket.addEventListener("close", () => {
+    socket.addEventListener("close", (event) => {
+      if (this.socket !== socket) return;
+      clearTimeout(this.stableTimer);
+      this.stableTimer = null;
+      this.lastClose = { code: event.code, reason: event.reason, wasClean: event.wasClean };
       if (this.closedByClient) {
         this.setStatus("disconnected");
         return;
       }
 
+      if (event.code === 1008) { this.setStatus("error"); return; }
       this.setStatus("reconnecting");
       this.scheduleReconnect();
     });
 
-    this.socket.addEventListener("error", () => {
+    socket.addEventListener("error", () => {
+      if (this.socket !== socket || this.closedByClient) return;
       this.setStatus("error");
     });
   }
 
   scheduleReconnect() {
+    if (this.closedByClient || this.reconnectTimer) return;
     clearTimeout(this.reconnectTimer);
-    const jitter = Math.floor(Math.random() * 200);
-    const delay = Math.min(
-      this.baseBackoffMs * 2 ** this.reconnectAttempts + jitter,
-      this.maxBackoffMs
-    );
-    this.reconnectAttempts += 1;
-    this.reconnectTimer = setTimeout(() => this.connect(), delay);
+    const ceiling = this.reconnectAttempts >= 20 ? 60_000 : Math.min(this.baseBackoffMs * 2 ** Math.min(6, this.reconnectAttempts), this.maxBackoffMs);
+    const delay = Math.round(ceiling * (0.5 + Math.random() * 0.5));
+    this.reconnectAttempts = Math.min(20, this.reconnectAttempts + 1);
+    this.reconnectTimer = setTimeout(() => { this.reconnectTimer = null; this.connect(); }, delay);
   }
 
   close() {
     this.closedByClient = true;
     clearTimeout(this.reconnectTimer);
+    clearTimeout(this.stableTimer);
+    this.reconnectTimer = null;
+    this.stableTimer = null;
+    window.removeEventListener("pagehide", this.handlePageHide);
     if (this.socket && this.socket.readyState <= WebSocket.OPEN) {
       this.socket.close();
     }
