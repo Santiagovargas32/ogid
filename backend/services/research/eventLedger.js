@@ -73,7 +73,15 @@ export class EventLedger {
   }
   search({instrumentIds=[],eventIds=[],from,to,limit=20}={}) {
     const instruments=instrumentIds.length?instrumentIds.map(id=>listVerifiedInstruments().find(i=>i.instrumentId===id)):listVerifiedInstruments();if(instruments.some(x=>!x))throw new AppError("Instrumento no resuelto.",400,"UNRESOLVED_INSTRUMENT");
-    const events=Object.values(this.store.state.events).filter(e=>(!eventIds.length||eventIds.includes(e.eventId))&&(!from||Date.parse(e.updatedAt)>=Date.parse(from))&&(!to||Date.parse(e.updatedAt)<=Date.parse(to))).map(e=>({...structuredClone(e),quality:{...e.quality,identityVerified:this.isIdentityVerified(e.eventId),...(!this.isIdentityVerified(e.eventId)?{identityReason:e.identityVersion!=="source-publication-v2"?"legacy_identity_requires_replay":"publication_identity_insufficient"}:{})},impacts:this.impact(e,instruments)})).filter(e=>!instrumentIds.length||e.impacts.length).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)||a.eventId.localeCompare(b.eventId));
-    return {events:events.slice(0,limit),total:events.length,hasMore:events.length>limit,asOf:new Date(this.now()).toISOString(),snapshotId:`events-${this.store.state.revision}`,methodVersion:"event-ledger-v2",coverage:{storedEvents:Object.keys(this.store.state.events).length,legacyRequiresReplay:Object.values(this.store.state.events).filter(e=>e.identityVersion!=="source-publication-v2").length,continuity:"not-guaranteed",revisionHistoryLimit:20,evidenceLimit:50},warnings:["Legacy URL-based event IDs require replay from original sources; excluded from impacts, preserved for audit.","Republished wires are one origin; unknown provenance cannot establish corroboration.","A topic or named company does not establish benefit, contract award or price causality."]};
+    // Resolve/filter before cloning evidence and revision history. A scoped query
+    // must not copy the entire archive only to discard unrelated publications.
+    const matching=Object.values(this.store.state.events)
+      .filter(e=>(!eventIds.length||eventIds.includes(e.eventId))&&(!from||Date.parse(e.updatedAt)>=Date.parse(from))&&(!to||Date.parse(e.updatedAt)<=Date.parse(to)))
+      .map(event=>({event,impacts:this.impact(event,instruments)}))
+      .filter(row=>!instrumentIds.length||row.impacts.length)
+      .sort((a,b)=>b.event.updatedAt.localeCompare(a.event.updatedAt)||a.event.eventId.localeCompare(b.event.eventId));
+    const total=matching.length;
+    const events=matching.slice(0,limit).map(({event:e,impacts})=>({...structuredClone(e),quality:{...e.quality,identityVerified:this.isIdentityVerified(e.eventId),...(!this.isIdentityVerified(e.eventId)?{identityReason:e.identityVersion!=="source-publication-v2"?"legacy_identity_requires_replay":"publication_identity_insufficient"}:{})},impacts}));
+    return {events,total,hasMore:total>limit,asOf:new Date(this.now()).toISOString(),snapshotId:`events-${this.store.state.revision}`,methodVersion:"event-ledger-v2",coverage:{storedEvents:Object.keys(this.store.state.events).length,legacyRequiresReplay:Object.values(this.store.state.events).filter(e=>e.identityVersion!=="source-publication-v2").length,continuity:"not-guaranteed",revisionHistoryLimit:20,evidenceLimit:50},warnings:["Legacy URL-based event IDs require replay from original sources; excluded from impacts, preserved for audit.","Republished wires are one origin; unknown provenance cannot establish corroboration.","A topic or named company does not establish benefit, contract award or price causality."]};
   }
 }
