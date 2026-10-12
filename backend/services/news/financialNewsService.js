@@ -271,13 +271,13 @@ export function classifyFinancialArticle(article = {}) {
   };
 }
 
-export function partitionNewsArticles(articles = []) {
+export function partitionNewsArticles(articles = [], { reuseClassification = false } = {}) {
   const geopolitical = [];
   const financial = [];
   const hybrid = [];
 
   for (const article of Array.isArray(articles) ? articles : []) {
-    const classified = classifyFinancialArticle(article);
+    const classified = reuseClassification && article.financial ? article : classifyFinancialArticle(article);
     const isFinancial = classified.financial.isFinancial;
     const hasGeopoliticalSignal = Number(article?.conflict?.totalWeight || 0) > 0;
 
@@ -450,7 +450,8 @@ export function buildFinancialNewsSelection({
   candidateWindowHours = 72,
   analyzeLimit = 80,
   displayLimit = 40,
-  maxPerSource = 4
+  maxPerSource = 4,
+  reuseClassification = false
 } = {}) {
   const nowMs = new Date(now).getTime();
   const safeNowMs = Number.isFinite(nowMs) ? nowMs : Date.now();
@@ -458,14 +459,14 @@ export function buildFinancialNewsSelection({
   const candidateWindowMs = boundedWindowHours * 60 * 60 * 1_000;
 
   const financialCandidates = articles
-    .map(classifyFinancialArticle)
+    .map(article => reuseClassification && article.financial ? article : classifyFinancialArticle(article))
     .filter((article) => article.financial.isFinancial)
     .filter((article) => {
       const timestamp = publishedTime(article);
       return timestamp > 0 && safeNowMs - timestamp <= candidateWindowMs;
     })
     .map((article) => {
-      const importance = scoreFinancialImportance(article);
+      const importance = reuseClassification && article.financial.importance ? article.financial.importance : scoreFinancialImportance(article);
       const freshness = recencyScore(article, safeNowMs, candidateWindowMs);
       return {
         ...article,

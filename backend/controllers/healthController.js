@@ -6,9 +6,10 @@ export function getHealth(req, res) {
   const socketServer = res.app.locals.socketServer;
   const config = res.app.locals.config;
   const orchestrator = res.app.locals.orchestrator;
+  const storage=res.app.locals.storageManager?.getStatus?.() || null;
   const meta = stateManager.getMeta();
-  const snapshot = stateManager.getSnapshot();
-  const quoteCount = Object.keys(snapshot?.market?.quotes || {}).length;
+  const snapshot = { market: stateManager.state.market };
+  const quoteCount = Object.values(snapshot?.market?.quotes || {}).filter(q=>Number.isFinite(q.price)&&q.price>0&&!q.synthetic).length;
   const websocket = socketServer?.getHealth?.() || {
     clientCount: socketServer?.clientCount?.() ?? 0,
     path: config?.wsPath || "/ws",
@@ -25,7 +26,10 @@ export function getHealth(req, res) {
   res.json({
     ok: true,
     data: {
-      status: "ok",
+      status:(storage&&(!["ready","disabled"].includes(storage.state)||storage.analysis?.state === "failed"))||Object.values(res.app.locals.pipelineMonitor?.snapshot() || {}).some(s=>["degraded","blocked","failed","stale"].includes(s.status))?"degraded":"ok",
+      storage: administrative ? storage : storage && {state:storage.state,businessStorage:storage.businessStorage,lastErrorCode:storage.lastErrorCode,queue:storage.queue,analysis:storage.analysis&&{state:storage.analysis.state,queue:storage.analysis.queue,lastErrorCode:storage.analysis.lastErrorCode}},
+      pipeline: res.app.locals.pipelineMonitor?.snapshot() || {},
+      server:{pid:process.pid,nodeVersion:process.version,startedAt:new Date(Date.now()-process.uptime()*1000).toISOString(),memory:process.memoryUsage()},
       build: BACKEND_BUILD,
       timestamp: new Date().toISOString(),
       uptimeSeconds: Math.floor(process.uptime()),

@@ -190,11 +190,12 @@ export class MarketDataService {
     force = false,
     allowStale = true,
     providerRetries = undefined,
+    maxCacheAgeMs = Infinity,
   } = {}) {
     const normalizedSymbol = normalizeYahooSymbol(symbol);
     const range = resolveMarketDataRange({ period, interval, from, to, now: this.now() });
     const ttlMs = this.ttlByInterval[range.interval];
-    const stored = this.store.getBars({
+    const stored = await this.store.getBars({
       symbol: normalizedSymbol,
       period: range.period,
       interval: range.interval,
@@ -203,7 +204,7 @@ export class MarketDataService {
       ttlMs,
       range,
     });
-    if (!force && stored.cached && !stored.stale && coversRequestedRange(stored, range, normalizedSymbol)) {
+    if (!force && stored.cached && !stored.stale && new Date(this.now()).getTime()-Date.parse(stored.storedAt)<=maxCacheAgeMs && coversRequestedRange(stored, range, normalizedSymbol)) {
       return this.#dataset(normalizedSymbol, range, stored.bars, { cached: true, stale: false, fetchedAt: stored.storedAt });
     }
 
@@ -280,7 +281,16 @@ export class MarketDataService {
       ttlMs: this.ttlByInterval[range.interval],
       range,
     });
-    return this.#dataset(normalizedSymbol, range, stored.bars, { cached: stored.cached, stale: stored.stale, complete: coversRequestedRange(stored, range, normalizedSymbol), fetchedAt: stored.storedAt });
+    const project=value=>this.#dataset(normalizedSymbol,range,value.bars,{cached:value.cached,stale:value.stale,complete:coversRequestedRange(value,range,normalizedSymbol),fetchedAt:value.storedAt});
+    return stored?.then ? stored.then(project) : project(stored);
+  }
+
+  async fetchYahooCandles(symbol, options = {}) {
+    const dataset=await this.fetchYahooBars(symbol,{maxCacheAgeMs:60000,...options});
+    const now=new Date(this.now()).getTime();
+    const observedAt=Date.parse(dataset.fetchedAt) || now;
+    const candles=dataset.bars.map(bar=>this.store.toCanonicalCandle(bar,dataset.interval,{fetchedAt:dataset.fetchedAt || new Date(now).toISOString()})).filter(candle=>candle && Date.parse(candle.closeTime)<=Math.min(now,observedAt)).map(candle=>dataset.stale ? {...candle,dataMode:"stale",provenance:{...candle.provenance,stale:true}} : candle);
+    return {...dataset,candles:candles.slice(-Math.min(500,Math.max(1,Number(options.limit)||100)))};
   }
 
   async ensureMarketData(symbols, options = {}) {
@@ -371,7 +381,14 @@ export class MarketDataService {
     if (values.length === 0) return [];
     const raw = await this.yahooClient.quote(values);
     const candidates = Array.isArray(raw) ? raw : Object.values(raw || {});
-    return candidates.map((value) => normalizeYahooQuote(value, { now: this.now() })).filter(Boolean);
+    const observations=[],rejections=[];
+    for(const raw of candidates){
+      const normalized=normalizeYahooQuote(raw,{now:this.now()});
+      if(normalized)observations.push(normalized);
+      else rejections.push({symbol:typeof raw?.symbol === "string" ? raw.symbol.slice(0,40) : null,code:"YAHOO_INVALID_OBSERVATION",reason:!raw?.regularMarketTime?"missing-market-time":!Number.isFinite(Number(raw?.regularMarketPrice))||Number(raw?.regularMarketPrice)<=0?"invalid-price":"invalid-symbol-or-market-time"});
+    }
+    this.lastQuoteDiagnostics={endpoint:"quote",requested:values.length,rawReturned:candidates.length,returned:observations.length,rejected:rejections.length,rejections};
+    return observations;
   }
 
   async resolveInstrument(symbol) {
@@ -397,7 +414,9 @@ export class MarketDataService {
         cacheEntries: this.searchCache.entries(new Date(this.now()).getTime()).length,
         last: this.lastSearch ? structuredClone(this.lastSearch) : null,
       },
+      quotes:this.lastQuoteDiagnostics || null,
       client: this.yahooClient?.snapshot?.() || null,
+      persistence: this.store.getPersistenceStatus?.() || null,
       generatedAt: new Date(this.now()).toISOString(),
     };
   }

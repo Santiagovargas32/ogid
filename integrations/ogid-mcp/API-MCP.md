@@ -2,12 +2,14 @@
 
 Contrato 1.3.0. Generado desde backend/contracts/ogidOperations.js; no editar a mano.
 
-71 rutas JSON con método; 47 operaciones de investigación y 33 de operador. Las variantes almacenadas/proveedor comparten algunas rutas.
+73 rutas JSON con método; 49 operaciones de investigación y 33 de operador. Las variantes almacenadas/proveedor comparten algunas rutas.
 
 Las cuatro herramientas compatibles se conservan. ogid_get_awareness_sources compone el catálogo local versionado y la salud pública Awareness, sin una ruta adicional. El inventario cubre las rutas de backend/routes montadas bajo /api; WebSocket, archivos estáticos y transporte del túnel tienen contratos independientes.
 
 | Operación | Método y ruta | Herramienta | Perfil / permiso | Proyección | Efectos / coste |
 | --- | --- | --- | --- | --- | --- |
+| intel.sync | GET /api/intel/sync | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
+| intel.changes | GET /api/intel/changes | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
 | health | GET /api/health | ogid_health | research / read:stored | health | stored/local-calculation; no-provider |
 | health.live | GET /api/health/live | ogid_query | research / read:stored | health | stored/local-calculation; no-provider |
 | health.ready | GET /api/health/ready | ogid_query | research / read:stored | health | stored/local-calculation; no-provider |
@@ -94,6 +96,74 @@ Las cuatro herramientas compatibles se conservan. ogid_get_awareness_sources com
 Los query arrays viajan como CSV tipado; no se permiten claves extra, cabeceras, URLs o rutas libres. fixed se añade exclusivamente en el cliente y se verifica en backend para operador. La API existente mantiene su autenticación sensible; el permiso MCP añade credenciales de alcance, sin retirarla.
 
 researchRoutes.integration.test.js compara todas las rutas montadas con este registro y ejecuta todas las lecturas contra backend real con proveedores bloqueados. operations.test.js verifica todas las operaciones operador mediante fixtures HTTP, métodos, permisos y cuerpos; no demuestra ejecución de proveedores reales. Las pruebas de archivo, protocolo y e2e comprueban los contratos especializados.
+
+### intel.sync
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "resource": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "epoch": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "revision": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 2147483647
+      },
+      "cursor": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 2147483647
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### intel.changes
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "epoch": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "since": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 2147483647
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
 
 ### health
 
@@ -1279,6 +1349,12 @@ Retención: current snapshot; consult response coverage. Procedencia: OGID runti
           "splits",
           "none"
         ]
+      },
+      "source": {
+        "type": "string",
+        "enum": [
+          "stored"
+        ]
       }
     },
     "required": [
@@ -1288,7 +1364,9 @@ Retención: current snapshot; consult response coverage. Procedencia: OGID runti
   },
   "body": null,
   "pathParameters": null,
-  "fixed": {}
+  "fixed": {
+    "source": "stored"
+  }
 }
 ```
 
@@ -3596,6 +3674,13 @@ Retención: current snapshot; consult response coverage. Procedencia: OGID runti
         "enum": [
           "splits",
           "none"
+        ]
+      },
+      "source": {
+        "type": "string",
+        "enum": [
+          "stored",
+          "yahoo"
         ]
       }
     },

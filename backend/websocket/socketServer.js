@@ -1,4 +1,9 @@
 import { WebSocket, WebSocketServer } from "ws";
+import { randomUUID } from "node:crypto";
+import { performance } from "node:perf_hooks";
+import { StateSync } from "./stateSync.js";
+import { BoundedTransport, closeBounded, TRANSPORT_DEFAULTS } from "./boundedTransport.js";
+export { sendBoundedEnvelope } from "./boundedTransport.js";
 import { normalizeIp, resolveClientIp } from "../utils/clientIp.js";
 import { createLogger } from "../utils/logger.js";
 import { sanitizeSensitiveData } from "../utils/sanitize.js";
@@ -14,31 +19,6 @@ function createEnvelope(type, data, meta = {}) {
     data,
     meta
   });
-}
-
-function closeBounded(client, code, reason) {
-  if (client.runtimeCloseReason) return;
-  client.runtimeCloseReason = reason;
-  client.close(code, reason);
-  // Give the close frame a chance to reach the peer; bound a stalled TCP close.
-  const timer = setTimeout(() => client.terminate(), 1_000);
-  timer.unref?.();
-  client.once("close", () => clearTimeout(timer));
-}
-
-export function sendBoundedEnvelope(client, envelope) {
-  if (client.readyState !== WebSocket.OPEN || client.runtimeCloseReason) return false;
-  if (client.bufferedAmount + Buffer.byteLength(envelope) > 1_000_000) {
-    closeBounded(client, 1013, "resync-required");
-    return false;
-  }
-  try {
-    client.send(envelope, error => { if (error) closeBounded(client, 1011, "send-failed"); });
-    return true;
-  } catch {
-    closeBounded(client, 1011, "send-failed");
-    return false;
-  }
 }
 
 function normalizeHeader(value = "") {
@@ -159,6 +139,13 @@ function safeOrigin(value) {
 
 function summarizeConnection(connection = {}) {
   return {
+    connectionId: connection.connectionId || null,
+    durationMs: Number.isFinite(connection.durationMs) ? connection.durationMs : null,
+    requestedCloseCode: connection.requestedCloseCode || null,
+    requestedCloseReason: connection.requestedCloseReason || null,
+    closeFrameSent: connection.closeFrameSent ?? null,
+    closeFrameReceived: connection.closeFrameReceived ?? null,
+    anomalous: connection.closeCode === 1006,
     clientIp: connection.clientIp || null,
     remoteAddress: connection.remoteAddress || null,
     expressIp: connection.expressIp || null,
@@ -186,46 +173,30 @@ function trackEvent(events, type, connection = {}, extra = {}) {
   }
 }
 
-function buildMarketBootstrapPayload(snapshot = {}) {
-  const market = snapshot.market || {};
-  const quotes = market.quotes || {};
-  const orderedTickers = Object.keys(quotes);
-
-  return {
-    market: {
-      provider: market.provider || "market-router",
-      sourceMode: market.sourceMode || "fallback",
-      updatedAt: market.updatedAt || null,
-      revision: market.revision || null,
-      session: market.session || null,
-      sourceMeta: {
-        provider: market.sourceMeta?.provider || market.provider || "market-router",
-        effectiveProvider: market.sourceMeta?.effectiveProvider || market.provider || null,
-        providerScore: market.sourceMeta?.providerScore ?? null,
-        providerLatencyMs: market.sourceMeta?.providerLatencyMs ?? null,
-        marketSession: market.sourceMeta?.marketSession || market.session || null,
-        upstreamPaused: market.sourceMeta?.upstreamPaused === true,
-        pauseReason: market.sourceMeta?.pauseReason || null
-      },
-      coverageByMode: market.sourceMeta?.coverageByMode || null,
-      quotes: Object.fromEntries(orderedTickers.map((ticker) => [ticker, quotes[ticker]]))
-    }
-  };
-}
-
-export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000, stateManager, trustedProxyIps = [], allowedOrigins = [] }) {
+export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000, stateManager, transportLimits = {}, trustedProxyIps = [], allowedOrigins = [] }) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
   const clients = new Set();
+  const sync = new StateSync(stateManager);
+  const transportSamples = [];
   const recentEvents = [];
   const websocketState = {
     lastConnection: null,
     lastDisconnection: null
   };
   const metrics = { upgradeRejected: 0, envelopes: 0, bytes: 0, dropped: 0, maxBufferedBytes: 0, heartbeatTimeouts: 0, closeCodes: {} };
-  function send(client, envelope) {
-    metrics.maxBufferedBytes = Math.max(metrics.maxBufferedBytes, client.bufferedAmount);
-    if (sendBoundedEnvelope(client, envelope)) { metrics.envelopes++; metrics.bytes += Buffer.byteLength(envelope); }
-    else metrics.dropped++;
+  function observe(sample) {
+    metrics.maxBufferedBytes = Math.max(metrics.maxBufferedBytes, sample.bufferedBefore || 0, sample.bufferedAfter || 0,sample.bufferedAfterSend || 0);
+    if (sample.outcome === "sent") { metrics.envelopes++; metrics.bytes += sample.payloadBytes; }
+    else if(["coalesced","temporarily-slow"].includes(sample.outcome)){metrics[sample.outcome]=(metrics[sample.outcome] || 0)+1;}
+    else { metrics.dropped++; log.warn("ws_transport_pressure", sample); }
+    metrics.byEvent ||= {};
+    const event = metrics.byEvent[sample.event] ||= { messages: 0, bytes: 0, maxPayloadBytes: 0, serializationMs: 0 };
+    if (sample.outcome === "sent") { event.messages++; event.bytes += sample.payloadBytes; event.maxPayloadBytes = Math.max(event.maxPayloadBytes, sample.payloadBytes); event.serializationMs += sample.serializationMs; }
+    transportSamples.push(sample); if (transportSamples.length > 20) transportSamples.shift();
+  }
+  function send(client, type, data, meta = {}, coalesceKey = null) {
+    const started = performance.now(); const envelope = createEnvelope(type, data, meta);
+    return client.boundedTransport.enqueue(envelope, { event: type, revision: data?.revision ?? sync.revision, coalesceKey, serializationMs: performance.now() - started });
   }
 
   const handleUpgrade = (request, socket, head) => {
@@ -263,9 +234,16 @@ export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000,
   server.on("upgrade", handleUpgrade);
 
   wss.on("connection", (client, request) => {
+    client.connectionId = randomUUID(); client.connectedAtMs = performance.now();
+    client.boundedTransport = new BoundedTransport(client, { limits: transportLimits, observe,
+      onOversize: (sample) => {
+        // A misconfigured budget must not recursively enqueue an oversized recovery frame.
+        if (sample.event === "resync:required:v2") closeBounded(client, 1013, "resync-required");
+        else send(client, "resync:required:v2", { ...sync.manifest(), reason: "payload-too-large" }, {}, "resync");
+      } });
     client.isAlive = true;
     client.missedPongs = 0;
-    client.connectionInfo = request?.wsConnectionInfo || buildConnectionInfo(request, path);
+    client.connectionInfo = {...(request?.wsConnectionInfo || buildConnectionInfo(request,path)),connectionId:client.connectionId};
     clients.add(client);
 
     client.on("pong", () => {
@@ -296,7 +274,14 @@ export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000,
         ...client.connectionInfo,
         disconnectedAt,
         closeCode,
-        closeReason: client.runtimeCloseReason || sanitizeSensitiveData(closeReason).slice(0, 123) || null
+        closeReason: sanitizeSensitiveData(closeReason).slice(0, 123) || null,
+        connectionId: client.connectionId,
+        durationMs: performance.now() - client.connectedAtMs,
+        requestedCloseCode: client.runtimeCloseCode || null,
+        requestedCloseReason: client.runtimeCloseReason || null,
+        closeFrameSent: typeof client._closeFrameSent === "boolean" ? client._closeFrameSent : null,
+        closeFrameReceived: typeof client._closeFrameReceived === "boolean" ? client._closeFrameReceived : null,
+        anomalous: closeCode === 1006
       };
 
       websocketState.lastDisconnection = summarizeConnection(connectionInfo);
@@ -317,11 +302,7 @@ export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000,
       });
     });
 
-    const snapshot = stateManager.getSnapshot();
-    if (client.readyState === WebSocket.OPEN) {
-      send(client, createEnvelope("market:quotes-bootstrap:v1", buildMarketBootstrapPayload(snapshot), snapshot.meta));
-      send(client, createEnvelope("snapshot", snapshot, snapshot.meta));
-    }
+    send(client, "ws:ready:v2", sync.manifest());
 
     websocketState.lastConnection = summarizeConnection(client.connectionInfo);
     trackEvent(recentEvents, "connect", client.connectionInfo, {
@@ -350,7 +331,7 @@ export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000,
       client.isAlive = false;
       if (client.readyState === WebSocket.OPEN) {
         client.ping();
-        send(client, createEnvelope("heartbeat", { ok: true }, { clients: clients.size }));
+        send(client, "heartbeat", { ok: true }, { clients: clients.size }, "heartbeat");
       }
     }
   }, heartbeatMs);
@@ -358,12 +339,17 @@ export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000,
   heartbeatTimer.unref?.();
 
   return {
+    sync,
     broadcast(type, data, meta = {}) {
-      if (!clients.size) return;
-      const envelope = createEnvelope(type, data, meta);
-      for (const client of clients) {
-        send(client, envelope);
+      if (["snapshot", "update", "ai:update:v1", "awareness:update:v1"].includes(type)) {
+        const resources = type === "awareness:update:v1" ? ["awareness"] : type === "ai:update:v1" ? ["ai"] : Object.keys(data || {});
+        const change = sync.change(resources); if (!change) return;
+        // A replacement includes all current resource revisions: coalescing cannot lose invalidations.
+        const latest = { ...change, resources: sync.manifest().resources };
+        for (const client of clients) send(client, "state:revision:v2", latest, {}, "state");
+        return;
       }
+      for (const client of clients) send(client, type, data, meta);
     },
     clientCount() {
       return clients.size;
@@ -374,9 +360,13 @@ export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000,
         path,
         heartbeatMs,
         metrics: { ...metrics, closeCodes: { ...metrics.closeCodes } },
+        synchronization: { ...sync.manifest(), metrics: { ...sync.metrics } },
+        transportLimits: { ...TRANSPORT_DEFAULTS, ...transportLimits },
+        transportSamples: transportSamples.slice(),
+        pendingMessages: [...clients].reduce((n,c) => n + c.boundedTransport.queue.length, 0),
         activeConnections: Array.from(clients)
           .slice(0, MAX_ACTIVE_CONNECTIONS)
-          .map((client) => summarizeConnection(client.connectionInfo)),
+          .map((client) => summarizeConnection({...client.connectionInfo,durationMs:performance.now()-client.connectedAtMs})),
         lastConnection: websocketState.lastConnection,
         lastDisconnection: websocketState.lastDisconnection,
         recentEvents: recentEvents.slice(-MAX_EVENT_HISTORY)

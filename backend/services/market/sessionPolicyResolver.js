@@ -1,4 +1,5 @@
 import { cashCalendarSchedule, expectedIntradayGapCount } from "./exchangeCalendar.js";
+import { dateTimeFormatter } from "../../utils/dateTimeFormat.js";
 const FIVE_MINUTES_MS = 5 * 60_000;
 const FX_WEEKLY_OPEN_MINUTE = 17 * 60;
 const FX_WEEKLY_CLOSE_MINUTE = 17 * 60;
@@ -51,7 +52,7 @@ function floorTimestamp(timestamp, intervalMs = FIVE_MINUTES_MS) {
 
 function localParts(value, timeZone) {
   try {
-    const parts = new Intl.DateTimeFormat("en-CA", {
+    const parts = dateTimeFormatter("en-CA", {
       timeZone,
       hour12: false,
       year: "numeric",
@@ -218,6 +219,7 @@ function futuresSchedule(parts, timeZone, profile, asOfMs, intervalMs) {
 }
 
 export class SessionPolicyResolver {
+  constructor(){this.cache=new Map();}
   canonicalPolicy(instrument = {}) {
     const assetType = normalizedAssetType(instrument);
     if (assetType === "crypto") return "24x7";
@@ -300,6 +302,15 @@ export class SessionPolicyResolver {
   }
 
   resolve(instrument = {}, value = new Date(), { intervalMs = FIVE_MINUTES_MS } = {}) {
+    const timestamp=new Date(value).getTime();
+    const key=JSON.stringify([timestamp,intervalMs,instrument.assetType,instrument.quoteType,instrument.sessionPolicy,instrument.mic,instrument.calendarId,instrument.exchange,instrument.timezone,instrument.sessionProfile,instrument.providerSession]);
+    if(this.cache.has(key)){const result=this.cache.get(key);this.cache.delete(key);this.cache.set(key,result);return structuredClone(result);}
+    const result=this.#resolve(instrument,value,{intervalMs});this.cache.set(key,result);
+    if(this.cache.size>4096)this.cache.delete(this.cache.keys().next().value);
+    return structuredClone(result);
+  }
+
+  #resolve(instrument = {}, value = new Date(), { intervalMs = FIVE_MINUTES_MS } = {}) {
     const asOfMs = new Date(value).getTime();
     if (!Number.isFinite(asOfMs)) throw new TypeError("invalid-session-policy-as-of");
     const quality = this.quality(instrument);

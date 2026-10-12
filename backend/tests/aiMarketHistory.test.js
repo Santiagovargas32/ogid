@@ -106,11 +106,11 @@ test("market cache invalidates for changed evidence, observed prices, candle tim
 test("one job per cycle rotates instruments, keeps three accepted results, and does no work when inputs are exhausted", async () => {
   const h = harness();
   const input = fixture();
-  h.coordinator.reconcileNewsSnapshot(input);
+  await h.coordinator.reconcileNewsSnapshot(input);
   await idle(h.coordinator);
   for (let index = 1; index < 4; index += 1) {
     h.tick();
-    assert.equal(h.coordinator.reconcileMarketSnapshot(input).scheduled, 1);
+    assert.equal((await h.coordinator.reconcileMarketSnapshot(input)).scheduled, 1);
     assert.equal(h.coordinator.getPublicProjection().marketExplanationHistory.length, Math.min(index, 3));
     await idle(h.coordinator);
   }
@@ -120,7 +120,7 @@ test("one job per cycle rotates instruments, keeps three accepted results, and d
   assert.equal(Object.keys(projection.marketExplanations).length, 4);
   for (let index = 0; index < 3; index += 1) {
     h.tick();
-    assert.equal(h.coordinator.reconcileMarketSnapshot(input).scheduled, 0);
+    assert.equal((await h.coordinator.reconcileMarketSnapshot(input)).scheduled, 0);
   }
   assert.equal(h.provider.calls.length, 4);
   assert.equal(h.broadcasts.at(-1).data.ai.status.active, 0);
@@ -130,15 +130,15 @@ test("one job per cycle rotates instruments, keeps three accepted results, and d
 test("unattempted instruments outrank a changed first instrument; cached subjects become eligible when evidence changes", async () => {
   const h = harness();
   const input = fixture(["LMT", "XOM"]);
-  h.coordinator.reconcileNewsSnapshot(input);
+  await h.coordinator.reconcileNewsSnapshot(input);
   await idle(h.coordinator);
   h.tick();
   input.snapshot.impact.items[0].quote.price += 1;
-  h.coordinator.reconcileMarketSnapshot(input);
+  await h.coordinator.reconcileMarketSnapshot(input);
   await idle(h.coordinator);
   assert.equal(h.store.list().items[0].subjectId, "instrument-XOM");
   h.tick();
-  assert.equal(h.coordinator.reconcileMarketSnapshot(input).scheduled, 1);
+  assert.equal((await h.coordinator.reconcileMarketSnapshot(input)).scheduled, 1);
   await idle(h.coordinator);
   assert.deepEqual(h.coordinator.getPublicProjection().marketExplanationHistory.map((entry) => entry.ticker), ["LMT", "XOM", "LMT"]);
 });
@@ -146,12 +146,12 @@ test("unattempted instruments outrank a changed first instrument; cached subject
 test("changed model invalidates the market cache while an older accepted answer remains visible", async () => {
   const h = harness();
   const input = fixture(["LMT"]);
-  h.coordinator.reconcileNewsSnapshot(input);
+  await h.coordinator.reconcileNewsSnapshot(input);
   await idle(h.coordinator);
   const original = h.coordinator.getPublicProjection().marketExplanationHistory[0];
   h.tick();
   h.provider.model = "new-model";
-  assert.equal(h.coordinator.reconcileMarketSnapshot(input).scheduled, 1);
+  assert.equal((await h.coordinator.reconcileMarketSnapshot(input)).scheduled, 1);
   assert.deepEqual(h.coordinator.getPublicProjection().marketExplanationHistory, [original]);
   await idle(h.coordinator);
   assert.deepEqual(h.coordinator.getPublicProjection().marketExplanationHistory.map((entry) => entry.model), ["new-model", "mock-grounded-v1"]);
@@ -162,11 +162,11 @@ test("overlapping news/market cycles do not run two revisions of one instrument 
   const h = harness({ handler: async (request) => { await new Promise((resolve) => releases.push(resolve)); return output(request); } });
   const input = fixture(["LMT", "XOM"]);
   try {
-    h.coordinator.reconcileNewsSnapshot(input);
+    await h.coordinator.reconcileNewsSnapshot(input);
     h.tick();
     input.snapshot.impact.items[0].quote.price += 1;
-    h.coordinator.reconcileMarketSnapshot(input);
-    h.coordinator.reconcileNewsSnapshot(input);
+    await h.coordinator.reconcileMarketSnapshot(input);
+    await h.coordinator.reconcileNewsSnapshot(input);
     assert.equal(h.provider.calls.length, 2);
     assert.equal(h.coordinator.active, 2);
     assert.equal(h.coordinator.queue.length, 0);
@@ -181,7 +181,7 @@ test("queue capacity and per-cycle limits still apply to market scheduling", asy
   const releases = [];
   const h = harness({ maxJobsPerCycle: 4, maxQueueSize: 3, handler: async (request) => { await new Promise((resolve) => releases.push(resolve)); return output(request); } });
   try {
-    assert.equal(h.coordinator.reconcileNewsSnapshot(fixture()).scheduled, 3);
+    assert.equal((await h.coordinator.reconcileNewsSnapshot(fixture())).scheduled, 3);
     assert.equal(h.coordinator.active, 2);
     assert.equal(h.coordinator.queue.length, 1);
   } finally {
@@ -200,14 +200,14 @@ test("failed and rejected revisions preserve accepted history and do not monopol
     return output(request);
   } });
   const input = fixture(["LMT"]);
-  h.coordinator.reconcileNewsSnapshot(input);
+  await h.coordinator.reconcileNewsSnapshot(input);
   await idle(h.coordinator);
   const accepted = h.coordinator.getPublicProjection().marketExplanationHistory;
   for (const status of ["failed", "rejected"]) {
     behavior = status;
     h.tick();
     input.snapshot.impact.items[0].quote.price += 1;
-    h.coordinator.reconcileMarketSnapshot(input);
+    await h.coordinator.reconcileMarketSnapshot(input);
     await idle(h.coordinator);
     const projection = h.coordinator.getPublicProjection();
     assert.deepEqual(projection.marketExplanationHistory, accepted);
@@ -215,7 +215,7 @@ test("failed and rejected revisions preserve accepted history and do not monopol
   }
   behavior = "ready";
   h.tick();
-  h.coordinator.reconcileNewsSnapshot(fixture(["LMT", "XOM"]));
+  await h.coordinator.reconcileNewsSnapshot(fixture(["LMT", "XOM"]));
   await idle(h.coordinator);
   assert.equal(h.store.list().items[0].subjectId, "instrument-XOM");
 });
@@ -226,28 +226,28 @@ test("restart restores the full visible history before scheduling, retains dedup
   const persistencePath = join(directory, "enrichments.json");
   const h = harness({ store: new AiEnrichmentStore({ persistencePath }) });
   const input = fixture();
-  h.coordinator.reconcileNewsSnapshot(input);
+  await h.coordinator.reconcileNewsSnapshot(input);
   await idle(h.coordinator);
   for (let index = 1; index < 4; index += 1) {
     h.tick();
-    h.coordinator.reconcileMarketSnapshot(input);
+    await h.coordinator.reconcileMarketSnapshot(input);
     await idle(h.coordinator);
   }
   const expected = h.coordinator.getPublicProjection().marketExplanationHistory;
   const restored = harness({ store: new AiEnrichmentStore({ persistencePath }), handler: () => assert.fail("persisted cache must avoid provider calls") });
-  assert.equal(restored.coordinator.reconcileNewsSnapshot(input).scheduled, 0);
+  assert.equal((await restored.coordinator.reconcileNewsSnapshot(input)).scheduled, 0);
   assert.deepEqual(restored.coordinator.getPublicProjection().marketExplanationHistory, expected);
   assert.equal(restored.provider.calls.length, 0);
-  restored.coordinator.reconcileNewsSnapshot(fixture(["LMT"]));
+  await restored.coordinator.reconcileNewsSnapshot(fixture(["LMT"]));
   assert.deepEqual(restored.coordinator.getPublicProjection().marketExplanationHistory.map((entry) => entry.ticker), ["LMT"]);
   assert.deepEqual(Object.keys(restored.coordinator.getPublicProjection().marketExplanations), ["instrument-LMT"]);
-  restored.coordinator.reconcileNewsSnapshot(fixture([]));
+  await restored.coordinator.reconcileNewsSnapshot(fixture([]));
   assert.deepEqual(restored.coordinator.getPublicProjection().marketExplanationHistory, []);
 });
 
 test("shadow and off never expose accepted market history", async () => {
   const h = harness({ mode: "shadow" });
-  h.coordinator.reconcileNewsSnapshot(fixture(["LMT"]));
+  await h.coordinator.reconcileNewsSnapshot(fixture(["LMT"]));
   await idle(h.coordinator);
   assert.equal(h.store.summary().counts.ready, 1);
   for (const mode of ["shadow", "off"]) {
@@ -260,7 +260,7 @@ test("shadow and off never expose accepted market history", async () => {
 
 test("dashboard shows latest open with older responses nested, preserves expansion on refresh and filters hidden content", async () => {
   const h = harness({ maxJobsPerCycle: 4 });
-  h.coordinator.reconcileNewsSnapshot(fixture());
+  await h.coordinator.reconcileNewsSnapshot(fixture());
   await idle(h.coordinator);
   const ai = h.coordinator.getPublicProjection();
   const [latest, previous] = ai.marketExplanationHistory;

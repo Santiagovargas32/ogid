@@ -88,3 +88,12 @@ test("resolveNewsPolicy returns interval and page size for worst provider band",
   assert.equal(policy.intervalMs, 2_700_000);
   assert.equal(policy.pageSize, 40);
 });
+
+test("exhausted paid providers do not delay an available RSS pipeline", () => {
+  const exhausted=[{provider:"newsapi",exhaustedDay:true},{provider:"gnews",exhaustedMinute:true}];
+  const options={intervalByBandMs:{GREEN:600000,CRITICAL:7200000},pageSizeByBand:{GREEN:100,CRITICAL:20}};
+  const policy=resolveNewsPolicy({...options,providerSnapshots:[...exhausted,{provider:"rss"}]});
+  assert.equal(policy.band,"GREEN");assert.equal(policy.intervalMs,600000);assert.equal(policy.pageSize,100);
+  assert.deepEqual(policy.skippedExhaustedProviders,["newsapi","gnews"]);
+  assert.equal(resolveNewsPolicy({...options,providerSnapshots:exhausted}).band,"CRITICAL");
+});

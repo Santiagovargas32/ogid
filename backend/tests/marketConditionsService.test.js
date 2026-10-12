@@ -477,3 +477,11 @@ test("service cache is revision-aware, clone-safe and performs zero HTTP", () =>
     globalThis.fetch = originalFetch;
   }
 });
+
+test("cached market conditions invalidate when an older candle is corrected within the same minute",()=>{
+  const target=instrument(),rows=candles(target);
+  const service=new MarketConditionsService({now:()=>new Date(AS_OF),stateManager:{getSnapshot:()=>({}),getMarketSignalCorpus:()=>[]},candleStore:{query:()=>rows},marketWatchlistService:{selectedInstruments:()=>[target]}});
+  const first=service.getSnapshot({windowMin:15}),lastTime=rows.at(-1).closeTime;
+  rows[rows.length-2]={...rows[rows.length-2],close:rows.at(-2).close-10,low:rows.at(-2).low-10,revision:2};
+  const corrected=service.getSnapshot({windowMin:15});assert.equal(rows.at(-1).closeTime,lastTime);assert.notEqual(corrected.revisions.candles,first.revisions.candles);assert.notDeepEqual(corrected.symbols[0].metrics,first.symbols[0].metrics);
+});

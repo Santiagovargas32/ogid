@@ -1,5 +1,6 @@
 import { api } from "./api.js";
 import { applyUpdate, getState, setSnapshot, subscribe } from "./state.js";
+import { StateSynchronizer } from "./stateSync.js";
 import { RealtimeSocket } from "./websocket.js";
 import { SmartPollLoop } from "./smartPollLoop.js";
 import { resolveMarketQuotesPollDelayMs } from "./marketPolling.js";
@@ -41,8 +42,11 @@ const MARKET_CONDITIONS_WINDOW_MINUTES = new Set(MARKET_CONDITIONS_WINDOWS.map((
 
 let riskChart;
 let socket;
+let stateSynchronizer;
+let marketQuotesMarkup = null;
 let selectedCountries = new Set();
 let currentWatchlist = [];
+let liveNewsView=null,liveNewsRequestKey=null,liveNewsRequestToken=0;
 let selectedMarketSymbols = [];
 let marketWatchlistLoaded = false;
 let marketWatchlistModel = { maxSelected: null, instruments: [] };
@@ -381,6 +385,7 @@ function marketModeLabel(mode = "synthetic") {
   if (normalized === "stale") {
     return "STALE";
   }
+  if(["unavailable","missing","pending"].includes(normalized))return "NO DATA";
   return "SIM";
 }
 
@@ -651,7 +656,15 @@ function setQualityBadge(element, label, quality = {}) {
   element.title = quality.reason || "";
 }
 
-function renderMeta(meta, market) {
+function renderMeta(meta, market, pipeline = {}) {
+  const stages=Object.entries(pipeline).filter(([,s])=>s.enabled!==false);
+  const priority=["blocked","failed","degraded","stale","running","queued"];
+  const affected=priority.map(status=>stages.find(([,s])=>s.status===status)).find(Boolean);
+  const badge=byId("pipeline-status-badge");
+  if(badge){badge.className=`badge ${affected&&["blocked","failed"].includes(affected[1].status)?"text-bg-danger":affected||!stages.length?"text-bg-warning":"text-bg-success"}`;
+    badge.textContent=affected?`Pipeline: ${affected[1].status} (${affected[0]})`:stages.length?"Pipeline: completed":"Pipeline: awaiting data";
+    badge.title=affected?affected[1].errorCode || affected[1].reason || "":"";
+  }
   elements.sourceModeBadge.className = `badge ${sourceBadgeClass(meta.sourceMode)}`;
   elements.sourceModeBadge.textContent = `Source: ${meta.sourceMode}`;
 
@@ -1364,16 +1377,17 @@ function renderMarketQuotes(market = { quotes: {} }) {
   const allowed = new Set(selectedMarketSymbols);
   const quotes = Object.entries(market.quotes || {}).filter(([ticker]) => !marketWatchlistLoaded || allowed.has(ticker));
   if (!quotes.length) {
-    elements.marketQuotesBody.innerHTML = '<tr><td colspan="3" class="text-light-emphasis">No market quotes available.</td></tr>';
+    const empty='<tr><td colspan="3" class="text-light-emphasis">No market quotes available.</td></tr>';
+    if(marketQuotesMarkup!==empty){elements.marketQuotesBody.innerHTML=empty;marketQuotesMarkup=empty;}
     return;
   }
 
-  elements.marketQuotesBody.innerHTML = quotes
+  const markup = quotes
     .map(([ticker, quote]) => {
-      const change = Number(quote.changePct || 0);
+      const change = Number.isFinite(quote.price) && Number.isFinite(quote.changePct) ? quote.changePct : null;
       const cls = change >= 0 ? "text-up" : "text-down";
       const sign = change >= 0 ? "+" : "";
-      const mode = normalizeMarketDataMode(quote.dataMode || (quote.synthetic ? "synthetic-fallback" : "live"));
+      const mode = Number.isFinite(quote.price) ? normalizeMarketDataMode(quote.dataMode || (quote.synthetic ? "synthetic-fallback" : "live")) : "unavailable";
       const modeCell = `<span class="market-mode-pill ${marketModeClass(mode)}">${marketModeLabel(mode)}</span>`;
       const quoteAgeMin = deriveQuoteAgeMin(quote);
       const ageLabel = Number.isFinite(quoteAgeMin) ? `${quoteAgeMin}m old` : "age --";
@@ -1384,6 +1398,7 @@ function renderMarketQuotes(market = { quotes: {} }) {
         quote.exchange ? `exchange ${quote.exchange}` : null,
         quote.session ? `session ${quote.session}` : null,
         quote.asOf ? `asOf ${quote.asOf}` : null,
+        quote.unavailableReason || market.sourceMeta?.unavailableBySymbol?.[ticker]?.reason || null,
         `data ${mode}`,
         staleLabel,
         Number.isFinite(Number(quote.providerScore)) ? `score ${Number(quote.providerScore)}` : null,
@@ -1400,11 +1415,12 @@ function renderMarketQuotes(market = { quotes: {} }) {
             <div class="market-quote-meta">${escapeHtml(sourceLabel)} | ${escapeHtml(ageLabel)}${qualityBits.length ? ` | ${escapeHtml(qualityBits.join(" | "))}` : ""}</div>
           </td>
           <td>${Number.isFinite(quote.price) ? quote.price.toFixed(2) : "--"}</td>
-          <td class="${cls}">${sign}${change.toFixed(2)}%</td>
+          <td class="${cls}">${change===null?"--":`${sign}${change.toFixed(2)}%`}</td>
         </tr>
       `;
     })
     .join("");
+  if(markup!==marketQuotesMarkup){elements.marketQuotesBody.innerHTML=markup;marketQuotesMarkup=markup;}
 }
 
 function marketInstrumentMeta(instrument = {}) {
@@ -1605,7 +1621,7 @@ async function loadMarketOhlcv() {
   elements.marketOhlcvStatus.textContent = `Loading ${instrument.symbol} OHLCVâ€¦`;
   let payload;
   try {
-    payload = await api.getMarketCandles({ instrumentId, interval: elements.marketOhlcvInterval.value, adjusted: "splits", limit: 240 });
+    payload = await api.getMarketCandles({ instrumentId, interval: elements.marketOhlcvInterval.value, adjusted: "splits", limit: 240, source: getState().market?.provider === "yahoo" ? "yahoo" : "stored" });
   } catch (error) {
     if (token === marketOhlcvRequestToken) elements.marketOhlcvStatus.textContent = `OHLCV request failed: ${error.message}`;
     return;
@@ -1687,7 +1703,7 @@ function renderWhenChanged(panel, data, render) {
 
 function renderDashboard(rawState) {
   const state = filterStateBySelection(rawState);
-  renderMeta(rawState.meta, rawState.market || {});
+  renderMeta(rawState.meta, rawState.market || {},rawState.pipelineStatus || {});
   observeNewsSelection(rawState);
   renderNews(state.news, state.countries, rawState.ai || {});
   renderWhenChanged("countries",state.countries,()=>{
@@ -1703,6 +1719,26 @@ function renderDashboard(rawState) {
     marketConditionsMatchesCurrentContext() ? latestMarketConditions : null,
     { error: latestMarketConditionsError }
   ));
+}
+
+function liveNewsKey(state) {
+  const corpus=state.meta?.sourceMeta?.corpus;
+  return corpus ? `${selectedCountryQueryValue()}|${corpus.revision}|${corpus.dayStart}` : null;
+}
+
+async function refreshStoredLiveNews(state) {
+  const key=liveNewsKey(state);
+  if(!key || liveNewsView?.key===key || liveNewsRequestKey===key) return;
+  liveNewsRequestKey=key;
+  const token=++liveNewsRequestToken;
+  try{
+    const payload=await api.getNews({countries:selectedCountryQueryValue(),limit:40});
+    if(token!==liveNewsRequestToken || key!==liveNewsKey(getState())) return;
+    liveNewsView={key,news:payload.news || [],meta:payload.meta?.newsRead || state.meta.sourceMeta.corpus};
+    const current=filterStateBySelection(getState());
+    renderNews(liveNewsView.news,current.countries,getState().ai || {},liveNewsView.meta);
+  }catch(error){console.error("Failed to read stored daily news:",error);}
+  finally{if(token===liveNewsRequestToken)liveNewsRequestKey=null;}
 }
 
 function setWsStatus(status, diagnostics = null) {
@@ -1813,11 +1849,38 @@ async function handleManualRefreshClick() {
   }
 }
 
+async function refreshBoundedSnapshot(signal) {
+  try { await stateSynchronizer.requestSnapshot({signal}); }
+  catch(error) {
+    // Preserve compatibility while an older backend is serving the new assets.
+    if(error.status !== 404)throw error;
+    const token=newsTransportToken;
+    const snapshot=await api.getSnapshot({countries:"ALL",limit:500,order:"critical"},{signal});
+    if(token === newsTransportToken){setSnapshot(snapshot);awarenessController?.syncCompact(snapshot.awareness);}
+  }
+}
+
 function mountWebSocket() {
+  const synchronizer = new StateSynchronizer({ api, onUpdate: update => {
+    if (update.news) newsTransportToken++;
+    applyUpdate(update);
+    awarenessController?.syncCompact(update.awareness);
+    if (update.news || update.countries) void advancedIntelligenceController?.refresh();
+    if (update.news || update.market) scheduleMarketConditionsRefresh();
+  }, onStatus: status => {
+    if (status === "synchronized") wsHasSnapshot = true;
+    else if (status === "degraded") wsHasSnapshot = false;
+    if (socket?.socket?.readyState === WebSocket.OPEN) setWsStatus("connected");
+  } });
+  stateSynchronizer=synchronizer;
+  window.addEventListener("pagehide", () => synchronizer.close(), { once: true });
   socket = new RealtimeSocket({
     path: "/ws",
     onStatusChange: setWsStatus,
     onMessage: (message) => {
+      if (["ws:ready:v2", "state:revision:v2", "resync:required:v2"].includes(message.type)) {
+        synchronizer.accept(message); return;
+      }
       if (message.type === "market:quotes-bootstrap:v1") {
         applyMarketPayload(message.data || {});
         return;
@@ -1918,15 +1981,15 @@ async function bootstrap() {
     syncWatchlistFromState(state);
     renderCountryFilters();
     renderDashboard(state);
+    void refreshStoredLiveNews(state);
     syncManualRefreshFromMeta(state.meta);
   });
 
   newsFallback = new SmartPollLoop({ immediate:false, intervalMs:15_000, hiddenIntervalMs:90_000,
     task: async signal => {
       if (wsConnected) return;
-      const requestToken = newsTransportToken;
-      const snapshot = await api.getSnapshot({countries:"ALL",limit:500,order:"critical"},{signal});
-      if (!wsConnected && requestToken === newsTransportToken) { setSnapshot(snapshot); fallbackFailures=0; }
+      await refreshBoundedSnapshot(signal);
+      fallbackFailures=0;
     }, onError:()=>{fallbackFailures=Math.min(5,fallbackFailures+1);},
     delayResolver:({hidden})=>(hidden?90_000:15_000)*2**fallbackFailures*(.9+Math.random()*.2)
   });
@@ -1934,10 +1997,7 @@ async function bootstrap() {
   mountWebSocket();
 
   try {
-    const requestToken = newsTransportToken;
-    const snapshot = await api.getSnapshot({ countries: "ALL", limit: 500, order: "critical" }, {signal: dashboardController.signal});
-    if (requestToken === newsTransportToken) setSnapshot(snapshot);
-    awarenessController?.syncCompact(snapshot?.awareness);
+    await refreshBoundedSnapshot(dashboardController.signal);
     void refreshMarketConditions();
   } catch (error) {
     console.error("Failed to fetch initial snapshot:", error);

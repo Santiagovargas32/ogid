@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "research-ledger-v1",
+  "revision": 1115,
+  "ledgerBytes": 37476515,
+  "tables": {
+    "events": {
+      "records": 20000,
+      "bytes": 37440677
+    },
+    "jobs": {
+      "records": 19,
+      "bytes": 35701
+    },
+    "holdings": {
+      "records": 0,
+      "bytes": 2
+    },
+    "companyFacts": {
+      "records": 0,
+      "bytes": 2
+    },
+    "sourceStates": {
+      "records": 0,
+      "bytes": 2
+    },
+    "forecasts": {
+      "records": 0,
+      "bytes": 2
+    }
+  },
+  "cloneMs": 243.66321100000005,
+  "stringifyMs": 264.14068,
+  "capacity": {
+    "entries": [
+      "events"
+    ],
+    "bytes": false
+  },
+  "readOnly": true
+}

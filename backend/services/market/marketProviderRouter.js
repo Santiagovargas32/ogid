@@ -3,7 +3,6 @@ import { resolveBandByProviderSnapshots } from "../refreshPolicyService.js";
 import { createLogger } from "../../utils/logger.js";
 import { fetchTwelveDailyCandles, fetchTwelveQuotes } from "./providers/twelveProvider.js";
 import { fetchYahooDailyCandles, fetchYahooQuotes } from "./providers/yahooProvider.js";
-import { buildFallbackQuote } from "./providers/quoteFallback.js";
 import { isMarketOpenEt } from "./marketSessionService.js";
 import { buildCoverageByMode } from "./quoteMetadata.js";
 import { decorateCanonicalQuote, findMetadataDiscrepancies, getInstrumentById, getProviderSymbol, resolveInstrument, resolveInstrumentSession, resolveVerifiedInstrumentReferences } from "./instrumentRegistry.js";
@@ -163,7 +162,7 @@ function resolveProviderAvailability(provider, config = {}, { reserve = 0, allow
 }
 
 function buildStaleQuote(previousQuote, { timestamp, staleTtlMs }) {
-  if (!previousQuote || !Number.isFinite(previousQuote.price)) {
+  if (!previousQuote || !Number.isFinite(previousQuote.price) || previousQuote.price <= 0 || previousQuote.synthetic === true || ["synthetic","fallback","seeded"].includes(previousQuote.dataMode)) {
     return null;
   }
 
@@ -185,10 +184,6 @@ function buildStaleQuote(previousQuote, { timestamp, staleTtlMs }) {
     providerDataMode: "router-stale",
     staleAt: timestamp
   };
-}
-
-function buildFallbackSet(unresolved, timestamp) {
-  return Object.fromEntries(unresolved.map((ticker) => [ticker, buildFallbackQuote(ticker, timestamp)]));
 }
 
 function resolveProviderStatus(result = null, { idle = false, skipped = false, disabled = false } = {}) {
@@ -346,7 +341,7 @@ function buildSkippedSlot({
 
 function resolveSourceMode(providerCount, totalCount) {
   if (providerCount <= 0) {
-    return "fallback";
+    return "unavailable";
   }
   if (providerCount >= totalCount) {
     return "live";
@@ -731,20 +726,13 @@ export async function fetchMarketQuotes(config = {}) {
     unresolved = unresolved.filter((instrumentId) => !staleQuotes[getInstrumentById(instrumentId)?.canonicalSymbol]);
   }
 
-  const syntheticFallbackTickers = unresolved.map((instrumentId) => getInstrumentById(instrumentId)?.canonicalSymbol).filter(Boolean);
-  if (syntheticFallbackTickers.length) {
-    const fallbackSet = buildFallbackSet(syntheticFallbackTickers, timestamp);
-    for (const ticker of syntheticFallbackTickers) {
-      const instrument = resolveInstrument(ticker);
-      mergedQuotes[ticker] = decorateCanonicalQuote(fallbackSet[ticker], instrument, {
-        providerId: "fallback",
-        providerSymbol: null,
-        fetchedAt: timestamp,
-        session: resolveInstrumentSession(instrument, session)
-      });
-    }
-  }
-
+  const unavailableTickers=unresolved.map(id=>getInstrumentById(id)?.canonicalSymbol).filter(Boolean);
+  const syntheticFallbackTickers=[];
+  const unavailableBySymbol=Object.fromEntries(unavailableTickers.map(ticker=>{
+    const mapping=instruments.find(i=>i.canonicalSymbol===ticker);
+    const errors=providerErrors.filter(e=>!e.ticker || e.ticker===ticker || e.ticker===mapping?.providerSymbols?.yahoo);
+    return [ticker,{instrumentId:mapping?.instrumentId,status:"unavailable",reason:errors[0]?.code || "no-usable-observation",errors:errors.map(e=>({provider:e.provider,code:e.code,httpStatus:e.httpStatus || null,endpoint:e.endpoint || "quote"}))}];
+  }));
   const coverageByMode = buildCoverageByMode(mergedQuotes);
   const providerBackedCount = coverageByMode.live + coverageByMode.webDelayed;
   const fallbackCount = coverageByMode.routerStale + coverageByMode.syntheticFallback;
@@ -796,15 +784,18 @@ export async function fetchMarketQuotes(config = {}) {
     providersUsed,
     providersSkipped,
     liveCount: coverageByMode.live,
+    webDelayedCount:coverageByMode.webDelayed,
+    usableCount:providerBackedCount,
+    unavailableCount:unavailableTickers.length,
     fallbackCount,
     totalTickers: tickers.length,
     quotaBand,
-    sourceMode: resolveSourceMode(providerBackedCount, tickers.length)
+    sourceMode: providerBackedCount===0&&usedStaleQuotes.length?"stale":resolveSourceMode(providerBackedCount, tickers.length)
   });
 
   return {
     provider: providerChain || primaryProvider,
-    sourceMode: resolveSourceMode(providerBackedCount, tickers.length),
+    sourceMode: providerBackedCount===0&&usedStaleQuotes.length?"stale":resolveSourceMode(providerBackedCount, tickers.length),
     sourceMeta: {
       enabled: true,
       provider: providerChain || primaryProvider,
@@ -824,7 +815,9 @@ export async function fetchMarketQuotes(config = {}) {
       webDelayedCount: coverageByMode.webDelayed,
       totalTickers: tickers.length,
       fallbackCount,
-      unresolvedTickers: syntheticFallbackTickers,
+      unresolvedTickers: unavailableTickers,
+      unavailableBySymbol,
+      metrics:{requested:tickers.length,returned:providerBackedCount,rejected:providerErrors.filter(e=>e.code==="YAHOO_INVALID_OBSERVATION").length,rateLimited:providerErrors.filter(e=>e.httpStatus===429).length,timedOut:providerErrors.filter(e=>/TIMEOUT/.test(e.code || "")).length,invalid:providerErrors.filter(e=>/INVALID/.test(e.code || "")).length,staleServed:usedStaleQuotes.length},
       usedStaleQuotes,
       coverageByMode,
       quotaBand,

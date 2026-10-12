@@ -3,6 +3,8 @@ import { OGID_OPERATIONS } from "../contracts/ogidOperations.js";
 export const ROUTE_QUERY_PARAMS = new Map(
   Object.entries({
     "GET /api/health": [],
+    "GET /api/intel/sync": ["resource", "epoch", "revision", "cursor"],
+    "GET /api/intel/changes": ["epoch", "since"],
     "GET /api/country-instability": ["countries", "force", "windowHours", "maxEvents", "activeWindowHours", "baselineDays"],
 
     "GET /api/admin/api-limits": [],
@@ -30,7 +32,7 @@ export const ROUTE_QUERY_PARAMS = new Map(
     "GET /api/market/quotes": ["tickers"],
     "GET /api/market/provider-status": [],
     "GET /api/market/instruments/search": ["q", "limit"],
-    "GET /api/market/candles": ["instrumentId", "interval", "from", "to", "limit", "adjusted", "force"],
+    "GET /api/market/candles": ["instrumentId", "interval", "from", "to", "limit", "adjusted", "force", "source"],
     "GET /api/market/indicators": ["instrumentId", "interval", "adjusted"],
     "GET /api/market/impact": ["tickers", "countries", "windowMin", "couplingInterval", "couplingWindows", "benchmarkInstrumentId"],
     "GET /api/market/analytics": ["tickers", "countries", "windowMin", "couplingInterval", "couplingWindows", "benchmarkInstrumentId"],

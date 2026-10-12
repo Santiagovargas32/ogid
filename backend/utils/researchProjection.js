@@ -9,6 +9,19 @@ export function safeUrl(value) {
   } catch { return null; }
 }
 export function pick(value, keys) { return Object.fromEntries(keys.filter(key => value?.[key] !== undefined).map(key => [key, value[key]])); }
+export function publicStorageStatus(storage) {
+  if (!storage) return null;
+  const database = storage.worker?.database;
+  return {
+    ...pick(storage, ["state", "businessStorage", "storagePhase", "sqliteVersion", "completed", "failed", "rejected", "lastErrorCode"]),
+    migrationVersions: (storage.migrations || []).map(row => row.version),
+    queue: pick(storage.queue, ["pending", "inFlight", "cpuInFlight", "maxCpuInFlight", "bytes", "maxItems", "maxBytes"]),
+    worker: { heartbeatAt: storage.worker?.heartbeatAt || null,
+      sampledAt: database?.sampledAt || null,
+      counts: pick(database?.counts, ["articles", "article_revisions", "events", "candles", "candle_revisions", "quote_observations", "analysis_runs", "awareness_events", "source_polls", "ai_enrichments", "acquisition_jobs"]),
+      pipelines: (database?.pipelines || []).map(row => pick(row, ["pipelineId", "storageBackend", "startedAt", "completedAt", "status", "errorCode", "lastPersistedAt"])) }
+  };
+}
 export function cleanText(value, max = 500) { return typeof value === "string" ? value.replace(/[\x00-\x1f\x7f]/g, " ").slice(0, max) : null; }
 export function permittedArticle(value, now = new Date().toISOString()) {
   const quality = value.provenance?.publishedAtQuality;
@@ -47,7 +60,7 @@ export function publicProjection(value, depth = 0) {
   return result;
 }
 export function projectOperation(operation, data) {
-  if (operation.projection === "health") return publicProjection(pick(data, ["build", "status", "timestamp", "uptimeSeconds", "lastRefreshAt", "refreshIntervalMs", "sourceMode", "dataQuality", "market"]));
+  if (operation.projection === "health") return publicProjection({ ...pick(data, ["build", "status", "timestamp", "uptimeSeconds", "lastRefreshAt", "refreshIntervalMs", "sourceMode", "dataQuality", "market"]), storage: publicStorageStatus(data.storage) });
   if (operation.projection === "admin-counts") return { generatedAt: data.generatedAt || null, summary: numericProjection(data.summary || {}), pagination: numericProjection(data.pagination || {}), itemCount: data.items?.length ?? data.entries?.length ?? null, metrics: numericProjection(data) };
   if (operation.projection === "quotes") return publicProjection({ ...pick(data,["contractVersion","tickers","snapshotId","asOf","warnings"]), quotes: data.quotes || {}, ...(data.contractVersion === "quotes-compact-v1" && data.timeseries ? {timeseries:data.timeseries}: {}) });
   const projected = publicProjection(data);

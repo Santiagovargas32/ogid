@@ -1,0 +1,24 @@
+{
+  "ledgerCounts": {
+    "events": 20000,
+    "jobs": 19,
+    "holdings": 0,
+    "companyFacts": 0,
+    "sourceStates": 0,
+    "forecasts": 0
+  },
+  "ledgerRevision": 1115,
+  "articles": 33334,
+  "contexts": 123,
+  "allPayloadsDeepEqual": true,
+  "integrity": [
+    {
+      "integrity_check": "ok"
+    }
+  ],
+  "foreignKeys": [],
+  "sourceSha256": {
+    "research": "a6c91ea3d550aec0fe58739886e7b648f94fe3190462104d4ee97a6b4d36fe56",
+    "news": "6fc4871ce51a5d8444e30c07bf84ac7957a2591de6ba3d2885015dab6b8e5e28"
+  }
+}

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -6,6 +7,7 @@ import express from "express";
 import helmet from "helmet";
 import routes from "./routes/index.js";
 import stateManager from "./state/stateManager.js";
+import { PipelineMonitor } from "./services/pipelineMonitor.js";
 import RefreshOrchestratorService from "./services/refreshOrchestratorService.js";
 import ManualRefreshService from "./services/manualRefreshService.js";
 import apiQuotaTracker from "./services/admin/apiQuotaTrackerService.js";
@@ -26,7 +28,7 @@ import { MarketWatchlistService } from "./services/market/marketWatchlistService
 import { MarketConditionsService } from "./services/market/marketConditionsService.js";
 import { MarketDataService, MarketDataStoreAdapter, YahooClient } from "./services/marketData/index.js";
 import { SlidingWindowRateLimiter } from "./services/marketData/rateLimit.js";
-import { resolveRolloutBatch, resolveVerifiedInstrumentReferences } from "./services/market/instrumentRegistry.js";
+import { resolveRolloutBatch, resolveVerifiedInstrumentReferences, listVerifiedInstruments } from "./services/market/instrumentRegistry.js";
 import { calculateMinimumSafeIntervalMs, MarketCreditScheduler, TWELVE_BASIC_POLICY } from "./services/market/marketCreditScheduler.js";
 import MediaStreamService from "./services/media/mediaStreamService.js";
 import { createSocketServer } from "./websocket/socketServer.js";
@@ -38,6 +40,9 @@ import { mcpOperatorAuth, readOperatorCredentials } from "./middleware/mcpOperat
 import { ForecastEvaluationService } from "./services/research/forecastEvaluationService.js";
 import { ScenarioService, loadSignalPolicy } from "./services/research/scenarioService.js";
 import { ResearchStore } from "./services/research/researchStore.js";
+import { PipelinePersistence } from "./storage/pipelinePersistence.js";
+import { createBusinessAdapters } from "./storage/businessAdapters.js";
+import { StorageManager } from "./storage/StorageManager.js";
 import { EventLedger } from "./services/research/eventLedger.js";
 import { OfficialSourceService, loadResearchSources } from "./services/research/officialSources.js";
 import { HistoricalAcquisitionService } from "./services/market/historicalAcquisitionService.js";
@@ -274,7 +279,7 @@ function normalizeAiFeatures(value) {
   return [...new Set(toList(value, ["article-summary"]).map((item) => item.toLowerCase()).filter((item) => AI_FEATURES.has(item)))];
 }
 
-function readConfig(overrides = {}) {
+export function readConfig(overrides = {}) {
   validateNewsSourceCatalog(NEWS_SOURCE_CATALOG);
   const aiProvider = normalizeAiProvider(overrides.ai?.provider ?? process.env.AI_PROVIDER);
   // Select the environment before merging overrides to keep credentials and
@@ -358,6 +363,14 @@ function readConfig(overrides = {}) {
     host: toTrimmedString(process.env.HOST) || undefined,
     refreshIntervalMs: refreshIntervalMs ?? newsIntervalMs ?? marketRefreshIntervalMs ?? null,
     wsHeartbeatMs: toInt(process.env.WS_HEARTBEAT_MS, 15_000),
+    wsTransportLimits: {
+      maxMessageBytes: toPositiveInt(process.env.WS_MAX_MESSAGE_BYTES, 65_536),
+      maxBufferedBytes: toPositiveInt(process.env.WS_MAX_BUFFERED_BYTES, 262_144),
+      maxQueueBytes: toPositiveInt(process.env.WS_MAX_QUEUE_BYTES, 262_144),
+      maxQueueItems: toPositiveInt(process.env.WS_MAX_QUEUE_ITEMS, 64),
+      slowClientMs: toPositiveInt(process.env.WS_SLOW_CLIENT_MS, 10_000),
+      closeGraceMs: toPositiveInt(process.env.WS_CLOSE_GRACE_MS, 5_000)
+    },
     wsTrustedProxyIps: toList(process.env.WS_TRUSTED_PROXY_IPS),
     wsAllowedOrigins: toList(process.env.WS_ALLOWED_ORIGINS),
     wsPath: "/ws",
@@ -387,7 +400,13 @@ function readConfig(overrides = {}) {
       timeoutMs: toInt(process.env.NEWS_TIMEOUT_MS, 9_000),
       intervalMs: newsIntervalMs,
       backoffMaxMs: newsBackoffMaxMs,
-      analyzeLimit: toInt(process.env.NEWS_ANALYZE_LIMIT, 80),
+      analyzeLimit: toInt(process.env.NEWS_ANALYZE_LIMIT, 3000),
+      displayLimit: toPositiveInt(process.env.NEWS_DISPLAY_LIMIT, 40),
+      projectionIntervalMs: toPositiveInt(process.env.NEWS_PROJECTION_INTERVAL_MS, 60000),
+      rssPollIntervalMs: toPositiveInt(process.env.NEWS_RSS_POLL_INTERVAL_MS, 60000),
+      rssFeedsPerCycle: toPositiveInt(process.env.NEWS_RSS_FEEDS_PER_CYCLE, 18),
+      freshnessMs: toPositiveInt(process.env.NEWS_FRESHNESS_MS, 600000),
+      dayTimeZone: process.env.NEWS_DAY_TIMEZONE || "Europe/Madrid",
       candidateWindowHours: toInt(process.env.NEWS_CANDIDATE_WINDOW_HOURS, 36),
       maxPerSource: toInt(process.env.NEWS_MAX_PER_SOURCE, 3),
       maxSimilarHeadline: toInt(process.env.NEWS_MAX_SIMILAR_HEADLINE, 2),
@@ -691,6 +710,8 @@ function readConfig(overrides = {}) {
 
 export function createAppServer(overrides = {}) {
   const config = readConfig(overrides);
+  const storageManager = overrides.storageManager || new StorageManager(overrides.storage);
+
   const frontendPath = path.resolve(__dirname, "../frontend");
   const app = express();
   const runtimeMetrics = new RuntimeMetrics();
@@ -742,16 +763,37 @@ export function createAppServer(overrides = {}) {
     policy: { ...TWELVE_BASIC_POLICY, ...(config.market.creditPolicy || {}) },
     persistencePath: config.market.creditStateFile
   }) : null;
-  const dailyCandleStore = new DailyCandleStore({
+  const sqlBusiness = storageManager.options.businessEnabled && storageManager.options.enabled;
+  let businessContext = () => undefined;
+  const pipelinePersistence = sqlBusiness ? new PipelinePersistence(storageManager) : null;
+  const business = sqlBusiness ? createBusinessAdapters(storageManager, {rootDir:config.market.historyDir,enabled:config.market?.dailyCandles?.enabled !== false || config.market?.intradayCandles?.enabled === true,context:()=>businessContext()}) : null;
+  if (business) config.news.rssWorkerFetch = input => storageManager.request("rss.fetch",input,{timeoutMs:90000});
+  if (business) config.news.collectInWorker = async input => {
+    const result=await storageManager.request("news.collect",{...input,deferSupplemental:true},{timeoutMs:180000});
+    if(result.supplementalDue){
+      const task=storageManager.request("news.supplemental",{}, {timeoutMs:180000});
+      activeCycles.add(task);
+      task.catch(error=>log.warn("rss_supplemental_failed",{code:error.code || "RSS_SUPPLEMENTAL_FAILED"})).finally(()=>activeCycles.delete(task));
+    }
+    return result;
+  };
+  const dailyCandleStore = business?.candles || new DailyCandleStore({
     enabled: config.market?.dailyCandles?.enabled !== false || config.market?.intradayCandles?.enabled === true,
     rootDir: config.market?.historyDir,
     retentionDays: config.market?.dailyCandles?.retentionDays,
     rolloutBatch: config.market?.watchlistRollout,
     intervals: [config.market?.intradayCandles?.interval || "1h", "1h", "1wk", "1mo"]
   });
-  const marketDataStore = new MarketDataStoreAdapter({ candleStore: dailyCandleStore });
+  const marketDataStore = new MarketDataStoreAdapter({ candleStore: dailyCandleStore,readThrough:!business,persistAsync:Boolean(business),
+    onPersistenceError:error=>log.error("market_observations_persist_failed",{code:error.code || "MARKET_PERSISTENCE_FAILED"}),
+    onPersisted:business ? async({candles,persistence})=>{
+      if(!persistence.inserted && !persistence.updated)return;
+      for(const candle of new Map(candles.map(c=>[`${c.instrumentId}|${c.interval}`,c])).values())
+        await business.call("indicators","calculate",[{instrumentId:candle.instrumentId,interval:candle.interval,adjustmentMode:"splits",limit:500}],{timeoutMs:90000});
+    } : null
+  });
   const marketDataService = overrides.marketDataService || config.market.marketDataService || new MarketDataService({
-    yahooClient: new YahooClient({ timeoutMs: config.market.timeoutMs }),
+    yahooClient: overrides.yahooClient || new YahooClient({ timeoutMs: config.market.timeoutMs }),
     store: marketDataStore
   });
   config.market.marketDataService = marketDataService;
@@ -781,21 +823,27 @@ export function createAppServer(overrides = {}) {
   });
   apiQuotaTracker.reset(config.apiLimits);
   providerRuntime.reset();
-  if (process.env.NODE_ENV !== "test") {
+  if (!business && process.env.NODE_ENV !== "test") {
     apiQuotaTracker.configurePersistence(path.resolve(__dirname, process.env.PROVIDER_QUOTA_STATE_FILE || "data/provider-quota-state.json"));
   }
-  const researchStore = overrides.researchStore || new ResearchStore({persistencePath:process.env.NODE_ENV === "test"?null:path.resolve(__dirname,process.env.RESEARCH_LEDGER_FILE || "data/intel/research-ledger.json")});
-  const eventLedger = new EventLedger({store:researchStore});
-  const officialSourceService = new OfficialSourceService({store:researchStore,eventLedger,sources:researchSources,userAgent:process.env.RESEARCH_SEC_USER_AGENT || null});
-  const newsArchive = overrides.newsArchive || new NewsArchive({ persistencePath: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, process.env.RESEARCH_NEWS_ARCHIVE_FILE || "data/intel/research-news.json") });
+  const researchStore = overrides.researchStore || business?.store || new ResearchStore({persistencePath:process.env.NODE_ENV === "test"?null:path.resolve(__dirname,process.env.RESEARCH_LEDGER_FILE || "data/intel/research-ledger.json")});
+  const eventLedger = business?.events || new EventLedger({store:researchStore});
+  const officialSourceService = business?.sources || new OfficialSourceService({store:researchStore,eventLedger,sources:researchSources,userAgent:process.env.RESEARCH_SEC_USER_AGENT || null});
+  const newsArchive = overrides.newsArchive || business?.news || new NewsArchive({ persistencePath: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, process.env.RESEARCH_NEWS_ARCHIVE_FILE || "data/intel/research-news.json") });
   const researchPipeline={};
-  const researchGuard=(component,work)=>{
-    try {const result=work();researchPipeline[component]={...researchPipeline[component],status:researchPipeline[component]?.pendingReplay?"partial":"healthy",lastSuccessAt:new Date().toISOString(),pendingReplay:Boolean(researchPipeline[component]?.pendingReplay)};return result;}
-    catch(error){const code=/^[A-Z0-9_]{1,64}$/.test(error.code||"")?error.code:"RESEARCH_PIPELINE_ERROR";researchPipeline[component]={...researchPipeline[component],status:"blocked",lastFailureAt:new Date().toISOString(),failureCode:code,pendingReplay:true};log.warn("research_pipeline_blocked",{component,code});return null;}
+  const monitor = new PipelineMonitor({publish:(id,stage)=>{
+    stateManager.state.pipelineStatus={...stateManager.state.pipelineStatus,[id]:stage};
+    socketServer.broadcast("update",{pipelineStatus:stateManager.state.pipelineStatus});
+  },persist:business?(id,stage)=>pipelinePersistence.save("pipeline-stage",{id,stage}):null});
+  if(business)config.market.analyzeInWorker=input=>monitor.run("market.analysis",()=>business.call("market","analyze",[input],{timeoutMs:30000}),{counts:result=>({processed:result.impact?.items?.length || 0})});
+  storageManager.on("stage",(id,stage)=>monitor.update(id,stage));
+  const researchGuard=async(component,work)=>{
+    try{const result=await monitor.run(`research.${component}`,work);const pendingReplay=Boolean(researchPipeline[component]?.pendingReplay);researchPipeline[component]={...monitor.snapshot()[`research.${component}`],status:pendingReplay?"partial":"completed",pendingReplay};return result;}
+    catch(error){researchPipeline[component]={...monitor.snapshot()[`research.${component}`],failureCode:error.code || "RESEARCH_PIPELINE_ERROR",pendingReplay:true};log.warn("research_pipeline_blocked",{component,code:error.code || "RESEARCH_PIPELINE_ERROR"});return null;}
   };
-  newsArchive.onIngest = items => researchGuard("archiveEvents",()=>{for(let offset=0;offset<items.length;offset+=500)eventLedger.ingest(items.slice(offset,offset+500));});
-  const materialAlertStore = overrides.materialAlertStore || new MaterialAlertStore({ persistencePath: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, process.env.RESEARCH_ALERT_STATE_FILE || "data/intel/research-alerts.json") });
-  const rssAggregator = new RssAggregatorService({
+  if (!business) newsArchive.onIngest = items => researchGuard("archiveEvents",()=>{for(let offset=0;offset<items.length;offset+=500)eventLedger.ingest(items.slice(offset,offset+500));});
+  const materialAlertStore = overrides.materialAlertStore || business?.alerts || new MaterialAlertStore({ persistencePath: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, process.env.RESEARCH_ALERT_STATE_FILE || "data/intel/research-alerts.json") });
+  const rssAggregator = business?.rss || new RssAggregatorService({
     onCollected: async articles => {
       for (let offset=0; offset<articles.length; offset+=500) {
         newsArchive.ingest(articles.slice(offset,offset+500), { awarenessMode:config.awareness.mode });
@@ -814,23 +862,23 @@ export function createAppServer(overrides = {}) {
     cycleDeadlineMs: config.news.rssCycleDeadlineMs,
     persistencePath: config.news.rssCanonicalStateFile
   });
-  const aiStore = new AiEnrichmentStore({ persistencePath: config.ai.stateFile });
+  const aiStore = new AiEnrichmentStore({ persistencePath: business ? null : config.ai.stateFile });
   const aiBudget = new AiBudgetService({
     dailyRequestBudget: config.ai.dailyRequestBudget,
     dailyTokenBudget: config.ai.dailyTokenBudget,
-    persistencePath: config.ai.budgetStateFile
+    persistencePath: business ? null : config.ai.budgetStateFile
   });
   const aiProvider = createAiProvider(config.ai, overrides.aiProvider);
-  const signalCorrelator = overrides.signalCorrelator || new SignalCorrelatorService({
+  const signalCorrelator = overrides.signalCorrelator || business?.signals || new SignalCorrelatorService({
     baselineDays: 30,
     persistencePath: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, "data/intel/signal-history.json")
   });
-  const advancedIntelligenceService = overrides.advancedIntelligenceService || new AdvancedIntelligenceService({
+  const advancedIntelligenceService = overrides.advancedIntelligenceService || business?.advanced || new AdvancedIntelligenceService({
     stateManager,
     rssAggregator,
     signalCorrelator
   });
-  const mapLayerService = new MapLayerService({
+  const mapLayerService = business?.map || new MapLayerService({
     stateManager,
     rssAggregator
   });
@@ -849,22 +897,24 @@ export function createAppServer(overrides = {}) {
   });
   const dailyCandleService = new DailyCandleService({ store: dailyCandleStore, marketConfig: config.market });
   const intradayCandleService = new IntradayCandleService({ store: dailyCandleStore, marketConfig: config.market });
-  const technicalIndicatorService = new TechnicalIndicatorService({ store: dailyCandleStore });
-  const newsPriceCouplingService = new NewsPriceCouplingService({ store: dailyCandleStore });
+  const technicalIndicatorService = business?.indicators || new TechnicalIndicatorService({ store: dailyCandleStore });
+  const newsPriceCouplingService = business?.coupling || new NewsPriceCouplingService({ store: dailyCandleStore });
 
   const server = http.createServer(app);
   const socketServer = createSocketServer({
     server,
     path: config.wsPath,
     heartbeatMs: config.wsHeartbeatMs,
+    transportLimits: config.wsTransportLimits,
     trustedProxyIps: config.wsTrustedProxyIps,
     allowedOrigins: config.wsAllowedOrigins,
     stateManager
   });
+  app.locals.socketServer = socketServer;
   const awarenessStore = overrides.awarenessStore || new AwarenessStore({
-    snapshotPath: config.awareness.snapshotPath,
-    auditPath: config.awareness.auditPath,
-    pollAuditPath: config.awareness.pollAuditPath
+    snapshotPath: business ? null : config.awareness.snapshotPath,
+    auditPath: business ? null : config.awareness.auditPath,
+    pollAuditPath: business ? null : config.awareness.pollAuditPath
   });
   const awarenessService = overrides.awarenessService || new AwarenessService({
     mode: config.awareness.mode,
@@ -878,7 +928,7 @@ export function createAppServer(overrides = {}) {
     persistent403Threshold: config.awareness.persistent403Threshold,
     forbiddenCooldownMs: config.awareness.forbiddenCooldownMs
   });
-  const marketConditionsService = overrides.marketConditionsService || new MarketConditionsService({
+  const marketConditionsService = overrides.marketConditionsService || business?.conditions || new MarketConditionsService({
     stateManager,
     candleStore: dailyCandleStore,
     marketWatchlistService,
@@ -914,6 +964,17 @@ export function createAppServer(overrides = {}) {
     aiCoordinator,
     awarenessService
   });
+  for(const [method,id]of [["executeNewsCycle","news"],["executeMarketCycle","market"]]){
+    const run=orchestrator[method].bind(orchestrator);
+    orchestrator[method]=(...args)=>monitor.run(id,()=>run(...args),{enabled:id!=="market"||config.market.enabled,counts:()=>{
+      const telemetry=id==="news"?orchestrator.getNewsCycleTelemetry():orchestrator.getMarketCycleTelemetry();
+      const snapshot=stateManager.state;
+      const count=id==="news"?snapshot.news.length:Object.values(snapshot.market.quotes).filter(q=>Number.isFinite(q.price)&&q.synthetic!==true).length;
+      const mode=id==="news"?snapshot.meta.sourceMode:snapshot.market.sourceMode;
+      const qualityDegraded=["fallback","unavailable","stale","mixed"].includes(mode);
+      return {processed:count,degraded:telemetry.lastStatus==="error"||count===0||qualityDegraded,reason:telemetry.lastError || (qualityDegraded?`data-${mode}`:count===0?"no-valid-observations":null)};
+    },revision:()=>socketServer.sync.revision});
+  }
   const manualRefreshService = new ManualRefreshService({
     orchestrator,
     cooldownMs: config.manualRefresh.cooldownMs,
@@ -921,27 +982,32 @@ export function createAppServer(overrides = {}) {
     perClientMax: config.manualRefresh.perClientMax
   });
 
-  const historicalImportService = new HistoricalImportService({ledger:researchStore,rootDir:dailyCandleStore.rootDir});
-  const technicalContextService = new TechnicalContextService({store:dailyCandleStore,imports:historicalImportService});
-  const scenarioService = new ScenarioService({alerts:materialAlertStore,technicalContext:technicalContextService,eventLedger,candleStore:dailyCandleStore,policy:overrides.signalPolicy||loadSignalPolicy(process.env.RESEARCH_SIGNAL_POLICY_FILE)});
-  orchestrator.researchCycle = () => {
+  const historicalImportService = business?.imports || new HistoricalImportService({ledger:researchStore,rootDir:dailyCandleStore.rootDir});
+  const technicalContextService = business?.technical || new TechnicalContextService({store:dailyCandleStore,imports:historicalImportService});
+  const scenarioService = business?.scenarios || new ScenarioService({alerts:materialAlertStore,technicalContext:technicalContextService,eventLedger,candleStore:dailyCandleStore,policy:overrides.signalPolicy||loadSignalPolicy(process.env.RESEARCH_SIGNAL_POLICY_FILE)});
+  const activeCycles=new Set();
+  if(business)for(const method of ["runNewsCycle","runMarketCycle"]){const runCycle=orchestrator[method].bind(orchestrator);orchestrator[method]=(...args)=>{const task=runCycle(...args);activeCycles.add(task);task.finally(()=>activeCycles.delete(task)).catch(()=>{});return task;};}
+  orchestrator.storageFlush = () => pipelinePersistence?.flush();
+  if(business){const refresh=awarenessService.runCycle?.bind(awarenessService);if(refresh)awarenessService.runCycle=async(...args)=>{const result=await refresh(...args);await pipelinePersistence.flush();return result;};}
+  orchestrator.researchCycle = async () => {
     const publicEvents=awarenessService.getSnapshot({limit:100},{publicView:true});
-    if(publicEvents.mode === "visible") researchGuard("awarenessEvents",()=>eventLedger.ingest([...publicEvents.recent,...publicEvents.upcoming].map(e=>({...e,url:e.canonicalUrl,eventTime:e.scheduledAt})),{sourceId:"awareness"}));
-    researchGuard("scenarios",()=>scenarioService.refresh({instrumentIds:marketWatchlistService.selectedInstrumentIds}));
+    if(publicEvents.mode === "visible") await researchGuard("awarenessEvents",()=>eventLedger.ingest([...publicEvents.recent,...publicEvents.upcoming].map(e=>({...e,url:e.canonicalUrl,eventTime:e.scheduledAt})),{sourceId:"awareness"}));
+    await researchGuard("scenarios",()=>scenarioService.refresh({instrumentIds:marketWatchlistService.selectedInstrumentIds}));
   };
   app.locals.socketServer = socketServer;
   app.locals.newsArchive = newsArchive;
   app.locals.researchPipeline = researchPipeline;
+  app.locals.pipelineMonitor = monitor;
   app.locals.researchStore = researchStore;
-  app.locals.forecastEvaluationService = new ForecastEvaluationService({store:researchStore,candleStore:dailyCandleStore});
+  app.locals.forecastEvaluationService = business?.forecasts || new ForecastEvaluationService({store:researchStore,candleStore:dailyCandleStore});
   app.locals.eventLedger = eventLedger;
   app.locals.officialSourceService = officialSourceService;
   app.locals.technicalContextService = technicalContextService;
   app.locals.scenarioService = scenarioService;
-  app.locals.historicalAcquisitionService = new HistoricalAcquisitionService({ledger:researchStore,marketDataService,candleStore:dailyCandleStore});
+  app.locals.historicalAcquisitionService = business?.history || new HistoricalAcquisitionService({ledger:researchStore,marketDataService,candleStore:dailyCandleStore});
   app.locals.historicalImportService = historicalImportService;
   app.locals.materialAlertStore = materialAlertStore;
-  app.locals.portfolioContextService = new PortfolioContextService({ stateManager, archive: newsArchive, alerts: materialAlertStore, awarenessService, watchlist: marketWatchlistService, scenarioService });
+  app.locals.portfolioContextService = business?.portfolio || new PortfolioContextService({ stateManager, archive: newsArchive, alerts: materialAlertStore, awarenessService, watchlist: marketWatchlistService, scenarioService });
   app.locals.mcpOperatorCredentials = overrides.mcpOperatorCredentials || readOperatorCredentials(process.env.MCP_OPERATOR_CREDENTIALS_FILE);
   app.locals.mcpOperatorAudit = row => log.info("mcp_operator_authorized", row);
   app.locals.orchestrator = orchestrator;
@@ -958,16 +1024,24 @@ export function createAppServer(overrides = {}) {
   app.locals.intradayCandleService = intradayCandleService;
   app.locals.technicalIndicatorService = technicalIndicatorService;
   app.locals.newsPriceCouplingService = newsPriceCouplingService;
+  app.locals.storageManager = storageManager;
+  app.locals.business = business;
   app.locals.marketWatchlistService = marketWatchlistService;
   app.locals.marketDataService = marketDataService;
   app.locals.marketSearchRateLimiter = marketSearchRateLimiter;
   app.locals.aiCoordinator = aiCoordinator;
   app.locals.awarenessService = awarenessService;
+  if(business){app.locals.awarenessQuery=filters=>business.call("awareness","getSnapshot",[{mode:awarenessService.mode,filters,publicView:true}]);awarenessService.parseSource=(...args)=>business.call("awareness","parseSource",args);}
   app.locals.awarenessStore = awarenessStore;
   app.locals.marketConditionsService = marketConditionsService;
   let startTask = null;
   let stopTask = null;
 
+  businessContext = () => ({snapshot:stateManager.getAnalysisSnapshot(),newsFromStorage:true,awareness:awarenessService.getSnapshot({limit:100},{publicView:true}),selectedInstrumentIds:marketWatchlistService.selectedInstrumentIds,intradayMetrics:intradayCandleService.getMetrics()});
+  storageManager.rpcHandler = (operation,input) => {
+    if(operation !== "market.fetch") throw new Error("Unknown provider bridge");
+    return marketDataService.fetchYahooBars(input.symbol,input.options);
+  };
   return {
     app,
     server,
@@ -981,11 +1055,30 @@ export function createAppServer(overrides = {}) {
     awarenessService,
     marketConditionsService,
     config,
+    storageManager,
     start() {
       if (startTask) return startTask;
       startTask = (async () => {
       const startupAt = performance.now();
+      await storageManager.start();
+      if (storageManager.state === "ready") {
+        const now = new Date().toISOString();
+        const runId = `boot-${randomUUID()}`;
+        await storageManager.request("pipeline.record", { runId, pipelineId: "storage", startedAt: now, completedAt: now, status: "healthy", counts: { migrations: storageManager.getStatus().migrations.length } }, { requestId: runId });
+        log.info("storage_worker_started", {state:storageManager.state,sqliteVersion:storageManager.getStatus().sqliteVersion,migrations:storageManager.getStatus().migrations.length,analysisWorker:Boolean(storageManager.analysisManager)});
+      }
+      if (business) {
+        const workerNews = {...config.news,watchlistCountries:config.watchlistCountries,awarenessMode:config.awareness.mode};
+        // Providers import the versioned catalog locally; retain feed overrides,
+        // but avoid transferring the complete catalog with each configuration.
+        delete workerNews.sourceCatalog;
+        await storageManager.request("domain.configure", { requireImport:process.env.STORAGE_REQUIRE_IMPORT === "1",instruments:listVerifiedInstruments(),apiLimits:config.apiLimits,news:JSON.parse(JSON.stringify(workerNews)),researchSources,rootDir:config.market.historyDir,candlesEnabled:dailyCandleStore.enabled,intradayEnabled:config.market.intradayCandles.enabled,awarenessMode:config.awareness.mode,signalPolicy:overrides.signalPolicy || loadSignalPolicy(process.env.RESEARCH_SIGNAL_POLICY_FILE),rss:{rssFeeds:config.news.rssFeeds,news:{rssAggregateIntervalMs:config.news.rssAggregateIntervalMs,rssAggregateFeedsPerRun:config.news.rssAggregateFeedsPerRun,rssAggregateMaxItems:config.news.rssAggregateMaxItems},timeoutMs:config.news.timeoutMs,pipelineMode:config.news.rssPipelineMode},newsRetentionDays:Number(process.env.NEWS_RETENTION_DAYS) || 30},{timeoutMs:90000});
+        await newsArchive.coverage();
+        await pipelinePersistence.hydrate({awarenessStore,aiStore,aiBudget,marketHistoryStore,quotaTracker:apiQuotaTracker});
+        aiCoordinator.syncProjection();
+      }
       const hydratedWatchlist = await marketWatchlistService.hydrate();
+      if(business)await storageManager.request("domain.registry",{instruments:listVerifiedInstruments()});
       config.market.tickers = hydratedWatchlist.selectedSymbols;
       config.news.marketTickers = hydratedWatchlist.selectedSymbols;
       const hydratedQueryPacks = normalizeNewsQueryPacks(config.news.queryPackGroups, { marketTickers: hydratedWatchlist.selectedSymbols });
@@ -995,6 +1088,7 @@ export function createAppServer(overrides = {}) {
       await marketHistoryStore.hydrateState(stateManager);
       stateManager.setMarketTickers(hydratedWatchlist.selectedSymbols);
       await dailyCandleStore.hydrate();
+      if(business) await orchestrator.runNewsCycle("startup-storage",{storageOnly:true,skipSecondary:true});
       await new Promise((resolve, reject) => {
         server.once("error", reject);
         server.listen(config.port, config.host, () => {
@@ -1071,12 +1165,17 @@ export function createAppServer(overrides = {}) {
       const mediaStopped = mediaStreamService.stop();
       const marketDataStopped = marketDataService.close?.();
       const cyclesStopped = orchestrator.stop();
-      await rssAggregator.stop();
+      await rssAggregator.stop?.();
       await cyclesStopped;
-      await newsArchive.flush();
+      await newsArchive.flush?.();
       await Promise.all([awarenessStopped, mediaStopped, marketDataStopped]);
       await aiCoordinator.stop();
       await Promise.all([websocketStopped,httpStopped]);
+      await Promise.allSettled([...activeCycles]);
+      await marketDataStore.flushPersistence();
+      await pipelinePersistence?.flush();
+      await monitor.flush();
+      await storageManager.close();
       log.info("server_stopped");
       })();
       return stopTask;
@@ -1104,6 +1203,12 @@ async function run() {
     }
   };
 
+  runtime.storageManager.on("failed", (error) => {
+    const worker=runtime.storageManager.getStatus().worker;
+    log.error("storage_worker_failed", { code: error.code,command:error.diagnostic,worker:worker?.lastCompletedCommand,news:worker?.news });
+    if (runtime.server.listening) void shutdown("storage-worker-failed", 1);
+  });
+
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));
   const fatal = (event, error) => {
@@ -1116,7 +1221,7 @@ async function run() {
   try {
     await runtime.start();
   } catch (error) {
-    log.error("startup_failed", { message: error.message, stack: error.stack });
+    log.error("startup_failed", { message: error.message, stack: error.stack, code: error.code, command: error.diagnostic });
     process.exit(1);
   }
 }

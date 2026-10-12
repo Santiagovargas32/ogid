@@ -167,11 +167,11 @@ export function normalizeYahooQuote(raw = {}, { now = new Date() } = {}) {
   let symbol;
   try { symbol = normalizeYahooSymbol(raw.symbol); } catch { return null; }
   const price = finite(raw.regularMarketPrice);
-  if (price == null) return null;
+  if (price == null || price <= 0 || !raw.regularMarketTime || !isoTimestamp(raw.regularMarketTime)) return null;
   return {
     symbol,
     source: "yahoo",
-    timestamp: isoTimestamp(raw.regularMarketTime) || isoTimestamp(now),
+    timestamp: isoTimestamp(raw.regularMarketTime),
     price,
     change: finite(raw.regularMarketChange),
     changePercent: finite(raw.regularMarketChangePercent),

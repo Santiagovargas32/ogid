@@ -1,0 +1,144 @@
+{
+  "pages": [
+    {
+      "index": 0,
+      "connected": "WS: connected",
+      "beforeBytes": 14195,
+      "newsBytes": 14621,
+      "newsSha256": "b02fad052af3cdbaa024af44e358499a9b3fae74673e5ec30d525166e61fe5d6",
+      "fixtureNewsRecovered": true
+    },
+    {
+      "index": 1,
+      "connected": "WS: connected",
+      "beforeBytes": 14195,
+      "newsBytes": 14601,
+      "newsSha256": "abc61bff92a36b8996adbce4884a3eae14e1246e27e2df64cc39a14dc2b27ffa",
+      "fixtureNewsRecovered": true
+    },
+    {
+      "index": 2,
+      "connected": "WS: connected",
+      "beforeBytes": 14195,
+      "newsBytes": 14601,
+      "newsSha256": "abc61bff92a36b8996adbce4884a3eae14e1246e27e2df64cc39a14dc2b27ffa",
+      "fixtureNewsRecovered": true
+    },
+    {
+      "index": 3,
+      "connected": "WS: connected",
+      "beforeBytes": 14195,
+      "newsBytes": 14601,
+      "newsSha256": "abc61bff92a36b8996adbce4884a3eae14e1246e27e2df64cc39a14dc2b27ffa",
+      "fixtureNewsRecovered": true
+    },
+    {
+      "index": 4,
+      "connected": "WS: connected",
+      "beforeBytes": 14195,
+      "newsBytes": 14601,
+      "newsSha256": "abc61bff92a36b8996adbce4884a3eae14e1246e27e2df64cc39a14dc2b27ffa",
+      "fixtureNewsRecovered": true
+    },
+    {
+      "index": 5,
+      "connected": "WS: connected",
+      "beforeBytes": 14195,
+      "newsBytes": 14601,
+      "newsSha256": "abc61bff92a36b8996adbce4884a3eae14e1246e27e2df64cc39a14dc2b27ffa",
+      "fixtureNewsRecovered": true
+    },
+    {
+      "index": 6,
+      "connected": "WS: connected",
+      "beforeBytes": 14195,
+      "newsBytes": 14601,
+      "newsSha256": "abc61bff92a36b8996adbce4884a3eae14e1246e27e2df64cc39a14dc2b27ffa",
+      "fixtureNewsRecovered": true
+    },
+    {
+      "index": 7,
+      "connected": "WS: connected",
+      "beforeBytes": 14195,
+      "newsBytes": 14601,
+      "newsSha256": "abc61bff92a36b8996adbce4884a3eae14e1246e27e2df64cc39a14dc2b27ffa",
+      "fixtureNewsRecovered": true
+    },
+    {
+      "index": 8,
+      "connected": "WS: connected",
+      "beforeBytes": 14195,
+      "newsBytes": 14601,
+      "newsSha256": "abc61bff92a36b8996adbce4884a3eae14e1246e27e2df64cc39a14dc2b27ffa",
+      "fixtureNewsRecovered": true
+    },
+    {
+      "index": 9,
+      "connected": "WS: connected",
+      "beforeBytes": 14195,
+      "newsBytes": 14601,
+      "newsSha256": "abc61bff92a36b8996adbce4884a3eae14e1246e27e2df64cc39a14dc2b27ffa",
+      "fixtureNewsRecovered": true
+    }
+  ],
+  "errors": [],
+  "requests": 3706,
+  "legacySnapshotRequests": 0,
+  "steps": [
+    {
+      "stage": "five-tabs",
+      "clients": 5
+    },
+    {
+      "stage": "ten-tabs",
+      "clients": 10
+    },
+    {
+      "stage": "backend-updated",
+      "clients": 0,
+      "articleCount": 40,
+      "fixtureNewsPublished": true
+    },
+    {
+      "stage": "reconnected",
+      "clients": 10
+    },
+    {
+      "stage": "backend-restarted-same-port",
+      "clients": 10,
+      "newEpoch": true
+    }
+  ],
+  "sqlite": {
+    "instruments": 18,
+    "analysisReadOnly": true,
+    "quoteRows": [
+      18,
+      18,
+      18,
+      18,
+      18,
+      18,
+      18,
+      18,
+      18,
+      18
+    ],
+    "matchesServedPrices": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ],
+    "unchangedNodes": {
+      "quotes": true,
+      "news": true
+    }
+  }
+}

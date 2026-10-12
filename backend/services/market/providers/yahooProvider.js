@@ -25,6 +25,7 @@ function publicProviderError(error, { ticker = null, scope = "provider" } = {}) 
   const diagnostics = summarizeYahooError(error);
   return {
     provider: "yahoo",
+    endpoint: "quote",
     scope,
     code,
     reason: code,
@@ -84,7 +85,7 @@ function mapQuote(quote, { durationMs, score, timestamp, session }) {
     ? Number(quote.changePercent.toFixed(2))
     : previousClose > 0
       ? Number((((quote.price - previousClose) / previousClose) * 100).toFixed(2))
-      : 0;
+      : null;
   return {
     price: quote.price,
     previousClose,
@@ -154,6 +155,14 @@ export async function fetchYahooQuotes({
     }
   }
 
+  const rejected=[];
+  normalizedQuotes=(Array.isArray(normalizedQuotes)?normalizedQuotes:[]).filter(q=>{
+    const valid=requestedTickers.includes(q?.symbol)&&Number.isFinite(q?.price)&&q.price>0&&Number.isFinite(Date.parse(q?.timestamp));
+    if(!valid)rejected.push({provider:"yahoo",endpoint:"quote",scope:"symbol",ticker:q?.symbol || null,code:"YAHOO_INVALID_OBSERVATION",reason:"invalid-price-symbol-or-timestamp"});return valid;
+  });
+  errors.push(...rejected);
+  const serviceRejections=service.lastQuoteDiagnostics?.rejections || [];
+  errors.push(...serviceRejections.map(r=>({provider:"yahoo",endpoint:"quote",scope:"symbol",ticker:r.symbol,code:r.code,reason:r.reason})));
   const durationMs = Date.now() - startedAt;
   const availableBySymbol = new Map(normalizedQuotes.map((quote) => [quote.symbol, quote]));
   const returnedTickers = requestedTickers.filter((ticker) => availableBySymbol.has(ticker));
@@ -181,7 +190,11 @@ export async function fetchYahooQuotes({
     mapQuote(availableBySymbol.get(ticker), { durationMs, score, timestamp, session }),
   ]));
 
+  const metrics={requested:requestedTickers.length,returned:returnedTickers.length,rejected:rejected.length+serviceRejections.length,
+    rateLimited:errors.some(e=>e.httpStatus===429 || /RATE_LIMIT|COOLDOWN/.test(e.code))?missingTickers.length:0,
+    timedOut:errors.some(e=>/TIMEOUT/.test(e.code))?missingTickers.length:0,invalid:rejected.length+serviceRejections.length,staleServed:0};
   return summarizeAttempt({
+    extras:{metrics},
     provider: "yahoo",
     transport: "server-library",
     requestMode: "yahoo-finance2-quote",

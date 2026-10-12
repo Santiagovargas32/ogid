@@ -24,3 +24,8 @@ backend/data/rss-canonical-state.json
 
 backend/data/logs
 backend/data/sqlite
+# Artifacts created by explicit P0 validation; no operator data in commits.
+backend/data/maintenance/p0-recovery-validation/
+/data/market/
+!/docs/performance/
+!/docs/performance/**

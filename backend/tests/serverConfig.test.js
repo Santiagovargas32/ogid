@@ -20,6 +20,18 @@ function withEnv(values, run) {
   }
 }
 
+test("WebSocket transport budgets reach the live server configuration", () => withEnv({
+  WS_MAX_MESSAGE_BYTES: "32768", WS_MAX_BUFFERED_BYTES: "131072",
+  WS_MAX_QUEUE_BYTES: "131072", WS_MAX_QUEUE_ITEMS: "32",
+  WS_SLOW_CLIENT_MS: "8000", WS_CLOSE_GRACE_MS: "4000"
+}, () => {
+  const runtime = createAppServer({ market: { historyPersist: false } });
+  assert.deepEqual(runtime.socketServer.getHealth().transportLimits, {
+    maxMessageBytes: 32768, maxBufferedBytes: 131072, maxQueueBytes: 131072,
+    maxQueueItems: 32, slowClientMs: 8000, closeGraceMs: 4000
+  });
+}));
+
 test("server config enables all llama.cpp features in shadow with isolated credentials", () => withEnv({
   AI_PROVIDER: " LLAMACPP ", AI_MODE: "shadow",
   AI_FEATURES: "article-summary,country-insight,market-explanation,invalid,article-summary",
