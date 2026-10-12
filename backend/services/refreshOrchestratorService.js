@@ -1,5 +1,6 @@
 import { createLogger } from "../utils/logger.js";
 import apiQuotaTracker from "./admin/apiQuotaTrackerService.js";
+import { calculateMarketProjection } from "./market/marketProjection.js";
 import { fetchRawNews } from "./newsService.js";
 import { normalizeAdminArticles, normalizeArticles } from "./normalizeService.js";
 import { computeCountryRisk } from "./riskEngineService.js";
@@ -767,39 +768,20 @@ class RefreshOrchestratorService {
       const countryFilter = options.countries?.length ? options.countries : this.config.watchlistCountries;
       const selectedMarketInstruments = this.config.market.watchlistService?.selectedInstruments?.() || [];
 
-      const predictions = generatePredictions({
-        articles: mergeArticleCorpora(this.stateManager.getMarketSignalCorpus(), this.awarenessService?.getMarketArticles?.() || []),
-        countries: analysisSnapshot.countries,
-        marketQuotes: marketState.quotes,
-        tickers: this.config.market.tickers,
-        instruments: selectedMarketInstruments,
-        inputMode
-      });
-      const impact = computeMarketImpact({
-        articles: mergeArticleCorpora(this.stateManager.getMarketSignalCorpus(), this.awarenessService?.getMarketArticles?.() || []),
-        countries: analysisSnapshot.countries,
-        marketQuotes: marketState.quotes,
-        tickers: this.config.market.tickers,
-        instruments: selectedMarketInstruments,
-        countryFilter,
-        windowMin: this.config.market.impactWindowMin,
-        inputMode,
-        impactHistory: previousSnapshot.impactHistory || [],
-        predictionScores: predictions.predictionScoreByTicker || {}
-      });
-      const insights = generateInsights({
-        countries: analysisSnapshot.countries,
-        previousCountries: analysisSnapshot.countries,
-        inputMode
-      });
-
-      let snapshot = this.stateManager.updateIntel({
-        insights,
-        predictions,
-        market: marketState,
-        impact,
-        watchlistCountries: this.config.watchlistCountries
-      });
+      const analysisInput={
+        articles:mergeArticleCorpora(this.stateManager.getMarketSignalCorpus(),this.awarenessService?.getMarketArticles?.() || []),
+        countries:analysisSnapshot.countries,marketQuotes:marketState.quotes,tickers:this.config.market.tickers,instruments:selectedMarketInstruments,
+        countryFilter,windowMin:this.config.market.impactWindowMin,inputMode,impactHistory:previousSnapshot.impactHistory || []
+      };
+      let snapshot;
+      if(this.config.market.analyzeInWorker){
+        snapshot=this.stateManager.updateIntel({market:marketState,watchlistCountries:this.config.watchlistCountries});
+        this.socketServer.broadcast("update",{market:snapshot.market,meta:snapshot.meta},snapshot.meta);
+        this.scheduleMarketProjection({...analysisInput,marketRevision:snapshot.market.revision});
+      } else {
+        const projection=calculateMarketProjection(analysisInput);
+        snapshot=this.stateManager.updateIntel({...projection,market:marketState,watchlistCountries:this.config.watchlistCountries});
+      }
 
       const aggregateNews = await this.resolveAggregateNewsSnapshot();
       await this.newsArchive?.recordContext(snapshot);
@@ -865,6 +847,23 @@ class RefreshOrchestratorService {
     } finally {
       this.marketInFlight = false;
     }
+  }
+
+  scheduleMarketProjection(input){
+    this.marketProjectionPending=input;
+    if(this.marketProjectionTask)return this.marketProjectionTask;
+    const task=(async()=>{
+      while(this.marketProjectionPending){
+        const captured=this.marketProjectionPending;this.marketProjectionPending=null;
+        try{
+          const projection=await this.config.market.analyzeInWorker(captured);
+          if(this.stateManager.state.market.revision!==captured.marketRevision)continue;
+          const snapshot=this.stateManager.updateIntel({...projection,watchlistCountries:this.config.watchlistCountries});
+          this.socketServer.broadcast("update",{meta:snapshot.meta,insights:snapshot.insights,predictions:snapshot.predictions,impact:snapshot.impact,impactHistory:snapshot.impactHistory},snapshot.meta);
+        }catch(error){log.warn("market_projection_failed",{code:error.code || "MARKET_ANALYSIS_FAILED"});}
+      }
+    })().finally(()=>{this.marketProjectionTask=null;});
+    this.marketProjectionTask=task;this.trackBackground(task);return task;
   }
 
   async waitForIdle(maxWaitMs = 20_000) {

@@ -66,7 +66,7 @@ try {
   database.pragma("synchronous=FULL"); database.pragma("foreign_keys=ON");
   migrations = migrate(database, workerData.migrationsDir);
   cacheStatements(database);
-  runtime=new BusinessRuntime(database,rpc);
+  runtime=new BusinessRuntime(database,rpc,(id,stage)=>parentPort.postMessage({type:"stage",id,stage}));
   parentPort.postMessage({ type: "ready", status: status() });
   telemetry();const heartbeat=setInterval(()=>{try{telemetry();}catch(error){log.warn("storage_diagnostics_failed",{code:error.code});}},5000);heartbeat.unref();
   parentPort.on("message", async envelope => {

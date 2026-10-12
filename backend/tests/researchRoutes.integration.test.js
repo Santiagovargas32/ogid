@@ -15,13 +15,13 @@ import { executeTool, toolDefinitions } from "../../integrations/ogid-mcp/src/to
 import { readOperatorCredentials } from "../middleware/mcpOperatorAuth.js";
 import { ResearchStore } from "../services/research/researchStore.js";
 
-test("research ledger capacity does not interrupt legacy news collection and reports blocked coverage",()=>{
+test("research ledger capacity does not interrupt legacy news collection and reports blocked coverage",async()=>{
   const runtime=createAppServer({disableBackgroundRefresh:true,researchStore:new ResearchStore({maxEntries:0}),news:{providers:[],rssFeeds:[]},market:{enabled:false,historyPersist:false,initialTickers:[],tickers:[]}});
   assert.doesNotThrow(()=>runtime.app.locals.newsArchive.ingest([{id:"offline-capacity",title:"NVIDIA results",url:"https://example.org/capacity",provider:"rss",publishedAt:"2026-10-08T12:00:00Z"}]));
-  assert.equal(runtime.app.locals.newsArchive.search().total,1);assert.equal(runtime.app.locals.researchPipeline.archiveEvents.status,"blocked");assert.equal(runtime.app.locals.researchPipeline.archiveEvents.failureCode,"RESEARCH_CAPACITY");assert.equal(runtime.app.locals.researchPipeline.archiveEvents.pendingReplay,true);
+  assert.equal(runtime.app.locals.newsArchive.search().total,1);await new Promise(resolve=>setImmediate(resolve));assert.equal(runtime.app.locals.researchPipeline.archiveEvents.status,"blocked");assert.equal(runtime.app.locals.researchPipeline.archiveEvents.failureCode,"RESEARCH_CAPACITY");assert.equal(runtime.app.locals.researchPipeline.archiveEvents.pendingReplay,true);
   runtime.app.locals.researchStore.maxEntries=20;
   runtime.app.locals.newsArchive.ingest([{id:"offline-after-capacity",title:"NVIDIA updated results",url:"https://example.org/capacity-restored",provider:"rss",publishedAt:"2026-10-08T13:00:00Z"}]);
-  assert.equal(runtime.app.locals.researchPipeline.archiveEvents.status,"partial");assert.equal(runtime.app.locals.researchPipeline.archiveEvents.pendingReplay,true);
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(runtime.app.locals.researchPipeline.archiveEvents.status,"partial");assert.equal(runtime.app.locals.researchPipeline.archiveEvents.pendingReplay,true);
 });
 
 test("inventario: todas las rutas JSON montadas tienen contrato y permiso; rutas nuevas sin clasificar fallan", () => {

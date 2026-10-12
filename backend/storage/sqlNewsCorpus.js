@@ -1,3 +1,5 @@
+import { compareNews } from "../utils/newsOrder.js";
+import { publicationDate, articleIdentity } from "../services/news/articleIdentity.js";
 import { dateTimeFormatter } from "../utils/dateTimeFormat.js";
 import { stableHash } from "../utils/stableHash.js";
 import { normalizeArticles } from "../services/normalizeService.js";
@@ -54,6 +56,7 @@ export class SqlNewsCorpus {
   }
 
   async scan({ now, hours, countries, viewSources, awarenessMode }) {
+    for(const id of ["news.normalize","news.classify","news.risk","news.select"])this.config.progress?.(id,"running");
     const reader=new Database(this.archive.db.name,{readonly:true,timeout:1500});
     try {
       reader.pragma("query_only=ON");reader.exec("BEGIN");
@@ -129,17 +132,43 @@ export class SqlNewsCorpus {
       const selection = buildIntelNewsSelection({...selectionOptions, articles:visibleCandidates});
       const financialSelection = buildFinancialNewsSelection({articles:financial, now:new Date(now), candidateWindowHours:hours, analyzeLimit, displayLimit,reuseClassification:true});
       const marketSignalCorpus = [...new Map([...geo, ...financialSelection.signalCorpus].map(article => [article.id,article])).values()];
+      for(const id of ["news.normalize","news.classify","news.risk","news.select"])this.config.progress?.(id,"completed",{processed:id==="news.risk"?dailyCount:eligible,discarded:scanned-eligible,revision});
       return { signalCorpus:geo, marketSignalCorpus, news:selection.displaySelection, displayCandidates, selectionMeta:selection.selectionMeta, financialSelection,
         riskResult:risk.finish(),
         meta:{ source:"sqlite", revision, asOf, from, to:asOf, dayStart, dayTimeZone:this.config.dayTimeZone || "Europe/Madrid", windowHours:hours, scannedCount:scanned, eligibleCount:eligible, duplicateCount, dailyCandidateCount:dailyCount, displayCandidateCount, geopoliticalCandidateCount:geoCount, financialCandidateCount:financialCount, analysisCount:geo.length, marketAnalysisCount:marketSignalCorpus.length, displayCount:selection.displaySelection.length, analyzeLimit, displayLimit, analysisTruncated:geoCount>geo.length || financialCount>financialSelection.signalCorpus.length, riskUsesAllDailyCandidates:true, providerCounts, sourceCount:sources.size, lastIngestAt:this.archive.lastIngestAt, latestGeopoliticalPublishedAt, durationMs:Math.round(performance.now()-started) } };
     } finally { reader.close(); }
   }
 
-  async getLiveFeed({countries=this.config.watchlistCountries || [],sources=[],limit=this.config.displayLimit || 40}={}) {
+  async getArchiveFeed({countries=[],sources=[],limit=40,page=1,order="recent",q="",windowHours=null}={}) {
+    const boundedLimit=Math.min(500,Math.max(1,Number(limit)||40)),offset=(Math.min(10000,Math.max(1,Number(page)||1))-1)*boundedLimit;
+    const reader=new Database(this.archive.db.name,{readonly:true});const heap=[];const compare=(a,b)=>compareNews(a,b,order);
+    const push=value=>{
+      if(heap.length<offset+boundedLimit){heap.push(value);let i=heap.length-1;while(i>0){const p=(i-1)>>1;if(compare(heap[i],heap[p])<=0)break;[heap[i],heap[p]]=[heap[p],heap[i]];i=p;}}
+      else if(compare(value,heap[0])<0){heap[0]=value;let i=0;for(;;){let next=i;for(const child of [2*i+1,2*i+2])if(child<heap.length&&compare(heap[child],heap[next])>0)next=child;if(next===i)break;[heap[i],heap[next]]=[heap[next],heap[i]];i=next;}}
+    };
+    let total=0,scanned=0;const cutoff=windowHours?Date.now()-Number(windowHours)*3600000:null,needle=String(q).trim().toLowerCase();
+    try{
+      reader.exec("BEGIN");const revision=readMeta(reader,"news.meta",{}).revision;
+      if(reader.prepare("SELECT count(*) AS n FROM articles").get().n<=offset)return {news:[],meta:{revision,collection:"archive-permitted-metadata",hasMore:false}};
+      for(const row of reader.prepare("SELECT payload_json FROM articles ORDER BY article_id").iterate()){
+        const raw=JSON.parse(row.payload_json);scanned++;
+        if(cutoff!==null&&(Date.parse(raw.publishedAt || raw.archiveFirstSeenAt || raw.receivedAt)||0)<cutoff)continue;
+        const article={...classifyRssArticle(raw),...publicationDate(raw.publishedAt),identity:articleIdentity(raw),firstSeenAt:raw.archiveFirstSeenAt || raw.receivedAt,severityOrigin:"rss-classifier-rules"};
+        if(countries.length&&!article.countryMentions.some(c=>countries.includes(c)))continue;
+        if(!filterNewsBySources([article],sources).length)continue;
+        if(needle&&!`${article.title || ""} ${article.excerpt || article.description || ""} ${article.sourceName || ""}`.toLowerCase().includes(needle))continue;
+        total++;push(article);if(scanned%256===0)await new Promise(resolve=>setImmediate(resolve));
+      }
+      return {news:heap.sort(compare).slice(offset,offset+boundedLimit),meta:{revision,collection:"archive-permitted-metadata",total,page,hasMore:total>offset+boundedLimit,scannedCount:scanned,stored:true}};
+    }finally{reader.close();}
+  }
+
+  async getLiveFeed({countries=this.config.watchlistCountries || [],sources=[],limit=this.config.displayLimit || 40,includeOlder=false,q="",order="recent",page=1,windowHours=null}={}) {
+    if(includeOlder || q || page>1 || windowHours)return this.getArchiveFeed({countries,sources,limit,page,order,q,windowHours});
     const corpus=await this.read({countries,sources,awarenessMode:this.config.awarenessMode || "off"});
     const articles=filterNewsBySources(corpus.displayCandidates.filter(article=>!countries.length || article.countryMentions.some(country=>countries.includes(country))),sources);
     const selection=buildIntelNewsSelection({articles,watchlistCountries:countries,now:new Date(corpus.meta.asOf),candidateWindowHours:this.config.candidateWindowHours || 36,analyzeLimit:this.config.analyzeLimit || 3000,displayLimit:positive(limit,40,200),maxPerSource:this.config.maxPerSource || 3,maxSimilarHeadline:this.config.maxSimilarHeadline || 1,ensureCountryCoverage:true,fillAvailable:true});
-    return {news:selection.displaySelection,meta:{...corpus.meta,filteredDailyCandidateCount:corpus.meta.displayCandidateCount,displayCount:selection.displaySelection.length}};
+    return {news:selection.displaySelection.sort((a,b)=>compareNews(a,b,order)),meta:{...corpus.meta,filteredDailyCandidateCount:corpus.meta.displayCandidateCount,displayCount:selection.displaySelection.length}};
   }
 
   async getFeed({countries=[], topic="", threat="", limit=120, offset=0, paginate=false,page=1,windowHours, rssOnly=false, awarenessMode=this.config.awarenessMode || "off"} = {}) {

@@ -336,6 +336,7 @@ export function getPipelineStatus(_req, res) {
     ok: true,
     data: {
       generatedAt: new Date().toISOString(),
+      stages: res.app.locals.pipelineMonitor?.snapshot() || {},
       runtime: res.app.locals.runtimeMetrics?.snapshot?.() || null,
       storage: res.app.locals.storageManager?.getStatus?.() || null,
       market: {

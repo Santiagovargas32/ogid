@@ -10,6 +10,8 @@ export function storageConfig(overrides = {}, env = process.env) {
   const enabled = overrides.enabled ?? (env.STORAGE_ENABLED === "1");
   return {
     enabled,
+    analysisWorker: overrides.analysisWorker === true,
+    isolateAnalysis: overrides.isolateAnalysis !== false,
     businessEnabled: overrides.businessEnabled ?? (env.STORAGE_BUSINESS_ENABLED === "1"),
     maxInFlight: integer(overrides.maxInFlight, (overrides.businessEnabled ?? (env.STORAGE_BUSINESS_ENABLED === "1")) ? 8 : 1, 1),
     maxCpuInFlight: integer(overrides.maxCpuInFlight, 1, 1),

@@ -4,7 +4,8 @@ import { Worker } from "node:worker_threads";
 import { storageConfig } from "./config.js";
 const error = code => Object.assign(new Error(code), { code, statusCode: 503 });
 const OPERATIONS = new Set(["storage.status", "storage.verify", "storage.checkpoint", "pipeline.record", "domain.configure", "domain.registry", "domain.call", "storage.import", "runtime.save", "runtime.load", "rss.fetch", "news.collect", "news.supplemental"]);
-const CPU_SERVICES = new Set(["technical","indicators","conditions","advanced","map","portfolio","scenarios","forecasts","coupling","signals"]);
+const ISOLATED_SERVICES = new Set(["market","technical","indicators","conditions","advanced","map","coupling"]);
+const CPU_SERVICES = new Set(["market","technical","indicators","conditions","advanced","map","portfolio","scenarios","forecasts","coupling","signals"]);
 
 export class StorageManager extends EventEmitter {
   constructor(options = {}) {
@@ -16,6 +17,7 @@ export class StorageManager extends EventEmitter {
   }
   getStatus() {
     return { state: this.state, ...this.metadata, businessStorage: this.metadata.businessStorage || (this.options.businessEnabled ? "sqlite" : "legacy-json"), storagePhase: this.metadata.storagePhase || (this.options.businessEnabled ? "repositories" : "infrastructure"),
+      analysis:this.analysisManager?.getStatus() || null,
       databasePath:this.options.databasePath, worker:this.workerDiagnostics || null, lastExpiredCommand:this.lastExpiredCommand || null,
       activeCommands:[...this.active.values()].map(entry=>({...entry.diagnostic,phase:entry.startedAt?"executing":"dispatched",queuedAt:new Date(entry.queuedAt).toISOString(),elapsedMs:Date.now()-entry.queuedAt,executionMs:entry.startedAt?Date.now()-entry.startedAt:null,timeoutMs:entry.timeoutMs,queueTimeoutMs:entry.queueTimeoutMs})),
       queue: { pending: this.queue.length, inFlight: this.active.size, cpuInFlight:[...this.active.values()].filter(entry=>entry.cpu).length,maxCpuInFlight:this.options.maxCpuInFlight,bytes: this.pendingBytes, maxItems: this.options.queueMaxItems, maxBytes: this.options.queueMaxBytes, maxCommandBytes: this.options.maxCommandBytes }, ...this.metrics };
@@ -37,9 +39,25 @@ export class StorageManager extends EventEmitter {
         else this.fail(error("STORAGE_WORKER_EXITED"));
       });
     } catch { this.fail(error("STORAGE_START_FAILED")); }
-    return this.startPromise;
+    await this.startPromise;
+    if(this.options.businessEnabled && this.options.isolateAnalysis && !this.options.analysisWorker) {
+      this.analysisManager = new StorageManager({...this.options,analysisWorker:true,maxInFlight:1});
+      this.analysisManager.rpcHandler=(...args)=>this.rpcHandler?.(...args);
+      this.analysisManager.on("stage",(...args)=>this.emit("stage",...args));
+      await this.analysisManager.start();
+    }
+    return this.getStatus();
   }
   request(operation, input = {}, { requestId = randomUUID(), timeoutMs = this.options.timeoutMs, queueTimeoutMs = this.options.queueTimeoutMs } = {}) {
+    if (this.analysisManager && operation === "domain.call" && (ISOLATED_SERVICES.has(input.service) || (input.service === "news" && input.method === "getProjection"))) return this.analysisManager.request(operation,input,{requestId,timeoutMs,queueTimeoutMs});
+    if (this.analysisManager && ["domain.configure","domain.registry"].includes(operation)) {
+      return this.localRequest(operation,input,{requestId,timeoutMs,queueTimeoutMs}).then(async result=>{
+        await this.analysisManager.request(operation,{...input,analysisOnly:true},{requestId,timeoutMs,queueTimeoutMs});return result;
+      });
+    }
+    return this.localRequest(operation,input,{requestId,timeoutMs,queueTimeoutMs});
+  }
+  localRequest(operation, input = {}, { requestId = randomUUID(), timeoutMs = this.options.timeoutMs, queueTimeoutMs = this.options.queueTimeoutMs } = {}) {
     if (!OPERATIONS.has(operation)) return Promise.reject(error("STORAGE_UNKNOWN_OPERATION"));
     if (this.state !== "ready") return Promise.reject(error("STORAGE_NOT_READY"));
     let encoded;
@@ -67,7 +85,10 @@ export class StorageManager extends EventEmitter {
     while (this.queue.length && this.active.size < this.options.maxInFlight) {
       const slowCount=[...this.active.values()].filter(e=>e.slow).length;
       const cpuCount=[...this.active.values()].filter(e=>e.cpu).length;
-      const index=this.queue.findIndex(e=>(!e.slow || slowCount < Math.min(2,this.options.maxInFlight)) && (!e.cpu || cpuCount<this.options.maxCpuInFlight));
+      const eligible=e=>(!e.slow || slowCount<Math.min(2,this.options.maxInFlight))&&(!e.cpu || cpuCount<this.options.maxCpuInFlight);
+      const aged=this.queue.findIndex(e=>eligible(e)&&Date.now()-e.queuedAt>=1000);
+      const quick=this.queue.findIndex(e=>eligible(e)&&!e.slow);
+      const index=aged>=0?aged:quick>=0?quick:this.queue.findIndex(eligible);
       if(index < 0)break;
       const [entry] = this.queue.splice(index,1); this.active.set(entry.id, entry);
       entry.dispatchedAt=Date.now();
@@ -78,6 +99,7 @@ export class StorageManager extends EventEmitter {
   }
   handleMessage(message) {
     if (["failed", "closed"].includes(this.state)) return;
+    if(message.type==="stage"){this.emit("stage",message.id,message.stage);return;}
     if(message.type==="telemetry"){this.workerDiagnostics=message.worker;return;}
     if(message.type==="command-started"){
       const entry=this.active.get(message.id);
@@ -106,7 +128,7 @@ export class StorageManager extends EventEmitter {
     const entry = this.active.get(message.id); if (!entry) return;
     this.active.delete(message.id); clearTimeout(entry.timer); this.pendingBytes -= entry.bytes;
     if (message.error) { this.metrics.failed++; this.metrics.lastErrorCode = message.error.code; entry.reject(Object.assign(error(message.error.code), { statusCode: message.error.statusCode || 503, message: message.error.message || message.error.code })); }
-    else { this.metadata = message.status; this.metrics.completed++; this.metrics.lastDurationMs = message.durationMs; entry.resolve(message.result); }
+    else { this.metrics.lastQueueMs = (entry.startedAt || Date.now()) - entry.queuedAt; this.metrics.lastExecutionMs=message.durationMs;this.metrics.lastTotalMs=Date.now()-entry.queuedAt; this.metadata = message.status; this.metrics.completed++; this.metrics.lastDurationMs = message.durationMs; entry.resolve(message.result); }
     this.pump();
   }
   expire(entry) {
@@ -136,7 +158,11 @@ export class StorageManager extends EventEmitter {
     try { this.worker.postMessage({ id: this.closeId, encoded: JSON.stringify({ operation: "storage.close" }) }); }
     catch { this.fail(error("STORAGE_CLOSE_FAILED")); }
   }
-  async close() {
+  close() {
+    const primary=this.closeLocal();
+    return this.analysisManager ? Promise.all([primary,this.analysisManager.close()]).then(()=>undefined) : primary;
+  }
+  async closeLocal() {
     if (["disabled", "closed", "new"].includes(this.state)) { if (this.state === "new") this.state = "closed"; return; }
     if (this.state === "failed") { await this.termination; return; }
     if (this.state === "starting") { try { await this.startPromise; } catch { await this.termination; return; } }

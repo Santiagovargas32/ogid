@@ -15,6 +15,7 @@ const appState = {
       lastRefreshId: null
     }
   },
+  pipelineStatus: {},
   news: [],
   countries: {},
   hotspots: [],
@@ -144,6 +145,7 @@ function applyPayload(payload = {}) {
   if (payload.meta) {
     appState.meta = payload.meta;
   }
+  if (payload.pipelineStatus && typeof payload.pipelineStatus === "object") appState.pipelineStatus = payload.pipelineStatus;
   if (Array.isArray(payload.news)) {
     appState.news = payload.news;
   }

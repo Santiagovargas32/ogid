@@ -7,6 +7,7 @@ import express from "express";
 import helmet from "helmet";
 import routes from "./routes/index.js";
 import stateManager from "./state/stateManager.js";
+import { PipelineMonitor } from "./services/pipelineMonitor.js";
 import RefreshOrchestratorService from "./services/refreshOrchestratorService.js";
 import ManualRefreshService from "./services/manualRefreshService.js";
 import apiQuotaTracker from "./services/admin/apiQuotaTrackerService.js";
@@ -822,10 +823,15 @@ export function createAppServer(overrides = {}) {
   const officialSourceService = business?.sources || new OfficialSourceService({store:researchStore,eventLedger,sources:researchSources,userAgent:process.env.RESEARCH_SEC_USER_AGENT || null});
   const newsArchive = overrides.newsArchive || business?.news || new NewsArchive({ persistencePath: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, process.env.RESEARCH_NEWS_ARCHIVE_FILE || "data/intel/research-news.json") });
   const researchPipeline={};
-  const researchGuard=(component,work)=>{
-    const healthy=result=>{researchPipeline[component]={...researchPipeline[component],status:researchPipeline[component]?.pendingReplay?"partial":"healthy",lastSuccessAt:new Date().toISOString(),pendingReplay:Boolean(researchPipeline[component]?.pendingReplay)};return result;};
-    const blocked=error=>{const code=/^[A-Z0-9_]{1,64}$/.test(error.code||"")?error.code:"RESEARCH_PIPELINE_ERROR";researchPipeline[component]={...researchPipeline[component],status:"blocked",lastFailureAt:new Date().toISOString(),failureCode:code,pendingReplay:true};log.warn("research_pipeline_blocked",{component,code});return null;};
-    try{const result=work();return result?.then?result.then(healthy,blocked):healthy(result);}catch(error){return blocked(error);}
+  const monitor = new PipelineMonitor({publish:(id,stage)=>{
+    stateManager.state.pipelineStatus={...stateManager.state.pipelineStatus,[id]:stage};
+    socketServer.broadcast("update",{pipelineStatus:stateManager.state.pipelineStatus});
+  },persist:business?(id,stage)=>pipelinePersistence.save("pipeline-stage",{id,stage}):null});
+  if(business)config.market.analyzeInWorker=input=>monitor.run("market.analysis",()=>business.call("market","analyze",[input],{timeoutMs:30000}),{counts:result=>({processed:result.impact?.items?.length || 0})});
+  storageManager.on("stage",(id,stage)=>monitor.update(id,stage));
+  const researchGuard=async(component,work)=>{
+    try{const result=await monitor.run(`research.${component}`,work);const pendingReplay=Boolean(researchPipeline[component]?.pendingReplay);researchPipeline[component]={...monitor.snapshot()[`research.${component}`],status:pendingReplay?"partial":"completed",pendingReplay};return result;}
+    catch(error){researchPipeline[component]={...monitor.snapshot()[`research.${component}`],failureCode:error.code || "RESEARCH_PIPELINE_ERROR",pendingReplay:true};log.warn("research_pipeline_blocked",{component,code:error.code || "RESEARCH_PIPELINE_ERROR"});return null;}
   };
   if (!business) newsArchive.onIngest = items => researchGuard("archiveEvents",()=>{for(let offset=0;offset<items.length;offset+=500)eventLedger.ingest(items.slice(offset,offset+500));});
   const materialAlertStore = overrides.materialAlertStore || business?.alerts || new MaterialAlertStore({ persistencePath: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, process.env.RESEARCH_ALERT_STATE_FILE || "data/intel/research-alerts.json") });
@@ -949,6 +955,15 @@ export function createAppServer(overrides = {}) {
     aiCoordinator,
     awarenessService
   });
+  for(const [method,id]of [["executeNewsCycle","news"],["executeMarketCycle","market"]]){
+    const run=orchestrator[method].bind(orchestrator);
+    orchestrator[method]=(...args)=>monitor.run(id,()=>run(...args),{enabled:id!=="market"||config.market.enabled,counts:()=>{
+      const telemetry=id==="news"?orchestrator.getNewsCycleTelemetry():orchestrator.getMarketCycleTelemetry();
+      const snapshot=stateManager.state;
+      const count=id==="news"?snapshot.news.length:Object.values(snapshot.market.quotes).filter(q=>Number.isFinite(q.price)&&q.synthetic!==true).length;
+      return {processed:count,degraded:telemetry.lastStatus==="error"||count===0,reason:telemetry.lastError || (count===0?"no-valid-observations":null)};
+    },revision:()=>socketServer.sync.revision});
+  }
   const manualRefreshService = new ManualRefreshService({
     orchestrator,
     cooldownMs: config.manualRefresh.cooldownMs,
@@ -971,6 +986,7 @@ export function createAppServer(overrides = {}) {
   app.locals.socketServer = socketServer;
   app.locals.newsArchive = newsArchive;
   app.locals.researchPipeline = researchPipeline;
+  app.locals.pipelineMonitor = monitor;
   app.locals.researchStore = researchStore;
   app.locals.forecastEvaluationService = business?.forecasts || new ForecastEvaluationService({store:researchStore,candleStore:dailyCandleStore});
   app.locals.eventLedger = eventLedger;
@@ -1038,7 +1054,7 @@ export function createAppServer(overrides = {}) {
         const now = new Date().toISOString();
         const runId = `boot-${randomUUID()}`;
         await storageManager.request("pipeline.record", { runId, pipelineId: "storage", startedAt: now, completedAt: now, status: "healthy", counts: { migrations: storageManager.getStatus().migrations.length } }, { requestId: runId });
-        log.info("storage_worker_started", storageManager.getStatus());
+        log.info("storage_worker_started", {state:storageManager.state,sqliteVersion:storageManager.getStatus().sqliteVersion,migrations:storageManager.getStatus().migrations.length,analysisWorker:Boolean(storageManager.analysisManager)});
       }
       if (business) {
         const workerNews = {...config.news,watchlistCountries:config.watchlistCountries,awarenessMode:config.awareness.mode};
@@ -1147,6 +1163,7 @@ export function createAppServer(overrides = {}) {
       await Promise.allSettled([...activeCycles]);
       await marketDataStore.flushPersistence();
       await pipelinePersistence?.flush();
+      await monitor.flush();
       await storageManager.close();
       log.info("server_stopped");
       })();

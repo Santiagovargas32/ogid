@@ -158,3 +158,16 @@ test("HTTP SQL mode hydrates the daily feed at startup and reads stored articles
     const sql=new Database(join(dir,"test.sqlite"),{readonly:true});assert.equal(sql.prepare("SELECT count(*) AS n FROM pipeline_runs WHERE pipeline_id='rss'").get().n,0);sql.close();
   }finally{await runtime.stop();rmSync(dir,{recursive:true,force:true});}
 });
+
+test('SQL history preserves main search, ordering and page contracts without hydrating the archive',async()=>{
+  const dir=mkdtempSync(join(tmpdir(),'ogid-history-filters-')),db=new Database(join(dir,'db.sqlite'));migrate(db);
+  const archive=new SqlNewsArchive(db),corpus=new SqlNewsCorpus(archive);
+  try{
+    archive.ingest([article(1,{title:'Russia market update',publishedAt:'2025-01-01T12:00:00Z'}),article(2,{title:'Russia ballistic missile strike conflict airstrike troop deployment',publishedAt:'2025-01-02T12:00:00Z'}),article(3,{title:'China economics report',publishedAt:'2025-01-03T12:00:00Z'})]);
+    const first=await corpus.getLiveFeed({includeOlder:true,countries:['RU'],order:'critical',limit:1});
+    assert.match(first.news[0].title,/ballistic/);assert.equal(first.meta.total,2);assert.equal(first.meta.hasMore,true);
+    const next=await corpus.getLiveFeed({includeOlder:true,countries:['RU'],order:'critical',limit:1,page:2});assert.match(next.news[0].title,/market/);
+    const searched=await corpus.getLiveFeed({includeOlder:true,q:'China',limit:500});assert.equal(searched.news.length,1);assert.ok(searched.news[0].identity);
+    const cutoff=await corpus.getLiveFeed({includeOlder:true,windowHours:1});assert.equal(cutoff.news.length,0);
+  }finally{archive.close();db.close();rmSync(dir,{recursive:true,force:true});}
+});

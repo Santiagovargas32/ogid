@@ -1,3 +1,4 @@
+import { calculateMarketProjection } from "../services/market/marketProjection.js";
 import { randomUUID } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { SqlResearchStore, SqlCandleStore, SqlAlertStore, SqlEventLedger, readMeta, writeMeta, instrumentRow, sourceRow } from "./sqlRepositories.js";
@@ -26,9 +27,17 @@ import { SignalCorrelatorService } from "../services/intel/signalCorrelator.js";
 import { SqlAwarenessStore } from "./sqlAwarenessStore.js";
 import apiQuotaTracker from "../services/admin/apiQuotaTrackerService.js";
 
-const METHODS={awareness:["parseSource","getSnapshot","reconcile","setSourceStale"],store:["view","getRow"],news:["ingest","recordContext","search","getItem","getHistory","coverage","getProjection","getFeed","getLiveFeed"],events:["ingest","search","replayAwareness"],alerts:["acknowledge","delta","acknowledgeChanges","recoverCheckpoint"],sources:["status","run","holdings"],history:["create","get","run","coverage"],imports:["datasets","import"],technical:["get"],indicators:["calculate"],coupling:["calculate"],scenarios:["refresh","list","remove"],forecasts:["evaluate","record"],portfolio:["getContext"],rss:["getSnapshot","refresh"],conditions:["getSnapshot"],map:["getDashboardMapAssets","getLayerBundle","getConfig"],advanced:["getSnapshot"],signals:["recordSnapshot","getAnomalies"],candles:["query","append","upsert","latest","has","hasCandle","hydrate"]};
+const METHODS={market:["analyze"],awareness:["parseSource","getSnapshot","reconcile","setSourceStale"],store:["view","getRow"],news:["ingest","recordContext","search","getItem","getHistory","coverage","getProjection","getFeed","getLiveFeed"],events:["ingest","search","replayAwareness"],alerts:["acknowledge","delta","acknowledgeChanges","recoverCheckpoint"],sources:["status","run","holdings"],history:["create","get","run","coverage"],imports:["datasets","import"],technical:["get"],indicators:["calculate"],coupling:["calculate"],scenarios:["refresh","list","remove"],forecasts:["evaluate","record"],portfolio:["getContext"],rss:["getSnapshot","refresh"],conditions:["getSnapshot"],map:["getDashboardMapAssets","getLayerBundle","getConfig"],advanced:["getSnapshot"],signals:["recordSnapshot","getAnomalies"],candles:["query","append","upsert","latest","has","hasCandle","hydrate"]};
 export class BusinessRuntime {
-  constructor(db,rpc){Object.assign(this,{db,rpc});this.services=null;this.rssCursor=0;}
+  constructor(db,rpc,emitStage=()=>{}){Object.assign(this,{db,rpc,emitStage});this.stageStates=new Map();this.stageTimes=new Map();this.services=null;this.rssCursor=0;}
+  progress(id,status,details={}) {
+    const now=new Date().toISOString(),previous=this.stageStates.get(id) || {};
+    if(status==="running")this.stageTimes.set(id,performance.now());
+    const stage={enabled:true,queue:0,processed:0,discarded:0,errorCode:null,reason:null,revision:null,...previous,...details,status,
+      lastRunAt:status==="running"?now:previous.lastRunAt || now,lastSuccessAt:status==="completed"?now:previous.lastSuccessAt || null,
+      durationMs:status==="running"?null:performance.now()-(this.stageTimes.get(id) || performance.now())};
+    this.stageStates.set(id,stage);this.emitStage(id,stage);
+  }
   registry(instruments){
     registerInstruments(instruments || []);for(const i of listVerifiedInstruments())instrumentRow(this.db,i.instrumentId);
     const universe=listVerifiedInstruments(),fingerprint=stableHash(universe.map(i=>[i.instrumentId,i.canonicalSymbol,i.aliases,i.companyId]));
@@ -46,19 +55,20 @@ export class BusinessRuntime {
   restoreQuotas(){for(const [provider,saved]of Object.entries(this.load("provider-quota")?.providers || {})){apiQuotaTracker.ensureProvider(provider);Object.assign(apiQuotaTracker.providers[provider],saved);}}
   configure(input={}){
     if(input.requireImport&&!readMeta(this.db,"import.ready",false))throw new AppError("Ejecutar storage:migrate antes de activar el servicio SQL.",503,"STORAGE_IMPORT_REQUIRED");
-    if(input.requireImport)this.db.prepare("UPDATE pipeline_runs SET status='failed',completed_at=?,error_code='STORAGE_RESTART_INTERRUPTED' WHERE status='running'").run(new Date().toISOString());
+    if(!input.analysisOnly)this.db.prepare("UPDATE pipeline_runs SET status='failed',completed_at=?,error_code='STORAGE_RESTART_INTERRUPTED' WHERE status='running'").run(new Date().toISOString());
+    if(!input.analysisOnly)this.db.prepare("UPDATE pipeline_stage_state SET status='failed',updated_at=?,state_json=json_set(state_json,'$.status','failed','$.errorCode','STORAGE_RESTART_INTERRUPTED') WHERE status IN ('queued','running')").run(new Date().toISOString());
     this.close();
     loadResearchSources(process.env.RESEARCH_SOURCES_FILE);
     this.registry(input.instruments);
     apiQuotaTracker.reset(input.apiLimits || {});this.restoreQuotas();
-    const store=new SqlResearchStore(this.db),candles=new SqlCandleStore(this.db,{rootDir:input.rootDir,enabled:input.candlesEnabled}),alerts=new SqlAlertStore(this.db),events=new SqlEventLedger({store}),news=new SqlNewsArchive(this.db,{retentionDays:input.newsRetentionDays || 30});
+    const store=new SqlResearchStore(this.db),candles=new SqlCandleStore(this.db,{rootDir:input.rootDir,enabled:input.candlesEnabled}),alerts=new SqlAlertStore(this.db),events=new SqlEventLedger({store}),news=new SqlNewsArchive(this.db,{retentionDays:input.newsRetentionDays || 30,analysisOnly:input.analysisOnly});
     news.onIngest=items=>{for(let offset=0;offset<items.length;offset+=500)events.ingest(items.slice(offset,offset+500));};
     const imports=new HistoricalImportService({ledger:store,rootDir:input.rootDir});imports.open=datasetId=>new SqlCandleStore(this.db,{datasetId,rootDir:input.rootDir});
     const technical=new TechnicalContextService({store:candles,imports}),scenarios=new ScenarioService({alerts,technicalContext:technical,eventLedger:events,candleStore:candles,policy:input.signalPolicy});
     this.contextStorage=new AsyncLocalStorage();
     this.defaultContext={snapshot:{},signalCorpus:[],marketSignalCorpus:[],awareness:{mode:input.awarenessMode || "off",upcoming:[],recent:[]},selectedInstrumentIds:[],intradayMetrics:{}};
     Object.defineProperty(this,"context",{configurable:true,get:()=>this.contextStorage.getStore() || this.defaultContext});
-    this.newsCorpus=new SqlNewsCorpus(news,{...input.news,awarenessMode:input.awarenessMode});
+    this.newsCorpus=new SqlNewsCorpus(news,{...input.news,awarenessMode:input.awarenessMode,progress:(...args)=>this.progress(...args)});
     this.newsPipeline=new SqlNewsPipeline(this,news,this.newsCorpus,{...input.news,awarenessMode:input.awarenessMode});
     news.getProjection=(...args)=>this.newsPipeline.getProjection(...args);
     news.getFeed=(...args)=>this.newsPipeline.getFeed(...args);
@@ -105,7 +115,7 @@ export class BusinessRuntime {
       };
     }
     const savedFeedStatus=this.load("rss-feeds");this.rssCursor=savedFeedStatus?.nextFeedOffset || 0;this.rssFeedStatuses=new Map(Object.entries(savedFeedStatus?.feeds || {}));
-    this.services={store,news,events,alerts,candles,imports,technical,scenarios,signals,rss,awareness:new SqlAwarenessStore(this.db),
+    this.services={market:{analyze:input=>calculateMarketProjection(input)},store,news,events,alerts,candles,imports,technical,scenarios,signals,rss,awareness:new SqlAwarenessStore(this.db),
       sources:new OfficialSourceService({store,eventLedger:events,sources:input.researchSources || [],userAgent:process.env.RESEARCH_SEC_USER_AGENT || null}),
       history:new HistoricalAcquisitionService({ledger:store,candleStore:candles,marketDataService:{fetchYahooBars:(symbol,options)=>this.rpc("market.fetch",{symbol,options})}}),
       indicators:new TechnicalIndicatorService({store:candles}),coupling:new NewsPriceCouplingService({store:candles}),forecasts:new ForecastEvaluationService({store,candleStore:candles}),
@@ -119,7 +129,9 @@ export class BusinessRuntime {
   save(kind,payload){
     const at=new Date().toISOString();
     return this.db.transaction(()=>{
-      if(kind === "awareness"){
+      if(kind === "pipeline-stage"){
+        this.db.prepare("INSERT INTO pipeline_stage_state VALUES(?,?,?,?) ON CONFLICT(stage_id) DO UPDATE SET status=excluded.status,updated_at=excluded.updated_at,state_json=excluded.state_json").run(payload.id,payload.stage.status,at,JSON.stringify(payload.stage));
+      } else if(kind === "awareness"){
         for(const s of payload.sourceStatus || []){sourceRow(this.db,s.sourceId,s);this.db.prepare("INSERT INTO awareness_source_status VALUES(?,?) ON CONFLICT(source_id) DO UPDATE SET payload_json=excluded.payload_json").run(s.sourceId,JSON.stringify(s));}
         for(const e of payload.events || []){const id=e.source?.sourceId || "awareness";sourceRow(this.db,id,e.source || {});this.db.prepare("INSERT INTO awareness_events VALUES(?,?,?,?,?) ON CONFLICT(event_id) DO UPDATE SET observed_at=excluded.observed_at,revision=excluded.revision,payload_json=excluded.payload_json WHERE awareness_events.revision!=excluded.revision").run(e.eventId,id,e.observedAt || at,e.revision || 1,JSON.stringify(e));}
         writeMeta(this.db,"awareness.revision",Math.max(readMeta(this.db,"awareness.revision",0),payload.revision || 0));
@@ -152,6 +164,7 @@ export class BusinessRuntime {
     }
     if(!this.services||!METHODS[service]?.includes(method))throw new AppError("Operación de worker desconocida.",400,"STORAGE_UNKNOWN_OPERATION");
     // Each request captures its context; CPU work is synchronous after awaits.
+    Object.assign(this.services.news,readMeta(this.db,"news.meta",{}));
     let captured=context || this.defaultContext;
     if(captured.newsFromStorage && ["conditions","advanced","map","portfolio"].includes(service)){
       const newsWindowHours=service==="advanced" ? Math.max(2,Number(args[0]?.windowHours || 24)*2) : service==="conditions" ? Math.max(1,Number(args[0]?.windowMin || 240)/60) : this.newsCorpus.config.candidateWindowHours || 36;
