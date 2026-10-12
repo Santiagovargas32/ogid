@@ -1,0 +1,7 @@
+{
+  "completed": false,
+  "durationMs": 1527035.32838,
+  "cycles": 142,
+  "unexpectedCloses": 0,
+  "reason": "Sesión interrumpida antes de result.json; no certifica treinta minutos."
+}

@@ -1,0 +1,15 @@
+{
+  "node": "v22.23.3",
+  "command": "npm start",
+  "supervisor": false,
+  "newProcess": true,
+  "httpStatus": 200,
+  "persistedFixture": true,
+  "provenancePreserved": true,
+  "integrity": [
+    {
+      "integrity_check": "ok"
+    }
+  ],
+  "foreignKeys": []
+}

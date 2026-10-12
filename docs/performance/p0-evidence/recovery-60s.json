@@ -1,0 +1,149 @@
+{
+  "node": "v24.10.0",
+  "durationMs": 60000,
+  "elapsedMs": 60969.312241,
+  "startupMs": 7.694426000000021,
+  "cycles": 22,
+  "cpu": {
+    "user": 14804923,
+    "system": 814207
+  },
+  "memory": {
+    "rss": 414568448,
+    "heapTotal": 258162688,
+    "heapUsed": 86710776,
+    "external": 4245785,
+    "arrayBuffers": 308135
+  },
+  "eventLoopUtilization": {
+    "idle": 47847.061868,
+    "active": 13122.463251006635,
+    "utilization": 0.21522987468563765
+  },
+  "eventLoopDelayMs": {
+    "p50": 10.174463,
+    "p95": 11.059199,
+    "p99": 32.423935,
+    "max": 487.849983
+  },
+  "httpMs": {
+    "samples": 220,
+    "p50": 85.10624099999768,
+    "p95": 125.8815770000001,
+    "p99": 131.332610999998
+  },
+  "externalRequests": 396,
+  "marketRequests": 22,
+  "unexpectedCloses": 0,
+  "wsMessages": 1480,
+  "wsBytes": 384890,
+  "websocket": {
+    "upgradeRejected": 0,
+    "envelopes": 1480,
+    "bytes": 384890,
+    "dropped": 0,
+    "maxBufferedBytes": 0,
+    "heartbeatTimeouts": 0,
+    "closeCodes": {},
+    "byEvent": {
+      "ws:ready:v2": {
+        "messages": 10,
+        "bytes": 3970,
+        "maxPayloadBytes": 397,
+        "serializationMs": 0.2477129999998624
+      },
+      "state:revision:v2": {
+        "messages": 880,
+        "bytes": 321920,
+        "maxPayloadBytes": 369,
+        "serializationMs": 2.8865899999810836
+      },
+      "heartbeat": {
+        "messages": 590,
+        "bytes": 59000,
+        "maxPayloadBytes": 100,
+        "serializationMs": 2.929072000031283
+      }
+    },
+    "temporarily-slow": 440,
+    "coalesced": 3520
+  },
+  "samples": [
+    {
+      "elapsedMs": 376.14437399999997,
+      "memory": {
+        "rss": 183201792,
+        "heapTotal": 106020864,
+        "heapUsed": 34443488,
+        "external": 4194479,
+        "arrayBuffers": 292223
+      },
+      "pending": 0,
+      "clients": 10,
+      "rss": {
+        "cycles": 1,
+        "externalRequests": 18,
+        "notModified": 0,
+        "errors": 0,
+        "staleServed": 0,
+        "duplicates": 0,
+        "latencyMs": 195,
+        "lastDurationMs": 195,
+        "deferred": 0,
+        "queued": 0,
+        "inFlight": 0,
+        "newArticles": 360,
+        "lastParseMs": 10.433263000000238,
+        "lastClassifyMs": 22.954768999999715,
+        "lastDedupeMs": 8.082580000000007,
+        "lastArchiveMs": 35.4879269999999,
+        "hostsLimited": 0,
+        "persistence": {
+          "writes": 0,
+          "bytes": 0,
+          "serializeMs": 0,
+          "writeMs": 0,
+          "error": null
+        }
+      }
+    },
+    {
+      "elapsedMs": 60912.204112,
+      "memory": {
+        "rss": 370790400,
+        "heapTotal": 243490816,
+        "heapUsed": 71205008,
+        "external": 18449143,
+        "arrayBuffers": 300475
+      },
+      "pending": 0,
+      "clients": 10,
+      "rss": {
+        "cycles": 22,
+        "externalRequests": 396,
+        "notModified": 0,
+        "errors": 0,
+        "staleServed": 0,
+        "duplicates": 0,
+        "latencyMs": 12983,
+        "lastDurationMs": 700,
+        "deferred": 0,
+        "queued": 0,
+        "inFlight": 0,
+        "newArticles": 360,
+        "lastParseMs": 7.737427000021853,
+        "lastClassifyMs": 20.366805000026943,
+        "lastDedupeMs": 19.81497500000114,
+        "lastArchiveMs": 121.41624099999899,
+        "hostsLimited": 0,
+        "persistence": {
+          "writes": 21,
+          "bytes": 14072010,
+          "serializeMs": 39.24691599999642,
+          "writeMs": 23.246061999998346,
+          "error": null
+        }
+      }
+    }
+  ]
+}

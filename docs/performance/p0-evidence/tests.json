@@ -1,0 +1,16 @@
+{
+  "backend": {
+    "tests": 694,
+    "pass": 694,
+    "fail": 0,
+    "durationMs": 24278.155578
+  },
+  "mcp": {
+    "tests": 23,
+    "pass": 23,
+    "fail": 0,
+    "durationMs": 3188.862974
+  },
+  "check": "pass",
+  "node": "v22.23.3"
+}

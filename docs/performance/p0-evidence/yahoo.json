@@ -1,0 +1,113 @@
+{
+  "quote": {
+    "metrics": {
+      "requested": 18,
+      "returned": 18,
+      "rejected": 0,
+      "rateLimited": 0,
+      "timedOut": 0,
+      "invalid": 0,
+      "staleServed": 0
+    },
+    "symbols": {
+      "MSFT": {
+        "status": "observed",
+        "asOf": "2026-10-09T20:00:01.000Z",
+        "currency": "USD"
+      },
+      "NVDA": {
+        "status": "observed",
+        "asOf": "2026-10-09T20:00:00.000Z",
+        "currency": "USD"
+      },
+      "GOOGL": {
+        "status": "observed",
+        "asOf": "2026-10-09T20:00:00.000Z",
+        "currency": "USD"
+      },
+      "GOOG": {
+        "status": "observed",
+        "asOf": "2026-10-09T20:00:01.000Z",
+        "currency": "USD"
+      },
+      "ASML": {
+        "status": "observed",
+        "asOf": "2026-10-09T20:00:01.000Z",
+        "currency": "USD"
+      },
+      "ASML.AS": {
+        "status": "observed",
+        "asOf": "2026-10-12T12:48:15.000Z",
+        "currency": "EUR"
+      },
+      "AMD": {
+        "status": "observed",
+        "asOf": "2026-10-09T20:00:01.000Z",
+        "currency": "USD"
+      },
+      "ORCL": {
+        "status": "observed",
+        "asOf": "2026-10-09T20:03:26.000Z",
+        "currency": "USD"
+      },
+      "AAPL": {
+        "status": "observed",
+        "asOf": "2026-10-09T20:00:00.000Z",
+        "currency": "USD"
+      },
+      "LMT": {
+        "status": "observed",
+        "asOf": "2026-10-09T20:00:02.000Z",
+        "currency": "USD"
+      },
+      "NOC": {
+        "status": "observed",
+        "asOf": "2026-10-09T20:00:02.000Z",
+        "currency": "USD"
+      },
+      "GD": {
+        "status": "observed",
+        "asOf": "2026-10-09T20:00:03.000Z",
+        "currency": "USD"
+      },
+      "VWCE.DE": {
+        "status": "observed",
+        "asOf": "2026-10-12T12:47:50.000Z",
+        "currency": "EUR"
+      },
+      "VUAA.DE": {
+        "status": "observed",
+        "asOf": "2026-10-12T12:46:30.000Z",
+        "currency": "EUR"
+      },
+      "SXR8.DE": {
+        "status": "observed",
+        "asOf": "2026-10-12T12:46:29.000Z",
+        "currency": "EUR"
+      },
+      "EUNL.DE": {
+        "status": "observed",
+        "asOf": "2026-10-12T12:46:29.000Z",
+        "currency": "EUR"
+      },
+      "EQQQ.MI": {
+        "status": "observed",
+        "asOf": "2026-10-12T12:38:29.000Z",
+        "currency": "EUR"
+      },
+      "SPCX": {
+        "status": "observed",
+        "asOf": "2026-10-09T20:00:00.000Z",
+        "currency": "USD"
+      }
+    }
+  },
+  "search": {
+    "status": "returned",
+    "count": 5
+  },
+  "chart": {
+    "status": "returned",
+    "count": 3
+  }
+}

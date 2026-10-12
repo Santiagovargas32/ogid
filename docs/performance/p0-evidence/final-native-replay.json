@@ -1,0 +1,387 @@
+{
+  "selectedSymbols": [
+    "MSFT",
+    "NVDA",
+    "GOOGL",
+    "GOOG",
+    "ASML",
+    "ASML.AS",
+    "AMD",
+    "ORCL",
+    "AAPL",
+    "LMT",
+    "NOC",
+    "GD",
+    "VWCE.DE",
+    "VUAA.DE",
+    "SXR8.DE",
+    "EUNL.DE",
+    "EQQQ.MI",
+    "SPCX"
+  ],
+  "selectedInstrumentIds": [
+    "yahoo-msft-1jyi8oj",
+    "yahoo-nvda-16uslhy",
+    "yahoo-googl-inr9rb",
+    "yahoo-goog-1xk4k41",
+    "yahoo-asml-1h0e7xg",
+    "yahoo-asml-as-if8hlm",
+    "yahoo-amd-w0lrsl",
+    "yahoo-orcl-1n8hj1n",
+    "yahoo-aapl-on0i6j",
+    "yahoo-lmt-10egb3m",
+    "yahoo-noc-1er8we3",
+    "yahoo-gd-p74xc6",
+    "yahoo-vwce-de-qy95cn",
+    "yahoo-vuaa-de-kwb0dj",
+    "yahoo-sxr8-de-1ub6wdt",
+    "yahoo-eunl-de-wk72py",
+    "yahoo-eqqq-mi-t6m0zr",
+    "yahoo-spcx-ps7ixh"
+  ],
+  "storedCandleCounts": {
+    "yahoo-aapl-on0i6j": 1337,
+    "yahoo-amd-w0lrsl": 1337,
+    "yahoo-asml-1h0e7xg": 1337,
+    "yahoo-asml-as-if8hlm": 1686,
+    "yahoo-eqqq-mi-t6m0zr": 1168,
+    "yahoo-eunl-de-wk72py": 1681,
+    "yahoo-gd-p74xc6": 1337,
+    "yahoo-goog-1xk4k41": 1337,
+    "yahoo-googl-inr9rb": 1337,
+    "yahoo-lmt-10egb3m": 1337,
+    "yahoo-msft-1jyi8oj": 1337,
+    "yahoo-noc-1er8we3": 1337,
+    "yahoo-nvda-16uslhy": 1337,
+    "yahoo-orcl-1n8hj1n": 1337,
+    "yahoo-spcx-ps7ixh": 829,
+    "yahoo-sxr8-de-1ub6wdt": 1678,
+    "yahoo-vuaa-de-kwb0dj": 1464,
+    "yahoo-vwce-de-qy95cn": 1678
+  },
+  "node": "v22.23.3",
+  "durationMs": 60000,
+  "elapsedMs": 93206.01968699999,
+  "startupMs": 18982.060918,
+  "cycles": 5,
+  "feedRequests": 108,
+  "unexpectedCloses": 0,
+  "forcedCloses": 2,
+  "wsBytes": 1050421,
+  "httpSyncBytes": 130301165,
+  "bootstrapHttpBytes": 114134790,
+  "largeBootstrapBytes": 11000000,
+  "lan": true,
+  "events": 21800,
+  "integrity": [
+    {
+      "integrity_check": "ok"
+    }
+  ],
+  "foreignKeys": [],
+  "cpu": {
+    "user": 66896628,
+    "system": 10541586
+  },
+  "memory": {
+    "rss": 1196945408,
+    "heapTotal": 262959104,
+    "heapUsed": 231917504,
+    "external": 4644079,
+    "arrayBuffers": 811134
+  },
+  "eventLoopUtilization": {
+    "idle": 71282.749857,
+    "active": 21923.504466989147,
+    "utilization": 0.23521495017686317
+  },
+  "eventLoopDelayMs": {
+    "p95": 12.451839,
+    "p99": 21.774335,
+    "max": 315.359231
+  },
+  "httpMs": {
+    "samples": 50,
+    "p50": 144.12504900000204,
+    "p95": 182.2533489999987,
+    "p99": 182.47599400000036
+  },
+  "analysisMs": {
+    "samples": 1,
+    "p50": 4850.290022000001,
+    "p95": 4850.290022000001,
+    "max": 4850.290022000001
+  },
+  "websocket": {
+    "upgradeRejected": 0,
+    "envelopes": 3349,
+    "bytes": 1050884,
+    "dropped": 0,
+    "maxBufferedBytes": 0,
+    "heartbeatTimeouts": 0,
+    "closeCodes": {
+      "1000": 3
+    },
+    "byEvent": {
+      "ws:ready:v2": {
+        "messages": 13,
+        "bytes": 5907,
+        "maxPayloadBytes": 463,
+        "serializationMs": 0.2703730000093856
+      },
+      "heartbeat": {
+        "messages": 849,
+        "bytes": 84801,
+        "maxPayloadBytes": 100,
+        "serializationMs": 8.313607000000047
+      },
+      "state:revision:v2": {
+        "messages": 2487,
+        "bytes": 960176,
+        "maxPayloadBytes": 390,
+        "serializationMs": 15.918435999792564
+      }
+    },
+    "temporarily-slow": 218,
+    "coalesced": 250
+  },
+  "storage": {
+    "pending": 0,
+    "inFlight": 0,
+    "cpuInFlight": 0,
+    "maxCpuInFlight": 1,
+    "bytes": 0,
+    "maxItems": 128,
+    "maxBytes": 33554432,
+    "maxCommandBytes": 8388608
+  },
+  "analysisQueue": {
+    "pending": 0,
+    "inFlight": 0,
+    "cpuInFlight": 0,
+    "maxCpuInFlight": 1,
+    "bytes": 0,
+    "maxItems": 128,
+    "maxBytes": 33554432,
+    "maxCommandBytes": 8388608
+  },
+  "errors": [],
+  "samples": [
+    {
+      "elapsedMs": 32969.573004,
+      "memory": {
+        "rss": 1055326208,
+        "heapTotal": 235704320,
+        "heapUsed": 182436432,
+        "external": 5417087,
+        "arrayBuffers": 326331
+      },
+      "clients": 10,
+      "queue": {
+        "pending": 0,
+        "inFlight": 0,
+        "cpuInFlight": 0,
+        "maxCpuInFlight": 1,
+        "bytes": 0,
+        "maxItems": 128,
+        "maxBytes": 33554432,
+        "maxCommandBytes": 8388608
+      },
+      "analysisQueue": {
+        "pending": 0,
+        "inFlight": 0,
+        "cpuInFlight": 0,
+        "maxCpuInFlight": 1,
+        "bytes": 0,
+        "maxItems": 128,
+        "maxBytes": 33554432,
+        "maxCommandBytes": 8388608
+      },
+      "storageTimings": {
+        "queueMs": 16,
+        "executionMs": 5.5963599999995495,
+        "totalMs": 22,
+        "cpuMs": null
+      },
+      "analysisTimings": {
+        "queueMs": 1762,
+        "executionMs": 3035.6296919999986,
+        "totalMs": 4798,
+        "cpuMs": 2149.456
+      },
+      "databaseBytes": 604192768,
+      "walBytes": 7683832,
+      "pipelines": {
+        "news": {
+          "enabled": true,
+          "status": "completed",
+          "lastRunAt": "2026-10-12T15:43:25.169Z",
+          "lastSuccessAt": "2026-10-12T15:43:34.285Z",
+          "durationMs": 9117.535558,
+          "queue": 0,
+          "processed": 40,
+          "discarded": 0,
+          "errorCode": null,
+          "reason": null,
+          "revision": 69
+        },
+        "news.normalize": {
+          "enabled": true,
+          "status": "completed",
+          "lastRunAt": "2026-10-12T15:43:36.099Z",
+          "lastSuccessAt": "2026-10-12T15:43:36.520Z",
+          "durationMs": 420.970953,
+          "queue": 0,
+          "processed": 1260,
+          "discarded": 359,
+          "errorCode": null,
+          "reason": null,
+          "revision": 1524343
+        },
+        "news.classify": {
+          "enabled": true,
+          "status": "completed",
+          "lastRunAt": "2026-10-12T15:43:36.099Z",
+          "lastSuccessAt": "2026-10-12T15:43:36.520Z",
+          "durationMs": 421.0058680000002,
+          "queue": 0,
+          "processed": 1260,
+          "discarded": 359,
+          "errorCode": null,
+          "reason": null,
+          "revision": 1524343
+        },
+        "news.risk": {
+          "enabled": true,
+          "status": "completed",
+          "lastRunAt": "2026-10-12T15:43:36.099Z",
+          "lastSuccessAt": "2026-10-12T15:43:36.520Z",
+          "durationMs": 421.00698999999804,
+          "queue": 0,
+          "processed": 766,
+          "discarded": 359,
+          "errorCode": null,
+          "reason": null,
+          "revision": 1524343
+        },
+        "news.select": {
+          "enabled": true,
+          "status": "completed",
+          "lastRunAt": "2026-10-12T15:43:36.099Z",
+          "lastSuccessAt": "2026-10-12T15:43:36.520Z",
+          "durationMs": 421.0081820000014,
+          "queue": 0,
+          "processed": 1260,
+          "discarded": 359,
+          "errorCode": null,
+          "reason": null,
+          "revision": 1524343
+        },
+        "news.projection": {
+          "enabled": true,
+          "status": "completed",
+          "lastRunAt": "2026-10-12T15:43:30.368Z",
+          "lastSuccessAt": "2026-10-12T15:43:31.506Z",
+          "durationMs": 1137.488457000003,
+          "queue": 0,
+          "processed": 40,
+          "discarded": 0,
+          "errorCode": null,
+          "reason": null,
+          "revision": 1524343
+        },
+        "news.impact": {
+          "enabled": true,
+          "status": "completed",
+          "lastRunAt": "2026-10-12T15:43:31.421Z",
+          "lastSuccessAt": "2026-10-12T15:43:31.422Z",
+          "durationMs": 1.1926640000019688,
+          "queue": 0,
+          "processed": 18,
+          "discarded": 0,
+          "errorCode": null,
+          "reason": null,
+          "revision": null
+        },
+        "news.predictions": {
+          "enabled": true,
+          "status": "completed",
+          "lastRunAt": "2026-10-12T15:43:31.422Z",
+          "lastSuccessAt": "2026-10-12T15:43:31.493Z",
+          "durationMs": 70.85087500000009,
+          "queue": 0,
+          "processed": 18,
+          "discarded": 0,
+          "errorCode": null,
+          "reason": null,
+          "revision": null
+        },
+        "market": {
+          "enabled": true,
+          "status": "completed",
+          "lastRunAt": "2026-10-12T15:43:25.182Z",
+          "lastSuccessAt": "2026-10-12T15:43:28.846Z",
+          "durationMs": 3677.7539829999987,
+          "queue": 0,
+          "processed": 18,
+          "discarded": 0,
+          "errorCode": null,
+          "reason": null,
+          "revision": 39
+        },
+        "market.analysis": {
+          "enabled": true,
+          "status": "completed",
+          "lastRunAt": "2026-10-12T15:43:25.254Z",
+          "lastSuccessAt": "2026-10-12T15:43:25.378Z",
+          "durationMs": 124.38662699999986,
+          "queue": 0,
+          "processed": 18,
+          "discarded": 0,
+          "errorCode": null,
+          "reason": null,
+          "revision": null
+        },
+        "news.acquire": {
+          "enabled": true,
+          "status": "completed",
+          "lastRunAt": "2026-10-12T15:43:25.449Z",
+          "lastSuccessAt": "2026-10-12T15:43:30.215Z",
+          "durationMs": 4765.927240999998,
+          "queue": 0,
+          "processed": 360,
+          "discarded": 0,
+          "errorCode": null,
+          "reason": null,
+          "revision": null
+        },
+        "research.scenarios": {
+          "enabled": true,
+          "status": "completed",
+          "lastRunAt": "2026-10-12T15:43:32.730Z",
+          "lastSuccessAt": "2026-10-12T15:43:33.995Z",
+          "durationMs": 1265.6539430000012,
+          "queue": 0,
+          "processed": 0,
+          "discarded": 0,
+          "errorCode": null,
+          "reason": null,
+          "revision": null
+        },
+        "news.persist": {
+          "enabled": true,
+          "status": "completed",
+          "lastRunAt": "2026-10-12T15:43:30.215Z",
+          "lastSuccessAt": "2026-10-12T15:43:30.215Z",
+          "durationMs": 0.04413299999941955,
+          "queue": 0,
+          "processed": 0,
+          "discarded": 0,
+          "errorCode": null,
+          "reason": null,
+          "revision": null
+        }
+      }
+    }
+  ]
+}

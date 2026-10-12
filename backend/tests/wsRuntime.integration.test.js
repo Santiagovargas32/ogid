@@ -70,6 +70,20 @@ test('heartbeat tolerates one missed pong and closes a silent client with observ
   assert.equal(socketServer.getHealth().recentEvents.filter(e=>e.type==='disconnect').length,1);
 });
 
+test('a budget smaller than the recovery manifest closes cleanly without recursive sends', async t => {
+  const {port, socketServer} = await fixture(t, {transportLimits: {maxMessageBytes: 32}});
+  const socket = await connect(`ws://127.0.0.1:${port}/ws`);
+  const [code, reason] = await once(socket, 'close');
+  assert.equal(code, 1013); assert.equal(reason.toString(), 'resync-required');
+  await socketServer.close(); // The client close can precede the server close callback.
+  const health = socketServer.getHealth();
+  assert.equal(health.metrics.dropped, 2);
+  assert.equal(health.lastDisconnection.requestedCloseCode, 1013);
+  assert.equal(health.lastDisconnection.anomalous, false);
+  assert.equal(health.lastDisconnection.closeFrameSent, true);
+  assert.equal(health.lastDisconnection.closeFrameReceived, true);
+});
+
 test('ten simultaneous clients and repeated reconnects retain one upgrade handler',async t=>{
   const {server,port,socketServer}=await fixture(t);
   const sockets=await Promise.all(Array.from({length:10},()=>connect(`ws://127.0.0.1:${port}/ws`)));

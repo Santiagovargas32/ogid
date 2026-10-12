@@ -1,0 +1,9 @@
+{
+  "command": "npm start",
+  "supervisor": false,
+  "httpStatus": 200,
+  "storageState": "ready",
+  "storageBackend": "sqlite",
+  "quoteCount": 0,
+  "readyStatus": 200
+}

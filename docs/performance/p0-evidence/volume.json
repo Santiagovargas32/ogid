@@ -1,0 +1,12 @@
+{
+  "sqliteVersion": "3.53.4",
+  "wal": true,
+  "concurrentReader": true,
+  "writerLock": true,
+  "committedCrashRecovery": true,
+  "uncommittedRollback": true,
+  "integrity": "ok",
+  "fileMode": "600",
+  "directoryMode": "700",
+  "limitation": "No simula un corte de alimentaci\u00f3n ni certifica el filesystem a largo plazo."
+}

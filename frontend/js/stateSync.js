@@ -7,14 +7,29 @@ export class StateSynchronizer {
     this.controller = new AbortController();
   }
   accept(message) {
+    if(this.closed)return;
+    if(message.type === "ws:ready:v2" || message.type === "resync:required:v2"){clearTimeout(this.timer);this.timer=null;this.failures=0;}
     const data = message.data || {};
     if (!data.epoch) return;
     if (this.epoch !== data.epoch) {
       this.controller.abort(); this.controller = new AbortController();
       this.epoch = data.epoch; this.applied = {}; this.target = {}; this.revision = 0;
     }
-    this.target = { ...this.target, ...data.resources }; this.revision = Math.max(this.revision, data.revision || 0);
+    for(const [resource,revision] of Object.entries(data.resources || {})){
+      if(Number.isSafeInteger(revision) && revision>=0)this.target[resource]=Math.max(this.target[resource] ?? 0,revision);
+    }
+    this.revision = Math.max(this.revision, data.revision || 0);
     this.drain();
+  }
+  async requestSnapshot({signal}={}) {
+    if(this.closed)return;
+    const previousEpoch=this.epoch;
+    const manifest=await this.api.getSyncSnapshot({}, {signal:signal || this.controller.signal});
+    if(this.closed)return;
+    // A delayed HTTP reply must not undo a backend restart already announced by WS.
+    if(this.epoch !== previousEpoch && this.epoch && manifest.epoch !== this.epoch)return this.task;
+    this.accept({type:'resync:required:v2',data:manifest});
+    return this.task;
   }
   drain() {
     if (this.closed || this.task || this.timer) return this.task;

@@ -14,6 +14,11 @@ test('pipeline stages are single-flight and distinguish completion, degradation 
 });
 
 test('persistence failures remain observable and do not become unhandled rejections',async()=>{
- const monitor=new PipelineMonitor({persist:async()=>{throw Object.assign(Error('disk'),{code:'SQLITE_FULL'});}});
+ let fail=true;const published=[];
+ const monitor=new PipelineMonitor({publish:(id,stage)=>published.push({id,...stage}),persist:async()=>{if(fail)throw Object.assign(Error('disk'),{code:'SQLITE_FULL'});}});
  await monitor.run('rss',async()=>({}));await monitor.flush();assert.equal(monitor.snapshot()['rss.persistence'].status,'blocked');assert.equal(monitor.snapshot()['rss.persistence'].errorCode,'SQLITE_FULL');
+ assert.ok(published.some(s=>s.id==='rss.persistence'&&s.status==='blocked'));
+ fail=false;await monitor.run('rss',async()=>({}));await monitor.flush();
+ assert.equal(monitor.snapshot()['rss.persistence'].status,'completed');assert.equal(monitor.snapshot()['rss.persistence'].errorCode,null);
+ assert.ok(published.some(s=>s.id==='rss.persistence'&&s.status==='completed'));
 });

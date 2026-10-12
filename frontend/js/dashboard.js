@@ -42,6 +42,8 @@ const MARKET_CONDITIONS_WINDOW_MINUTES = new Set(MARKET_CONDITIONS_WINDOWS.map((
 
 let riskChart;
 let socket;
+let stateSynchronizer;
+let marketQuotesMarkup = null;
 let selectedCountries = new Set();
 let currentWatchlist = [];
 let liveNewsView=null,liveNewsRequestKey=null,liveNewsRequestToken=0;
@@ -1375,11 +1377,12 @@ function renderMarketQuotes(market = { quotes: {} }) {
   const allowed = new Set(selectedMarketSymbols);
   const quotes = Object.entries(market.quotes || {}).filter(([ticker]) => !marketWatchlistLoaded || allowed.has(ticker));
   if (!quotes.length) {
-    elements.marketQuotesBody.innerHTML = '<tr><td colspan="3" class="text-light-emphasis">No market quotes available.</td></tr>';
+    const empty='<tr><td colspan="3" class="text-light-emphasis">No market quotes available.</td></tr>';
+    if(marketQuotesMarkup!==empty){elements.marketQuotesBody.innerHTML=empty;marketQuotesMarkup=empty;}
     return;
   }
 
-  elements.marketQuotesBody.innerHTML = quotes
+  const markup = quotes
     .map(([ticker, quote]) => {
       const change = Number.isFinite(quote.price) && Number.isFinite(quote.changePct) ? quote.changePct : null;
       const cls = change >= 0 ? "text-up" : "text-down";
@@ -1417,6 +1420,7 @@ function renderMarketQuotes(market = { quotes: {} }) {
       `;
     })
     .join("");
+  if(markup!==marketQuotesMarkup){elements.marketQuotesBody.innerHTML=markup;marketQuotesMarkup=markup;}
 }
 
 function marketInstrumentMeta(instrument = {}) {
@@ -1845,6 +1849,17 @@ async function handleManualRefreshClick() {
   }
 }
 
+async function refreshBoundedSnapshot(signal) {
+  try { await stateSynchronizer.requestSnapshot({signal}); }
+  catch(error) {
+    // Preserve compatibility while an older backend is serving the new assets.
+    if(error.status !== 404)throw error;
+    const token=newsTransportToken;
+    const snapshot=await api.getSnapshot({countries:"ALL",limit:500,order:"critical"},{signal});
+    if(token === newsTransportToken){setSnapshot(snapshot);awarenessController?.syncCompact(snapshot.awareness);}
+  }
+}
+
 function mountWebSocket() {
   const synchronizer = new StateSynchronizer({ api, onUpdate: update => {
     if (update.news) newsTransportToken++;
@@ -1857,6 +1872,7 @@ function mountWebSocket() {
     else if (status === "degraded") wsHasSnapshot = false;
     if (socket?.socket?.readyState === WebSocket.OPEN) setWsStatus("connected");
   } });
+  stateSynchronizer=synchronizer;
   window.addEventListener("pagehide", () => synchronizer.close(), { once: true });
   socket = new RealtimeSocket({
     path: "/ws",
@@ -1972,9 +1988,8 @@ async function bootstrap() {
   newsFallback = new SmartPollLoop({ immediate:false, intervalMs:15_000, hiddenIntervalMs:90_000,
     task: async signal => {
       if (wsConnected) return;
-      const requestToken = newsTransportToken;
-      const snapshot = await api.getSnapshot({countries:"ALL",limit:500,order:"critical"},{signal});
-      if (!wsConnected && requestToken === newsTransportToken) { setSnapshot(snapshot); fallbackFailures=0; }
+      await refreshBoundedSnapshot(signal);
+      fallbackFailures=0;
     }, onError:()=>{fallbackFailures=Math.min(5,fallbackFailures+1);},
     delayResolver:({hidden})=>(hidden?90_000:15_000)*2**fallbackFailures*(.9+Math.random()*.2)
   });
@@ -1982,10 +1997,7 @@ async function bootstrap() {
   mountWebSocket();
 
   try {
-    const requestToken = newsTransportToken;
-    const snapshot = await api.getSnapshot({ countries: "ALL", limit: 500, order: "critical" }, {signal: dashboardController.signal});
-    if (requestToken === newsTransportToken) setSnapshot(snapshot);
-    awarenessController?.syncCompact(snapshot?.awareness);
+    await refreshBoundedSnapshot(dashboardController.signal);
     void refreshMarketConditions();
   } catch (error) {
     console.error("Failed to fetch initial snapshot:", error);

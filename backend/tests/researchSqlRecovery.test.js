@@ -7,6 +7,7 @@ import Database from 'better-sqlite3';
 import { SqlResearchStore } from '../storage/sqlRepositories.js';
 import { migrate } from '../storage/migrate.js';
 import { backupLegacy, verifyLegacyBackup } from '../storage/legacyBackup.js';
+import { EventLedger } from '../services/research/eventLedger.js';
 import { StorageManager } from '../storage/StorageManager.js';
 
 test('SQL research exceeds 20000 historical rows, writes incrementally and rolls back conflicts',()=>{
@@ -43,4 +44,15 @@ test('a blocked/terminated analysis worker leaves transactional persistence avai
     assert.deepEqual(await manager.request('runtime.load',{kind:'test-isolation'}),{revision:7});
     assert.equal((await manager.request('storage.verify')).integrity[0].integrity_check,'ok');channel.port1.close();channel.port2.close();
   }finally{await manager.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+test('awareness events still commit after the research event table reaches the legacy limit',()=>{
+  const db=new Database(':memory:');migrate(db);const store=new SqlResearchStore(db);
+  const insert=db.prepare("INSERT INTO research_rows VALUES('events',?,?)");
+  db.transaction(()=>{for(let i=0;i<20000;i++)insert.run(`legacy-${i}`,JSON.stringify({eventId:`legacy-${i}`,revision:1,evidence:[],identityVersion:'source-publication-v2'}));})();
+  const ledger=new EventLedger({store});
+  const result=ledger.ingest([{id:'awareness-new',title:'Fixture official awareness announcement',url:'https://official.example/fixture',publishedAt:'2026-10-12T12:00:00Z',receivedAt:'2026-10-12T12:01:00Z',sourceId:'fixture-official',provenance:{sourceId:'fixture-official'}}],{sourceId:'awareness'});
+  assert.equal(db.prepare("SELECT count(*) AS n FROM research_rows WHERE collection='events'").get().n,20001);
+  assert.ok(Object.values(store.view('events')).some(e=>e.evidence.some(v=>v.sourceId==='fixture-official')));
+  assert.equal(db.pragma('integrity_check',{simple:true}),'ok');db.close();
 });

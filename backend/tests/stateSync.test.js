@@ -15,8 +15,26 @@ for (const size of [100, 1_100_000, 11_000_000]) test(`HTTP synchronization pres
     return result.data;
   }};
   const client=new StateSynchronizer({api,onUpdate:u=>updates.push(u)});
-  client.accept({data:sync.manifest()});await client.task;
+  await client.requestSnapshot();
   assert.deepEqual(updates[0],state); assert.deepEqual(client.applied,sync.manifest().resources);client.close();
+});
+
+test('a delayed HTTP manifest cannot roll back revisions already delivered by WebSocket', async () => {
+  const state={news:[{id:'old'}]},sync=new StateSync({getSnapshot:()=>state});
+  const old=sync.manifest();let release;const pending=new Promise(resolve=>{release=resolve;});
+  const updates=[];const client=new StateSynchronizer({api:{getSyncSnapshot:async p=>p.resource?sync.page(p).data:pending},onUpdate:u=>updates.push(u)});
+  const bootstrap=client.requestSnapshot();state.news=[{id:'new'}];sync.change(['news']);
+  client.accept({data:sync.manifest()});await client.task;release(old);await bootstrap;
+  assert.equal(client.applied.news,1);assert.equal(client.target.news,1);assert.equal(updates.at(-1).news[0].id,'new');client.close();
+});
+
+test('a delayed bootstrap reply from the previous process cannot undo a new epoch', async () => {
+  let sync=new StateSync({getSnapshot:()=>({news:[{id:'old'}]})});
+  const old=sync.manifest();let release;const pending=new Promise(resolve=>{release=resolve;});
+  const updates=[];const client=new StateSynchronizer({api:{getSyncSnapshot:async p=>p.resource?sync.page(p).data:pending},onUpdate:u=>updates.push(u)});
+  client.accept({data:old});await client.task;const bootstrap=client.requestSnapshot();
+  sync=new StateSync({getSnapshot:()=>({news:[{id:'new-process'}]})});client.accept({data:sync.manifest()});await client.task;
+  release(old);await bootstrap;assert.equal(client.epoch,sync.epoch);assert.equal(updates.at(-1).news[0].id,'new-process');client.close();
 });
 
 test('lost/coalesced events, expired journal and restart preserve recoverable resource revisions',async()=>{
@@ -46,4 +64,12 @@ test('replaceable invalidations coalesce while slow queues and permanent blockag
   for(let i=0;i<20;i++)transport.enqueue('{}',{coalesceKey:'revision'});
   assert.equal(transport.queue.length,1);clock=150;t.mock.timers.tick(150);
   assert.deepEqual(closes,[[1013,'slow-client']]);clearInterval(transport.timer);
+});
+
+test('mutable resources cannot hide a revision or serve a cached previous payload',()=>{
+  const resource={value:1};const state={meta:resource};
+  const sync=new StateSync({getSyncKeys:()=>['meta'],getSyncResource:()=>resource});
+  sync.change(['meta']);const first=sync.page({resource:'meta'});assert.equal(JSON.parse(first.data.fragment).value,1);
+  resource.value=2;const next=sync.change(['meta']);assert.ok(next.revision>first.data.revision);
+  assert.equal(JSON.parse(sync.page({resource:'meta'}).data.fragment).value,2);
 });

@@ -25,7 +25,7 @@ export class BoundedTransport {
     if (bytes > this.limits.maxMessageBytes) { this.observe({ ...info, outcome: 'payload-too-large' }); this.onOversize(info); return false; }
     if (coalesceKey) {
       const index = this.queue.findIndex(e => e.coalesceKey === coalesceKey);
-      if (index >= 0) { this.bytes -= this.queue[index].bytes; this.queue.splice(index, 1); }
+      if (index >= 0) { this.bytes -= this.queue[index].bytes; this.queue.splice(index, 1); this.observe({...info,outcome:"coalesced"}); }
     }
     if (this.queue.length >= this.limits.maxQueueItems || this.bytes + bytes > this.limits.maxQueueBytes) {
       this.observe({ ...info, outcome: 'queue-overflow' }); closeBounded(client, 1013, 'resync-required', this.limits.closeGraceMs); return false;
@@ -36,7 +36,7 @@ export class BoundedTransport {
     const client = this.client;
     if (client.readyState !== WebSocket.OPEN || client.runtimeCloseReason) return;
     if (client.bufferedAmount > this.limits.maxBufferedBytes || this.sending) {
-      this.blockedAt ??= performance.now();
+      if(this.blockedAt === null){this.observe({...this.queue[0]?.info,connectionId:client.connectionId,event:this.queue[0]?.info.event || "transport",bufferedBefore:client.bufferedAmount,pendingMessages:this.queue.length,outcome:"temporarily-slow"});this.blockedAt=performance.now();}
       if (performance.now() - this.blockedAt >= this.limits.slowClientMs) { this.observe({ connectionId: client.connectionId, event: this.queue[0]?.info.event, bufferedBefore: client.bufferedAmount, pendingMessages: this.queue.length, outcome: 'slow-client-timeout' }); closeBounded(client, 1013, 'slow-client', this.limits.closeGraceMs); }
       return;
     }
@@ -49,6 +49,7 @@ export class BoundedTransport {
         if (error) closeBounded(client, 1011, 'send-failed', this.limits.closeGraceMs);
         else { this.observe({ ...entry.info, bufferedAfter: client.bufferedAmount, outcome: 'sent' }); queueMicrotask(() => this.pump()); }
       });
+      entry.info.bufferedAfterSend=client.bufferedAmount;
     } catch { this.sending = false; closeBounded(client, 1011, 'send-failed', this.limits.closeGraceMs); }
   }
 }

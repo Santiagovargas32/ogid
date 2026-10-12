@@ -136,7 +136,7 @@ function resolveInputMode(newsMode, marketMode) {
   return "mixed";
 }
 
-function qualityRecord({ mode, provider, reason, inputMode = null }) {
+function qualityRecord({ mode, provider, reason, inputMode = null, synthetic = mode === "fallback" }) {
   return {
     mode,
     provider,
@@ -166,12 +166,14 @@ function buildDataQuality({ newsMode, newsMeta, marketMode, marketMeta }) {
       mode: inputMode,
       provider: combinedProvider,
       reason: mixedReason,
+      synthetic: newsMode === "fallback" || marketMode === "fallback",
       inputMode
     }),
     impact: qualityRecord({
       mode: inputMode,
       provider: combinedProvider,
       reason: mixedReason,
+      synthetic: newsMode === "fallback" || marketMode === "fallback",
       inputMode
     })
   };

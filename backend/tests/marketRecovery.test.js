@@ -25,3 +25,19 @@ test('valid Yahoo delayed observations count as usable and preserve market time'
  assert.equal(result.sourceMeta.webDelayedCount,1);assert.equal(result.sourceMeta.liveCount,0);
  assert.equal(result.sourceMeta.metrics.returned,1);assert.equal(result.quotes.GD.asOf,timestamp);
 });
+
+test('stale observed prices do not become synthetic in public state quality',async()=>{
+ const {default:state}=await import('../state/stateManager.js');state.reset({marketTickers:['GD'],watchlistCountries:['US']});
+ const snapshot=state.updateIntel({market:{provider:'yahoo',sourceMode:'stale',quotes:{GD:{price:100,synthetic:false,dataMode:'stale'}},sourceMeta:{provider:'yahoo'}}});
+ assert.equal(snapshot.meta.dataQuality.market.synthetic,false);assert.equal(snapshot.meta.dataQuality.market.mode,'stale');
+});
+
+test('an unavailable provider degrades health even while a valid stored price remains',async()=>{
+ const {createAppServer}=await import('../server.js');let failed=false;
+ const runtime=createAppServer({port:0,host:'127.0.0.1',disableBackgroundRefresh:true,news:{providers:[],rssFeeds:[]},market:{provider:'yahoo',initialTickers:['GD'],historyPersist:false,staleTtlMs:60000,dailyCandles:{enabled:false},intradayCandles:{enabled:false}},marketDataService:{fetchQuotes:async()=>{if(failed)throw Object.assign(Error('fixture outage'),{code:'YAHOO_TIMEOUT'});return [{symbol:'GD',price:100,timestamp:new Date().toISOString(),currency:'USD',exchange:'NYSE'}];}}});
+ try{await runtime.start();await runtime.orchestrator.runMarketCycle('fixture-valid');failed=true;await runtime.orchestrator.runMarketCycle('fixture-outage');
+  const health=await (await fetch(`http://127.0.0.1:${runtime.server.address().port}/api/health`)).json();
+  assert.equal(runtime.orchestrator.stateManager.state.market.quotes.GD.price,100);
+  assert.equal(runtime.app.locals.pipelineMonitor.snapshot().market.status,'degraded');assert.equal(health.data.status,'degraded');
+ }finally{await runtime.stop();}
+});

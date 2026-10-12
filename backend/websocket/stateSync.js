@@ -13,10 +13,9 @@ export class StateSync {
   manifest() { return { protocol: 2, epoch: this.epoch, revision: this.revision, resources: Object.fromEntries(this.keys().map(k => [k, this.versions[k] || 0])), snapshotUrl: '/api/intel/sync', changesUrl: '/api/intel/changes' }; }
   change(resources) {
     const keys = [...new Set(resources)].filter(k => this.keys().includes(k)).filter(key => {
-      const value = this.stateManager.getSyncResource?.(key);
-      if (value !== undefined && this.references.get(key) === value && this.fingerprints.has(key)) return false;
+      const value = this.stateManager.getSyncResource ? this.stateManager.getSyncResource(key) : this.stateManager.getSnapshot()[key];
       const started = performance.now();
-      const encoded = JSON.stringify(value ?? this.stateManager.getSnapshot()[key] ?? null);
+      const encoded = JSON.stringify(value ?? null);
       const hash = createHash('sha256').update(encoded).digest('hex');
       this.metrics.serializations++; this.metrics.serializationMs += performance.now() - started;
       this.references.set(key, value);
@@ -44,7 +43,7 @@ export class StateSync {
     let encoded = this.cache.get(resource);
     if (!encoded) {
       const started = performance.now();
-      const value = this.stateManager.getSyncResource?.(resource) ?? this.stateManager.getSnapshot()[resource];
+      const value = this.stateManager.getSyncResource ? this.stateManager.getSyncResource(resource) : this.stateManager.getSnapshot()[resource];
       encoded = JSON.stringify(value ?? null);
       this.metrics.serializations++; this.metrics.serializationMs += performance.now() - started;
       // Cache is a bounded performance optimization, not a capacity limit on facts.

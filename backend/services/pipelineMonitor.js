@@ -5,7 +5,16 @@ export class PipelineMonitor {
   update(id,patch){
     const previous=this.stages.get(id)||{enabled:true,status:'queued',lastRunAt:null,lastSuccessAt:null,durationMs:null,queue:0,processed:0,discarded:0,errorCode:null,reason:null,revision:null};
     const stage={...previous,...patch};this.stages.set(id,stage);this.publish(id,stage);
-    if(this.persist){const task=Promise.resolve().then(()=>this.persist(id,stage));this.pending.add(task);task.catch(e=>{this.stages.set(`${id}.persistence`,{...stage,status:'blocked',errorCode:e.code || 'PIPELINE_PERSIST_FAILED'});}).finally(()=>this.pending.delete(task));}
+    if(this.persist){
+      const persistenceId=`${id}.persistence`;
+      const publishPersistence=patch=>{const value={...stage,...patch};this.stages.set(persistenceId,value);this.publish(persistenceId,value);};
+      const task=Promise.resolve().then(()=>this.persist(id,stage)).then(()=>{
+        if(this.stages.has(persistenceId))publishPersistence({status:'completed',lastSuccessAt:new Date().toISOString(),errorCode:null,reason:null});
+      }).catch(error=>{
+        publishPersistence({status:'blocked',errorCode:error.code || 'PIPELINE_PERSIST_FAILED',reason:'stage persistence failed'});
+      });
+      this.pending.add(task);task.finally(()=>this.pending.delete(task)).catch(()=>{});
+    }
     return stage;
   }
   run(id,work,{enabled=true,counts=()=>({}),revision=()=>null}={}){

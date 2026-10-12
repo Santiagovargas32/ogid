@@ -139,6 +139,13 @@ function safeOrigin(value) {
 
 function summarizeConnection(connection = {}) {
   return {
+    connectionId: connection.connectionId || null,
+    durationMs: Number.isFinite(connection.durationMs) ? connection.durationMs : null,
+    requestedCloseCode: connection.requestedCloseCode || null,
+    requestedCloseReason: connection.requestedCloseReason || null,
+    closeFrameSent: connection.closeFrameSent ?? null,
+    closeFrameReceived: connection.closeFrameReceived ?? null,
+    anomalous: connection.closeCode === 1006,
     clientIp: connection.clientIp || null,
     remoteAddress: connection.remoteAddress || null,
     expressIp: connection.expressIp || null,
@@ -178,8 +185,9 @@ export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000,
   };
   const metrics = { upgradeRejected: 0, envelopes: 0, bytes: 0, dropped: 0, maxBufferedBytes: 0, heartbeatTimeouts: 0, closeCodes: {} };
   function observe(sample) {
-    metrics.maxBufferedBytes = Math.max(metrics.maxBufferedBytes, sample.bufferedBefore || 0, sample.bufferedAfter || 0);
+    metrics.maxBufferedBytes = Math.max(metrics.maxBufferedBytes, sample.bufferedBefore || 0, sample.bufferedAfter || 0,sample.bufferedAfterSend || 0);
     if (sample.outcome === "sent") { metrics.envelopes++; metrics.bytes += sample.payloadBytes; }
+    else if(["coalesced","temporarily-slow"].includes(sample.outcome)){metrics[sample.outcome]=(metrics[sample.outcome] || 0)+1;}
     else { metrics.dropped++; log.warn("ws_transport_pressure", sample); }
     metrics.byEvent ||= {};
     const event = metrics.byEvent[sample.event] ||= { messages: 0, bytes: 0, maxPayloadBytes: 0, serializationMs: 0 };
@@ -228,10 +236,14 @@ export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000,
   wss.on("connection", (client, request) => {
     client.connectionId = randomUUID(); client.connectedAtMs = performance.now();
     client.boundedTransport = new BoundedTransport(client, { limits: transportLimits, observe,
-      onOversize: () => send(client, "resync:required:v2", { ...sync.manifest(), reason: "payload-too-large" }, {}, "resync") });
+      onOversize: (sample) => {
+        // A misconfigured budget must not recursively enqueue an oversized recovery frame.
+        if (sample.event === "resync:required:v2") closeBounded(client, 1013, "resync-required");
+        else send(client, "resync:required:v2", { ...sync.manifest(), reason: "payload-too-large" }, {}, "resync");
+      } });
     client.isAlive = true;
     client.missedPongs = 0;
-    client.connectionInfo = request?.wsConnectionInfo || buildConnectionInfo(request, path);
+    client.connectionInfo = {...(request?.wsConnectionInfo || buildConnectionInfo(request,path)),connectionId:client.connectionId};
     clients.add(client);
 
     client.on("pong", () => {
@@ -267,6 +279,8 @@ export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000,
         durationMs: performance.now() - client.connectedAtMs,
         requestedCloseCode: client.runtimeCloseCode || null,
         requestedCloseReason: client.runtimeCloseReason || null,
+        closeFrameSent: typeof client._closeFrameSent === "boolean" ? client._closeFrameSent : null,
+        closeFrameReceived: typeof client._closeFrameReceived === "boolean" ? client._closeFrameReceived : null,
         anomalous: closeCode === 1006
       };
 
@@ -352,7 +366,7 @@ export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000,
         pendingMessages: [...clients].reduce((n,c) => n + c.boundedTransport.queue.length, 0),
         activeConnections: Array.from(clients)
           .slice(0, MAX_ACTIVE_CONNECTIONS)
-          .map((client) => summarizeConnection(client.connectionInfo)),
+          .map((client) => summarizeConnection({...client.connectionInfo,durationMs:performance.now()-client.connectedAtMs})),
         lastConnection: websocketState.lastConnection,
         lastDisconnection: websocketState.lastDisconnection,
         recentEvents: recentEvents.slice(-MAX_EVENT_HISTORY)

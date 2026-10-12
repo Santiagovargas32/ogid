@@ -363,6 +363,14 @@ export function readConfig(overrides = {}) {
     host: toTrimmedString(process.env.HOST) || undefined,
     refreshIntervalMs: refreshIntervalMs ?? newsIntervalMs ?? marketRefreshIntervalMs ?? null,
     wsHeartbeatMs: toInt(process.env.WS_HEARTBEAT_MS, 15_000),
+    wsTransportLimits: {
+      maxMessageBytes: toPositiveInt(process.env.WS_MAX_MESSAGE_BYTES, 65_536),
+      maxBufferedBytes: toPositiveInt(process.env.WS_MAX_BUFFERED_BYTES, 262_144),
+      maxQueueBytes: toPositiveInt(process.env.WS_MAX_QUEUE_BYTES, 262_144),
+      maxQueueItems: toPositiveInt(process.env.WS_MAX_QUEUE_ITEMS, 64),
+      slowClientMs: toPositiveInt(process.env.WS_SLOW_CLIENT_MS, 10_000),
+      closeGraceMs: toPositiveInt(process.env.WS_CLOSE_GRACE_MS, 5_000)
+    },
     wsTrustedProxyIps: toList(process.env.WS_TRUSTED_PROXY_IPS),
     wsAllowedOrigins: toList(process.env.WS_ALLOWED_ORIGINS),
     wsPath: "/ws",
@@ -897,6 +905,7 @@ export function createAppServer(overrides = {}) {
     server,
     path: config.wsPath,
     heartbeatMs: config.wsHeartbeatMs,
+    transportLimits: config.wsTransportLimits,
     trustedProxyIps: config.wsTrustedProxyIps,
     allowedOrigins: config.wsAllowedOrigins,
     stateManager
@@ -961,7 +970,9 @@ export function createAppServer(overrides = {}) {
       const telemetry=id==="news"?orchestrator.getNewsCycleTelemetry():orchestrator.getMarketCycleTelemetry();
       const snapshot=stateManager.state;
       const count=id==="news"?snapshot.news.length:Object.values(snapshot.market.quotes).filter(q=>Number.isFinite(q.price)&&q.synthetic!==true).length;
-      return {processed:count,degraded:telemetry.lastStatus==="error"||count===0,reason:telemetry.lastError || (count===0?"no-valid-observations":null)};
+      const mode=id==="news"?snapshot.meta.sourceMode:snapshot.market.sourceMode;
+      const qualityDegraded=["fallback","unavailable","stale","mixed"].includes(mode);
+      return {processed:count,degraded:telemetry.lastStatus==="error"||count===0||qualityDegraded,reason:telemetry.lastError || (qualityDegraded?`data-${mode}`:count===0?"no-valid-observations":null)};
     },revision:()=>socketServer.sync.revision});
   }
   const manualRefreshService = new ManualRefreshService({
