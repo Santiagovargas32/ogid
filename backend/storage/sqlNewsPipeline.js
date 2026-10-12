@@ -102,8 +102,8 @@ export class SqlNewsPipeline {
     const result={...projection, meta, riskResult, impact, predictions, insights, sourceMode};
     const checkpoint={kind:"news-projection",persisted:true,...meta, collection:this.diagnostics || null};
     this.projectionDiagnostics.stage="saving";
-    this.runtime.save("news-projection", checkpoint);
-    this.runtime.db.prepare("INSERT INTO pipeline_checkpoints VALUES(?,?,?,?) ON CONFLICT(pipeline_id) DO UPDATE SET updated_at=excluded.updated_at,revision=excluded.revision,payload_json=excluded.payload_json").run("news",corpus.meta.asOf,String(corpus.meta.revision),JSON.stringify(checkpoint));
+    if(this.runtime.analysisOnly)await this.runtime.rpc("analysis.persist",{type:"news-projection",checkpoint});
+    else this.runtime.persistDerived({type:"news-projection",checkpoint});
     this.projectionDiagnostics={...this.projectionDiagnostics,stage:"completed",completedAt:new Date().toISOString(),durationMs:Math.round(performance.now()-started)};
     this.runtime.progress("news.projection","completed",{processed:result.news.length,revision:meta.revision});
     return result;

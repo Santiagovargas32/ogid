@@ -56,7 +56,8 @@ export function importLegacy(db,runtime,{paths={}}={}){
     if(!instrument)throw new AppError("Instrumento de histórico de cotizaciones no resuelto; revisar el registro antes del corte.",503,"STORAGE_IMPORT_QUOTE_IDENTITY");
     instrumentRow(db,instrument.instrumentId);let rows=0;
     for(const line of text.split(/\r?\n/).filter(x=>x.trim())){const point=JSON.parse(line);if(!point.timestamp||!Number.isFinite(Number(point.price)))throw new AppError("Cotización histórica inválida.",503,"STORAGE_IMPORT_QUOTE_SCHEMA");
-      const id=`quote-${checksum(JSON.stringify([instrument.instrumentId,point.timestamp,point.price,point.source])).slice(0,40)}`;
+      // Equal price/time can still describe distinct observations or provenance.
+      const id=`quote-${checksum(JSON.stringify([instrument.instrumentId,point])).slice(0,40)}`;
       db.prepare("INSERT OR IGNORE INTO quote_observations VALUES(?,?,?,?,?,?,?,?)").run(id,instrument.instrumentId,point.timestamp,point.timestamp,point.source || "legacy-provider-observed",point.dataMode || "legacy-observed",Number(point.price),JSON.stringify(point));rows++;}
     return {rows};
   });

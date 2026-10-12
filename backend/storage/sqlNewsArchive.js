@@ -15,7 +15,7 @@ const wireSize=data=>{const p={ok:true,queriedAt:new Date().toISOString(),origin
 
 export class SqlNewsArchive extends NewsArchive {
   constructor(db, options={}) {
-    super({...options,persistencePath:null}); this.db=db;
+    super({...options,persistencePath:null}); this.db=db;this.analysisOnly=options.analysisOnly === true;
     this.reader=new Database(db.name,{readonly:true});this.reader.pragma("query_only=ON");cacheStatements(this.reader);
     Object.assign(this,readMeta(db,"news.meta",{})); this.recoveryStatus=db.prepare("SELECT 1 FROM articles LIMIT 1").get()?"restored":"new";
     this.records={get:id=>this.getRecord(id),set:(_id,article)=>this.save(article),values:()=>this.values(),get size(){return db.prepare("SELECT count(*) AS n FROM articles").get().n;}};
@@ -47,7 +47,7 @@ export class SqlNewsArchive extends NewsArchive {
   }
   persist(){if(this.db)writeMeta(this.db,"news.meta",Object.fromEntries(["revision","startedAt","lastIngestAt","capacityPrunedAt"].map(k=>[k,this[k]])));}
   prune(){
-    if(!this.db)return;
+    if(!this.db || this.analysisOnly)return;
     // Facts, provenance and contexts have no automatic retention. Query snapshots are temporary.
     this.db.prepare("DELETE FROM news_query_snapshots WHERE expires_at<=?").run(this.now());
   }

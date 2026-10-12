@@ -39,7 +39,9 @@ export class BusinessRuntime {
     this.stageStates.set(id,stage);this.emitStage(id,stage);
   }
   registry(instruments){
-    registerInstruments(instruments || []);for(const i of listVerifiedInstruments())instrumentRow(this.db,i.instrumentId);
+    registerInstruments(instruments || []);
+    if(this.analysisOnly)return {registered:listVerifiedInstruments().length};
+    for(const i of listVerifiedInstruments())instrumentRow(this.db,i.instrumentId);
     const universe=listVerifiedInstruments(),fingerprint=stableHash(universe.map(i=>[i.instrumentId,i.canonicalSymbol,i.aliases,i.companyId]));
     if(readMeta(this.db,"events.index",null)!==fingerprint){
       this.db.transaction(()=>{
@@ -54,6 +56,7 @@ export class BusinessRuntime {
   close(){this.services?.news.close();}
   restoreQuotas(){for(const [provider,saved]of Object.entries(this.load("provider-quota")?.providers || {})){apiQuotaTracker.ensureProvider(provider);Object.assign(apiQuotaTracker.providers[provider],saved);}}
   configure(input={}){
+    this.analysisOnly=input.analysisOnly === true;
     if(input.requireImport&&!readMeta(this.db,"import.ready",false))throw new AppError("Ejecutar storage:migrate antes de activar el servicio SQL.",503,"STORAGE_IMPORT_REQUIRED");
     if(!input.analysisOnly)this.db.prepare("UPDATE pipeline_runs SET status='failed',completed_at=?,error_code='STORAGE_RESTART_INTERRUPTED' WHERE status='running'").run(new Date().toISOString());
     if(!input.analysisOnly)this.db.prepare("UPDATE pipeline_stage_state SET status='failed',updated_at=?,state_json=json_set(state_json,'$.status','failed','$.errorCode','STORAGE_RESTART_INTERRUPTED') WHERE status IN ('queued','running')").run(new Date().toISOString());
@@ -61,9 +64,9 @@ export class BusinessRuntime {
     loadResearchSources(process.env.RESEARCH_SOURCES_FILE);
     this.registry(input.instruments);
     apiQuotaTracker.reset(input.apiLimits || {});this.restoreQuotas();
-    const store=new SqlResearchStore(this.db),candles=new SqlCandleStore(this.db,{rootDir:input.rootDir,enabled:input.candlesEnabled}),alerts=new SqlAlertStore(this.db),events=new SqlEventLedger({store}),news=new SqlNewsArchive(this.db,{retentionDays:input.newsRetentionDays || 30,analysisOnly:input.analysisOnly});
+    const store=new SqlResearchStore(this.db),candles=new SqlCandleStore(this.db,{rootDir:input.rootDir,enabled:input.candlesEnabled,readOnly:this.analysisOnly}),alerts=new SqlAlertStore(this.db),events=new SqlEventLedger({store}),news=new SqlNewsArchive(this.db,{retentionDays:input.newsRetentionDays || 30,analysisOnly:input.analysisOnly});
     news.onIngest=items=>{for(let offset=0;offset<items.length;offset+=500)events.ingest(items.slice(offset,offset+500));};
-    const imports=new HistoricalImportService({ledger:store,rootDir:input.rootDir});imports.open=datasetId=>new SqlCandleStore(this.db,{datasetId,rootDir:input.rootDir});
+    const imports=new HistoricalImportService({ledger:store,rootDir:input.rootDir});imports.open=datasetId=>new SqlCandleStore(this.db,{datasetId,rootDir:input.rootDir,readOnly:this.analysisOnly});
     const technical=new TechnicalContextService({store:candles,imports}),scenarios=new ScenarioService({alerts,technicalContext:technical,eventLedger:events,candleStore:candles,policy:input.signalPolicy});
     this.contextStorage=new AsyncLocalStorage();
     this.defaultContext={snapshot:{},signalCorpus:[],marketSignalCorpus:[],awareness:{mode:input.awarenessMode || "off",upcoming:[],recent:[]},selectedInstrumentIds:[],intradayMetrics:{}};
@@ -122,8 +125,7 @@ export class BusinessRuntime {
       portfolio:new PortfolioContextService({stateManager,archive:news,alerts,awarenessService,watchlist,scenarioService:scenarios}),
       conditions:new MarketConditionsService({stateManager,candleStore:candles,marketWatchlistService:watchlist,awarenessService,intradayCandleService:{getMetrics:()=>this.context.intradayMetrics},intradayCandlesEnabled:input.intradayEnabled}),
       map:new MapLayerService({stateManager,rssAggregator:input.news ? rssReadView : rss}),advanced:new AdvancedIntelligenceService({stateManager,rssAggregator:input.news ? rssReadView : rss,signalCorrelator:signals})};
-    this.db.prepare("UPDATE pipeline_definitions SET storage_backend='sqlite'").run();
-    writeMeta(this.db,"businessStorage","sqlite");
+    if(!this.analysisOnly){this.db.prepare("UPDATE pipeline_definitions SET storage_backend='sqlite'").run();writeMeta(this.db,"businessStorage","sqlite");}
     return {configured:true,coverage:news.coverage()};
   }
   save(kind,payload){
@@ -163,6 +165,7 @@ export class BusinessRuntime {
       return this.db.prepare("SELECT market_time,price,payload_json FROM quote_observations WHERE instrument_id=? ORDER BY coalesce(market_time,received_at) DESC LIMIT 500").all(i.instrumentId).reverse().map(r=>({...JSON.parse(r.payload_json),timestamp:r.market_time,price:r.price}));
     }
     if(!this.services||!METHODS[service]?.includes(method))throw new AppError("Operación de worker desconocida.",400,"STORAGE_UNKNOWN_OPERATION");
+    if(this.analysisOnly && service === "advanced"){const saved=this.load("signals");this.services.signals.history=saved?.history || saved || {};}
     // Each request captures its context; CPU work is synchronous after awaits.
     Object.assign(this.services.news,readMeta(this.db,"news.meta",{}));
     let captured=context || this.defaultContext;
@@ -180,7 +183,11 @@ export class BusinessRuntime {
       const result=await target[method](...args.map(value=>value === null ? undefined : value));
       if(captured.newsCoverage && ["conditions","advanced"].includes(service)) result.newsCoverage=captured.newsCoverage;
       if(service==="rss" && target.lastSnapshot && target.lastSnapshot!==this.persistedRssSnapshot){this.save("rss",target.lastSnapshot);this.persistedRssSnapshot=target.lastSnapshot;}
-      if(["indicators","technical","conditions","coupling","forecasts","advanced"].includes(service))this.recordAnalysis(`${service}.${method}`,args,result);
+      if(["indicators","technical","conditions","coupling","forecasts","advanced"].includes(service)){
+        const record={kind:`${service}.${method}`,input:args,result};
+        if(this.analysisOnly)await this.rpc("analysis.persist",{type:"analysis",record});
+        else this.recordAnalysis(record.kind,record.input,record.result);
+      }
       if(track){const counts=Object.fromEntries(Object.entries(result || {}).filter(([key,value])=>["accepted","changed","inserted","updated","duplicates","rejectedOpen","requestsThisRun"].includes(key)&&Number.isSafeInteger(value)));this.db.prepare("UPDATE pipeline_runs SET completed_at=?,status=?,counts_json=? WHERE run_id=?").run(new Date().toISOString(),["retry","blocked","partial"].includes(result?.status)?"degraded":"healthy",JSON.stringify(counts),runId);}
       return result;
     }catch(error){if(track)this.db.prepare("UPDATE pipeline_runs SET completed_at=?,status='failed',error_code=? WHERE run_id=?").run(new Date().toISOString(),error.code || "STORAGE_COMMAND_FAILED",runId);throw error;}
@@ -192,6 +199,18 @@ export class BusinessRuntime {
     this.db.transaction(()=>{
       this.db.prepare("INSERT OR IGNORE INTO analysis_runs VALUES(?,?,?,?,?,?,?,?)").run(id,kind,result?.methodVersion || "runtime-v1",at,result?.asOf || result?.calculatedAt || at,stableHash(input),JSON.stringify(result?.quality || {}),JSON.stringify(result));
       if(result?.instrumentId&&result.indicators){instrumentRow(this.db,result.instrumentId);for(const [name,indicator]of Object.entries(result.indicators))this.db.prepare("INSERT OR IGNORE INTO indicator_values VALUES(?,?,?,?,?,?,?,?)").run(id,result.instrumentId,result.interval || "1day",result.adjustmentMode || result.adjusted || "splits","provider-yahoo",result.seriesRevision || "unknown",name,typeof indicator?.value === "number" ? indicator.value : null);}
+    }).immediate();
+  }
+  persistDerived({type,record,checkpoint}={}){
+    if(this.analysisOnly)throw new AppError("Persistencia reservada al worker principal.",503,"STORAGE_INVALID_COMMAND");
+    if(type === "analysis" && record && /^(indicators|technical|conditions|coupling|forecasts|advanced)\./.test(record.kind)){
+      this.recordAnalysis(record.kind,record.input,record.result);return {persisted:true};
+    }
+    if(type !== "news-projection" || !checkpoint?.persisted || !checkpoint.asOf)throw new AppError("Proyección inválida.",400,"STORAGE_INVALID_COMMAND");
+    return this.db.transaction(()=>{
+      this.save("news-projection",checkpoint);
+      this.db.prepare("INSERT INTO pipeline_checkpoints VALUES(?,?,?,?) ON CONFLICT(pipeline_id) DO UPDATE SET updated_at=excluded.updated_at,revision=excluded.revision,payload_json=excluded.payload_json").run("news",checkpoint.asOf,String(checkpoint.revision),JSON.stringify(checkpoint));
+      return {persisted:true};
     }).immediate();
   }
   rssCatalog(feeds,batch){

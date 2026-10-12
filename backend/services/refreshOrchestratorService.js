@@ -919,7 +919,11 @@ class RefreshOrchestratorService {
   start() {
     if (!this.stopped) return;
     this.stopped = false;
-    if (this.rssAggregator) { this.rssAggregator.onSnapshot = () => this.runNewsCycle("rss-selected", {rssOnly:true}); this.rssAggregator.start(); }
+    if (this.rssAggregator) {
+      this.rssAggregator.onSnapshot = () => this.runNewsCycle("rss-selected", {rssOnly:true});
+      // The SQL adapter collects RSS through the scheduled news cycle.
+      this.rssAggregator.start?.();
+    }
 
     if (!this.newsTimerHandle) {
       this.runNewsCycle("startup-news", { allowExhaustedProviders: false })

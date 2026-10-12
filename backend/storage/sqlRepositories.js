@@ -86,9 +86,9 @@ export class SqlResearchStore {
 }
 
 export class SqlCandleStore {
-  constructor(db, { datasetId = "provider-yahoo", rootDir, enabled = true } = {}) {
+  constructor(db, { datasetId = "provider-yahoo", rootDir, enabled = true, readOnly = false } = {}) {
     Object.assign(this,{ db,datasetId,rootDir,enabled });
-    this.db.prepare("INSERT OR IGNORE INTO market_datasets VALUES(?,?,?,?)").run(datasetId,"provider-observed","mixed", "{}");
+    if(!readOnly)this.db.prepare("INSERT OR IGNORE INTO market_datasets VALUES(?,?,?,?)").run(datasetId,"provider-observed","mixed", "{}");
   }
   hydrate() { return 0; }
   key(c) { return [c.instrumentId,c.interval,c.provenance?.adjustmentMode || (c.adjusted ? "splits" : "none"),this.datasetId,storeIdentity(c)]; }

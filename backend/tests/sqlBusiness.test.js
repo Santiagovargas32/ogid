@@ -17,7 +17,91 @@ import { AwarenessStore } from "../services/awareness/awarenessStore.js";
 import { PipelinePersistence } from "../storage/pipelinePersistence.js";
 const instrumentId="us-equity-general-dynamics";
 const article=(n,extra={})=>({id:`source-${n}`,title:`General Dynamics earnings ${n}`,url:`https://example.org/${n}`,publishedAt:new Date(Date.now()-86400000+n*1000).toISOString(),provider:"fixture-rss",usagePolicy:"headline-only-link-out",description:"Content must not be exposed",...extra});
+
+test("quote migration preserves distinct provenance at the same price and timestamp", async () => {
+  const f = await fixture();
+  try {
+    const history = join(f.dir, "history"); mkdirSync(history);
+    const observation = {timestamp: "2026-10-12T12:00:00Z", price: 100, source: "yahoo", provenance: {endpoint: "quote"}};
+    const revised = {...observation, provenance: {endpoint: "chart"}};
+    writeFileSync(join(history, "GD.jsonl"), [observation, revised, observation].map(JSON.stringify).join("\n"));
+    await f.manager.request("storage.import", {paths: {candlesDir: f.dir}});
+    const db = new Database(f.db, {readonly: true});
+    try {
+      const rows = db.prepare("SELECT payload_json FROM quote_observations").all().map(r => r.payload_json);
+      assert.equal(rows.length, 2);
+      assert.ok(rows.includes(JSON.stringify(observation))); assert.ok(rows.includes(JSON.stringify(revised)));
+    } finally { db.close(); }
+    assert.equal((await f.manager.request("storage.import", {paths: {candlesDir: f.dir}})).replayed, true);
+  } finally { await f.close(); }
+});
+
+test("SQL startup runs background news ingestion without requiring a legacy RSS timer", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "ogid-sql-startup-"));
+  const feed = createServer((_req, res) => res.end(`<rss><channel><title>Fixture</title><item><title>General Dynamics earnings startup</title><link>https://example.org/startup</link><pubDate>${new Date().toUTCString()}</pubDate></item></channel></rss>`));
+  await new Promise(resolve => feed.listen(0, "127.0.0.1", resolve));
+  const runtime = createAppServer({
+    port: 0, host: "127.0.0.1", disableBackgroundRefresh: false,
+    storage: { enabled: true, businessEnabled: true, databasePath: join(dir, "test.sqlite") },
+    news: { providers: ["rss"], rssFeeds: [{url: `http://127.0.0.1:${feed.address().port}/rss`, label: "Fixture"}], rssAggregateIntervalMs: 0 },
+    market: { enabled: false, historyPersist: false, historyDir: dir },
+    awareness: { mode: "off" }, ai: { provider: "none", mode: "off" }
+  });
+  try {
+    await runtime.start();
+    const deadline = Date.now() + 15000;
+    while (!["completed", "degraded"].includes(runtime.app.locals.pipelineMonitor.snapshot().news?.status)) {
+      assert.ok(Date.now() < deadline, JSON.stringify(runtime.app.locals.pipelineMonitor.snapshot()));
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
+    assert.equal(runtime.app.locals.pipelineMonitor.snapshot()["news.normalize"].status, "completed");
+    const db = new Database(join(dir, "test.sqlite"), {readonly: true});
+    try { assert.ok(db.prepare("SELECT count(*) AS n FROM articles").get().n > 0); }
+    finally { db.close(); }
+    const response = await fetch(`http://127.0.0.1:${runtime.server.address().port}/api/health`);
+    assert.equal(response.status, 200);
+  } finally {
+    await runtime.stop();
+    await new Promise(resolve => feed.close(resolve));
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 async function fixture(){const dir=mkdtempSync(join(tmpdir(),"ogid-sql-business-")),db=join(dir,"test.sqlite"),manager=new StorageManager({enabled:true,businessEnabled:true,databasePath:db});await manager.start();await manager.request("domain.configure",{instruments:listVerifiedInstruments(),rootDir:dir,researchSources:[],signalPolicy:{},rss:{rssFeeds:[],maxFeedsPerRun:18,maxCorpusItems:900}});return {dir,db,manager,call:(service,method,...args)=>manager.request("domain.call",{service,method,args}),async close(){await this.manager.close();rmSync(dir,{recursive:true,force:true});}};}
+
+test("ten concurrent analyses use read-only SQL and commit results through the ingestion writer", async () => {
+  const f = await fixture();
+  try {
+    await f.call("news", "ingest", [article(1)]);
+    await Promise.all([
+      f.call("news", "getProjection", {countries: ["US"]}),
+      ...Array.from({length: 10}, (_, i) => f.call(i % 2 ? "conditions" : "advanced", "getSnapshot", {countries: ["US"]})),
+      f.call("news", "ingest", Array.from({length: 100}, (_, i) => article(i + 2)))
+    ]);
+    assert.equal(f.manager.analysisManager.getStatus().queryOnly, true);
+    assert.equal(f.manager.analysisManager.getStatus().failed, 0);
+    const db = new Database(f.db, {readonly: true});
+    try {
+      assert.equal(db.prepare("SELECT count(*) AS n FROM articles").get().n, 101);
+      assert.ok(db.prepare("SELECT count(*) AS n FROM analysis_runs").get().n >= 2);
+      assert.ok(db.prepare("SELECT revision FROM pipeline_checkpoints WHERE pipeline_id='news'").get());
+      assert.ok(db.prepare("SELECT payload_json FROM runtime_snapshots WHERE kind='news-projection'").get());
+    } finally { db.close(); }
+    assert.equal((await f.manager.request("storage.verify")).integrity[0].integrity_check, "ok");
+  } finally { await f.close(); }
+});
+
+test("shutdown drains an accepted analysis before closing its persistence writer", async () => {
+  const f=await fixture();
+  try {
+    const calculation=f.call("indicators","calculate",{instrumentId});
+    const closing=f.manager.close();
+    assert.equal((await calculation).instrumentId,instrumentId);
+    await closing;
+    const db=new Database(f.db,{readonly:true});
+    try{assert.ok(db.prepare("SELECT count(*) AS n FROM analysis_runs").get().n>0);}
+    finally{db.close();}
+  }finally{await f.close();}
+});
 
 test("SQL archive preserves policies, matching and frozen pagination across revisions",async()=>{
   const f=await fixture();try {
@@ -45,6 +129,10 @@ test("SQL candles update one local daily session, preserve revisions and isolate
     const rows=await f.call("candles","query",{instrumentId});assert.equal(rows.length,1);assert.equal(rows[0].revision,2);assert.equal(rows[0].close,107);assert.equal(await f.call("candles","has",instrumentId,candle.openTime),true);
     const db=new Database(f.db,{readonly:true});assert.equal(db.prepare("SELECT count(*) AS n FROM candle_revisions").get().n,2);db.close();
     const indicator=await f.call("indicators","calculate",{instrumentId});assert.equal(indicator.instrumentId,instrumentId);
+    const timing=f.manager.analysisManager.getStatus();
+    assert.equal(timing.queryOnly,true);
+    assert.ok(timing.lastExecutionMs>=0);assert.ok(timing.lastQueueMs>=0);assert.ok(timing.lastTotalMs>=0);
+    if(typeof process.threadCpuUsage === "function")assert.ok(Number.isFinite(timing.lastCpuMs)&&timing.lastCpuMs>=0);
     const sql=new Database(f.db,{readonly:true});assert.equal(sql.prepare("SELECT count(*) AS n FROM analysis_runs").get().n,1);sql.close();
   }finally{await f.close();}
 });

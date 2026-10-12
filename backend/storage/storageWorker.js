@@ -25,7 +25,7 @@ function rpc(operation,input){return new Promise((resolve,reject)=>{const id=ran
 const fail = code => { throw Object.assign(new Error(code), { code }); };
 function size(file) { try { return statSync(file).size; } catch (error) { if (error.code === "ENOENT") return 0; throw error; } }
 function status() {
-  return { sqliteVersion: version, migrations, databaseBytes: size(workerData.databasePath), walBytes: size(`${workerData.databasePath}-wal`), businessStorage: readMeta(database,"businessStorage",workerData.businessEnabled ? "sqlite" : "legacy-json"), storagePhase: readMeta(database,"businessStorage",workerData.businessEnabled ? "sqlite" : "legacy-json") === "sqlite" ? "repositories" : "infrastructure" };
+  return { queryOnly:database.pragma("query_only",{simple:true}) === 1,sqliteVersion: version, migrations, databaseBytes: size(workerData.databasePath), walBytes: size(`${workerData.databasePath}-wal`), businessStorage: readMeta(database,"businessStorage",workerData.businessEnabled ? "sqlite" : "legacy-json"), storagePhase: readMeta(database,"businessStorage",workerData.businessEnabled ? "sqlite" : "legacy-json") === "sqlite" ? "repositories" : "infrastructure" };
 }
 function pipelineRecord(input) {
   if (!input || !/^[A-Za-z0-9._:-]{1,128}$/.test(input.runId || "") || !/^[a-z-]{1,64}$/.test(input.pipelineId || "")) fail("STORAGE_INVALID_COMMAND");
@@ -37,8 +37,13 @@ function pipelineRecord(input) {
   return { runId: input.runId, persisted: true };
 }
 function execute(operation, input) {
+  if(operation === "analysis.persist")return runtime.persistDerived(input);
   if(operation === "domain.registry") return runtime.registry(input.instruments);
-  if(operation === "domain.configure") return runtime.configure(input);
+  if(operation === "domain.configure") {
+    const result=runtime.configure(input);
+    if(workerData.analysisWorker)database.pragma("query_only=ON");
+    return result;
+  }
   if(operation === "domain.call") {
     if(input.service === "admin" && input.method === "history") return runtime.adminHistory();
     return runtime.call(input);
@@ -85,6 +90,8 @@ try {
     }
     try {
       const start = performance.now();
+      // Attribution is valid only on the isolated analysis worker (one command at a time).
+      const cpuStart = workerData.analysisWorker && typeof process.threadCpuUsage === "function" ? process.threadCpuUsage() : null;
       const command={operation:message.operation,service:message.input?.service || null,method:message.input?.method || null,kind:message.input?.kind || null,startedAt:new Date().toISOString()};
       activeCommands.set(message.id,command);parentPort.postMessage({type:"command-started",id:message.id,startedAt:Date.now()});
       let result;
@@ -100,8 +107,10 @@ try {
           return value;
         }).immediate();
       } else { result = await execute(message.operation,message.input); }
-      parentPort.postMessage({ id: message.id, result, durationMs: performance.now() - start, status: status() });
-      lastCompletedCommand={...command,completedAt:new Date().toISOString(),durationMs:performance.now()-start};
+      const cpu = cpuStart ? process.threadCpuUsage(cpuStart) : null;
+      const cpuMs = cpu ? (cpu.user + cpu.system) / 1000 : null;
+      parentPort.postMessage({ id: message.id, result, durationMs: performance.now() - start, cpuMs, status: status() });
+      lastCompletedCommand={...command,completedAt:new Date().toISOString(),durationMs:performance.now()-start,cpuMs};
     } catch (error) {
       lastFailedCommand={...activeCommands.get(message.id),failedAt:new Date().toISOString(),code:error.code || "STORAGE_COMMAND_FAILED"};
       log.error("storage_command_failed",{operation:message.operation,service:message.input?.service,method:message.input?.method,code:error.code || "STORAGE_COMMAND_FAILED",stack:error.stack});

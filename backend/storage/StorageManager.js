@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { Worker } from "node:worker_threads";
 import { storageConfig } from "./config.js";
 const error = code => Object.assign(new Error(code), { code, statusCode: 503 });
-const OPERATIONS = new Set(["storage.status", "storage.verify", "storage.checkpoint", "pipeline.record", "domain.configure", "domain.registry", "domain.call", "storage.import", "runtime.save", "runtime.load", "rss.fetch", "news.collect", "news.supplemental"]);
+const OPERATIONS = new Set(["storage.status", "storage.verify", "storage.checkpoint", "pipeline.record", "domain.configure", "domain.registry", "domain.call", "storage.import", "runtime.save", "runtime.load", "rss.fetch", "news.collect", "news.supplemental", "analysis.persist"]);
 const ISOLATED_SERVICES = new Set(["market","technical","indicators","conditions","advanced","map","coupling"]);
 const CPU_SERVICES = new Set(["market","technical","indicators","conditions","advanced","map","portfolio","scenarios","forecasts","coupling","signals"]);
 
@@ -42,7 +42,8 @@ export class StorageManager extends EventEmitter {
     await this.startPromise;
     if(this.options.businessEnabled && this.options.isolateAnalysis && !this.options.analysisWorker) {
       this.analysisManager = new StorageManager({...this.options,analysisWorker:true,maxInFlight:1});
-      this.analysisManager.rpcHandler=(...args)=>this.rpcHandler?.(...args);
+      this.analysisManager.rpcHandler=(operation,input)=>operation === "analysis.persist"
+        ? this.localRequest(operation,input) : this.rpcHandler?.(operation,input);
       this.analysisManager.on("stage",(...args)=>this.emit("stage",...args));
       await this.analysisManager.start();
     }
@@ -128,7 +129,7 @@ export class StorageManager extends EventEmitter {
     const entry = this.active.get(message.id); if (!entry) return;
     this.active.delete(message.id); clearTimeout(entry.timer); this.pendingBytes -= entry.bytes;
     if (message.error) { this.metrics.failed++; this.metrics.lastErrorCode = message.error.code; entry.reject(Object.assign(error(message.error.code), { statusCode: message.error.statusCode || 503, message: message.error.message || message.error.code })); }
-    else { this.metrics.lastQueueMs = (entry.startedAt || Date.now()) - entry.queuedAt; this.metrics.lastExecutionMs=message.durationMs;this.metrics.lastTotalMs=Date.now()-entry.queuedAt; this.metadata = message.status; this.metrics.completed++; this.metrics.lastDurationMs = message.durationMs; entry.resolve(message.result); }
+    else { this.metrics.lastQueueMs = (entry.startedAt || Date.now()) - entry.queuedAt; this.metrics.lastExecutionMs=message.durationMs;this.metrics.lastTotalMs=Date.now()-entry.queuedAt;this.metrics.lastCpuMs=message.cpuMs ?? null; this.metadata = message.status; this.metrics.completed++; this.metrics.lastDurationMs = message.durationMs; entry.resolve(message.result); }
     this.pump();
   }
   expire(entry) {
@@ -158,9 +159,11 @@ export class StorageManager extends EventEmitter {
     try { this.worker.postMessage({ id: this.closeId, encoded: JSON.stringify({ operation: "storage.close" }) }); }
     catch { this.fail(error("STORAGE_CLOSE_FAILED")); }
   }
-  close() {
-    const primary=this.closeLocal();
-    return this.analysisManager ? Promise.all([primary,this.analysisManager.close()]).then(()=>undefined) : primary;
+  async close() {
+    if(!this.analysisManager)return this.closeLocal();
+    // Accepted analyses may still need the primary writer to commit their result.
+    try { await this.analysisManager?.close(); }
+    finally { await this.closeLocal(); }
   }
   async closeLocal() {
     if (["disabled", "closed", "new"].includes(this.state)) { if (this.state === "new") this.state = "closed"; return; }
