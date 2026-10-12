@@ -142,6 +142,7 @@ class RefreshOrchestratorService {
   }
 
   async resolveAggregateNewsSnapshot() {
+    if (this.newsArchive?.getFeed) return this.newsArchive.getFeed({limit:this.config.news?.rssAggregateMaxItems || 900});
     if (!this.rssAggregator) {
       return { items: [] };
     }
@@ -168,7 +169,7 @@ class RefreshOrchestratorService {
     };
 
     try {
-      this.signalCorrelator?.recordSnapshot(correlatorSnapshot, resolvedAggregateNews);
+      await this.signalCorrelator?.recordSnapshot(correlatorSnapshot, resolvedAggregateNews);
     } catch (error) {
       log.warn("signal_correlator_record_failed", {
         message: error.message
@@ -234,6 +235,7 @@ class RefreshOrchestratorService {
   }
 
   resolveNextNewsDelayMs() {
+    if (this.config.news?.collectInWorker) return this.config.news.projectionIntervalMs || 60000;
     const policy = this.resolveCurrentNewsPolicy();
     return policy.intervalMs;
   }
@@ -332,8 +334,12 @@ class RefreshOrchestratorService {
     clearTimeout(this.newsTimerHandle);
     const baseIntervalMs = this.resolveNextNewsDelayMs() ?? this.getNewsBaseIntervalMs() ?? 0;
     const backoffCapMs = this.getNewsBackoffMaxMs() ?? baseIntervalMs;
-    const delayMs = Math.min(baseIntervalMs + this.newsBackoffMs, backoffCapMs);
+    const delayMs = this.config.news?.collectInWorker
+      ? Math.max(1000,baseIntervalMs-(this.newsCycleTelemetry.lastDurationMs || 0))
+      : baseIntervalMs + Math.min(this.newsBackoffMs, Math.max(0, backoffCapMs - baseIntervalMs));
+    this.nextNewsRunAt=new Date(Date.now()+delayMs).toISOString();
     this.newsTimerHandle = setTimeout(async () => {
+      this.nextNewsRunAt=null;
       try { await this.runNewsCycle(trigger, { allowExhaustedProviders: false }); }
       catch (error) { log.error("news_scheduler_failed", { message: error.message }); }
       finally { this.scheduleNextNewsCycle("interval-news"); }
@@ -387,6 +393,7 @@ class RefreshOrchestratorService {
       ...this.newsCycleTelemetry,
       lastStartedAt: new Date(startedAt).toISOString(),
       lastStatus: "running",
+      stage:"fetching",
       lastTrigger: trigger,
       lastError: null
     };
@@ -402,22 +409,30 @@ class RefreshOrchestratorService {
       const queryLane = awarenessCollectionEnabled
         ? buildNewsLaneRotation({ slots: 1, offset: this.newsLaneOffset })[0] || "geopolitical"
         : "legacy";
-      if (awarenessCollectionEnabled) this.newsLaneOffset = (this.newsLaneOffset + 1) % 10;
+      const advanceProviderLane = !this.config.news?.collectInWorker || (!options.storageOnly && (options.allowExhaustedProviders === true || Date.now() >= (this.nextPaidCollectAt || 0)));
+      if (awarenessCollectionEnabled && advanceProviderLane) this.newsLaneOffset = (this.newsLaneOffset + 1) % 10;
       const financialPackKeys = ["macro", "market", "corporate-watchlist", "regulatory"];
       const financialQueryPackKey = financialPackKeys[this.financialQueryPackOffset % financialPackKeys.length];
-      if (queryLane === "financial") this.financialQueryPackOffset += 1;
+      if (queryLane === "financial" && advanceProviderLane) this.financialQueryPackOffset += 1;
       const financialTickerOffset = this.financialTickerOffset;
-      const newsResult = await fetchRawNews({
+      const acquisitionOptions = {
         ...this.config.news,
         rssSnapshot: await this.resolveAggregateNewsSnapshot(),
         ...(options.rssOnly ? {providers:["rss"]} : {}),
         pageSize,
         countries: countryFilter,
+        awarenessMode,
         queryLane,
         financialQueryPackKey,
         financialTickerOffset,
         allowExhaustedProviders: options.allowExhaustedProviders === true
-      });
+      };
+      const newsResult = this.config.news?.collectInWorker
+        ? await this.collectStoredNews(acquisitionOptions, policy, options)
+        : await fetchRawNews(acquisitionOptions);
+      this.newsCycleTelemetry.stage="archiving";
+      this.latestNewsAcquisition={...newsResult.sourceMeta,acquiredAt:newsResult.sourceMeta?.acquiredAt || this.latestNewsAcquisition?.acquiredAt || (newsResult.sourceMeta?.storageOnly ? null : new Date().toISOString())};
+      this.stateManager.setAdminIntelRawNews({generatedAt:new Date().toISOString(),items:normalizeAdminArticles(newsResult.rawArticles || [],newsResult.sourceMeta?.provider || "aggregated"),summary:{rawTotal:(newsResult.rawArticles || []).length,selectedTotal:0,queryLengthTotal:sumCountRecord(newsResult.sourceMeta?.queryLengthByProvider),rawCountByProvider:newsResult.sourceMeta?.rawCountByProvider || {},queryLengthByProvider:newsResult.sourceMeta?.queryLengthByProvider || {}}});
       if (queryLane === "financial" && financialQueryPackKey === "corporate-watchlist") {
         const tickerCount = Math.max(1, this.config.news?.marketTickers?.length || 0);
         const coveredCounts = Object.values(newsResult.sourceMeta?.financialTickerCoverageByProvider || {})
@@ -437,8 +452,11 @@ class RefreshOrchestratorService {
       const rawIntelNews = normalizeAdminArticles(newsResult.rawArticles || [], newsResult.sourceMeta?.provider || "aggregated");
       const geopoliticalAwareness = this.awarenessService?.getGeopoliticalArticles?.() || [];
       const shadowFinancialCycle = awarenessMode === "shadow" && queryLane === "financial";
-      if (!options.rssOnly) this.newsArchive?.ingest((newsResult.rawArticles?.length ? newsResult.rawArticles : normalizedNews).filter(a => a.provider !== "rss"), { lane: queryLane, awarenessMode });
-      const selection = shadowFinancialCycle
+      if (!this.config.news?.collectInWorker && !options.rssOnly) await this.newsArchive?.ingest((newsResult.rawArticles?.length ? newsResult.rawArticles : normalizedNews).filter(a => a.provider !== "rss"), { lane: queryLane, awarenessMode });
+      if (this.newsArchive?.getProjection && awarenessVisible && geopoliticalAwareness.length) await this.newsArchive.ingest(geopoliticalAwareness,{awarenessMode});
+      this.newsCycleTelemetry.stage="selection";
+      const storedProjection = this.newsArchive?.getProjection ? await this.newsArchive.getProjection({countries:countryFilter,awarenessMode,tickers:this.config.market.tickers,impactWindowMin:this.config.market.impactWindowMin}) : null;
+      const selection = storedProjection ? {signalCorpus:storedProjection.signalCorpus,displaySelection:storedProjection.news,selectionMeta:storedProjection.selectionMeta} : shadowFinancialCycle
         ? {
             signalCorpus: this.stateManager.getSignalCorpus(),
             displaySelection: previousSnapshot.news || [],
@@ -458,7 +476,7 @@ class RefreshOrchestratorService {
           });
       const signalCorpus = selection.signalCorpus || (awarenessVisible ? newsBranches.geopolitical : normalizedNews);
       const selectedNews = selection.displaySelection || [];
-      const financialSelection = buildFinancialNewsSelection({
+      const financialSelection = storedProjection?.financialSelection || buildFinancialNewsSelection({
         articles: awarenessCollectionEnabled
           ? mergeArticleCorpora(newsBranches.financial, awarenessVisible ? this.stateManager.getMarketSignalCorpus() : [])
           : [],
@@ -468,21 +486,21 @@ class RefreshOrchestratorService {
         maxPerSource: 4
       });
       if (awarenessCollectionEnabled) {
-        this.awarenessService?.ingestFinancialArticles?.(financialSelection.items || [], {
+        await this.awarenessService?.ingestFinancialArticles?.(financialSelection.items || [], {
           backfill: trigger === "startup-news",
           trigger
         });
       }
-      const marketSignalCorpus = awarenessVisible
+      const marketSignalCorpus = storedProjection?.marketSignalCorpus || (awarenessVisible
         ? mergeArticleCorpora(
             signalCorpus,
             financialSelection.signalCorpus || [],
             this.awarenessService?.getMarketArticles?.() || []
           )
-        : signalCorpus;
+        : signalCorpus);
       const newsSourceMeta = {
         ...(newsResult.sourceMeta || {}),
-        rssIngestion: this.rssAggregator ? (({feedStatus, ...summary}) => summary)(this.rssAggregator.getStatus()) : null,
+        rssIngestion: this.rssAggregator ? (({feedStatus, ...summary}) => summary)(this.rssAggregator.getStatus?.() || {}) : null,
         selectedCountByProvider: countByProvider(selectedNews, this.config.news?.providers || []),
         signalCountByProvider: countByProvider(signalCorpus, this.config.news?.providers || []),
         selectionBySourceName: selection.selectionMeta?.selectionBySourceName || [],
@@ -499,6 +517,8 @@ class RefreshOrchestratorService {
         },
         financialSelection: financialSelection.diagnostics
       };
+      if(storedProjection) { newsSourceMeta.corpus=storedProjection.meta; newsSourceMeta.provider="sqlite"; newsSourceMeta.reason=storedProjection.sourceMode==="stale" ? "provider-data-stale" : storedProjection.sourceMode==="unavailable" ? "no-valid-stored-news" : null; newsSourceMeta.branchCounts={geopolitical:storedProjection.meta.geopoliticalCandidateCount,financial:storedProjection.meta.financialCandidateCount,hybrid:null}; }
+      this.latestNewsAcquisition={...newsSourceMeta,acquiredAt:this.latestNewsAcquisition?.acquiredAt};
       this.stateManager.setAdminIntelRawNews({
         generatedAt: new Date().toISOString(),
         items: rawIntelNews,
@@ -512,14 +532,14 @@ class RefreshOrchestratorService {
         }
       });
 
-      const riskResult = computeCountryRisk({
+      const riskResult = storedProjection?.riskResult || computeCountryRisk({
         articles: signalCorpus,
         previousCountries: previousSnapshot.countries
       });
 
       const inputMode = resolveInputMode(newsResult.sourceMode, previousSnapshot.market?.sourceMode);
       const selectedMarketInstruments = this.config.market.watchlistService?.selectedInstruments?.() || [];
-      const impact = computeMarketImpact({
+      const impact = storedProjection?.impact || computeMarketImpact({
         articles: marketSignalCorpus,
         countries: riskResult.countries,
         marketQuotes: previousSnapshot.market?.quotes || {},
@@ -531,7 +551,7 @@ class RefreshOrchestratorService {
         impactHistory: previousSnapshot.impactHistory || [],
         predictionScores: previousSnapshot.predictions?.predictionScoreByTicker || {}
       });
-      const predictions = generatePredictions({
+      const predictions = storedProjection?.predictions || generatePredictions({
         articles: marketSignalCorpus,
         countries: riskResult.countries,
         marketQuotes: previousSnapshot.market?.quotes || {},
@@ -539,7 +559,7 @@ class RefreshOrchestratorService {
         instruments: selectedMarketInstruments,
         inputMode
       });
-      const insights = generateInsights({
+      const insights = storedProjection?.insights || generateInsights({
         countries: riskResult.countries,
         previousCountries: previousSnapshot.countries,
         inputMode
@@ -554,16 +574,22 @@ class RefreshOrchestratorService {
         impact,
         signalCorpus,
         marketSignalCorpus,
-        newsSourceMode: newsResult.sourceMode,
+        newsSourceMode: storedProjection?.sourceMode || newsResult.sourceMode,
         newsSourceMeta,
         watchlistCountries: this.config.watchlistCountries
       });
 
       this.socketServer.broadcast("update", this.buildUpdatePayload(snapshot), snapshot.meta);
+      if(options.skipSecondary) { this.newsCycleTelemetry={...this.newsCycleTelemetry,lastCompletedAt:new Date().toISOString(),lastDurationMs:Date.now()-startedAt,lastStatus:"ok",stage:"completed"}; return snapshot; }
+
+      this.newsCycleTelemetry.stage="rss-aggregate";
       const aggregateNews = await this.resolveAggregateNewsSnapshot();
-      // Las capas públicas se calculan al solicitarlas; la publicación no espera assets del mapa.
-      this.newsArchive?.recordContext(snapshot);
-      this.researchCycle?.(snapshot);
+      this.newsCycleTelemetry.stage="context";
+      await this.newsArchive?.recordContext(snapshot);
+      this.newsCycleTelemetry.stage="scenarios";
+      await this.researchCycle?.(snapshot);
+      await this.storageFlush?.();
+      this.newsCycleTelemetry.stage="signals";
       await this.refreshSecondaryIntel(snapshot, aggregateNews);
       void Promise.resolve(this.aiCoordinator?.reconcileNewsSnapshot?.({
         snapshot,
@@ -590,6 +616,7 @@ class RefreshOrchestratorService {
         lastCompletedAt: new Date().toISOString(),
         lastDurationMs: Date.now() - startedAt,
         lastStatus: "ok",
+        stage:"completed",
         lastError: null
       };
     } catch (error) {
@@ -614,6 +641,7 @@ class RefreshOrchestratorService {
         lastCompletedAt: new Date().toISOString(),
         lastDurationMs: Date.now() - startedAt,
         lastStatus: "error",
+        failedStage:this.newsCycleTelemetry.stage,
         lastError: error.message
       };
     } finally {
@@ -624,6 +652,20 @@ class RefreshOrchestratorService {
   async runCycle(trigger = "scheduled-news") {
     await this.rssAggregator?.refresh();
     return this.runNewsCycle(trigger);
+  }
+
+  async collectStoredNews(input, policy, options = {}) {
+    const now=Date.now(), force=options.allowExhaustedProviders === true;
+    const providers=(this.config.news.providers || []).filter(provider => !options.storageOnly && (provider === "rss" ? force || now >= (this.nextRssCollectAt || 0) : force || now >= (this.nextPaidCollectAt || 0)));
+    if(!providers.length) return {articles:[],rawArticles:[],sourceMode:"stored",sourceMeta:{...(this.latestNewsAcquisition || {}),storageOnly:true}};
+    if(providers.includes("rss")) this.nextRssCollectAt=now+(this.config.news.rssPollIntervalMs || 60000);
+    if(providers.some(provider => provider!=="rss")) this.nextPaidCollectAt=now+(policy.intervalMs || this.getNewsBaseIntervalMs() || 600000);
+    const result=await this.config.news.collectInWorker({providers,pageSize:input.pageSize,countries:input.countries,queryLane:input.queryLane,awarenessMode:input.awarenessMode,financialQueryPackKey:input.financialQueryPackKey,financialTickerOffset:input.financialTickerOffset,marketTickers:input.marketTickers,queryPacks:input.queryPacks,queryPackGroups:input.queryPackGroups,allowExhaustedProviders:input.allowExhaustedProviders});
+    this.providerAttempts ||= new Map();
+    for(const attempt of result.sourceMeta?.attempts || []) this.providerAttempts.set(attempt.provider,{...attempt,lastAttemptAt:result.sourceMeta.acquiredAt || new Date().toISOString()});
+    result.sourceMeta={...result.sourceMeta,attempts:[...this.providerAttempts.values()]};
+    for(const [provider,quota] of Object.entries(result.quotas || {})) { apiQuotaTracker.ensureProvider(provider); Object.assign(apiQuotaTracker.providers[provider],quota); }
+    return result;
   }
 
   runMarketCycle(trigger = "scheduled-market", options = {}) {
@@ -760,9 +802,9 @@ class RefreshOrchestratorService {
       });
 
       const aggregateNews = await this.resolveAggregateNewsSnapshot();
-      // Map assets are available on demand through the map API.
-      this.newsArchive?.recordContext(snapshot);
-      this.researchCycle?.(snapshot);
+      await this.newsArchive?.recordContext(snapshot);
+      await this.researchCycle?.(snapshot);
+      await this.storageFlush?.();
       await this.refreshSecondaryIntel(snapshot, aggregateNews);
       try {
         await this.marketHistoryStore?.persistMarketState?.(previousSnapshot.market || {}, marketState, {
@@ -905,6 +947,7 @@ class RefreshOrchestratorService {
 
   async stop() {
     this.stopped = true;
+    this.nextNewsRunAt=null;
     if (this.newsTimerHandle) {
       clearTimeout(this.newsTimerHandle);
       this.newsTimerHandle = null;

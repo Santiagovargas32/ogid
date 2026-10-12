@@ -3,6 +3,7 @@ import { buildMarketConditionSeries } from "./candleAggregationService.js";
 import { classifyMarketConditionsAvailability } from "./marketConditionsAvailability.js";
 import { calculateNewsPriceCouplingV2 } from "./newsPriceCoupling.js";
 import { calculateTechnicalIndicators } from "./technicalIndicators.js";
+import { createHash } from "node:crypto";
 
 export const MARKET_CONDITIONS_SCHEMA_VERSION = "market-conditions-snapshot-v1";
 export const MARKET_CONDITIONS_METHOD_VERSION = "market-conditions-v1.2";
@@ -641,16 +642,21 @@ export class MarketConditionsService {
     this.pollIntervalMs = Number.isFinite(Number(pollIntervalMs)) && Number(pollIntervalMs) > 0 ? Number(pollIntervalMs) : 900_000;
     this.intradayCandlesEnabled = intradayCandlesEnabled === true;
     this.cache = new Map();
+    this.seriesCache = new Map();
   }
 
   #resolveSeries(instrument, windowMin, asOf) {
     const resolved = this.seriesResolver?.({ instrument, windowMin, asOf, store: this.candleStore });
     if (resolved) return resolved;
     const base = this.candleStore?.query?.({ instrumentId: instrument.instrumentId, interval: "5min", adjustmentMode: "splits", limit: 500 }) || [];
+    const inputRevision=createHash("sha256").update(JSON.stringify([instrument,base])).digest("hex");
+    const cacheKey=`${instrument.instrumentId}:${windowMin}:${Math.floor(Date.parse(asOf)/60000)}:${inputRevision}`;
+    if(this.seriesCache.has(cacheKey))return this.seriesCache.get(cacheKey);
     const series = deriveMarketConditionsSeries(base, windowMin, asOf, instrument);
     const nonSynthetic = base.filter((candle) => !isSynthetic(candle));
-    return {
+    const result = {
       ...series,
+      inputRevision,
       base5m: {
         count: base.length,
         nonSyntheticCount: nonSynthetic.length,
@@ -658,6 +664,9 @@ export class MarketConditionsService {
         explicitlyStale: nonSynthetic.some(isStale)
       }
     };
+    this.seriesCache.set(cacheKey,result);
+    while(this.seriesCache.size>128)this.seriesCache.delete(this.seriesCache.keys().next().value);
+    return result;
   }
 
   #buildCouplings({ corpus, instruments, seriesByInstrument, windowMin, asOf }) {
@@ -704,10 +713,11 @@ export class MarketConditionsService {
     const normalizedCountries = [...new Set((countries || []).map((country) => String(country).trim().toUpperCase()).filter(Boolean))].sort();
     const corpus = buildMarketConditionsCorpus({ articles, awareness, windowMin: resolvedWindow, countries: normalizedCountries, asOf });
     const seriesByInstrument = Object.fromEntries(instruments.map((instrument) => [instrument.instrumentId, this.#resolveSeries(instrument, resolvedWindow, asOf)]));
-    const latestCandleRevision = instruments.map((instrument) => `${instrument.instrumentId}:${seriesByInstrument[instrument.instrumentId]?.candles?.at(-1)?.closeTime || "none"}`).join("|");
+    const latestCandleRevision = instruments.map((instrument) => {const entry=seriesByInstrument[instrument.instrumentId];return `${instrument.instrumentId}:${entry?.inputRevision || createHash("sha256").update(JSON.stringify(entry?.candles || [])).digest("hex")}`;}).join("|");
     const watchlistRevision = instruments.map((instrument) => instrument.instrumentId).join(",");
     const revisions = {
       news: snapshot.meta?.lastRefreshAt || snapshot.meta?.sourceMeta?.revision || null,
+      archive: snapshot.meta?.newsArchiveRevision || 0,
       market: snapshot.market?.revision || snapshot.market?.updatedAt || null,
       awareness: awareness.revision || 0,
       watchlist: watchlistRevision,

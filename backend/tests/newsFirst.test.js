@@ -92,9 +92,10 @@ test('shutdown waits for admitted selection work before the final archive flush'
 test('slow WebSocket transport is closed for resync while a healthy client receives its envelope',async()=>{
  const {sendBoundedEnvelope}=await import('../websocket/socketServer.js');const calls=[];
  const slow={readyState:1,bufferedAmount:1000001,close:(...args)=>calls.push(args),once:()=>{},terminate:()=>calls.push('terminate'),send:()=>assert.fail('buffer must stay bounded')};
- const fast={readyState:1,bufferedAmount:0,send:value=>calls.push(value)};
+ const fast={readyState:1,bufferedAmount:0,once:()=>{},send:(value,callback)=>{calls.push(value);callback();}};
  sendBoundedEnvelope(slow,'fixture');sendBoundedEnvelope(fast,'fixture');
- assert.deepEqual(calls,[[1013,'resync-required'],'fixture']);
+ assert.deepEqual(calls,['fixture']);assert.equal(slow.boundedTransport.queue.length,1);
+ clearInterval(slow.boundedTransport.timer);clearInterval(fast.boundedTransport.timer);
 });
 
 test('expired remembered selection resyncs without signalling the entire feed as new',()=>{

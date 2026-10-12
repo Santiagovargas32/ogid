@@ -1279,6 +1279,12 @@ Retención: current snapshot; consult response coverage. Procedencia: OGID runti
           "splits",
           "none"
         ]
+      },
+      "source": {
+        "type": "string",
+        "enum": [
+          "stored"
+        ]
       }
     },
     "required": [
@@ -1288,7 +1294,9 @@ Retención: current snapshot; consult response coverage. Procedencia: OGID runti
   },
   "body": null,
   "pathParameters": null,
-  "fixed": {}
+  "fixed": {
+    "source": "stored"
+  }
 }
 ```
 
@@ -3596,6 +3604,13 @@ Retención: current snapshot; consult response coverage. Procedencia: OGID runti
         "enum": [
           "splits",
           "none"
+        ]
+      },
+      "source": {
+        "type": "string",
+        "enum": [
+          "stored",
+          "yahoo"
         ]
       }
     },

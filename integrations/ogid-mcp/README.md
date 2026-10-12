@@ -34,7 +34,7 @@ Las pruebas deterministas usan fixtures y protocolo MCP real; no consumen cuotas
 | ogid_get_portfolio_context | Paquetes agenda/daily/material/weekly |
 | ogid_query | Operación enumerada para mercado, inteligencia, mapas, medios y diagnóstico |
 
-[API-MCP.md](API-MCP.md) enumera las 62 rutas JSON y 71 operaciones: 44 de investigación y 27 de operador. Sus esquemas se generan desde [el registro compartido](../../backend/contracts/ogidOperations.js). Cambiarlo exige regenerar el inventario; una prueba detecta rutas sin clasificación.
+[API-MCP.md](API-MCP.md) enumera las 68 rutas JSON y 77 operaciones: 45 de investigación y 32 de operador. Sus esquemas se generan desde [el registro compartido](../../backend/contracts/ogidOperations.js). Cambiarlo exige regenerar el inventario; una prueba detecta rutas sin clasificación.
 
 Ejemplos de argumentos MCP:
 
@@ -49,7 +49,9 @@ ASML/Alphabet/ETF requieren elegir un instrumentId verificado si la referencia r
 
 ## Archivo y paginación
 
-El backend ingiere noticias intel y RSS antes del recorte editorial. Conserva metadata/extractos autorizados durante 30 días desde su recopilación, con poda por última observación y límites de 100 000 artículos / 64 MiB de metadata. JSON atómico reutiliza la persistencia existente; el índice en memoria es suficiente para este volumen local. El historial de riesgos/impactos ocupa como máximo un registro por hora durante esos 30 días. Los archivos se crean con permiso 600 y el directorio nuevo con 700.
+En modo SQL, el worker ingiere noticias intel/RSS antes del recorte editorial y consulta SQLite por ventanas. La retención es `NEWS_RETENTION_DAYS` (365 días en la unidad preparada), por última observación; no conserva todo el archivo en la memoria de Express. Guarda revisiones, procedencia y un contexto horario de riesgos/impactos. El modo JSON compatible conserva los límites anteriores de 100 000 artículos / 64 MiB. Los archivos SQLite se crean con permiso 600 y el directorio nuevo con 700. Véase [el flujo SQL](../../docs/news-sql-pipeline.md).
+
+El contexto semanal MCP resume el historial con la última observación de cada día UTC, hasta ocho días repartidos por la ventana solicitada. `historyCoverage` declara cuántas observaciones se almacenaron y cuántas se devuelven, las fechas disponibles y el muestreo; no acredita continuidad. La API `/api/portfolio/context?mode=weekly` conserva el detalle horario de la ventana. La salud MCP añade estado SQLite, migraciones, cola, heartbeat, contadores y pipelines, sin rutas privadas ni cuerpos internos.
 
 No rellena semanas anteriores ni descarga retrospectivamente. Cobertura declara activación, oldest/newest, recepción, fechas desconocidas, poda por capacidad y continuidad de adquisición desconocida. Los snapshots actuales no demuestran continuidad histórica. El historial se registra en los ciclos intel/mercado y permanece tras reinicio; no es una serie de rentabilidades.
 
@@ -69,7 +71,7 @@ El adaptador no carga .env ni backend/.env automáticamente. La [plantilla de t�
 | OGID_PROFILE | research por defecto; operator requiere credencial privada |
 | OGID_INSTRUMENT_AUTH | allowlist por compatibilidad; runtime recomendado en plantilla |
 | OGID_INSTRUMENT_IDS | IDs autorizados separados por comas para allowlist |
-| OGID_TIMEOUT_MS | 5000; 100–30000, incluye cuerpo HTTP |
+| OGID_TIMEOUT_MS | 30000 por defecto; 100–30000, incluye cuerpo HTTP; valores explícitos previos prevalecen |
 | OGID_MAX_RESPONSE_BYTES | 2097152; máximo 4194304 |
 | OGID_MAX_OUTPUT_BYTES | 262144; 4096–524288, incluye envoltura MCP |
 | OGID_MAX_CONCURRENT | 4; 1–8, cola máxima 32 |
@@ -83,7 +85,7 @@ La conexión investigación no anuncia ogid_operator. El operador verifica token
 
 Cada respuesta incluye ok, queriedAt, origin, data, warnings y truncated. Se mantienen las garantías de 0.1.1: fechas de respaldo sin publicación ficticia, stale/synthetic/mixed/fallback, Awareness off/shadow oculto y lastSuccessAt separado de agenda futura. Un precio ausente/sintético no muestra changePct=0 como rendimiento real. El commit del checkout nunca acredita el proceso cargado.
 
-Las lecturas stored evitan consultas de RSS y resolución de medios; precios/series se leen de stores existentes. Los ciclos normales del backend pueden seguir recopilando según su configuración: una consulta no los dispara. No hay force en investigación. Solo investigación reintenta una vez 502/503/504 o ciertos fallos de conexión; no 401/429/timeout, operador ni escrituras. Redirecciones bloqueadas, TLS normal, entrada estricta y rutas enumeradas.
+Las lecturas stored evitan consultas de RSS y resolución de medios; precios/series se leen de stores existentes. `market.candles` fija `source=stored` y rechaza `source=yahoo`; la descarga directa del panel web y la operación operador son flujos separados. Los ciclos normales del backend pueden seguir recopilando según su configuración: una consulta no los dispara. No hay force en investigación. Solo investigación reintenta una vez 502/503/504 o ciertos fallos de conexión; no 401/429/timeout, operador ni escrituras. Redirecciones bloqueadas, TLS normal, entrada estricta y rutas enumeradas.
 
 Salida sin texto completo, prompts internos, secretos ni rutas privadas. Artículos headline-only-link-out devuelven título/enlace y excerpt=null. Errores upstream no reflejan sus cuerpos. Archivo corrupto impide recuperación con error explícito y se conserva para revisión; no se sobrescribe vacío.
 

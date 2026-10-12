@@ -28,6 +28,20 @@ const rssSource = {
 
 const rss = `<?xml version="1.0"?><rss version="2.0"><channel><item><title>FOMC Interest Rate Decision</title><description>Official monetary policy statement.</description><link>https://www.federalreserve.gov/newsevents/pressreleases/monetary20260729a.htm</link><pubDate>Wed, 29 Jul 2026 18:00:00 GMT</pubDate></item></channel></rss>`;
 
+test("scheduled Awareness storage failures are handled and the timer remains controlled",async t=>{
+  t.mock.timers.enable({apis:["setTimeout"]});
+  const service=new AwarenessService({mode:"visible",store:new AwarenessStore(),sources:[]});let attempts=0;
+  service.runCycle=async()=>{attempts++;throw Object.assign(new Error("STORAGE_NOT_READY"),{code:"STORAGE_NOT_READY"});};
+  service.stopped=false;
+  try{service.schedule();t.mock.timers.tick(60000);await Promise.resolve();await Promise.resolve();assert.equal(attempts,1);t.mock.timers.tick(60000);await Promise.resolve();await Promise.resolve();assert.equal(attempts,2);}finally{service.stop();}
+});
+
+test("Awareness does not report a storage rejection as a failed upstream poll",async()=>{
+  const store=new AwarenessStore();const service=new AwarenessService({mode:"visible",store,sources:[rssSource],fetchImpl:async()=>new Response(rss,{headers:{"content-type":"application/rss+xml"}})});let polls=0;
+  store.reconcile=async()=>{throw Object.assign(new Error("STORAGE_NOT_READY"),{code:"STORAGE_NOT_READY"});};store.recordPoll=()=>{polls++;};store.setSourceStale=()=>{throw new Error("Must not write into a failed store");};
+  await assert.rejects(service.pollSource(rssSource),{code:"STORAGE_NOT_READY"});assert.equal(polls,0);
+});
+
 test("calendar polling reports scheduled time, never Date.parse(0), including a subsequent 304", async () => {
   const nowMs = Date.parse("2026-10-05T19:00:00Z");
   const source = { ...rssSource, sourceId: "calendar-fixture", adapter: "ics", kind: "macro_scheduled" };

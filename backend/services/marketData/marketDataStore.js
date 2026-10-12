@@ -34,12 +34,16 @@ function equivalentBar(left, right) {
 }
 
 export class MarketDataStoreAdapter {
-  constructor({ candleStore = null, now = () => new Date(), maxCacheEntries = 256 } = {}) {
+  constructor({ candleStore = null, now = () => new Date(), maxCacheEntries = 256, readThrough = true, persistAsync = false, onPersistenceError = () => {}, onPersisted = null } = {}) {
     this.candleStore = candleStore || new DailyCandleStore({ intervals: ["1day", "1h", "30min", "15min", "5min", "1wk", "1mo"] });
     this.now = now;
     this.maxCacheEntries = Math.max(1, Number(maxCacheEntries) || 256);
     this.cache = new Map();
     this.writeChains = new Map();
+    Object.assign(this, {readThrough,persistAsync,onPersistenceError,onPersisted});
+    this.pendingPersistence = new Set();
+    this.persistenceChains = new Map();
+    this.persistenceStatus = {completed:0,failed:0,lastError:null,lastCompletedAt:null};
   }
 
   hydrate() {
@@ -77,7 +81,8 @@ export class MarketDataStoreAdapter {
         else updated += 1;
         byTimestamp.set(bar.timestamp, bar);
       }
-      const refreshedAt = instant(this.now()).toISOString();
+      const observationTime = instant(this.now());
+      const refreshedAt = observationTime.toISOString();
       const merged = [...byTimestamp.values()].sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp));
       const boundedTtl = Math.max(1, Number(ttlMs) || 1);
       const storedAt = complete ? refreshedAt : previous?.storedAt || refreshedAt;
@@ -93,9 +98,16 @@ export class MarketDataStoreAdapter {
 
       const incomingTimestamps = new Set(bars.map((bar) => bar?.timestamp).filter(Boolean));
       const candles = merged.filter((bar) => incomingTimestamps.has(bar.timestamp)).map((bar) => this.toCanonicalCandle(bar, interval)).filter(Boolean);
-      const persistence = typeof this.candleStore.upsert === "function"
-        ? await this.candleStore.upsert(candles, { now: instant(this.now()) })
-        : await this.candleStore.append(candles, { now: instant(this.now()) });
+      const persist = async () => {
+        const result = typeof this.candleStore.upsert === "function"
+          ? await this.candleStore.upsert(candles, { now: observationTime })
+          : await this.candleStore.append(candles, { now: observationTime });
+        await this.onPersisted?.({candles,persistence:result});
+        return result;
+      };
+      const persistence = this.persistAsync
+        ? this.#persistLater(`${normalizedSymbol}|${interval}`,persist,candles.length)
+        : await persist();
       const relatedPrefix = `${normalizedSymbol}|${interval}|`;
       for (const cachedKey of this.cache.keys()) if (cachedKey.startsWith(relatedPrefix)) this.cache.delete(cachedKey);
       this.#setCachedEntry(key, nextEntry);
@@ -106,42 +118,27 @@ export class MarketDataStoreAdapter {
     }
   }
 
-  getBars({ symbol, period = "1y", interval = "1d", from = null, to = null, ttlMs = 1, limit = 10_000, range = null } = {}) {
-    const normalizedSymbol = normalizeYahooSymbol(symbol);
-    const key = this.cacheKey(normalizedSymbol, interval, period, range);
-    let entry = this.#cachedEntry(key);
-    if (!entry) {
-      const instrument = dynamicInstrument(normalizedSymbol);
-      const records = this.candleStore.query({
-        instrumentId: instrument.instrumentId,
-        interval: CANONICAL_INTERVAL[interval] || interval,
-        adjustmentMode: "splits",
-        from,
-        to,
-        limit,
-      });
-      if (records.length > 0) {
-        const bars = records.map((record) => this.fromCanonicalCandle(record, normalizedSymbol));
-        const storedAt = records.map((record) => record.fetchedAt).filter(Boolean).sort().at(-1) || bars.at(-1).timestamp;
-        entry = { bars, storedAt, expiresAt: new Date(Date.parse(storedAt) + Math.max(1, Number(ttlMs) || 1)).toISOString(), from: bars[0]?.timestamp || null, to: bars.at(-1)?.timestamp || null };
-        this.#setCachedEntry(key, entry);
+  getBars(options = {}) {
+    const { symbol, period = "1y", interval = "1d", from = null, to = null, ttlMs = 1, limit = 10_000, range = null } = options;
+    const normalizedSymbol=normalizeYahooSymbol(symbol),key=this.cacheKey(normalizedSymbol,interval,period,range);
+    const finish = records => {
+      let entry=this.#cachedEntry(key);
+      if (!entry && records.length) {
+        const bars=records.map(record=>this.fromCanonicalCandle(record,normalizedSymbol));
+        const storedAt=records.map(record=>record.fetchedAt).filter(Boolean).sort().at(-1) || bars.at(-1).timestamp;
+        entry={bars,storedAt,expiresAt:new Date(Date.parse(storedAt)+Math.max(1,Number(ttlMs)||1)).toISOString(),from:bars[0]?.timestamp || null,to:bars.at(-1)?.timestamp || null};this.#setCachedEntry(key,entry);
       }
-    }
-    if (!entry) return { bars: [], cached: false, stale: true, storedAt: null, from: null, to: null };
-    const fromMs = from ? Date.parse(from) : -Infinity;
-    const toMs = to ? Date.parse(to) : Infinity;
-    const bars = entry.bars.filter((bar) => Date.parse(bar.timestamp) >= fromMs && Date.parse(bar.timestamp) <= toMs).slice(-Math.max(1, Number(limit) || 10_000));
-    return {
-      bars,
-      cached: true,
-      stale: Date.parse(entry.expiresAt) <= instant(this.now()).getTime(),
-      storedAt: entry.storedAt,
-      from: bars[0]?.timestamp || null,
-      to: bars.at(-1)?.timestamp || null,
+      if(!entry)return {bars:[],cached:false,stale:true,storedAt:null,from:null,to:null};
+      const fromMs=from?Date.parse(from):-Infinity,toMs=to?Date.parse(to):Infinity;
+      const bars=entry.bars.filter(bar=>Date.parse(bar.timestamp)>=fromMs&&Date.parse(bar.timestamp)<=toMs).slice(-Math.max(1,Number(limit)||10000));
+      return {bars,cached:true,stale:Date.parse(entry.expiresAt)<=instant(this.now()).getTime(),storedAt:entry.storedAt,from:bars[0]?.timestamp || null,to:bars.at(-1)?.timestamp || null};
     };
+    if(this.#cachedEntry(key) || !this.readThrough)return finish([]);
+    const records=this.candleStore.query({instrumentId:dynamicInstrument(normalizedSymbol).instrumentId,interval:CANONICAL_INTERVAL[interval] || interval,adjustmentMode:"splits",from,to,limit});
+    return records?.then ? records.then(finish) : finish(records);
   }
 
-  toCanonicalCandle(bar, interval) {
+  toCanonicalCandle(bar, interval, {fetchedAt = instant(this.now()).toISOString()} = {}) {
     const instrument = dynamicInstrument(bar.symbol);
     const canonicalInterval = CANONICAL_INTERVAL[interval] || interval;
     const isDaily = canonicalInterval === "1day";
@@ -164,7 +161,7 @@ export class MarketDataStoreAdapter {
     if (["1day", "1h", "30min", "15min", "5min"].includes(canonicalInterval)) {
       const normalized = normalizeCanonicalCandle(raw, {
         instrument,
-        fetchedAt: instant(this.now()).toISOString(),
+        fetchedAt,
         source: "yahoo",
         providerSymbol: bar.symbol,
         adjustmentMode: "splits",
@@ -176,11 +173,11 @@ export class MarketDataStoreAdapter {
       ...raw,
       currency: instrument.currency || null,
       exchange: instrument.exchange || null,
-      fetchedAt: instant(this.now()).toISOString(),
+      fetchedAt,
       adjusted: true,
       quality: "valid",
       methodVersion: "market-data-chart-v1",
-      provenance: { provider: "yahoo", providerSymbol: bar.symbol, adjustmentMode: "splits", fetchedAt: instant(this.now()).toISOString() },
+      provenance: { provider: "yahoo", providerSymbol: bar.symbol, adjustmentMode: "splits", fetchedAt },
     };
   }
 
@@ -199,6 +196,28 @@ export class MarketDataStoreAdapter {
       ...(candle.providerAdjustedClose != null ? {providerAdjustedClose:candle.providerAdjustedClose}:{}),
     };
   }
+
+  #persistLater(key, persist, requested) {
+    const prior = this.persistenceChains.get(key) || Promise.resolve();
+    const task = prior.catch(() => {}).then(persist);
+    this.pendingPersistence.add(task);
+    this.persistenceChains.set(key,task);
+    task.then(() => {
+      this.persistenceStatus.completed++;
+      this.persistenceStatus.lastCompletedAt=new Date().toISOString();
+    }, error => {
+      this.persistenceStatus.failed++;
+      this.persistenceStatus.lastError=error.code || "MARKET_PERSISTENCE_FAILED";
+      this.onPersistenceError(error);
+    }).finally(() => {
+      this.pendingPersistence.delete(task);
+      if(this.persistenceChains.get(key)===task)this.persistenceChains.delete(key);
+    }).catch(() => {});
+    return {pending:true,requested,inserted:0,duplicates:0};
+  }
+
+  getPersistenceStatus() { return {...this.persistenceStatus,pending:this.pendingPersistence.size,readThrough:this.readThrough,asynchronous:this.persistAsync}; }
+  async flushPersistence() { while(this.pendingPersistence.size)await Promise.allSettled([...this.pendingPersistence]); }
 
   #cachedEntry(key) {
     const entry = this.cache.get(key);

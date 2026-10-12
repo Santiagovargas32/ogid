@@ -44,6 +44,7 @@ let riskChart;
 let socket;
 let selectedCountries = new Set();
 let currentWatchlist = [];
+let liveNewsView=null,liveNewsRequestKey=null,liveNewsRequestToken=0;
 let selectedMarketSymbols = [];
 let marketWatchlistLoaded = false;
 let marketWatchlistModel = { maxSelected: null, instruments: [] };
@@ -1606,7 +1607,7 @@ async function loadMarketOhlcv() {
   elements.marketOhlcvStatus.textContent = `Loading ${instrument.symbol} OHLCVâ€¦`;
   let payload;
   try {
-    payload = await api.getMarketCandles({ instrumentId, interval: elements.marketOhlcvInterval.value, adjusted: "splits", limit: 240 });
+    payload = await api.getMarketCandles({ instrumentId, interval: elements.marketOhlcvInterval.value, adjusted: "splits", limit: 240, source: getState().market?.provider === "yahoo" ? "yahoo" : "stored" });
   } catch (error) {
     if (token === marketOhlcvRequestToken) elements.marketOhlcvStatus.textContent = `OHLCV request failed: ${error.message}`;
     return;
@@ -1704,6 +1705,26 @@ function renderDashboard(rawState) {
     marketConditionsMatchesCurrentContext() ? latestMarketConditions : null,
     { error: latestMarketConditionsError }
   ));
+}
+
+function liveNewsKey(state) {
+  const corpus=state.meta?.sourceMeta?.corpus;
+  return corpus ? `${selectedCountryQueryValue()}|${corpus.revision}|${corpus.dayStart}` : null;
+}
+
+async function refreshStoredLiveNews(state) {
+  const key=liveNewsKey(state);
+  if(!key || liveNewsView?.key===key || liveNewsRequestKey===key) return;
+  liveNewsRequestKey=key;
+  const token=++liveNewsRequestToken;
+  try{
+    const payload=await api.getNews({countries:selectedCountryQueryValue(),limit:40});
+    if(token!==liveNewsRequestToken || key!==liveNewsKey(getState())) return;
+    liveNewsView={key,news:payload.news || [],meta:payload.meta?.newsRead || state.meta.sourceMeta.corpus};
+    const current=filterStateBySelection(getState());
+    renderNews(liveNewsView.news,current.countries,getState().ai || {},liveNewsView.meta);
+  }catch(error){console.error("Failed to read stored daily news:",error);}
+  finally{if(token===liveNewsRequestToken)liveNewsRequestKey=null;}
 }
 
 function setWsStatus(status, diagnostics = null) {
@@ -1933,6 +1954,7 @@ async function bootstrap() {
     syncWatchlistFromState(state);
     renderCountryFilters();
     renderDashboard(state);
+    void refreshStoredLiveNews(state);
     syncManualRefreshFromMeta(state.meta);
   });
 

@@ -76,7 +76,7 @@ function harness(mode = "visible", provider = new MockAiProvider({ handler: outp
 test("visible coordinator enriches after deterministic input and maps output to legacy article id", async () => {
   const context = harness("visible");
   const article = fixtureArticle();
-  context.coordinator.reconcileNewsSnapshot({
+  await context.coordinator.reconcileNewsSnapshot({
     snapshot: { market: { quotes: {} }, countries: {}, impact: { items: [] } },
     signalCorpus: [article],
     displaySelection: [article],
@@ -95,7 +95,7 @@ test("visible coordinator enriches after deterministic input and maps output to 
 test("shadow coordinator stores accepted output but publishes no generated text", async () => {
   const context = harness("shadow");
   const article = fixtureArticle();
-  context.coordinator.reconcileNewsSnapshot({
+  await context.coordinator.reconcileNewsSnapshot({
     snapshot: { market: { quotes: {} }, countries: {}, impact: { items: [] } },
     signalCorpus: [article],
     displaySelection: [article],
@@ -106,10 +106,10 @@ test("shadow coordinator stores accepted output but publishes no generated text"
   assert.deepEqual(context.coordinator.getPublicProjection().articleSummaries, {});
 });
 
-test("off/none coordinator performs zero provider work", () => {
+test("off/none coordinator performs zero provider work", async () => {
   const context = harness("off", new NoopAiProvider());
   const article = fixtureArticle();
-  context.coordinator.reconcileNewsSnapshot({
+  await context.coordinator.reconcileNewsSnapshot({
     snapshot: { market: { quotes: {} } },
     signalCorpus: [article],
     displaySelection: [article],
@@ -141,7 +141,7 @@ test("coordinator persists safe provider metadata when an enrichment fails", asy
   };
   const context = harness("shadow", provider);
   const article = fixtureArticle();
-  context.coordinator.reconcileNewsSnapshot({
+  await context.coordinator.reconcileNewsSnapshot({
     snapshot: { market: { quotes: {} }, countries: {}, impact: { items: [] } },
     signalCorpus: [article],
     displaySelection: [article],

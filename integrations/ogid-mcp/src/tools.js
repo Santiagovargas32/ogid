@@ -4,6 +4,7 @@ import { AWARENESS_SOURCES, AWARENESS_SOURCE_CATALOG_VERSION } from "../../../ba
 import { VERSION, ADAPTER_BUILD } from "./config.js";
 import { ReadError } from "./client.js";
 import { authorizeInstruments, extendedToolDefinitions } from "./operations.js";
+import { publicStorageStatus } from "../../../backend/utils/researchProjection.js";
 
 const ISO_CODES = BASELINE_COUNTRIES.map(c => c.iso2);
 const countries = z.array(z.enum(ISO_CODES)).min(1).max(50).optional();
@@ -148,6 +149,7 @@ export function toolDefinitions(config, read) {
           ...pick(health, ["status", "timestamp", "uptimeSeconds", "lastRefreshAt", "sourceMode"]),
           dataQuality: Object.fromEntries(Object.entries(health.dataQuality || {}).map(([key,value]) => [key, pick(value, ["mode", "provider", "reason", "synthetic", "inputMode"])])),
           market: pick(health.market, ["availability", "quoteCount", "selectedInstrumentCount", "configuredProvider", "effectiveProvider"]),
+          storage: publicStorageStatus(health.storage),
           awarenessMode: awareness.mode
         }, warnings: ["Un proceso sano no garantiza datos reales ni recientes; consultar calidad por dominio.",
           ...(health.market?.availability === "empty" ? ["Mercado sin cotizaciones disponibles; la etiqueta fallback/synthetic no acredita la existencia de precios de respaldo."] : [])] };

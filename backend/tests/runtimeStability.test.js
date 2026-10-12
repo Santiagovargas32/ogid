@@ -26,11 +26,13 @@ test('scoped event search preserves total, order and isolated metadata after lim
   assert.equal(store.state.events[id].quality.identityVerified,true);
 });
 
-test('slow WebSocket closes observably and never queues past its byte budget', () => {
+test('temporarily slow WebSocket queues within its byte budget', () => {
   const calls = [];
   const client = {readyState:1, bufferedAmount:999_999, close:(...args)=>calls.push(['close',...args]), terminate:()=>calls.push(['terminate']), send:()=>calls.push(['send']), once:()=>{}};
   sendBoundedEnvelope(client, 'abcd');
-  assert.deepEqual(calls, [['close',1013,'resync-required']]);
+  assert.deepEqual(calls, []);
+  assert.equal(client.boundedTransport.queue.length,1);
+  clearInterval(client.boundedTransport.timer);
 });
 
 for (const status of [403,429,500]) test(`Yahoo batch HTTP ${status} does not fan out`, async () => {

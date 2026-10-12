@@ -141,7 +141,7 @@ function qualityRecord({ mode, provider, reason, inputMode = null }) {
     mode,
     provider,
     reason: reason || null,
-    synthetic: mode !== "live",
+    synthetic: !["live","stale"].includes(mode),
     inputMode
   };
 }
@@ -316,6 +316,13 @@ class StateManager {
   getSyncKeys() { return Object.keys(this.state).filter(key => !["admin", "signalCorpus", "marketSignalCorpus"].includes(key)); }
 
   getSyncResource(key) { return this.getSyncKeys().includes(key) ? this.state[key] : undefined; }
+  getAnalysisSnapshot() {
+    // Select before cloning: maps, timeseries and old history can exceed the
+    // worker command budget and are not inputs to these domain calculations.
+    const {meta,news,countries,hotspots,market,predictions,awareness,insights}=this.state;
+    const impactHistory=(this.state.impactHistory || []).slice(-24).map(entry=>({timestamp:entry.timestamp,items:(entry.items || []).map(item=>({ticker:item.ticker,impactScore:item.impactScore,eventScore:item.eventScore,priceReaction:item.priceReaction}))}));
+    return structuredClone({meta,news,countries,hotspots,market,predictions,awareness,insights,impactHistory});
+  }
 
   getMeta() {
     return this.state.meta;

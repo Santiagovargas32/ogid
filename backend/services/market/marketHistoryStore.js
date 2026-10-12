@@ -82,7 +82,7 @@ function hasAnomalousProviderMove(previousMarketState = {}, marketState = {}) {
   });
 }
 
-function buildPersistenceMetadata({
+export function buildPersistenceMetadata({
   eligible = false,
   reason = null,
   trigger = null,
@@ -106,7 +106,7 @@ function buildPersistenceMetadata({
   };
 }
 
-function filterPersistedQuotes(quotes = {}, providerBacked = []) {
+export function filterPersistedQuotes(quotes = {}, providerBacked = []) {
   const allowed = new Set((providerBacked || []).map((ticker) => String(ticker || "").toUpperCase()).filter(Boolean));
   if (!allowed.size) {
     return {};

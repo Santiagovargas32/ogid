@@ -6,8 +6,9 @@ export function getHealth(req, res) {
   const socketServer = res.app.locals.socketServer;
   const config = res.app.locals.config;
   const orchestrator = res.app.locals.orchestrator;
+  const storage=res.app.locals.storageManager?.getStatus?.() || null;
   const meta = stateManager.getMeta();
-  const snapshot = stateManager.getSnapshot();
+  const snapshot = { market: stateManager.state.market };
   const quoteCount = Object.keys(snapshot?.market?.quotes || {}).length;
   const websocket = socketServer?.getHealth?.() || {
     clientCount: socketServer?.clientCount?.() ?? 0,
@@ -25,7 +26,9 @@ export function getHealth(req, res) {
   res.json({
     ok: true,
     data: {
-      status: "ok",
+      status:storage&&!["ready","disabled"].includes(storage.state)?"degraded":"ok",
+      storage,
+      server:{pid:process.pid,nodeVersion:process.version,startedAt:new Date(Date.now()-process.uptime()*1000).toISOString(),memory:process.memoryUsage()},
       build: BACKEND_BUILD,
       timestamp: new Date().toISOString(),
       uptimeSeconds: Math.floor(process.uptime()),

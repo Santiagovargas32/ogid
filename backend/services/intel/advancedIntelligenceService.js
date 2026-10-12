@@ -444,6 +444,7 @@ export class AdvancedIntelligenceService {
     const currentState = this.stateManager.getSnapshot();
     const stateRevision = {
       news: currentState?.meta?.lastRefreshAt || null,
+      archive: currentState?.meta?.newsArchiveRevision || 0,
       awareness: Number(currentState?.awareness?.revision || 0)
     };
     const key = JSON.stringify({
