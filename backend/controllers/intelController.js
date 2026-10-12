@@ -307,3 +307,17 @@ export function postRefresh(req, res) {
     })
   );
 }
+
+export function getSyncSnapshot(req, res) {
+  const sync = res.app.locals.socketServer.sync;
+  res.setHeader('Cache-Control', 'no-store');
+  if (!req.query.resource) return res.json(mapResponse(sync.manifest()));
+  const result = sync.page({ resource: String(req.query.resource), epoch: req.query.epoch,
+    revision: req.query.revision === undefined ? undefined : Number(req.query.revision), cursor: Number(req.query.cursor || 0) });
+  if (result.status !== 200) return res.status(result.status).json({ ok: false, error: { code: result.code, message: result.code, details: result.manifest || null } });
+  return res.json(mapResponse(result.data));
+}
+export function getSyncChanges(req, res) {
+  res.setHeader('Cache-Control', 'no-store');
+  return res.json(mapResponse(res.app.locals.socketServer.sync.changes(req.query.epoch, Number(req.query.since))));
+}

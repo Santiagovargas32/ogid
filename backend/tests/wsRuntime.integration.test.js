@@ -89,8 +89,8 @@ test('saturated TCP client is isolated while healthy peer receives updates',asyn
   let fastUpdates=0;fast.on('message',raw=>{if(JSON.parse(raw).type==='fixture')fastUpdates++;});
   slow._socket.pause();
   const slowClosed=once(slow,'close');
-  for(let i=0;i<150&&!socketServer.getHealth().metrics.dropped;i++){
-    socketServer.broadcast('fixture',{payload:'x'.repeat(200_000)});
+  for(let i=0;i<500&&!socketServer.getHealth().metrics.dropped;i++){
+    socketServer.broadcast('fixture',{payload:'x'.repeat(32_000)});
     await new Promise(resolve=>setImmediate(resolve));
   }
   assert.ok(socketServer.getHealth().metrics.dropped>0,'must reach real bufferedAmount limit');

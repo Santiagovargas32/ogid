@@ -3,6 +3,8 @@ import { OGID_OPERATIONS } from "../contracts/ogidOperations.js";
 export const ROUTE_QUERY_PARAMS = new Map(
   Object.entries({
     "GET /api/health": [],
+    "GET /api/intel/sync": ["resource", "epoch", "revision", "cursor"],
+    "GET /api/intel/changes": ["epoch", "since"],
     "GET /api/country-instability": ["countries", "force", "windowHours", "maxEvents", "activeWindowHours", "baselineDays"],
 
     "GET /api/admin/api-limits": [],

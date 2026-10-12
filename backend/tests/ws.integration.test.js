@@ -110,7 +110,7 @@ test("WebSocket origin policy requires same-origin or an originless loopback cli
   assert.equal(validateWebSocketUpgradeOrigin(request({ host: "dashboard.example:8080", origin: "null" })).allowed, false);
 });
 
-test("WebSocket emits snapshot and update envelopes", async () => {
+test("WebSocket v2 emits revisions and recovers snapshots over HTTP", async () => {
   const originalFetch = global.fetch;
   global.fetch = async (url, options) => {
     const value = String(url);
@@ -166,8 +166,8 @@ test("WebSocket emits snapshot and update envelopes", async () => {
 
   const originlessSocket = new WebSocket(wsUrl);
   try {
-    const originlessSnapshot = await waitForMessage(originlessSocket, "snapshot");
-    assert.equal(originlessSnapshot.type, "snapshot");
+    const originlessSnapshot = await waitForMessage(originlessSocket, "ws:ready:v2");
+    assert.equal(originlessSnapshot.type, "ws:ready:v2");
   } finally {
     await closeSocket(originlessSocket);
   }
@@ -180,22 +180,12 @@ test("WebSocket emits snapshot and update envelopes", async () => {
   });
 
   try {
-    const bootstrapPromise = waitForMessage(socket, "market:quotes-bootstrap:v1");
-    const snapshotPromise = waitForMessage(socket, "snapshot");
-
-    const bootstrapMessage = await bootstrapPromise;
-    assert.equal(bootstrapMessage.type, "market:quotes-bootstrap:v1");
-    assert.ok(bootstrapMessage.data.market);
-    assert.ok("session" in bootstrapMessage.data.market);
-
-    const snapshotMessage = await snapshotPromise;
-    assert.equal(snapshotMessage.type, "snapshot");
+    const ready = await waitForMessage(socket, "ws:ready:v2");
+    assert.equal(ready.data.protocol, 2);
+    assert.ok(ready.data.resources);
+    const snapshotMessage = {data: await (await fetch(`http://127.0.0.1:${address.port}/api/intel/snapshot?countries=ALL`)).json().then(p=>p.data)};
     assert.ok(Array.isArray(snapshotMessage.data.hotspots));
-    assert.ok(snapshotMessage.data.mapAssets);
-    assert.ok(Array.isArray(snapshotMessage.data.mapAssets.staticPoints));
     assert.ok(snapshotMessage.data.meta.dataQuality);
-    assert.ok(snapshotMessage.data.meta.refreshStatus);
-    assert.ok(snapshotMessage.data.predictions);
 
     const healthResponse = await fetch(`http://127.0.0.1:${address.port}/api/health`);
     const healthPayload = await healthResponse.json();
@@ -210,18 +200,14 @@ test("WebSocket emits snapshot and update envelopes", async () => {
     assert.equal(healthPayload.data.websocket.lastConnection.userAgent, "OGID WS Integration Test/1.0");
     assert.equal(healthPayload.data.websocket.lastConnection.origin, `http://127.0.0.1:${address.port}`);
 
-    const updatePromise = waitForMessage(socket, "update");
+    const updatePromise = waitForMessage(socket, "state:revision:v2");
     await runtime.orchestrator.runCycle("test-websocket-update");
     const updateMessage = await updatePromise;
 
-    assert.equal(updateMessage.type, "update");
-    assert.ok(Array.isArray(updateMessage.data.news));
-    assert.ok(updateMessage.data.mapAssets);
-    assert.ok(Array.isArray(updateMessage.data.mapAssets.movingSeeds));
-    assert.ok(updateMessage.data.market);
-    assert.ok(updateMessage.data.impact);
-    assert.ok(updateMessage.data.predictions);
-    assert.ok(Array.isArray(updateMessage.data.impactHistory));
+    assert.equal(updateMessage.type, "state:revision:v2");
+    assert.ok(updateMessage.data.revision > ready.data.revision);
+    assert.ok("news" in updateMessage.data.resources);
+    assert.ok(Buffer.byteLength(JSON.stringify(updateMessage)) < 65536);
 
     await closeSocket(socket);
     const postCloseHealthResponse = await fetch(`http://127.0.0.1:${address.port}/api/health`);

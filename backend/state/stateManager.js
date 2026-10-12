@@ -313,6 +313,10 @@ class StateManager {
     return structuredClone(snapshot);
   }
 
+  getSyncKeys() { return Object.keys(this.state).filter(key => !["admin", "signalCorpus", "marketSignalCorpus"].includes(key)); }
+
+  getSyncResource(key) { return this.getSyncKeys().includes(key) ? this.state[key] : undefined; }
+
   getMeta() {
     return this.state.meta;
   }

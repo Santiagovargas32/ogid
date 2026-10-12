@@ -69,6 +69,8 @@ export async function request(path, params = {}, options = {}) {
 }
 
 export const api = {
+  getSyncSnapshot: (params = {}, options = {}) => request("/api/intel/sync", params, { ...options, cache: "no-store" }),
+  getSyncChanges: (params = {}, options = {}) => request("/api/intel/changes", params, { ...options, cache: "no-store" }),
   getHealth: (options = {}) => request("/api/health", {}, options),
   getSnapshot: (params = {}, options = {}) => request("/api/intel/snapshot", params, options),
   getAdvancedIntelligenceSnapshot: (params = {}, options = {}) => request("/api/intel/advanced-snapshot", params, { ...options, cache: "no-store" }),

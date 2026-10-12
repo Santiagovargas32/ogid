@@ -1,5 +1,6 @@
 import { api } from "./api.js";
 import { applyUpdate, getState, setSnapshot, subscribe } from "./state.js";
+import { StateSynchronizer } from "./stateSync.js";
 import { RealtimeSocket } from "./websocket.js";
 import { SmartPollLoop } from "./smartPollLoop.js";
 import { resolveMarketQuotesPollDelayMs } from "./marketPolling.js";
@@ -1814,10 +1815,24 @@ async function handleManualRefreshClick() {
 }
 
 function mountWebSocket() {
+  const synchronizer = new StateSynchronizer({ api, onUpdate: update => {
+    if (update.news) newsTransportToken++;
+    applyUpdate(update);
+    awarenessController?.syncCompact(update.awareness);
+    if (update.news || update.countries) void advancedIntelligenceController?.refresh();
+    if (update.news || update.market) scheduleMarketConditionsRefresh();
+  }, onStatus: status => {
+    wsHasSnapshot = status === "synchronized";
+    if (socket?.socket?.readyState === WebSocket.OPEN) setWsStatus("connected");
+  } });
+  window.addEventListener("pagehide", () => synchronizer.close(), { once: true });
   socket = new RealtimeSocket({
     path: "/ws",
     onStatusChange: setWsStatus,
     onMessage: (message) => {
+      if (["ws:ready:v2", "state:revision:v2", "resync:required:v2"].includes(message.type)) {
+        synchronizer.accept(message); return;
+      }
       if (message.type === "market:quotes-bootstrap:v1") {
         applyMarketPayload(message.data || {});
         return;

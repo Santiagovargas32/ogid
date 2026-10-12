@@ -861,6 +861,7 @@ export function createAppServer(overrides = {}) {
     allowedOrigins: config.wsAllowedOrigins,
     stateManager
   });
+  app.locals.socketServer = socketServer;
   const awarenessStore = overrides.awarenessStore || new AwarenessStore({
     snapshotPath: config.awareness.snapshotPath,
     auditPath: config.awareness.auditPath,
