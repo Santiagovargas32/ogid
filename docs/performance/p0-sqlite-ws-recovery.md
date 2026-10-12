@@ -32,6 +32,16 @@ La [PR #11](https://github.com/Santiagovargas32/ogid/pull/11) seguía abierta, e
 
 Paquetes de implementación: `439712d` WebSocket, `15d6792` infraestructura/adaptadores SQLite, `435da25` migración y preservación histórica, `03b2f27` pipelines y análisis, `e629793` mercado y `0e32469` escritor único y drenaje de análisis. El commit de evidencia incluye las verificaciones finales del transporte, bootstrap del dashboard y sus pruebas. SQLite precede al cutover research para que los paquetes tengan sus dependencias disponibles. Se añadió un paquete de almacenamiento tras reproducir contención durante la validación real.
 
+## Revisión de CI de PR #14
+
+El 12 de octubre se revisó la [PR #14](https://github.com/Santiagovargas32/ogid/pull/14), abierta y fusionable, con HEAD `28d82999cf57a274e70db2e1aa8cfdf5d840a051` y base main `a38bf74d97ef721d21ce7ddf87ba8512974e5a57`. La [ejecución CI 59](https://github.com/Santiagovargas32/ogid/actions/runs/38294883957) falló exclusivamente en `inventory:check`: las instalaciones y comprobaciones de sintaxis pasaron; tests, build y audit quedaron sin ejecutar.
+
+La implementación registró `intel.sync` e `intel.changes` en `backend/contracts/ogidOperations.js`, pero no regeneró `integrations/ogid-mcp/API-MCP.md`. El generador compara exactamente el archivo con la salida del registro. El documento todavía describía 71 rutas y 80 operaciones; el contrato describe 73 rutas y 82 operaciones. Se reprodujo el fallo con Node 22.23.3, por lo que no depende de Node 24.21.0 del runner. La corrección consiste en ejecutar `npm --prefix integrations/ogid-mcp run inventory` y versionar el resultado; se conserva la comprobación estricta de CI y no se modifican permisos ni contratos.
+
+Validación local posterior con Node 22.23.3: inventario correcto (73 rutas, 49 operaciones research y 33 operator), sintaxis backend/MCP y build correctos, 694/694 tests backend, 23/23 tests MCP y `npm --prefix backend audit --omit=dev --audit-level=high` con cero vulnerabilidades. Estos resultados no sustituyen una nueva ejecución de Actions sobre el commit corregido con Node 24.
+
+No se recomienda fusionar #11 antes ni después de #14: sus componentes ya fueron integrados y adaptados en esta rama. Se reconfirmó su HEAD `f74eb9cb465aaf42fba99a7471c8f49c227742e9`, estado de borrador y conflictos. Una simulación con `git merge-tree --write-tree` sobre el HEAD de #14 produjo 33 conflictos, incluidos server, orquestador, StateManager, repositorios SQL y dashboard, sin alterar el checkout. El orden recomendado es publicar la corrección del inventario en #14, obtener CI verde y revisar #14 para su fusión conforme al dictamen operativo de este documento. #11 puede cerrarse como sustituida cuando #14 esté integrada; no es una dependencia pendiente de fusión.
+
 ## Evidencia de octubre y causas
 
 El registro aportado sitúa el handshake en `12:15:42.164` y la desconexión en `12:15:48.184`: 6.020 ms, cliente `192.168.1.48`, servidor `192.168.1.50:3000`, `/ws`, código observado 1006 y motivo interno `resync-required`. Ese registro no contiene el nombre ni los bytes del frame exacto. No permite atribuir retrospectivamente el cierre concreto a bootstrap, update o acumulación de mensajes.
