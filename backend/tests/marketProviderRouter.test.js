@@ -96,7 +96,7 @@ function buildYahooPriceOnlyHtml({ ticker, price, changePercent = 0.15, marketTi
   </html>`;
 }
 
-test("market provider router returns deterministic fallback when twelve and yahoo are unavailable", async () => {
+test("market provider router reports unavailable instruments when twelve and yahoo return no observations", async () => {
   apiQuotaTracker.reset({
     twelveDailyLimit: 800,
     twelveMinuteLimit: 8,
@@ -125,11 +125,11 @@ test("market provider router returns deterministic fallback when twelve and yaho
     });
 
     assert.equal(result.provider, "twelve+yahoo");
-    assert.equal(result.sourceMode, "fallback");
+    assert.equal(result.sourceMode, "unavailable");
     assert.equal(result.sourceMeta.providerChain, "twelve+yahoo");
     assert.equal(result.sourceMeta.effectiveProvider, null);
-    assert.equal(Object.keys(result.quotes).length, 2);
-    assert.ok(Object.values(result.quotes).every((quote) => quote.synthetic === true));
+    assert.equal(Object.keys(result.quotes).length, 0);
+    assert.deepEqual(Object.keys(result.sourceMeta.unavailableBySymbol),["GD","BA"]);
     assert.equal(result.sourceMeta.providerSlots[0].provider, "twelve");
     assert.equal(result.sourceMeta.providerSlots[0].errorCode, "api-key-missing");
     assert.equal(result.sourceMeta.providerSlots[1].provider, "yahoo");
@@ -141,7 +141,7 @@ test("market provider router returns deterministic fallback when twelve and yaho
       webDelayed: 0,
       historicalEod: 0,
       routerStale: 0,
-      syntheticFallback: 2
+      syntheticFallback: 0
     });
   } finally {
     global.fetch = originalFetch;
@@ -401,7 +401,7 @@ test("market provider router skips twelve when minute credits cannot cover the w
   }
 });
 
-test("market provider router uses stale quotes before deterministic fallback when providers are exhausted", async () => {
+test("market provider router uses valid stale quotes and reports missing instruments when providers are exhausted", async () => {
   apiQuotaTracker.reset({
     twelveDailyLimit: 1,
     twelveMinuteLimit: 1,
@@ -433,13 +433,12 @@ test("market provider router uses stale quotes before deterministic fallback whe
     marketDataService: { fetchQuotes: async () => { throw Object.assign(new Error("Yahoo unavailable"), { code: "YAHOO_REQUEST_FAILED" }); } }
   });
 
-  assert.equal(result.sourceMode, "fallback");
+  assert.equal(result.sourceMode, "stale");
   assert.equal(result.quotes.GD.dataMode, "stale");
   assert.equal(result.quotes.GD.instrumentId, "us-equity-general-dynamics");
   assert.equal(result.quotes.GD.synthetic, false);
-  assert.equal(result.quotes.BA.synthetic, true);
-  assert.equal(result.quotes.BA.dataMode, "synthetic");
-  assert.equal(result.quotes.BA.instrumentId, "us-equity-boeing");
+  assert.equal(result.quotes.BA,undefined);
+  assert.equal(result.sourceMeta.unavailableBySymbol.BA.instrumentId,"us-equity-boeing");
   assert.deepEqual(
     result.sourceMeta.providersSkipped.map((item) => item.provider).sort(),
     ["twelve"]
@@ -452,8 +451,8 @@ test("market provider router uses stale quotes before deterministic fallback whe
     webDelayed: 0,
     historicalEod: 0,
     routerStale: 1,
-    syntheticFallback: 1
+    syntheticFallback: 0
   });
-  assert.equal(result.sourceMeta.fallbackCount, 2);
-  assert.equal(result.sourceMeta.routerDecision.fallbackReason, "synthetic-fallback");
+  assert.equal(result.sourceMeta.fallbackCount, 1);
+  assert.equal(result.sourceMeta.routerDecision.fallbackReason, "router-stale");
 });

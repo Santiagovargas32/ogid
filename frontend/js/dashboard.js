@@ -383,6 +383,7 @@ function marketModeLabel(mode = "synthetic") {
   if (normalized === "stale") {
     return "STALE";
   }
+  if(["unavailable","missing","pending"].includes(normalized))return "NO DATA";
   return "SIM";
 }
 
@@ -653,7 +654,15 @@ function setQualityBadge(element, label, quality = {}) {
   element.title = quality.reason || "";
 }
 
-function renderMeta(meta, market) {
+function renderMeta(meta, market, pipeline = {}) {
+  const stages=Object.entries(pipeline).filter(([,s])=>s.enabled!==false);
+  const priority=["blocked","failed","degraded","stale","running","queued"];
+  const affected=priority.map(status=>stages.find(([,s])=>s.status===status)).find(Boolean);
+  const badge=byId("pipeline-status-badge");
+  if(badge){badge.className=`badge ${affected&&["blocked","failed"].includes(affected[1].status)?"text-bg-danger":affected||!stages.length?"text-bg-warning":"text-bg-success"}`;
+    badge.textContent=affected?`Pipeline: ${affected[1].status} (${affected[0]})`:stages.length?"Pipeline: completed":"Pipeline: awaiting data";
+    badge.title=affected?affected[1].errorCode || affected[1].reason || "":"";
+  }
   elements.sourceModeBadge.className = `badge ${sourceBadgeClass(meta.sourceMode)}`;
   elements.sourceModeBadge.textContent = `Source: ${meta.sourceMode}`;
 
@@ -1372,10 +1381,10 @@ function renderMarketQuotes(market = { quotes: {} }) {
 
   elements.marketQuotesBody.innerHTML = quotes
     .map(([ticker, quote]) => {
-      const change = Number(quote.changePct || 0);
+      const change = Number.isFinite(quote.price) && Number.isFinite(quote.changePct) ? quote.changePct : null;
       const cls = change >= 0 ? "text-up" : "text-down";
       const sign = change >= 0 ? "+" : "";
-      const mode = normalizeMarketDataMode(quote.dataMode || (quote.synthetic ? "synthetic-fallback" : "live"));
+      const mode = Number.isFinite(quote.price) ? normalizeMarketDataMode(quote.dataMode || (quote.synthetic ? "synthetic-fallback" : "live")) : "unavailable";
       const modeCell = `<span class="market-mode-pill ${marketModeClass(mode)}">${marketModeLabel(mode)}</span>`;
       const quoteAgeMin = deriveQuoteAgeMin(quote);
       const ageLabel = Number.isFinite(quoteAgeMin) ? `${quoteAgeMin}m old` : "age --";
@@ -1386,6 +1395,7 @@ function renderMarketQuotes(market = { quotes: {} }) {
         quote.exchange ? `exchange ${quote.exchange}` : null,
         quote.session ? `session ${quote.session}` : null,
         quote.asOf ? `asOf ${quote.asOf}` : null,
+        quote.unavailableReason || market.sourceMeta?.unavailableBySymbol?.[ticker]?.reason || null,
         `data ${mode}`,
         staleLabel,
         Number.isFinite(Number(quote.providerScore)) ? `score ${Number(quote.providerScore)}` : null,
@@ -1402,7 +1412,7 @@ function renderMarketQuotes(market = { quotes: {} }) {
             <div class="market-quote-meta">${escapeHtml(sourceLabel)} | ${escapeHtml(ageLabel)}${qualityBits.length ? ` | ${escapeHtml(qualityBits.join(" | "))}` : ""}</div>
           </td>
           <td>${Number.isFinite(quote.price) ? quote.price.toFixed(2) : "--"}</td>
-          <td class="${cls}">${sign}${change.toFixed(2)}%</td>
+          <td class="${cls}">${change===null?"--":`${sign}${change.toFixed(2)}%`}</td>
         </tr>
       `;
     })
@@ -1689,7 +1699,7 @@ function renderWhenChanged(panel, data, render) {
 
 function renderDashboard(rawState) {
   const state = filterStateBySelection(rawState);
-  renderMeta(rawState.meta, rawState.market || {});
+  renderMeta(rawState.meta, rawState.market || {},rawState.pipelineStatus || {});
   observeNewsSelection(rawState);
   renderNews(state.news, state.countries, rawState.ai || {});
   renderWhenChanged("countries",state.countries,()=>{
@@ -1843,7 +1853,8 @@ function mountWebSocket() {
     if (update.news || update.countries) void advancedIntelligenceController?.refresh();
     if (update.news || update.market) scheduleMarketConditionsRefresh();
   }, onStatus: status => {
-    wsHasSnapshot = status === "synchronized";
+    if (status === "synchronized") wsHasSnapshot = true;
+    else if (status === "degraded") wsHasSnapshot = false;
     if (socket?.socket?.readyState === WebSocket.OPEN) setWsStatus("connected");
   } });
   window.addEventListener("pagehide", () => synchronizer.close(), { once: true });

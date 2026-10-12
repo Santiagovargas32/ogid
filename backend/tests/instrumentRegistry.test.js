@@ -116,6 +116,6 @@ test("unexpected provider symbols do not create instruments", async () => {
   globalThis.fetch = async () => new Response(JSON.stringify({ data: [{ symbol: "AAPL", close: "200" }] }), { headers: { "content-type": "application/json" } });
   try {
     const result = await fetchMarketQuotes({ provider: "twelve", fallbackProvider: "", twelveApiKey: "test", tickers: ["GD"], timeoutMs: 100 });
-    assert.deepEqual(Object.keys(result.quotes), ["GD"]); assert.equal(result.quotes.GD.dataMode, "synthetic"); assert.equal(result.quotes.AAPL, undefined);
+    assert.deepEqual(Object.keys(result.quotes), []); assert.equal(result.sourceMeta.unavailableBySymbol.GD.status, "unavailable"); assert.equal(result.quotes.AAPL, undefined);
   } finally { globalThis.fetch = originalFetch; }
 });

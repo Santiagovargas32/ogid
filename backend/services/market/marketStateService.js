@@ -178,7 +178,8 @@ export function mergeMarketState(previousMarketState = {}, marketResult = {}) {
     ? Object.fromEntries(Object.entries(previousMarketState.quotes || {}).filter(([ticker]) => activeTickers.has(ticker)))
     : previousMarketState.quotes || {};
   const nextQuotes = {
-    ...previousQuotes,
+    ...Object.fromEntries(Object.entries(previousQuotes).map(([ticker,quote])=>[ticker,
+      marketResult.sourceMeta?.unavailableBySymbol?.[ticker] && Number.isFinite(quote.price) ? {...quote,dataMode:"stale",providerDataMode:"router-stale",staleAt:marketResult.updatedAt,unavailableReason:marketResult.sourceMeta.unavailableBySymbol[ticker].reason} : quote])),
     ...(marketResult.quotes || {})
   };
 

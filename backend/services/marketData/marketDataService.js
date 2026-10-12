@@ -381,7 +381,14 @@ export class MarketDataService {
     if (values.length === 0) return [];
     const raw = await this.yahooClient.quote(values);
     const candidates = Array.isArray(raw) ? raw : Object.values(raw || {});
-    return candidates.map((value) => normalizeYahooQuote(value, { now: this.now() })).filter(Boolean);
+    const observations=[],rejections=[];
+    for(const raw of candidates){
+      const normalized=normalizeYahooQuote(raw,{now:this.now()});
+      if(normalized)observations.push(normalized);
+      else rejections.push({symbol:typeof raw?.symbol === "string" ? raw.symbol.slice(0,40) : null,code:"YAHOO_INVALID_OBSERVATION",reason:!raw?.regularMarketTime?"missing-market-time":!Number.isFinite(Number(raw?.regularMarketPrice))||Number(raw?.regularMarketPrice)<=0?"invalid-price":"invalid-symbol-or-market-time"});
+    }
+    this.lastQuoteDiagnostics={endpoint:"quote",requested:values.length,rawReturned:candidates.length,returned:observations.length,rejected:rejections.length,rejections};
+    return observations;
   }
 
   async resolveInstrument(symbol) {
@@ -407,6 +414,7 @@ export class MarketDataService {
         cacheEntries: this.searchCache.entries(new Date(this.now()).getTime()).length,
         last: this.lastSearch ? structuredClone(this.lastSearch) : null,
       },
+      quotes:this.lastQuoteDiagnostics || null,
       client: this.yahooClient?.snapshot?.() || null,
       persistence: this.store.getPersistenceStatus?.() || null,
       generatedAt: new Date(this.now()).toISOString(),

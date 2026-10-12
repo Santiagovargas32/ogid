@@ -122,9 +122,10 @@ export function getQuotes(req, res) {
         changePct: 0,
         asOf: null,
         source: "unavailable",
-        synthetic: true,
-        dataMode: "synthetic",
-        providerDataMode: "synthetic-fallback",
+        synthetic: false,
+        dataMode: "unavailable",
+        missingReason:snapshot.market?.sourceMeta?.unavailableBySymbol?.[ticker]?.reason || "no-usable-observation",
+        providerDataMode: "unavailable",
         quoteOriginStage: "unknown",
         quoteAgeMin: null
       }
@@ -137,7 +138,7 @@ export function getQuotes(req, res) {
       ...pick(quote, ["price","changePct","asOf","fetchedAt","source","sourceDetail","currency","exchange","instrumentId","dataMode","synthetic","stale","session","marketState","quoteAgeMin","providerDataMode"]),
       changePct: quote.price == null || quote.synthetic ? null : quote.changePct ?? null,
       delay: { classification: quote.source === "yahoo" ? "web-delayed" : "unknown", seconds: quote.delaySeconds ?? null },
-      missingReason: quote.price == null ? "no-usable-stored-price" : null
+      missingReason: quote.price == null ? snapshot.market?.sourceMeta?.unavailableBySymbol?.[symbol]?.reason || "no-usable-stored-price" : quote.unavailableReason || null
     }]));
     return res.json(mapResponse(publicProjection({ contractVersion: "quotes-compact-v1", tickers, quotes: compactQuotes,
       snapshotId: snapshot.market?.revision || null, asOf: snapshot.market?.updatedAt || null,
