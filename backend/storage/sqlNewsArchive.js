@@ -20,7 +20,7 @@ export class SqlNewsArchive extends NewsArchive {
     Object.assign(this,readMeta(db,"news.meta",{})); this.recoveryStatus=db.prepare("SELECT 1 FROM articles LIMIT 1").get()?"restored":"new";
     this.records={get:id=>this.getRecord(id),set:(_id,article)=>this.save(article),values:()=>this.values(),get size(){return db.prepare("SELECT count(*) AS n FROM articles").get().n;}};
     this.history={set:(_bucket,row)=>db.prepare("INSERT INTO news_context VALUES(?,?,?) ON CONFLICT(bucket) DO UPDATE SET observed_at=excluded.observed_at,payload_json=excluded.payload_json").run(row.bucket,row.observedAt,JSON.stringify(row)),values:()=>db.prepare("SELECT payload_json FROM news_context ORDER BY bucket").all().map(r=>JSON.parse(r.payload_json))};
-    this.db.prepare("DELETE FROM news_query_snapshots").run();
+    if(!options.analysisOnly)this.db.prepare("DELETE FROM news_query_snapshots").run();
     this.prune();
   }
   hydrate() {}
@@ -48,14 +48,8 @@ export class SqlNewsArchive extends NewsArchive {
   persist(){if(this.db)writeMeta(this.db,"news.meta",Object.fromEntries(["revision","startedAt","lastIngestAt","capacityPrunedAt"].map(k=>[k,this[k]])));}
   prune(){
     if(!this.db)return;
-    const cutoff=new Date(this.now()-this.retentionDays*86400000).toISOString();
-    this.db.transaction(()=>{
-      for(const table of ["article_revisions","article_sources","article_aliases","article_instruments","article_countries","article_topics"])this.db.prepare(`DELETE FROM ${table} WHERE article_id IN (SELECT article_id FROM articles WHERE last_seen_at<?)`).run(cutoff);
-      this.db.prepare("UPDATE evidence SET article_id=NULL WHERE article_id IN (SELECT article_id FROM articles WHERE last_seen_at<?)").run(cutoff);
-      this.db.prepare("DELETE FROM articles WHERE last_seen_at<?").run(cutoff);
-      this.db.prepare("DELETE FROM news_context WHERE observed_at<?").run(cutoff);
-      this.db.prepare("DELETE FROM news_query_snapshots WHERE expires_at<=?").run(this.now());
-    }).immediate();
+    // Facts, provenance and contexts have no automatic retention. Query snapshots are temporary.
+    this.db.prepare("DELETE FROM news_query_snapshots WHERE expires_at<=?").run(this.now());
   }
   ingest(values,options){
     // Preserve the existing classifiers' inputs at acquisition time without
@@ -81,7 +75,7 @@ export class SqlNewsArchive extends NewsArchive {
     if(!this.db)return {};
     const s=this.db.prepare("SELECT count(*) AS totalStored,min(published_at) AS oldest,max(published_at) AS newest,min(received_at) AS oldestReceivedAt,max(received_at) AS newestReceivedAt,sum(published_at IS NULL) AS unknownPublicationCount FROM articles").get();
     const retainedSince=new Date(Math.max(Date.parse(this.startedAt),this.now()-this.retentionDays*86400000)).toISOString();
-    return {...s,unknownPublicationCount:s.unknownPublicationCount || 0,retentionDays:this.retentionDays,startedAt:this.startedAt,retainedSince,lastIngestAt:this.lastIngestAt,requestedWindow:{from:filters.from || null,to:filters.to || null,timeField:filters.timeField || "publishedAt"},partial:!filters.from || Date.parse(filters.from)<Date.parse(retainedSince) || Boolean(this.capacityPrunedAt),acquisitionContinuity:"unknown",capacityPrunedAt:this.capacityPrunedAt,recoveryStatus:this.recoveryStatus,meaning:"collected permitted metadata; never all Internet news"};
+    return {...s,unknownPublicationCount:s.unknownPublicationCount || 0,retentionDays:null,retentionPolicy:"historical-facts-preserved; query-cursors-expire",startedAt:this.startedAt,retainedSince,lastIngestAt:this.lastIngestAt,requestedWindow:{from:filters.from || null,to:filters.to || null,timeField:filters.timeField || "publishedAt"},partial:!filters.from || Date.parse(filters.from)<Date.parse(retainedSince) || Boolean(this.capacityPrunedAt),acquisitionContinuity:"unknown",capacityPrunedAt:this.capacityPrunedAt,recoveryStatus:this.recoveryStatus,meaning:"collected permitted metadata; never all Internet news"};
   }
   getItem(id){const row=this.db.prepare("SELECT article_id FROM article_aliases WHERE alias=? LIMIT 1").get(id);const article=this.getRecord(id)||this.getRecord(row?.article_id || "");if(!article)throw new AppError("Artículo no disponible dentro de la retención del archivo.",404,"NEWS_ITEM_NOT_FOUND");return {article,coverage:this.coverage(),revision:this.revision,warnings:["No se devuelve texto completo; las fuentes duplicadas no son corroboraciones independientes."]};}
   cleanupSnapshots(){if(!this.db)return;this.db.prepare("DELETE FROM news_query_snapshots WHERE expires_at<=?").run(this.now());for(const [id,s]of this.snapshots)if(s.expiresAt<=this.now())this.snapshots.delete(id);}

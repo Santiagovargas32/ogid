@@ -57,10 +57,7 @@ export class SqlAwarenessStore extends AwarenessStore {
     this.db.prepare("INSERT INTO runtime_audit(kind,observed_at,payload_json) VALUES('awareness-audit',?,?)").run(new Date(this.now()).toISOString(), JSON.stringify({event, revision:this.revision}));
   }
 
-  prune() {
-    const cutoff = new Date(this.now() - AWARENESS_RETENTION_MS).toISOString();
-    this.db.prepare("DELETE FROM awareness_events WHERE julianday(coalesce(nullif(json_extract(payload_json,'$.publishedAt'),''),nullif(json_extract(payload_json,'$.scheduledAt'),''),nullif(json_extract(payload_json,'$.updatedAt'),''),observed_at))<julianday(?)").run(cutoff);
-  }
+  prune() { /* Historical events are preserved; public views remain time-bounded. */ }
 
   reconcile(events, options = {}) {
     this.refreshMetadata();
