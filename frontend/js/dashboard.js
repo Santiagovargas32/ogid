@@ -6,7 +6,7 @@ import { SmartPollLoop } from "./smartPollLoop.js";
 import { resolveMarketQuotesPollDelayMs } from "./marketPolling.js";
 import { renderMarketExplanationHistory } from "./aiMarketHistory.js";
 import { getLevelColor } from "./levelColors.js";
-import { LIVE_NEWS_LIMIT, filterNews, newsIdentity, newsContentRevision, NewsSelectionTracker } from "./newsFeedModel.js";
+import { DEFAULT_LIVE_NEWS_LIMIT, resolveLiveNewsLimit, filterNews, newsIdentity, newsContentRevision, NewsSelectionTracker } from "./newsFeedModel.js";
 import { mountSituationalWorkspace } from "./media/situationalWorkspace.js";
 import { startAdvancedIntelligence } from "./intelligence/advancedIntelligence.js";
 import { mountAwarenessCenter } from "./awareness.js";
@@ -911,7 +911,7 @@ function handleActionClick(event) {
 
 const dashboardController = new AbortController();
 let wsConnected=false, wsHasSnapshot=false, fallbackFailures=0, newsFallback=null, newsTransportToken=0;
-const newsOptions={q:'',severity:'',order:'critical',page:1,pageSize:LIVE_NEWS_LIMIT,windowHours:36};
+const newsOptions={q:'',severity:'',order:'critical',page:1,pageSize:DEFAULT_LIVE_NEWS_LIMIT,windowHours:36};
 let baseline=null;
 try { baseline=JSON.parse(sessionStorage.getItem('ogid-news-baseline') || 'null'); } catch {}
 const newsTracker=new NewsSelectionTracker({baseline});
@@ -1702,6 +1702,8 @@ function renderWhenChanged(panel, data, render) {
 }
 
 function renderDashboard(rawState) {
+  const displayLimit=resolveLiveNewsLimit(rawState);
+  if(newsOptions.pageSize!==displayLimit){newsOptions.pageSize=displayLimit;newsOptions.page=1;forceNewsRender=true;}
   const state = filterStateBySelection(rawState);
   renderMeta(rawState.meta, rawState.market || {},rawState.pipelineStatus || {});
   observeNewsSelection(rawState);
@@ -1724,7 +1726,7 @@ function renderDashboard(rawState) {
 
 function liveNewsKey(state) {
   const corpus=state.meta?.sourceMeta?.corpus;
-  return corpus ? `${selectedCountryQueryValue()}|${corpus.revision}|${corpus.dayStart}` : null;
+  return corpus ? `${selectedCountryQueryValue()}|${corpus.revision}|${corpus.dayStart}|${resolveLiveNewsLimit(state)}` : null;
 }
 
 async function refreshStoredLiveNews(state) {
@@ -1733,7 +1735,7 @@ async function refreshStoredLiveNews(state) {
   liveNewsRequestKey=key;
   const token=++liveNewsRequestToken;
   try{
-    const payload=await api.getNews({countries:selectedCountryQueryValue(),limit:LIVE_NEWS_LIMIT});
+    const payload=await api.getNews({countries:selectedCountryQueryValue(),limit:resolveLiveNewsLimit(state)});
     if(token!==liveNewsRequestToken || key!==liveNewsKey(getState())) return;
     liveNewsView={key,news:payload.news || [],meta:payload.meta?.newsRead || state.meta.sourceMeta.corpus};
     const current=filterStateBySelection(getState());

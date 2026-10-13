@@ -191,15 +191,18 @@ export async function getNews(req, res) {
   const filters = buildFilters(req, res);
   const snapshot = stateManager.getAnalysisSnapshot();
   const includeOlder = req.query.includeOlder === "1" || req.query.includeOlder === "true";
+  const displayLimit=parsePositiveInt(res.app.locals.config.news?.displayLimit,100,{min:1,max:200});
+  if(!includeOlder)filters.limit=req.query.limit===undefined ? displayLimit : Math.min(filters.limit,displayLimit);
   const source = includeOlder && !res.app.locals.business ? { ...snapshot, news: [...res.app.locals.newsArchive.records.values()].map(a=>({...classifyRssArticle(a),...publicationDate(a.publishedAt),identity:articleIdentity(a),firstSeenAt:a.archiveFirstSeenAt||a.receivedAt,severityOrigin:"rss-classifier-rules"})) } : snapshot;
   const filtered = applyCountryFilter(source, filters.countries);
   const feed=res.app.locals.business ? await res.app.locals.newsArchive.getLiveFeed({...filters,includeOlder,limit:filters.limit}) : null;
   const news = feed?.news || applyNewsFilters(filtered.news, filters);
+  const newsRead=includeOlder ? feed?.meta : {...feed?.meta,displayLimit,limit:filters.limit};
 
   res.json(
     mapResponse({
       news,
-      meta: { ...withActiveFilters({...filtered.meta,...(feed ? {newsRead:feed.meta} : {})}, filters.countries, filters.sources), collection: includeOlder ? "archive-permitted-metadata" : "selected-news" }
+      meta: { ...withActiveFilters({...filtered.meta,...(newsRead ? {newsRead} : {})}, filters.countries, filters.sources), collection: includeOlder ? "archive-permitted-metadata" : "selected-news" }
     })
   );
 }

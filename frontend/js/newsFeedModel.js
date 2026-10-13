@@ -1,9 +1,14 @@
 const ranks={critical:4,elevated:3,monitoring:2,low:1,unknown:0};
-export const LIVE_NEWS_LIMIT=100;
+export const DEFAULT_LIVE_NEWS_LIMIT=100;
+export function resolveLiveNewsLimit(state={}) {
+  const meta=state.meta || {};
+  const configured=Number(meta.sourceMeta?.corpus?.displayLimit ?? meta.sourceMeta?.selectionConfig?.displayLimit ?? meta.newsRead?.displayLimit);
+  return Number.isSafeInteger(configured)&&configured>0 ? Math.min(configured,200) : DEFAULT_LIVE_NEWS_LIMIT;
+}
 export const newsIdentity=a=>String(a.identity||a.id||a.url||'');
 export const newsContentRevision=a=>JSON.stringify([a.title,a.excerpt||a.description,a.publishedAt,a.updatedAt,a.threatLevel,a.publisher,a.sourceName,a.provenance?.stale]);
 export function compareNews(a,b,order='critical'){return (order==='recent'?0:(ranks[b.threatLevel]||0)-(ranks[a.threatLevel]||0))||(Date.parse(b.publishedAt)||0)-(Date.parse(a.publishedAt)||0)||newsIdentity(a).localeCompare(newsIdentity(b));}
-export function filterNews(items,{q='',severity='',countries=[],order='critical',page=1,pageSize=LIVE_NEWS_LIMIT,windowHours=36,now=Date.now()}={}) {
+export function filterNews(items,{q='',severity='',countries=[],order='critical',page=1,pageSize=DEFAULT_LIVE_NEWS_LIMIT,windowHours=36,now=Date.now()}={}) {
   const cutoff=windowHours?now-windowHours*3600_000:null;
   const filtered=items.filter(a=>!countries.length||(a.countryMentions||[]).some(c=>countries.includes(c)))
     .filter(a=>!severity||(a.threatLevel||'unknown')===severity)
