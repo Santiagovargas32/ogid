@@ -69,6 +69,95 @@ test("worker death rejects work and does not leave a ready manager",async()=>{
   finally {await f.close();}
 });
 
+test("concurrent startup waits for the isolated analysis worker",async t=>{
+  const f=fixture({businessEnabled:true});
+  let release,announce;
+  const barrier=new Promise(resolve=>{release=resolve;});
+  const childStarted=new Promise(resolve=>{announce=resolve;});
+  const original=StorageManager.prototype.startWorkers;
+  t.mock.method(StorageManager.prototype,"startWorkers",async function(){
+    const result=await original.call(this);
+    if(this.options.analysisWorker){announce();await barrier;}
+    return result;
+  });
+  try{
+    const first=f.manager.start();await childStarted;
+    let ready=false;
+    const second=f.manager.start().then(result=>{ready=true;return result;});
+    await new Promise(resolve=>setImmediate(resolve));assert.equal(ready,false);
+    release();await Promise.all([first,second]);
+    assert.equal(f.manager.analysisManager.state,"ready");
+  }finally{release();await f.close();}
+});
+
+test("writer failure terminates analysis and preserves the original failure diagnostic",async()=>{
+  const f=fixture({businessEnabled:true});
+  try{
+    await f.manager.start();await f.manager.worker.terminate();
+    assert.equal(f.manager.state,"failed");
+    assert.equal(f.manager.analysisManager.state,"failed");
+    await assert.rejects(f.manager.request("domain.call",{service:"advanced",method:"getSnapshot"}),reason=>{
+      assert.equal(reason.code,"STORAGE_NOT_READY");
+      assert.equal(reason.causeCode,"STORAGE_WORKER_EXITED");
+      assert.equal(reason.diagnostic.worker,"writer");return true;
+    });
+    await f.manager.analysisManager.termination;
+  }finally{await f.close();}
+});
+
+test("shutdown during analysis startup waits for it and closes both workers",async t=>{
+  const f=fixture({businessEnabled:true});
+  let release,announce;
+  const barrier=new Promise(resolve=>{release=resolve;});
+  const childStarted=new Promise(resolve=>{announce=resolve;});
+  const original=StorageManager.prototype.startWorkers;
+  t.mock.method(StorageManager.prototype,"startWorkers",async function(){
+    const result=await original.call(this);
+    if(this.options.analysisWorker){announce();await barrier;}
+    return result;
+  });
+  try{
+    const starting=f.manager.start();await childStarted;
+    const closing=f.manager.close();
+    release();await starting;await closing;
+    assert.equal(f.manager.state,"closed");assert.equal(f.manager.analysisManager.state,"closed");
+  }finally{release();await f.close();}
+});
+
+test("analysis failure is observable by the owner and leaves accepted writer work available for draining",async()=>{
+  const f=fixture({businessEnabled:true});
+  try{
+    await f.manager.start();const failures=[];
+    f.manager.on("failed",reason=>failures.push(reason));
+    await f.manager.analysisManager.worker.terminate();
+    assert.equal(failures.length,1);assert.equal(failures[0].diagnostic.worker,"analysis");
+    assert.equal(f.manager.state,"ready");
+    assert.equal((await f.manager.request("pipeline.record",run())).persisted,true);
+    await f.manager.close();assert.equal(f.manager.state,"closed");
+  }finally{await f.close();}
+});
+
+test("server shutdown releases both SQL workers after stage persistence fails",async t=>{
+  const f=fixture({businessEnabled:true});
+  const runtime=createAppServer({port:0,host:"127.0.0.1",storageManager:f.manager,disableBackgroundRefresh:true,
+    news:{providers:[],rssFeeds:[]},market:{enabled:false,historyPersist:false,historyDir:f.directory,initialTickers:[],tickers:[]}});
+  let stopped=false;
+  try{
+    await runtime.start();const monitor=runtime.app.locals.pipelineMonitor;await monitor.flush();
+    const request=f.manager.request.bind(f.manager);
+    t.mock.method(f.manager,"request",(operation,input,options)=>{
+      if(operation === "runtime.save" && input.kind === "pipeline-stage" && input.payload.id === "news.normalize")
+        return Promise.reject(Object.assign(new Error("SQLITE_FULL"),{code:"SQLITE_FULL"}));
+      return request(operation,input,options);
+    });
+    monitor.update("news.normalize",{status:"completed"});await monitor.flush();
+    assert.equal(monitor.snapshot()["news.normalize.persistence"].status,"blocked");
+    await assert.rejects(runtime.stop(),{code:"SQLITE_FULL"});stopped=true;
+    assert.equal(f.manager.state,"closed");assert.equal(f.manager.analysisManager.state,"closed");
+    assert.equal(runtime.server.listening,false);assert.equal(runtime.app.locals.runtimeMetrics.ready,false);
+  }finally{if(!stopped)await runtime.stop().catch(()=>{});await f.close();}
+});
+
 test("timeout of dispatched write reports unknown outcome and fails the worker",async()=>{
   const f=fixture({timeoutMs:100,busyTimeoutMs:3000});let lock;
   try {await f.manager.start();lock=new Database(f.databasePath);lock.exec("BEGIN IMMEDIATE");await assert.rejects(f.manager.request("pipeline.record",run()),{code:"STORAGE_OUTCOME_UNKNOWN"});assert.equal(f.manager.state,"failed");const command=f.manager.getStatus().lastExpiredCommand;assert.equal(command.operation,"pipeline.record");assert.equal(command.timeoutMs,100);assert.ok(["executing","dispatched"].includes(command.phase));lock.exec("ROLLBACK");}

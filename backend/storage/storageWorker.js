@@ -115,7 +115,7 @@ try {
       lastFailedCommand={...activeCommands.get(message.id),failedAt:new Date().toISOString(),code:error.code || "STORAGE_COMMAND_FAILED"};
       log.error("storage_command_failed",{operation:message.operation,service:message.input?.service,method:message.input?.method,code:error.code || "STORAGE_COMMAND_FAILED",stack:error.stack});
       const code = /^[A-Z][A-Z0-9_]{1,63}$/.test(error.code || "") ? error.code : "STORAGE_COMMAND_FAILED";
-      parentPort.postMessage({ id: message.id, error: { code, statusCode: error.statusCode || 503, message: error.statusCode < 500 ? error.message : code } });
+      parentPort.postMessage({ id: message.id, error: { code, statusCode: error.statusCode || 503, message: error.statusCode < 500 ? error.message : code, causeCode: error.causeCode, diagnostic: error.diagnostic } });
     }finally{activeCommands.delete(message.id);}
   });
 } catch (error) {

@@ -1,10 +1,10 @@
 import Database from "better-sqlite3";
-import path from "node:path";
 import { statSync } from "node:fs";
 import { readDatabaseDiagnostics } from "../storage/diagnostics.js";
+import { storageMaintenanceOptions } from "./storage-options.js";
 
 const args=process.argv.slice(2),watch=args.includes("--watch"),full=args.includes("--full");
-const databasePath=path.resolve(args.find(arg=>arg!=="--watch"&&arg!=="--full") || process.env.STORAGE_DB_PATH || "/srv/bitcoin/ogid/db/ogid.sqlite");
+const {databasePath}=storageMaintenanceOptions(args.find(arg=>arg!=="--watch"&&arg!=="--full"));
 const db=new Database(databasePath,{readonly:true,fileMustExist:true,timeout:1500});
 let previous=null;
 function sample(){

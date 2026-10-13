@@ -165,6 +165,9 @@ The advanced endpoint accepts active windows from 6 to 48 hours; `activeWindowHo
 5. `npm run dev` (or `npm start`)
 6. Open `http://localhost:8080`
 
+For the SQLite worker setup, verified backups and startup diagnostics, see the
+[storage lifecycle and startup guide](docs/performance/storage-lifecycle-fix.md).
+
 Administrative routes, mutations and `force=1` requests are allowed without a token from loopback and private LAN peers by default. This includes IPv4 private/link-local addresses and IPv6 unique-local/link-local addresses, using the direct socket peer rather than forwarded headers. Open `http://<server-lan-ip>:<port>/admin` directly in the browser. Set `ALLOW_LAN_ADMIN=0` to require a token on the LAN, and `ALLOW_LOCAL_ADMIN=0` to require it on loopback too. Other addresses always require `ADMIN_API_TOKEN`, sent as a Bearer token or `X-Admin-Token`. Set `HOST=0.0.0.0` to listen on the LAN, or `HOST=127.0.0.1` for loopback only. Behind a public reverse proxy, disable both bypasses as in the production example.
 
 ## Private read-only MCP integration

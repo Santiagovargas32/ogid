@@ -5,6 +5,7 @@ import { storageConfig } from "./config.js";
 const error = code => Object.assign(new Error(code), { code, statusCode: 503 });
 const OPERATIONS = new Set(["storage.status", "storage.verify", "storage.checkpoint", "pipeline.record", "domain.configure", "domain.registry", "domain.call", "storage.import", "runtime.save", "runtime.load", "rss.fetch", "news.collect", "news.supplemental", "analysis.persist"]);
 const ISOLATED_SERVICES = new Set(["market","technical","indicators","conditions","advanced","map","coupling"]);
+const ISOLATED_NEWS_METHODS = new Set(["getProjection","getFeed","getLiveFeed"]);
 const CPU_SERVICES = new Set(["market","technical","indicators","conditions","advanced","map","portfolio","scenarios","forecasts","coupling","signals"]);
 
 export class StorageManager extends EventEmitter {
@@ -23,6 +24,16 @@ export class StorageManager extends EventEmitter {
       queue: { pending: this.queue.length, inFlight: this.active.size, cpuInFlight:[...this.active.values()].filter(entry=>entry.cpu).length,maxCpuInFlight:this.options.maxCpuInFlight,bytes: this.pendingBytes, maxItems: this.options.queueMaxItems, maxBytes: this.options.queueMaxBytes, maxCommandBytes: this.options.maxCommandBytes }, ...this.metrics };
   }
   async start() {
+    if (["closing", "closed", "failed"].includes(this.state)) throw error("STORAGE_NOT_READY");
+    // All callers wait for both workers, including calls made after the writer
+    // has announced readiness but while the analysis worker is still starting.
+    if (!this.startTask) {
+      this.initializing = true;
+      this.startTask = this.startWorkers().finally(()=>{this.initializing=false;});
+    }
+    return this.startTask;
+  }
+  async startWorkers() {
     if (this.state === "disabled" || this.state === "ready") return this.getStatus();
     if (this.state === "starting") return this.startPromise;
     if (this.state !== "new") throw error("STORAGE_NOT_READY");
@@ -45,12 +56,19 @@ export class StorageManager extends EventEmitter {
       this.analysisManager.rpcHandler=(operation,input)=>operation === "analysis.persist"
         ? this.localRequest(operation,input) : this.rpcHandler?.(operation,input);
       this.analysisManager.on("stage",(...args)=>this.emit("stage",...args));
+      this.analysisManager.on("failed", reason => {
+        if (!["failed", "closed"].includes(this.state)) {
+          reason.diagnostic = {...reason.diagnostic, worker: "analysis"};
+          this.emit("failed", reason);
+        }
+      });
       await this.analysisManager.start();
     }
     return this.getStatus();
   }
   request(operation, input = {}, { requestId = randomUUID(), timeoutMs = this.options.timeoutMs, queueTimeoutMs = this.options.queueTimeoutMs } = {}) {
-    if (this.analysisManager && operation === "domain.call" && (ISOLATED_SERVICES.has(input.service) || (input.service === "news" && input.method === "getProjection"))) return this.analysisManager.request(operation,input,{requestId,timeoutMs,queueTimeoutMs});
+    if (this.state !== "ready") return this.localRequest(operation,input,{requestId,timeoutMs,queueTimeoutMs});
+    if (this.analysisManager && operation === "domain.call" && (ISOLATED_SERVICES.has(input.service) || (input.service === "news" && ISOLATED_NEWS_METHODS.has(input.method)))) return this.analysisManager.request(operation,input,{requestId,timeoutMs,queueTimeoutMs});
     if (this.analysisManager && ["domain.configure","domain.registry"].includes(operation)) {
       return this.localRequest(operation,input,{requestId,timeoutMs,queueTimeoutMs}).then(async result=>{
         await this.analysisManager.request(operation,{...input,analysisOnly:true},{requestId,timeoutMs,queueTimeoutMs});return result;
@@ -60,7 +78,10 @@ export class StorageManager extends EventEmitter {
   }
   localRequest(operation, input = {}, { requestId = randomUUID(), timeoutMs = this.options.timeoutMs, queueTimeoutMs = this.options.queueTimeoutMs } = {}) {
     if (!OPERATIONS.has(operation)) return Promise.reject(error("STORAGE_UNKNOWN_OPERATION"));
-    if (this.state !== "ready") return Promise.reject(error("STORAGE_NOT_READY"));
+    if (this.state !== "ready") return Promise.reject(Object.assign(error("STORAGE_NOT_READY"), {
+      causeCode: this.metrics.lastErrorCode,
+      diagnostic: {state: this.state, worker: this.options.analysisWorker ? "analysis" : "writer", lastErrorCode: this.metrics.lastErrorCode}
+    }));
     let encoded;
     try { encoded = JSON.stringify({ operation, input, requestId }); } catch { return Promise.reject(error("STORAGE_INVALID_COMMAND")); }
     const bytes = Buffer.byteLength(encoded);
@@ -75,7 +96,7 @@ export class StorageManager extends EventEmitter {
     }
     return new Promise((resolve, reject) => {
       const slow = ["rss.fetch", "news.collect", "news.supplemental"].includes(operation) || (operation === "domain.call" && (["rss","advanced","map"].includes(input.service) || ["run","import"].includes(input.method)));
-      const cpu = operation === "domain.call" && (CPU_SERVICES.has(input.service) || (input.service === "news" && ["getProjection","getFeed","getLiveFeed"].includes(input.method)));
+      const cpu = operation === "domain.call" && (CPU_SERVICES.has(input.service) || (input.service === "news" && ISOLATED_NEWS_METHODS.has(input.method)));
       const entry = { id: randomUUID(), encoded, bytes, resolve, reject, slow, cpu, queuedAt:Date.now(),timeoutMs,queueTimeoutMs,diagnostic:{operation,service:input.service || null,method:input.method || null,kind:input.kind || null} };
       entry.timer = setTimeout(() => this.expire(entry), queueTimeoutMs);
       this.pendingBytes += bytes; this.queue.push(entry); this.pump();
@@ -113,7 +134,7 @@ export class StorageManager extends EventEmitter {
     if (message.type === "rpc") {
       Promise.resolve().then(() => this.rpcHandler?.(message.operation, message.input)).then(
         result => this.worker.postMessage({ type: "rpc-result", id: message.id, result }),
-        reason => this.worker.postMessage({ type: "rpc-result", id: message.id, error: { code: reason.code || "PROVIDER_FAILED", statusCode: reason.statusCode || 503 } })
+        reason => this.worker.postMessage({ type: "rpc-result", id: message.id, error: { code: reason.code || "PROVIDER_FAILED", statusCode: reason.statusCode || 503, causeCode: reason.causeCode, diagnostic: reason.diagnostic } })
       ).catch(() => {}); return;
     }
     if (message.type === "ready") {
@@ -128,7 +149,7 @@ export class StorageManager extends EventEmitter {
     }
     const entry = this.active.get(message.id); if (!entry) return;
     this.active.delete(message.id); clearTimeout(entry.timer); this.pendingBytes -= entry.bytes;
-    if (message.error) { this.metrics.failed++; this.metrics.lastErrorCode = message.error.code; entry.reject(Object.assign(error(message.error.code), { statusCode: message.error.statusCode || 503, message: message.error.message || message.error.code })); }
+    if (message.error) { this.metrics.failed++; this.metrics.lastErrorCode = message.error.code; entry.reject(Object.assign(error(message.error.code), { statusCode: message.error.statusCode || 503, message: message.error.message || message.error.code, causeCode: message.error.causeCode, diagnostic: message.error.diagnostic })); }
     else { this.metrics.lastQueueMs = (entry.startedAt || Date.now()) - entry.queuedAt; this.metrics.lastExecutionMs=message.durationMs;this.metrics.lastTotalMs=Date.now()-entry.queuedAt;this.metrics.lastCpuMs=message.cpuMs ?? null; this.metadata = message.status; this.metrics.completed++; this.metrics.lastDurationMs = message.durationMs; entry.resolve(message.result); }
     this.pump();
   }
@@ -151,6 +172,9 @@ export class StorageManager extends EventEmitter {
     for (const entry of this.queue.splice(0)) { clearTimeout(entry.timer); entry.reject(error("STORAGE_WORKER_FAILED")); }
     this.pendingBytes = 0;
     this.termination = this.worker?.terminate();
+    // An analysis waiting for its persistence RPC cannot finish after the
+    // writer dies. Reject it now instead of waiting for the provider deadline.
+    this.analysisManager?.fail(reason);
     this.emit("failed", reason);
   }
   sendClose() {
@@ -160,6 +184,7 @@ export class StorageManager extends EventEmitter {
     catch { this.fail(error("STORAGE_CLOSE_FAILED")); }
   }
   async close() {
+    if(this.initializing){try{await this.startTask;}catch{/* Release whichever workers started. */}}
     if(!this.analysisManager)return this.closeLocal();
     // Accepted analyses may still need the primary writer to commit their result.
     try { await this.analysisManager?.close(); }

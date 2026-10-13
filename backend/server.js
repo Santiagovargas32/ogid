@@ -1089,6 +1089,12 @@ export function createAppServer(overrides = {}) {
       stateManager.setMarketTickers(hydratedWatchlist.selectedSymbols);
       await dailyCandleStore.hydrate();
       if(business) await orchestrator.runNewsCycle("startup-storage",{storageOnly:true,skipSecondary:true});
+      await monitor.flush();
+      await pipelinePersistence?.flush();
+      if(storageManager.options.enabled){
+        await storageManager.request("storage.status");
+        await storageManager.analysisManager?.request("storage.status");
+      }
       await new Promise((resolve, reject) => {
         server.once("error", reject);
         server.listen(config.port, config.host, () => {
@@ -1154,29 +1160,36 @@ export function createAppServer(overrides = {}) {
     stop() {
       if (stopTask) return stopTask;
       stopTask = (async () => {
+      const failures=[];
+      const drain=async work=>{try{await work();}catch(error){failures.push(error);}};
+      try {
       runtimeMetrics.stop();
       // Stop accepting HTTP/upgrade work before draining owners of background jobs.
       const httpStopped = new Promise((resolve,reject) => {
         if (!server.listening) return resolve();
         server.close(error => error ? reject(error) : resolve());
       });
-      const websocketStopped = socketServer.close();
-      const awarenessStopped = awarenessService.stop();
-      const mediaStopped = mediaStreamService.stop();
-      const marketDataStopped = marketDataService.close?.();
-      const cyclesStopped = orchestrator.stop();
-      await rssAggregator.stop?.();
+      const httpDrained=drain(()=>httpStopped);
+      // Attach rejection handlers immediately and drain every owner even when
+      // one persistence operation fails. Storage must always release its handles.
+      const backgroundStopped = Promise.all([
+        drain(()=>socketServer.close()), drain(()=>awarenessService.stop()),
+        drain(()=>mediaStreamService.stop()), drain(()=>marketDataService.close?.())
+      ]);
+      const cyclesStopped=drain(()=>orchestrator.stop());
+      await drain(()=>rssAggregator.stop?.());
       await cyclesStopped;
-      await newsArchive.flush?.();
-      await Promise.all([awarenessStopped, mediaStopped, marketDataStopped]);
-      await aiCoordinator.stop();
-      await Promise.all([websocketStopped,httpStopped]);
+      await drain(()=>newsArchive.flush?.());
+      await backgroundStopped;
+      await drain(()=>aiCoordinator.stop());
+      await httpDrained;
       await Promise.allSettled([...activeCycles]);
-      await marketDataStore.flushPersistence();
-      await pipelinePersistence?.flush();
-      await monitor.flush();
-      await storageManager.close();
-      log.info("server_stopped");
+      await drain(()=>marketDataStore.flushPersistence());
+      await drain(()=>monitor.flush());
+      await drain(()=>pipelinePersistence?.flush());
+      } finally { await drain(()=>storageManager.close()); }
+      log.info("server_stopped",{cleanupErrors:failures.length});
+      if(failures.length)throw failures[0];
       })();
       return stopTask;
     }
@@ -1191,7 +1204,7 @@ async function run() {
   const shutdown = async (signal, exitCode = 0) => {
     if (shuttingDown) return;
     shuttingDown = true;
-    const deadline = setTimeout(() => process.exit(1), 30_000);
+    const deadline = setTimeout(() => process.exit(1), Math.max(30_000,runtime.storageManager.options.shutdownTimeoutMs));
     deadline.unref();
     log.info("shutdown_signal_received", { signal });
     try {
@@ -1204,7 +1217,8 @@ async function run() {
   };
 
   runtime.storageManager.on("failed", (error) => {
-    const worker=runtime.storageManager.getStatus().worker;
+    const status=runtime.storageManager.getStatus();
+    const worker=error.diagnostic?.worker === "analysis" ? status.analysis?.worker : status.worker;
     log.error("storage_worker_failed", { code: error.code,command:error.diagnostic,worker:worker?.lastCompletedCommand,news:worker?.news });
     if (runtime.server.listening) void shutdown("storage-worker-failed", 1);
   });
@@ -1222,6 +1236,8 @@ async function run() {
     await runtime.start();
   } catch (error) {
     log.error("startup_failed", { message: error.message, stack: error.stack, code: error.code, command: error.diagnostic });
+    try { await runtime.stop(); }
+    catch (cleanupError) { log.error("startup_cleanup_failed",{code:cleanupError.code,message:cleanupError.message}); }
     process.exit(1);
   }
 }

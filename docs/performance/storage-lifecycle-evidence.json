@@ -1,0 +1,234 @@
+{
+  "date": "2026-10-13",
+  "branch": "fix/storage-lifecycle-persistence",
+  "runtime": {
+    "node": "v22.23.3",
+    "sqlite": "3.53.4",
+    "migrations": 8
+  },
+  "tests": {
+    "total": 714,
+    "passed": 714,
+    "failed": 0,
+    "syntax": "passed"
+  },
+  "backup": {
+    "path": "/home/fedora/ogid/backend/data/storage-backups/pre-storage-fix-20261013.sqlite",
+    "verified": true,
+    "beforeCounts": {
+      "articles": 60568,
+      "article_revisions": 92063,
+      "events": 55230,
+      "candles": 26332
+    }
+  },
+  "database": {
+    "path": "/srv/bitcoin/ogid/db/ogid.sqlite",
+    "counts": {
+      "articles": 60697,
+      "article_revisions": 92259,
+      "events": 55366,
+      "candles": 26404,
+      "candle_revisions": 26942,
+      "quote_observations": 2534,
+      "signal_buckets": 3075,
+      "awareness_events": 1080,
+      "source_polls": 10810,
+      "ai_enrichments": 0,
+      "acquisition_jobs": 19,
+      "analysis_runs": 662
+    },
+    "stageStatus": [
+      {
+        "status": "completed",
+        "count": 14
+      }
+    ],
+    "integrity": "ok",
+    "foreignKeys": []
+  },
+  "volumeCheck": {
+    "filesystem": "ntfs3",
+    "wal": true,
+    "concurrentReader": true,
+    "writerLock": true,
+    "committedCrashRecovery": true,
+    "uncommittedRollback": true,
+    "integrity": "ok"
+  },
+  "realCorpusCopy": {
+    "cycles": 3,
+    "displayCount": 100,
+    "failures": 0,
+    "integrity": "ok"
+  },
+  "backgroundLiveValidation": {
+    "advancedAndReadinessSuccessfulSamples": 7,
+    "websocketMessages": 87,
+    "closeCode": 1001,
+    "closeReason": "server-shutdown",
+    "cleanupErrors": 0,
+    "shutdownSeconds": 35
+  },
+  "finalLiveValidation": {
+    "samples": [
+      {
+        "sample": 0,
+        "responses": [
+          {
+            "path": "/api/health/ready",
+            "status": 200
+          },
+          {
+            "path": "/api/intel/advanced-snapshot?countries=US,IL,IR",
+            "status": 200
+          },
+          {
+            "path": "/api/intel/news?limit=100",
+            "status": 200
+          },
+          {
+            "path": "/api/news/aggregate?limit=100",
+            "status": 200
+          }
+        ],
+        "storage": "ready",
+        "analysis": "ready",
+        "path": "/srv/bitcoin/ogid/db/ogid.sqlite",
+        "writerCpu": 0,
+        "errors": [
+          null,
+          null
+        ],
+        "blocked": [],
+        "messages": 9,
+        "ws": 1
+      },
+      {
+        "sample": 1,
+        "responses": [
+          {
+            "path": "/api/health/ready",
+            "status": 200
+          },
+          {
+            "path": "/api/intel/advanced-snapshot?countries=US,IL,IR",
+            "status": 200
+          },
+          {
+            "path": "/api/intel/news?limit=100",
+            "status": 200
+          },
+          {
+            "path": "/api/news/aggregate?limit=100",
+            "status": 200
+          }
+        ],
+        "storage": "ready",
+        "analysis": "ready",
+        "path": "/srv/bitcoin/ogid/db/ogid.sqlite",
+        "writerCpu": 0,
+        "errors": [
+          null,
+          null
+        ],
+        "blocked": [],
+        "messages": 10,
+        "ws": 1
+      },
+      {
+        "sample": 2,
+        "responses": [
+          {
+            "path": "/api/health/ready",
+            "status": 200
+          },
+          {
+            "path": "/api/intel/advanced-snapshot?countries=US,IL,IR",
+            "status": 200
+          },
+          {
+            "path": "/api/intel/news?limit=100",
+            "status": 200
+          },
+          {
+            "path": "/api/news/aggregate?limit=100",
+            "status": 200
+          }
+        ],
+        "storage": "ready",
+        "analysis": "ready",
+        "path": "/srv/bitcoin/ogid/db/ogid.sqlite",
+        "writerCpu": 0,
+        "errors": [
+          null,
+          null
+        ],
+        "blocked": [],
+        "messages": 10,
+        "ws": 1
+      },
+      {
+        "sample": 3,
+        "responses": [
+          {
+            "path": "/api/health/ready",
+            "status": 200
+          },
+          {
+            "path": "/api/intel/advanced-snapshot?countries=US,IL,IR",
+            "status": 200
+          },
+          {
+            "path": "/api/intel/news?limit=100",
+            "status": 200
+          },
+          {
+            "path": "/api/news/aggregate?limit=100",
+            "status": 200
+          }
+        ],
+        "storage": "ready",
+        "analysis": "ready",
+        "path": "/srv/bitcoin/ogid/db/ogid.sqlite",
+        "writerCpu": 0,
+        "errors": [
+          null,
+          null
+        ],
+        "blocked": [],
+        "messages": 10,
+        "ws": 1
+      }
+    ],
+    "backgroundRefresh": false,
+    "exit": [
+      0,
+      null
+    ],
+    "websocket": {
+      "messages": 11,
+      "close": {
+        "code": 1001,
+        "reason": "server-shutdown"
+      }
+    }
+  },
+  "volumeMigration": {
+    "status": "prepared-awaiting-terminal-sudo",
+    "device": "/dev/sdb1",
+    "uuid": "1C5A49F95A49CFE6",
+    "sizeBytes": 1000203091968,
+    "copiedFiles": 83,
+    "copiedBytes": 6317707488,
+    "checksumsVerified": true,
+    "copyDatabaseIntegrity": [
+      "ok"
+    ],
+    "copyDatabaseForeignKeys": [],
+    "copyDatabaseSha256": "4adea0a8ef708ae2a27d8377d2f160127808c506847bf017689fd28a1223dac8",
+    "copyDirectory": "/home/fedora/ogid/backend/data/storage-volume-migration/20261013/volume",
+    "filesystemNotChanged": true
+  },
+  "limitation": "El primer error del worker del incidente del 13 de octubre no está en los logs disponibles. Validación puntual, sin soak de 24 horas. El formateo requiere autenticación sudo en la terminal del usuario."
+}

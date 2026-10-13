@@ -68,6 +68,24 @@ test("SQL startup runs background news ingestion without requiring a legacy RSS 
 });
 async function fixture(){const dir=mkdtempSync(join(tmpdir(),"ogid-sql-business-")),db=join(dir,"test.sqlite"),manager=new StorageManager({enabled:true,businessEnabled:true,databasePath:db});await manager.start();await manager.request("domain.configure",{instruments:listVerifiedInstruments(),rootDir:dir,researchSources:[],signalPolicy:{},rss:{rssFeeds:[],maxFeedsPerRun:18,maxCorpusItems:900}});return {dir,db,manager,call:(service,method,...args)=>manager.request("domain.call",{service,method,args}),async close(){await this.manager.close();rmSync(dir,{recursive:true,force:true});}};}
 
+test("news feed and archive reads run on the read-only analysis worker without occupying the writer",async()=>{
+  const f=await fixture();
+  try{
+    await f.call("news","ingest",[article(1,{title:"United States defense forces strike after Russia attack",publishedAt:new Date(Date.now()-1000).toISOString()})]);
+    const writerBefore=f.manager.metrics.completed,analysisBefore=f.manager.analysisManager.metrics.completed;
+    const [feed,live,archive]=await Promise.all([
+      f.call("news","getFeed",{}),f.call("news","getLiveFeed",{}),
+      f.call("news","getLiveFeed",{includeOlder:true,q:"Russia"})
+    ]);
+    assert.equal(feed.items.length,1);assert.equal(live.news.length,1);assert.equal(archive.news.length,1);
+    assert.equal(f.manager.metrics.completed,writerBefore);
+    assert.equal(f.manager.analysisManager.metrics.completed,analysisBefore+3);
+    assert.equal(f.manager.analysisManager.getStatus().queryOnly,true);
+    assert.equal(f.manager.analysisManager.metrics.failed,0);
+    assert.equal((await f.manager.request("pipeline.record",{runId:"after-feed",pipelineId:"storage",startedAt:new Date().toISOString(),status:"healthy",counts:{}})).persisted,true);
+  }finally{await f.close();}
+});
+
 test("ten concurrent analyses use read-only SQL and commit results through the ingestion writer", async () => {
   const f = await fixture();
   try {
