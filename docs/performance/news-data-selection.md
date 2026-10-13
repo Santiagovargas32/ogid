@@ -2,13 +2,17 @@
 
 Revisión del 13 de octubre de 2026 sobre main `312dbf3`, con cambios en `fix/live-news-100-and-data-audit`. Se inspeccionaron las bases mediante conexiones de sólo lectura. No se movieron datos ni se cambió `STORAGE_DB_PATH`.
 
-## Live News Feed: 100 noticias
+## Live News Feed: límite configurable, 100 por defecto
 
-`NEWS_DISPLAY_LIMIT=100` define la selección del backend y es el nuevo valor predeterminado de `server.js` y `.env.example`. El `.env` del operador ya contenía 100 y se conservó. `LIVE_NEWS_LIMIT=100`, exportado desde `frontend/js/newsFeedModel.js`, define tanto el límite HTTP solicitado por el dashboard como los artículos por página. Los filtros pueden producir menos de 100; el contador representa el total de artículos cargados que cumplen esos filtros, no el tamaño del archivo SQL.
+`NEWS_DISPLAY_LIMIT=100` define la selección del backend y es el nuevo valor predeterminado de `server.js` y `.env.example`. El `.env` del operador ya contenía 100 y se conservó. Una configuración explícita como 12 o 40 conserva ese límite. `resolveLiveNewsLimit()`, en `frontend/js/newsFeedModel.js`, obtiene el límite publicado en `meta.sourceMeta.corpus.displayLimit` (SQL) o `meta.sourceMeta.selectionConfig.displayLimit` (JSON); también admite `meta.newsRead.displayLimit`. `DEFAULT_LIVE_NEWS_LIMIT=100` se usa sólo si no existe metadata válida. El feed vivo admite como máximo 200 artículos. Los filtros pueden producir menos; el contador representa el total de artículos cargados que cumplen esos filtros, no el tamaño del archivo SQL.
 
-El dashboard solicita `/api/intel/news?countries=ALL&limit=100` para ALL, o los países seleccionados. Conserva la respuesta SQL mientras coincidan país, revisión del corpus y día. Una actualización de mercado/pipeline no la sustituye por el conjunto reducido de StateManager. Una revisión nueva invalida la vista; una respuesta tardía de otro país no se aplica.
+El dashboard solicita `/api/intel/news?countries=ALL&limit=<límite configurado>` para ALL, o los países seleccionados, y usa ese mismo límite como tamaño de página. El backend también aplica el límite: sin parámetro usa la configuración; con un valor mayor devuelve como máximo el configurado; con un valor menor respeta el solicitado. Esta protección funciona en SQL y JSON y se publica en `meta.newsRead.displayLimit` y `meta.newsRead.limit`. Las consultas explícitas al archivo con `includeOlder=1` conservan su límite/paginación independiente.
 
-Validación: sintaxis correcta, 695 tests backend, 23 tests MCP e inventario de 73 rutas/82 operaciones. Chromium sobre una base SQLite temporal y RSS local comprobó 100 noticias por HTTP y 100 filas visibles; tras publicar un estado reducido a 40 y una actualización de pipeline, siguieron visibles las 100 noticias SQL, sin errores de página. La prueba usa ALL; una ejecución inicial con los países predeterminados produjo menos de 100 por filtrado y no se contabiliza como PASS de esa comprobación.
+La respuesta SQL se conserva mientras coincidan país, revisión del corpus, día y límite. Una actualización de mercado/pipeline no la sustituye por el conjunto reducido de StateManager. Cambiar el límite invalida la caché, ajusta la paginación y rechaza respuestas tardías del límite anterior, aunque la revisión del corpus sea la misma. El pipeline JSON también usa `config.news.displayLimit` en la selección publicada; su límite de análisis sigue siendo independiente.
+
+Validación final con Node 22.23.3: sintaxis correcta, 701 tests backend, 23 tests MCP e inventario de 73 rutas/82 operaciones. Las regresiones prueban límites explícitos de 12, 40 y 100, peticiones sin límite o por encima/debajo del configurado, cambio de límite con respuesta tardía y acceso al histórico sin ese recorte. La prueba HTTP también cubre JSON. Dos repeticiones de Chromium con bases SQL temporales/RSS local verificaron configuraciones de 40 y 100: petición, respuesta HTTP y filas visibles respetan cada límite, incluso tras publicar un estado reducido a 10 noticias y una actualización de pipeline. No hubo errores de página en esas repeticiones. [Evidencia numérica](p0-evidence/live-news-display-limit.json).
+
+El primer intento de navegador, ejecutado mientras corría la suite backend, agotó 30 segundos esperando filas y WS conectado. No se capturó un diagnóstico de página en ese intento, por lo que no se atribuye su causa. No volvió a reproducirse en las dos repeticiones posteriores con diagnóstico; no se incrementó el timeout. Estos ensayos aislados no certifican un soak de producción. Se usa ALL; los filtros por país pueden producir legítimamente menos noticias.
 
 Estos cambios se cargarán al recargar el dashboard; los valores de configuración del backend se leen al arrancarlo. No se reinició el servicio del operador.
 
@@ -24,7 +28,7 @@ La selección geopolítica requiere países detectados y ordena con `compareNews
 
 | Consumidor | Ventana / entradas | Límites efectivos |
 | --- | --- | --- |
-| Live News Feed | Candidatos geopolíticos del día local, países seleccionados, diversidad de fuentes/titulares | Hasta 100 mostrados; no limita el histórico almacenado |
+| Live News Feed | Candidatos geopolíticos del día local, países seleccionados, diversidad de fuentes/titulares | Hasta NEWS_DISPLAY_LIMIT (100 por defecto, máximo 200); no limita el histórico almacenado |
 | Riesgo diario por país | Todos los candidatos geopolíticos válidos del día encontrados en el escaneo | Se acumula antes del recorte de análisis/display; no se limita a 80 o 100 |
 | Impacto / predicciones del ciclo | Corpus de mercado del ciclo de noticias (por defecto 36 h) más artículos Awareness visibles | Corpus SQL: hasta 80 geopolíticos + 80 financieros antes de deduplicar; Awareness puede añadir entradas |
 | Advanced Intelligence v2 | Por defecto 24 h; SQL prepara 48 h para incluir la ventana previa de comparación. Une corpus geopolítico y agregado SQL, filtra fecha/país y deduplica | Recibe la selección acotada SQL, no todos los artículos de esas 48 h. `maxEvents` no limita el scoring en la implementación actual: normaliza todos los eventos del corpus recibido |
