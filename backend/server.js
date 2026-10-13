@@ -401,7 +401,7 @@ export function readConfig(overrides = {}) {
       intervalMs: newsIntervalMs,
       backoffMaxMs: newsBackoffMaxMs,
       analyzeLimit: toInt(process.env.NEWS_ANALYZE_LIMIT, 3000),
-      displayLimit: toPositiveInt(process.env.NEWS_DISPLAY_LIMIT, 40),
+      displayLimit: toPositiveInt(process.env.NEWS_DISPLAY_LIMIT, 100),
       projectionIntervalMs: toPositiveInt(process.env.NEWS_PROJECTION_INTERVAL_MS, 60000),
       rssPollIntervalMs: toPositiveInt(process.env.NEWS_RSS_POLL_INTERVAL_MS, 60000),
       rssFeedsPerCycle: toPositiveInt(process.env.NEWS_RSS_FEEDS_PER_CYCLE, 18),

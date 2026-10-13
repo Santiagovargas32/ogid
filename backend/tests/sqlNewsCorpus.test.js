@@ -150,12 +150,45 @@ test("HTTP SQL mode hydrates the daily feed at startup and reads stored articles
     const response=await fetch(`${base}/api/news/aggregate?force=1&limit=100`);assert.equal(response.status,200);
     const data=(await response.json()).data;assert.equal(data.items.length,45);assert.equal(data.meta.stored,true);
     const feed=await (await fetch(`${base}/api/intel/news?countries=RU&limit=40`)).json();assert.equal(feed.data.news.length,40);assert.equal(feed.data.meta.newsRead.filteredDailyCandidateCount,45);
+    const capped=await (await fetch(`${base}/api/intel/news?countries=RU&limit=100`)).json();assert.equal(capped.data.news.length,40);assert.equal(capped.data.meta.newsRead.limit,40);
+    const defaultFeed=await (await fetch(`${base}/api/intel/news?countries=RU`)).json();assert.equal(defaultFeed.data.news.length,40);
+    const smaller=await (await fetch(`${base}/api/intel/news?countries=RU&limit=12`)).json();assert.equal(smaller.data.news.length,12);
+    const history=await (await fetch(`${base}/api/intel/news?countries=RU&includeOlder=1&limit=100`)).json();assert.equal(history.data.news.length,45);
     const raw=await (await fetch(`${base}/api/admin/news-raw?dataset=intel&page=1000&pageSize=10`)).json();assert.equal(raw.data.pagination.page,5);assert.equal(raw.data.items.length,5);assert.equal(raw.data.summary.sourceMode,"sqlite-candidates");
     assert.equal((await (await fetch(`${base}/api/admin/pipeline-status`)).json()).data.news.corpus.dailyCandidateCount,45);
     const advanced=await fetch(`${base}/api/intel/advanced-snapshot?countries=RU`);assert.equal(advanced.status,200);
     const conditions=await fetch(`${base}/api/market/conditions?countries=RU`);assert.equal(conditions.status,200);
     assert.equal(runtime.storageManager.getStatus().failed,0);
     const sql=new Database(join(dir,"test.sqlite"),{readonly:true});assert.equal(sql.prepare("SELECT count(*) AS n FROM pipeline_runs WHERE pipeline_id='rss'").get().n,0);sql.close();
+  }finally{await runtime.stop();rmSync(dir,{recursive:true,force:true});}
+});
+
+for(const displayLimit of [12,100])test(`HTTP SQL live feed uses configured ${displayLimit} as default and ceiling`,async()=>{
+  const dir=mkdtempSync(join(tmpdir(),"ogid-news-cap-")),databasePath=join(dir,"test.sqlite");
+  const runtime=createAppServer({port:0,host:"127.0.0.1",watchlistCountries:["RU"],disableBackgroundRefresh:true,storage:{enabled:true,businessEnabled:true,databasePath},news:{providers:[],rssFeeds:[],analyzeLimit:3000,displayLimit},market:{enabled:false,provider:"",fallbackProvider:"",historyDir:dir}});
+  const db=new Database(databasePath);db.pragma("journal_mode=WAL");db.pragma("foreign_keys=ON");migrate(db);
+  const archive=new SqlNewsArchive(db);archive.ingest(Array.from({length:125},(_,i)=>article(i,{publishedAt:new Date().toISOString()})));archive.close();db.close();
+  try{
+    await runtime.start();const base=`http://127.0.0.1:${runtime.server.address().port}`;
+    for(const suffix of ["","&limit=100","&limit=200"]){
+      const response=await fetch(`${base}/api/intel/news?countries=RU${suffix}`);assert.equal(response.status,200);
+      const payload=(await response.json()).data;
+      assert.equal(payload.news.length,displayLimit);assert.equal(payload.meta.newsRead.displayLimit,displayLimit);assert.equal(payload.meta.newsRead.limit,displayLimit);
+    }
+    const smaller=(await (await fetch(`${base}/api/intel/news?countries=RU&limit=5`)).json()).data;assert.equal(smaller.news.length,5);
+    const history=(await (await fetch(`${base}/api/intel/news?countries=RU&includeOlder=1&limit=125`)).json()).data;assert.equal(history.news.length,125);
+    assert.equal(runtime.storageManager.getStatus().failed,0);
+  }finally{await runtime.stop();rmSync(dir,{recursive:true,force:true});}
+});
+
+test("HTTP JSON live feed also caps supplied news by the configured display limit",async()=>{
+  const dir=mkdtempSync(join(tmpdir(),"ogid-news-json-cap-"));
+  const runtime=createAppServer({port:0,host:"127.0.0.1",watchlistCountries:["RU"],disableBackgroundRefresh:true,storage:{enabled:false,businessEnabled:false},news:{providers:[],rssFeeds:[],displayLimit:12},market:{enabled:false,provider:"",fallbackProvider:"",historyDir:dir}});
+  try{
+    await runtime.start();runtime.orchestrator.stateManager.updateIntel({news:Array.from({length:50},(_,i)=>({...article(i,{publishedAt:new Date().toISOString()}),countryMentions:["RU"]}))});
+    const base=`http://127.0.0.1:${runtime.server.address().port}`;
+    for(const suffix of ["","&limit=100"]){const payload=(await (await fetch(`${base}/api/intel/news?countries=RU${suffix}`)).json()).data;assert.equal(payload.news.length,12);assert.equal(payload.meta.newsRead.displayLimit,12);}
+    const smaller=(await (await fetch(`${base}/api/intel/news?countries=RU&limit=5`)).json()).data;assert.equal(smaller.news.length,5);
   }finally{await runtime.stop();rmSync(dir,{recursive:true,force:true});}
 });
 

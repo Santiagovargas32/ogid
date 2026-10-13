@@ -471,6 +471,7 @@ class RefreshOrchestratorService {
             previousArticles: previousSnapshot.news || [],
             watchlistCountries: countryFilter,
             analyzeLimit: this.config.news?.analyzeLimit || 80,
+            displayLimit: this.config.news?.displayLimit || 100,
             candidateWindowHours: this.config.news?.candidateWindowHours || 36,
             maxPerSource: this.config.news?.maxPerSource || 3,
             maxSimilarHeadline: this.config.news?.maxSimilarHeadline || 2

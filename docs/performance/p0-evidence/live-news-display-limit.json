@@ -1,0 +1,77 @@
+{
+  "scope": "configured-live-news-display-limit",
+  "node": "v22.23.3",
+  "backendTests": {
+    "passed": 701,
+    "failed": 0,
+    "skipped": 0
+  },
+  "mcpTests": {
+    "passed": 23,
+    "failed": 0,
+    "skipped": 0
+  },
+  "inventory": {
+    "routes": 73,
+    "operations": 82,
+    "passed": true
+  },
+  "initialBrowserAttempt": {
+    "result": "timeout",
+    "concurrentWithBackendSuite": true,
+    "rootCause": "not-determined; no page diagnostic captured"
+  },
+  "successfulBrowserRepetitions": [
+    {
+      "node": "v22.23.3",
+      "mode": "isolated-sqlite-local-rss",
+      "cases": [
+        {
+          "configuredLimit": 40,
+          "apiReturned": 40,
+          "visibleAfterStateUpdate": 40,
+          "requestedLimits": [
+            40,
+            40
+          ],
+          "pageErrors": []
+        },
+        {
+          "configuredLimit": 100,
+          "apiReturned": 100,
+          "visibleAfterStateUpdate": 100,
+          "requestedLimits": [
+            100,
+            100
+          ],
+          "pageErrors": []
+        }
+      ]
+    },
+    {
+      "node": "v22.23.3",
+      "mode": "isolated-sqlite-local-rss",
+      "cases": [
+        {
+          "configuredLimit": 40,
+          "apiReturned": 40,
+          "visibleAfterStateUpdate": 40,
+          "requestedLimits": [
+            40
+          ],
+          "pageErrors": []
+        },
+        {
+          "configuredLimit": 100,
+          "apiReturned": 100,
+          "visibleAfterStateUpdate": 100,
+          "requestedLimits": [
+            100,
+            100
+          ],
+          "pageErrors": []
+        }
+      ]
+    }
+  ]
+}
