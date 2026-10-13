@@ -68,6 +68,24 @@ test("SQL startup runs background news ingestion without requiring a legacy RSS 
 });
 async function fixture(){const dir=mkdtempSync(join(tmpdir(),"ogid-sql-business-")),db=join(dir,"test.sqlite"),manager=new StorageManager({enabled:true,businessEnabled:true,databasePath:db});await manager.start();await manager.request("domain.configure",{instruments:listVerifiedInstruments(),rootDir:dir,researchSources:[],signalPolicy:{},rss:{rssFeeds:[],maxFeedsPerRun:18,maxCorpusItems:900}});return {dir,db,manager,call:(service,method,...args)=>manager.request("domain.call",{service,method,args}),async close(){await this.manager.close();rmSync(dir,{recursive:true,force:true});}};}
 
+test("news feed and archive reads run on the read-only analysis worker without occupying the writer",async()=>{
+  const f=await fixture();
+  try{
+    await f.call("news","ingest",[article(1,{title:"United States defense forces strike after Russia attack",publishedAt:new Date(Date.now()-1000).toISOString()})]);
+    const writerBefore=f.manager.metrics.completed,analysisBefore=f.manager.analysisManager.metrics.completed;
+    const [feed,live,archive]=await Promise.all([
+      f.call("news","getFeed",{}),f.call("news","getLiveFeed",{}),
+      f.call("news","getLiveFeed",{includeOlder:true,q:"Russia"})
+    ]);
+    assert.equal(feed.items.length,1);assert.equal(live.news.length,1);assert.equal(archive.news.length,1);
+    assert.equal(f.manager.metrics.completed,writerBefore);
+    assert.equal(f.manager.analysisManager.metrics.completed,analysisBefore+3);
+    assert.equal(f.manager.analysisManager.getStatus().queryOnly,true);
+    assert.equal(f.manager.analysisManager.metrics.failed,0);
+    assert.equal((await f.manager.request("pipeline.record",{runId:"after-feed",pipelineId:"storage",startedAt:new Date().toISOString(),status:"healthy",counts:{}})).persisted,true);
+  }finally{await f.close();}
+});
+
 test("ten concurrent analyses use read-only SQL and commit results through the ingestion writer", async () => {
   const f = await fixture();
   try {
@@ -286,6 +304,8 @@ test("SQL HTTP mode serves history, news, map config and health without legacy s
     await runtime.app.locals.newsArchive.ingest([article(1)]);
     const base=`http://127.0.0.1:${runtime.server.address().port}`;
     const pipeline=await (await fetch(base+"/api/admin/pipeline-status")).json();assert.equal(pipeline.data.news.rss.catalog.length,66);assert.equal(pipeline.data.news.rss.availableFeedCount,65);assert.equal(pipeline.data.news.rss.catalog[0].status,"not-polled");assert.equal(pipeline.data.news.rss.catalog[65].status,"disabled");
+    const adminResponse=await fetch(base+"/api/admin/runtime");assert.equal(adminResponse.status,200);
+    const admin=(await adminResponse.json()).data;assert.equal(admin.runtime.ready,true);assert.equal(admin.refresh.pending,0);assert.ok(Object.hasOwn(admin,"rss"));
     for(const endpoint of ["/api/health","/api/admin/history","/api/research/sources","/api/map/config","/api/intel/awareness-snapshot?limit=10","/api/news/search?limit=10","/api/news/aggregate?limit=40","/api/capabilities","/api/research/scenarios","/api/research/companyfacts?companyId=fixture-company","/api/signals/delta","/api/market/conditions",`/api/market/technical-context?instrumentId=${instrumentId}`,`/api/portfolio/context?mode=weekly&instrumentIds=${instrumentId}`]){const response=await fetch(base+endpoint);const body=await response.json();assert.equal(response.status,200,`${endpoint}: ${JSON.stringify(body)}`);assert.equal(body.ok,true);}
     assert.equal(runtime.storageManager.getStatus().businessStorage,"sqlite");
   }finally{await runtime.stop();rmSync(dir,{recursive:true,force:true});}
