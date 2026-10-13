@@ -50,6 +50,11 @@ La persistencia registra el último resultado por etapa o registro. Un guardado
 correcto recupera únicamente esa clave; no oculta errores de otras etapas ni
 permite que una respuesta antigua sustituya un resultado nuevo. `flush()` espera
 todas las escrituras aceptadas antes de informar los fallos pendientes.
+Los guardados append-only (`awareness-audit`, `awareness-poll` y `quotes`) se
+identifican por el hash canónico de su contenido; las cotizaciones se guardan en
+un lote atómico. Guardar otro registro o lote no borra el fallo anterior: sólo
+un reintento correcto del mismo contenido lo recupera. El orden de las claves
+del objeto no cambia esa identidad.
 
 El servidor comprueba ambos workers y drena los guardados iniciales antes de
 escuchar HTTP. El cierre recoge errores, continúa liberando todos los recursos y
