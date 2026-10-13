@@ -174,9 +174,33 @@ en la terminal, conserva fstab y lo actualiza por UUID, crea ext4 y restaura la
 base en su misma ruta. Todos los archivos previos quedan archivados en el volumen
 dedicado a OGID. La copia local se conserva hasta validar la app sobre ext4.
 
-El formateo queda pendiente de ejecutar con autenticación administrativa en la
-terminal del usuario: `sudo -n true` devolvió que hace falta contraseña. El
-procedimiento está preparado; no se ha modificado el formato ni fstab.
+El usuario ejecutó el procedimiento. Terminó correctamente el 13 de octubre a
+las 21:10:31 (Europe/Madrid): ext4 quedó montado, la base y el archivo completo
+restaurados y verificados, y fstab apunta al UUID nuevo
+`b65627ca-8a6b-422b-8747-5687e1154b88`.
+
+La revisión posterior de la ruta no disponible encontró una expulsión mediante
+UDisks: desmontaje a las 21:11:46 y apagado del dispositivo USB a las 21:11:48.
+El script ya había terminado; en ese estado tampoco existían `/dev/sdb` ni
+`/dev/sdb1`. El usuario confirmó que había expulsado o desconectado el disco.
+La reconexión a las 21:18:43 permitió montarlo de nuevo a las 21:18:51 en
+`/srv/bitcoin`. El montaje está activo, la base tiene propietario fedora y modo
+600, todos los checksums del archivo coinciden, la base coincide con la copia
+previa, y la verificación de integridad y claves foráneas pasó sobre ext4.
+
+La app pasó cuatro muestras concurrentes de readiness, advanced-snapshot y los
+dos feeds: 16 respuestas HTTP 200, ambos workers listos, ningún bloqueo ni error,
+27 mensajes WebSocket y cierre intencionado 1001. El proceso salió con código 0
+y `cleanupErrors: 0`. Se detuvo la instancia temporal de prueba.
+
+Después se creó y verificó un backup local actualizado en
+`backend/data/storage-backups/post-ext4-20261013.sqlite`. Se liberó únicamente
+`backend/data/storage-volume-migration/20261013/volume`, la copia temporal de
+83 archivos usada para migrar. Se conservan ambos backups locales, todos los
+archivos previos en `/srv/bitcoin/ogid/archives/pre-ext4-20261013`, el manifiesto,
+la verificación y los recibos de migración y limpieza. El script de formateo ya
+cumplió su función; el UUID actual no coincide con su guard de NTFS.
+
 Ext4 es una opción nativa para Linux; el rendimiento debe comprobarse con esta
 carga y este dispositivo, como advierte la
 [documentación del kernel](https://docs.kernel.org/admin-guide/ext4.html).

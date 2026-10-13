@@ -215,9 +215,9 @@
     }
   },
   "volumeMigration": {
-    "status": "prepared-awaiting-terminal-sudo",
+    "status": "completed-verified",
     "device": "/dev/sdb1",
-    "uuid": "1C5A49F95A49CFE6",
+    "uuid": "b65627ca-8a6b-422b-8747-5687e1154b88",
     "sizeBytes": 1000203091968,
     "copiedFiles": 83,
     "copiedBytes": 6317707488,
@@ -228,7 +228,179 @@
     "copyDatabaseForeignKeys": [],
     "copyDatabaseSha256": "4adea0a8ef708ae2a27d8377d2f160127808c506847bf017689fd28a1223dac8",
     "copyDirectory": "/home/fedora/ogid/backend/data/storage-volume-migration/20261013/volume",
-    "filesystemNotChanged": true
+    "filesystemNotChanged": false,
+    "originalUuid": "1C5A49F95A49CFE6",
+    "filesystem": "ext4",
+    "completedAt": "2026-10-13T21:10:31+02:00",
+    "mounted": true,
+    "archive": "/srv/bitcoin/ogid/archives/pre-ext4-20261013",
+    "archiveChecksumsVerified": true,
+    "activeDatabaseMatchedPreparedCopy": true,
+    "ext4Integrity": "ok",
+    "ext4ForeignKeys": [],
+    "disconnection": {
+      "unmountedAt": "2026-10-13T21:11:46+02:00",
+      "poweredOffAt": "2026-10-13T21:11:48+02:00",
+      "actor": "udisks2",
+      "userConfirmedEjection": true,
+      "reconnectedAt": "2026-10-13T21:18:43+02:00",
+      "remountedAt": "2026-10-13T21:18:51+02:00"
+    },
+    "ext4LiveValidation": {
+      "samples": [
+        {
+          "sample": 0,
+          "responses": [
+            {
+              "path": "/api/health/ready",
+              "status": 200
+            },
+            {
+              "path": "/api/intel/advanced-snapshot?countries=US,IL,IR",
+              "status": 200
+            },
+            {
+              "path": "/api/intel/news?limit=100",
+              "status": 200
+            },
+            {
+              "path": "/api/news/aggregate?limit=100",
+              "status": 200
+            }
+          ],
+          "storage": "ready",
+          "analysis": "ready",
+          "path": "/srv/bitcoin/ogid/db/ogid.sqlite",
+          "writerCpu": 0,
+          "errors": [
+            null,
+            null
+          ],
+          "blocked": [],
+          "messages": 9,
+          "ws": 1
+        },
+        {
+          "sample": 1,
+          "responses": [
+            {
+              "path": "/api/health/ready",
+              "status": 200
+            },
+            {
+              "path": "/api/intel/advanced-snapshot?countries=US,IL,IR",
+              "status": 200
+            },
+            {
+              "path": "/api/intel/news?limit=100",
+              "status": 200
+            },
+            {
+              "path": "/api/news/aggregate?limit=100",
+              "status": 200
+            }
+          ],
+          "storage": "ready",
+          "analysis": "ready",
+          "path": "/srv/bitcoin/ogid/db/ogid.sqlite",
+          "writerCpu": 0,
+          "errors": [
+            null,
+            null
+          ],
+          "blocked": [],
+          "messages": 26,
+          "ws": 1
+        },
+        {
+          "sample": 2,
+          "responses": [
+            {
+              "path": "/api/health/ready",
+              "status": 200
+            },
+            {
+              "path": "/api/intel/advanced-snapshot?countries=US,IL,IR",
+              "status": 200
+            },
+            {
+              "path": "/api/intel/news?limit=100",
+              "status": 200
+            },
+            {
+              "path": "/api/news/aggregate?limit=100",
+              "status": 200
+            }
+          ],
+          "storage": "ready",
+          "analysis": "ready",
+          "path": "/srv/bitcoin/ogid/db/ogid.sqlite",
+          "writerCpu": 0,
+          "errors": [
+            null,
+            null
+          ],
+          "blocked": [],
+          "messages": 26,
+          "ws": 1
+        },
+        {
+          "sample": 3,
+          "responses": [
+            {
+              "path": "/api/health/ready",
+              "status": 200
+            },
+            {
+              "path": "/api/intel/advanced-snapshot?countries=US,IL,IR",
+              "status": 200
+            },
+            {
+              "path": "/api/intel/news?limit=100",
+              "status": 200
+            },
+            {
+              "path": "/api/news/aggregate?limit=100",
+              "status": 200
+            }
+          ],
+          "storage": "ready",
+          "analysis": "ready",
+          "path": "/srv/bitcoin/ogid/db/ogid.sqlite",
+          "writerCpu": 0,
+          "errors": [
+            null,
+            null
+          ],
+          "blocked": [],
+          "messages": 27,
+          "ws": 1
+        }
+      ],
+      "backgroundRefresh": false,
+      "exit": [
+        0,
+        null
+      ],
+      "websocket": {
+        "messages": 27,
+        "close": {
+          "code": 1001,
+          "reason": "server-shutdown"
+        }
+      }
+    },
+    "cleanup": {
+      "timestamp": "2026-10-13T21:26:30.137975+02:00",
+      "removedTemporaryCopy": "/home/fedora/ogid/backend/data/storage-volume-migration/20261013/volume",
+      "removedFiles": 83,
+      "removedLogicalBytes": 6317707488,
+      "archive": "/srv/bitcoin/ogid/archives/pre-ext4-20261013",
+      "archiveChecksumsVerified": true,
+      "independentBackup": "/home/fedora/ogid/backend/data/storage-backups/post-ext4-20261013.sqlite",
+      "independentBackupVerified": true,
+      "ext4SmokePassed": true
+    }
   },
-  "limitation": "El primer error del worker del incidente del 13 de octubre no está en los logs disponibles. Validación puntual, sin soak de 24 horas. El formateo requiere autenticación sudo en la terminal del usuario."
+  "limitation": "El primer error del worker del incidente inicial no está en los logs disponibles. Validación puntual, sin soak de 24 horas. La ruta desapareció después de la migración por la expulsión del disco, confirmada por el usuario y los logs de UDisks."
 }
