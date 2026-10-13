@@ -29,6 +29,9 @@ export function createBusinessAdapters(manager, {rootDir,enabled=true,context=()
     forecasts:proxy("forecasts",["evaluate","record"]),portfolio:proxy("portfolio",["getContext"],{context:true}),
     conditions:proxy("conditions",["getSnapshot"],{context:true}),map,
     advanced:proxy("advanced",["getSnapshot"],{context:true,network:true}),signals,
-    rss:{...proxy("rss",["getSnapshot","refresh"],{network:true}),maxCorpusItems:900}
+    rss:{...proxy("rss",["getSnapshot","refresh"],{network:true}),maxCorpusItems:900,
+      // Administrative diagnostics use the worker's last telemetry sample;
+      // reading them must not start a collection or compete with persistence.
+      getStatus:()=>manager.getStatus().worker?.rss || null}
   };
 }

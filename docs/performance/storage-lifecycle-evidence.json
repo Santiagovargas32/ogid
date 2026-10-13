@@ -402,5 +402,122 @@
       "ext4SmokePassed": true
     }
   },
-  "limitation": "El primer error del worker del incidente inicial no está en los logs disponibles. Validación puntual, sin soak de 24 horas. La ruta desapareció después de la migración por la expulsión del disco, confirmada por el usuario y los logs de UDisks."
+  "limitation": "El primer error del worker del incidente inicial no está en los logs disponibles. Validación puntual, sin soak de 24 horas. La ruta desapareció después de la migración por la expulsión del disco, confirmada por el usuario y los logs de UDisks.",
+  "publicationReview": {
+    "date": "2026-10-13",
+    "operatorInstance": {
+      "pid": 40097,
+      "uptimeSeconds": 491,
+      "writer": {
+        "state": "ready",
+        "failed": 0,
+        "rejected": 0,
+        "lastErrorCode": null,
+        "queryOnly": false,
+        "queue": {
+          "pending": 0,
+          "inFlight": 4,
+          "cpuInFlight": 0,
+          "maxCpuInFlight": 1,
+          "bytes": 1518,
+          "maxItems": 128,
+          "maxBytes": 33554432,
+          "maxCommandBytes": 8388608
+        }
+      },
+      "analysis": {
+        "state": "ready",
+        "failed": 0,
+        "rejected": 0,
+        "lastErrorCode": null,
+        "queryOnly": true,
+        "queue": {
+          "pending": 0,
+          "inFlight": 1,
+          "cpuInFlight": 1,
+          "maxCpuInFlight": 1,
+          "bytes": 147,
+          "maxItems": 128,
+          "maxBytes": 33554432,
+          "maxCommandBytes": 8388608
+        }
+      },
+      "counts": {
+        "articles": 61021,
+        "article_revisions": 92765,
+        "events": 55741,
+        "candles": 26990,
+        "candle_revisions": 27841,
+        "quote_observations": 2558,
+        "signal_buckets": 3105,
+        "awareness_events": 1084,
+        "source_polls": 10829,
+        "ai_enrichments": 0,
+        "acquisition_jobs": 19,
+        "analysis_runs": 688
+      },
+      "sourceMode": "live",
+      "responses": [
+        {
+          "path": "/api/health/ready",
+          "status": 200
+        },
+        {
+          "path": "/api/intel/news?limit=100",
+          "status": 200
+        },
+        {
+          "path": "/api/news/aggregate?limit=100",
+          "status": 200
+        },
+        {
+          "path": "/api/intel/advanced-snapshot?countries=US,IL,IR",
+          "status": 200
+        },
+        {
+          "path": "/api/admin/pipeline-status",
+          "status": 200
+        }
+      ],
+      "websocket": {
+        "messages": 16,
+        "open": true,
+        "heartbeatTimeouts": 0,
+        "dropped": 0
+      }
+    },
+    "diagnosticCorrection": {
+      "endpoint": "/api/admin/runtime",
+      "before": 500,
+      "after": 200,
+      "cause": "SQL RSS adapter lacked getStatus",
+      "implementation": "cached worker RSS telemetry"
+    },
+    "finalValidation": {
+      "samples": 4,
+      "httpResponses": 20,
+      "allHttp200": true,
+      "writerReady": true,
+      "analysisReady": true,
+      "noStorageErrors": true,
+      "noBlockedStages": true,
+      "exit": [
+        0,
+        null
+      ],
+      "websocket": {
+        "messages": 11,
+        "close": {
+          "code": 1001,
+          "reason": "server-shutdown"
+        }
+      }
+    },
+    "integrity": "ok",
+    "foreignKeys": [],
+    "testsPassed": 714,
+    "syntaxPassed": true,
+    "operatorBackendStopped": true,
+    "sqlWatchStopped": true
+  }
 }

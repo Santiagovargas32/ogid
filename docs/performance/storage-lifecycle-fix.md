@@ -204,3 +204,23 @@ cumplió su función; el UUID actual no coincide con su guard de NTFS.
 Ext4 es una opción nativa para Linux; el rendimiento debe comprobarse con esta
 carga y este dispositivo, como advierte la
 [documentación del kernel](https://docs.kernel.org/admin-guide/ext4.html).
+
+## Revisión final antes de subir la rama
+
+La instancia del operador iniciada a las 21:30 se revisó con ingestión real
+activa: los dos workers estaban listos, sin fallos ni rechazos, y las cinco
+rutas de readiness, feeds, análisis y pipeline-status respondieron 200. La
+muestra WebSocket recibió 16 mensajes, sin drops ni timeouts de heartbeat.
+Se detuvo el backend y su monitor SQL mediante SIGINT y se verificó nuevamente
+la integridad de los datos persistidos.
+
+La revisión detectó un 500 de `/api/admin/runtime` en modo SQL: el adaptador RSS
+no implementaba `getStatus()`. Ahora devuelve la última telemetría del worker,
+sin abrir consultas ni iniciar recolecciones desde HTTP. La regresión se añadió
+a la prueba HTTP de repositorios SQL. Las 714 pruebas y la comprobación de
+sintaxis pasaron sobre la versión final.
+
+Una instancia temporal de esa versión pasó cuatro muestras de las cinco rutas,
+incluido `/api/admin/runtime`: 20 respuestas 200, sin bloqueos ni errores de
+storage, 11 mensajes WebSocket, cierre 1001, salida 0 y `cleanupErrors: 0`.
+El backend y el monitor SQL quedaron detenidos, con el volumen ext4 montado.

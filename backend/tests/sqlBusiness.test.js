@@ -304,6 +304,8 @@ test("SQL HTTP mode serves history, news, map config and health without legacy s
     await runtime.app.locals.newsArchive.ingest([article(1)]);
     const base=`http://127.0.0.1:${runtime.server.address().port}`;
     const pipeline=await (await fetch(base+"/api/admin/pipeline-status")).json();assert.equal(pipeline.data.news.rss.catalog.length,66);assert.equal(pipeline.data.news.rss.availableFeedCount,65);assert.equal(pipeline.data.news.rss.catalog[0].status,"not-polled");assert.equal(pipeline.data.news.rss.catalog[65].status,"disabled");
+    const adminResponse=await fetch(base+"/api/admin/runtime");assert.equal(adminResponse.status,200);
+    const admin=(await adminResponse.json()).data;assert.equal(admin.runtime.ready,true);assert.equal(admin.refresh.pending,0);assert.ok(Object.hasOwn(admin,"rss"));
     for(const endpoint of ["/api/health","/api/admin/history","/api/research/sources","/api/map/config","/api/intel/awareness-snapshot?limit=10","/api/news/search?limit=10","/api/news/aggregate?limit=40","/api/capabilities","/api/research/scenarios","/api/research/companyfacts?companyId=fixture-company","/api/signals/delta","/api/market/conditions",`/api/market/technical-context?instrumentId=${instrumentId}`,`/api/portfolio/context?mode=weekly&instrumentIds=${instrumentId}`]){const response=await fetch(base+endpoint);const body=await response.json();assert.equal(response.status,200,`${endpoint}: ${JSON.stringify(body)}`);assert.equal(body.ok,true);}
     assert.equal(runtime.storageManager.getStatus().businessStorage,"sqlite");
   }finally{await runtime.stop();rmSync(dir,{recursive:true,force:true});}
