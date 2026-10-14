@@ -770,15 +770,20 @@ class RefreshOrchestratorService {
       const selectedMarketInstruments = this.config.market.watchlistService?.selectedInstruments?.() || [];
 
       const analysisInput={
-        articles:mergeArticleCorpora(this.stateManager.getMarketSignalCorpus(),this.awarenessService?.getMarketArticles?.() || []),
+        ...(this.config.market.newsFromStorage ? {
+          newsFromStorage:true,
+          corpusOptions:{countries:this.config.watchlistCountries,windowHours:this.config.news.candidateWindowHours,awarenessMode:this.awarenessService?.mode || this.config.awareness?.mode || "off"}
+        } : {articles:mergeArticleCorpora(this.stateManager.getMarketSignalCorpus(),this.awarenessService?.getMarketArticles?.() || [])}),
         countries:analysisSnapshot.countries,marketQuotes:marketState.quotes,tickers:this.config.market.tickers,instruments:selectedMarketInstruments,
-        countryFilter,windowMin:this.config.market.impactWindowMin,inputMode,impactHistory:previousSnapshot.impactHistory || []
+        countryFilter,windowMin:this.config.market.impactWindowMin,inputMode,
+        // The coupling calculation consumes only the last 24 points and these fields.
+        impactHistory:(previousSnapshot.impactHistory || []).slice(-24).map(entry=>({timestamp:entry.timestamp,items:(entry.items || []).map(item=>({ticker:item.ticker,impactScore:item.impactScore,eventScore:item.eventScore,priceReaction:item.priceReaction}))}))
       };
       let snapshot;
       if(this.config.market.analyzeInWorker){
         snapshot=this.stateManager.updateIntel({market:marketState,watchlistCountries:this.config.watchlistCountries});
         this.socketServer.broadcast("update",{market:snapshot.market,meta:snapshot.meta},snapshot.meta);
-        this.scheduleMarketProjection({...analysisInput,marketRevision:snapshot.market.revision});
+        this.scheduleMarketProjection({...analysisInput,marketRevision:snapshot.market.revision,newsRevision:analysisSnapshot.meta?.sourceMeta?.corpus?.revision});
       } else {
         const projection=calculateMarketProjection(analysisInput);
         snapshot=this.stateManager.updateIntel({...projection,market:marketState,watchlistCountries:this.config.watchlistCountries});
@@ -859,9 +864,10 @@ class RefreshOrchestratorService {
         try{
           const projection=await this.config.market.analyzeInWorker(captured);
           if(this.stateManager.state.market.revision!==captured.marketRevision)continue;
+          if(captured.newsRevision!==undefined && this.stateManager.state.meta?.sourceMeta?.corpus?.revision!==captured.newsRevision)continue;
           const snapshot=this.stateManager.updateIntel({...projection,watchlistCountries:this.config.watchlistCountries});
           this.socketServer.broadcast("update",{meta:snapshot.meta,insights:snapshot.insights,predictions:snapshot.predictions,impact:snapshot.impact,impactHistory:snapshot.impactHistory},snapshot.meta);
-        }catch(error){log.warn("market_projection_failed",{code:error.code || "MARKET_ANALYSIS_FAILED"});}
+        }catch(error){log.warn("market_projection_failed",{code:error.code || "MARKET_ANALYSIS_FAILED",command:error.diagnostic});}
       }
     })().finally(()=>{this.marketProjectionTask=null;});
     this.marketProjectionTask=task;this.trackBackground(task);return task;

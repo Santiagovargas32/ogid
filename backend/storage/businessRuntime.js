@@ -25,6 +25,7 @@ import { MapLayerService } from "../services/map/mapLayerService.js";
 import { AdvancedIntelligenceService } from "../services/intel/advancedIntelligenceService.js";
 import { SignalCorrelatorService } from "../services/intel/signalCorrelator.js";
 import { SqlAwarenessStore } from "./sqlAwarenessStore.js";
+import { awarenessMarketArticles } from "../services/awareness/marketArticles.js";
 import apiQuotaTracker from "../services/admin/apiQuotaTrackerService.js";
 
 const METHODS={market:["analyze"],awareness:["parseSource","getSnapshot","reconcile","setSourceStale"],store:["view","getRow"],news:["ingest","recordContext","search","getItem","getHistory","coverage","getProjection","getFeed","getLiveFeed"],events:["ingest","search","replayAwareness"],alerts:["acknowledge","delta","acknowledgeChanges","recoverCheckpoint"],sources:["status","run","holdings"],history:["create","get","run","coverage"],imports:["datasets","import"],technical:["get"],indicators:["calculate"],coupling:["calculate"],scenarios:["refresh","list","remove"],forecasts:["evaluate","record"],portfolio:["getContext"],rss:["getSnapshot","refresh"],conditions:["getSnapshot"],map:["getDashboardMapAssets","getLayerBundle","getConfig"],advanced:["getSnapshot"],signals:["recordSnapshot","getAnomalies"],candles:["query","append","upsert","latest","has","hasCandle","hydrate"]};
@@ -118,7 +119,7 @@ export class BusinessRuntime {
       };
     }
     const savedFeedStatus=this.load("rss-feeds");this.rssCursor=savedFeedStatus?.nextFeedOffset || 0;this.rssFeedStatuses=new Map(Object.entries(savedFeedStatus?.feeds || {}));
-    this.services={market:{analyze:input=>calculateMarketProjection(input)},store,news,events,alerts,candles,imports,technical,scenarios,signals,rss,awareness:new SqlAwarenessStore(this.db),
+    this.services={market:{analyze:input=>this.analyzeMarket(input)},store,news,events,alerts,candles,imports,technical,scenarios,signals,rss,awareness:new SqlAwarenessStore(this.db),
       sources:new OfficialSourceService({store,eventLedger:events,sources:input.researchSources || [],userAgent:process.env.RESEARCH_SEC_USER_AGENT || null}),
       history:new HistoricalAcquisitionService({ledger:store,candleStore:candles,marketDataService:{fetchYahooBars:(symbol,options)=>this.rpc("market.fetch",{symbol,options})}}),
       indicators:new TechnicalIndicatorService({store:candles}),coupling:new NewsPriceCouplingService({store:candles}),forecasts:new ForecastEvaluationService({store,candleStore:candles}),
@@ -158,6 +159,22 @@ export class BusinessRuntime {
     if(kind === "awareness")return {revision:readMeta(this.db,"awareness.revision",0),events:this.db.prepare("SELECT payload_json FROM awareness_events ORDER BY (json_extract(payload_json,'$.scheduledAt')>=? AND json_extract(payload_json,'$.status') IN ('scheduled','live')) DESC, observed_at DESC LIMIT 1000").all(new Date().toISOString()).map(r=>JSON.parse(r.payload_json)),sourceStatus:this.db.prepare("SELECT payload_json FROM awareness_source_status").all().map(r=>JSON.parse(r.payload_json)),polls:this.db.prepare("SELECT source_id,diagnostics_json AS payload_json FROM source_polls WHERE completed_at>=? ORDER BY completed_at").all(new Date(Date.now()-7*86400000).toISOString()).map(r=>({sourceId:r.source_id,poll:JSON.parse(r.payload_json).poll || JSON.parse(r.payload_json)}))};
     if(kind === "ai")return {records:this.db.prepare("SELECT payload_json FROM ai_enrichments ORDER BY observed_at DESC LIMIT 1000").all().reverse().map(r=>JSON.parse(r.payload_json))};
     const row=this.db.prepare("SELECT payload_json FROM runtime_snapshots WHERE kind=?").get(kind);return row?JSON.parse(row.payload_json):null;
+  }
+  async analyzeMarket(input = {}) {
+    if (!input.newsFromStorage) return calculateMarketProjection(input);
+    // The corpus stays in the reader worker. Providers commit before analysis;
+    // SqlNewsCorpus applies the same ranking, filters and transaction as news projections.
+    const options = {awarenessMode:this.newsCorpus.config.awarenessMode || "off",...input.corpusOptions};
+    const corpus = await this.newsCorpus.read(options);
+    const awareness = options.awarenessMode === "visible"
+      ? this.services.awareness.getSnapshot({mode:"visible",publicView:true}) : null;
+    const seen = new Set();
+    const articles = [...corpus.marketSignalCorpus, ...awarenessMarketArticles(awareness || {})].filter(article => {
+      const key = String(article?.id || article?.url || article?.title || "").trim().toLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key); return true;
+    });
+    return {...calculateMarketProjection({...input,articles}),newsCoverage:{...corpus.meta,awarenessRevision:awareness?.revision ?? null,analysisArticleCount:articles.length}};
   }
   async call({service,method,args=[],context}){
     if(service === "quotes" && method === "history"){

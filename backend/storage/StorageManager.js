@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { Worker } from "node:worker_threads";
 import { storageConfig } from "./config.js";
 const error = code => Object.assign(new Error(code), { code, statusCode: 503 });
+const commandLabel = value => typeof value === "string" ? value.slice(0,128) : null;
 const OPERATIONS = new Set(["storage.status", "storage.verify", "storage.checkpoint", "pipeline.record", "domain.configure", "domain.registry", "domain.call", "storage.import", "runtime.save", "runtime.load", "rss.fetch", "news.collect", "news.supplemental", "analysis.persist"]);
 const ISOLATED_SERVICES = new Set(["market","technical","indicators","conditions","advanced","map","coupling"]);
 const ISOLATED_NEWS_METHODS = new Set(["getProjection","getFeed","getLiveFeed"]);
@@ -14,14 +15,31 @@ export class StorageManager extends EventEmitter {
     this.options = storageConfig(options);
     this.state = this.options.enabled ? "new" : "disabled";
     this.queue = []; this.active = new Map(); this.pendingBytes = 0; this.metadata = {};
+    this.recentCommands = [];
     this.metrics = { completed: 0, rejected: 0, failed: 0, lastDurationMs: null, lastErrorCode: null };
   }
   getStatus() {
     return { state: this.state, ...this.metadata, businessStorage: this.metadata.businessStorage || (this.options.businessEnabled ? "sqlite" : "legacy-json"), storagePhase: this.metadata.storagePhase || (this.options.businessEnabled ? "repositories" : "infrastructure"),
       analysis:this.analysisManager?.getStatus() || null,
       databasePath:this.options.databasePath, worker:this.workerDiagnostics || null, lastExpiredCommand:this.lastExpiredCommand || null,
-      activeCommands:[...this.active.values()].map(entry=>({...entry.diagnostic,phase:entry.startedAt?"executing":"dispatched",queuedAt:new Date(entry.queuedAt).toISOString(),elapsedMs:Date.now()-entry.queuedAt,executionMs:entry.startedAt?Date.now()-entry.startedAt:null,timeoutMs:entry.timeoutMs,queueTimeoutMs:entry.queueTimeoutMs})),
+      activeCommands:[...this.active.values()].map(entry=>this.describeCommand(entry)),
+      queuedCommands:this.queue.slice(0,50).map(entry=>this.describeCommand(entry,"queued")),
+      queuedCommandsTruncated:this.queue.length>50,
+      recentCommands:this.recentCommands.map(entry=>({...entry})),lastRejectedCommand:this.lastRejectedCommand ? {...this.lastRejectedCommand} : null,
       queue: { pending: this.queue.length, inFlight: this.active.size, cpuInFlight:[...this.active.values()].filter(entry=>entry.cpu).length,maxCpuInFlight:this.options.maxCpuInFlight,bytes: this.pendingBytes, maxItems: this.options.queueMaxItems, maxBytes: this.options.queueMaxBytes, maxCommandBytes: this.options.maxCommandBytes }, ...this.metrics };
+  }
+  describeCommand(entry, phase = entry.startedAt ? "executing" : "dispatched") {
+    return {...entry.diagnostic,id:entry.id,bytes:entry.bytes,phase,queuedAt:new Date(entry.queuedAt).toISOString(),
+      startedAt:entry.startedAt ? new Date(entry.startedAt).toISOString() : null,elapsedMs:Date.now()-entry.queuedAt,
+      queueMs:(entry.startedAt || Date.now())-entry.queuedAt,executionMs:entry.startedAt ? Date.now()-entry.startedAt : null,
+      timeoutMs:entry.timeoutMs,queueTimeoutMs:entry.queueTimeoutMs};
+  }
+  recordCommand(entry,status,code=null,timing={}) {
+    const record={...this.describeCommand(entry,entry.startedAt?"executing":entry.dispatchedAt?"dispatched":"queued"),status,code,
+      finishedAt:new Date().toISOString(),...timing};
+    this.recentCommands.push(record);
+    if(this.recentCommands.length>50)this.recentCommands.shift();
+    return record;
   }
   async start() {
     if (["closing", "closed", "failed"].includes(this.state)) throw error("STORAGE_NOT_READY");
@@ -85,19 +103,24 @@ export class StorageManager extends EventEmitter {
     let encoded;
     try { encoded = JSON.stringify({ operation, input, requestId }); } catch { return Promise.reject(error("STORAGE_INVALID_COMMAND")); }
     const bytes = Buffer.byteLength(encoded);
-    if (bytes > this.options.maxCommandBytes) {
+    const diagnostic={operation,service:commandLabel(input.service),method:commandLabel(input.method),kind:commandLabel(input.kind)};
+    const rejectCommand=code=>{
       this.metrics.rejected++;
-      const reason = error("STORAGE_COMMAND_TOO_LARGE");
-      reason.diagnostic = {operation,service:input.service || null,method:input.method || null,kind:input.kind || null,bytes,maxCommandBytes:this.options.maxCommandBytes};
+      const reason=error(code);
+      reason.diagnostic={...diagnostic,bytes,maxCommandBytes:this.options.maxCommandBytes,maxQueueBytes:this.options.queueMaxBytes};
+      this.lastRejectedCommand=this.recordCommand({id:randomUUID(),diagnostic,bytes,queuedAt:Date.now(),timeoutMs,queueTimeoutMs},"rejected",code,{maxCommandBytes:this.options.maxCommandBytes,maxQueueBytes:this.options.queueMaxBytes});
       return Promise.reject(reason);
+    };
+    if (bytes > this.options.maxCommandBytes) {
+      return rejectCommand("STORAGE_COMMAND_TOO_LARGE");
     }
     if (this.queue.length + this.active.size >= this.options.queueMaxItems || this.pendingBytes + bytes > this.options.queueMaxBytes) {
-      this.metrics.rejected++; return Promise.reject(error("STORAGE_BACKPRESSURE"));
+      return rejectCommand("STORAGE_BACKPRESSURE");
     }
     return new Promise((resolve, reject) => {
       const slow = ["rss.fetch", "news.collect", "news.supplemental"].includes(operation) || (operation === "domain.call" && (["rss","advanced","map"].includes(input.service) || ["run","import"].includes(input.method)));
       const cpu = operation === "domain.call" && (CPU_SERVICES.has(input.service) || (input.service === "news" && ISOLATED_NEWS_METHODS.has(input.method)));
-      const entry = { id: randomUUID(), encoded, bytes, resolve, reject, slow, cpu, queuedAt:Date.now(),timeoutMs,queueTimeoutMs,diagnostic:{operation,service:input.service || null,method:input.method || null,kind:input.kind || null} };
+      const entry = { id: randomUUID(), encoded, bytes, resolve, reject, slow, cpu, queuedAt:Date.now(),timeoutMs,queueTimeoutMs,diagnostic };
       entry.timer = setTimeout(() => this.expire(entry), queueTimeoutMs);
       this.pendingBytes += bytes; this.queue.push(entry); this.pump();
     });
@@ -149,6 +172,7 @@ export class StorageManager extends EventEmitter {
     }
     const entry = this.active.get(message.id); if (!entry) return;
     this.active.delete(message.id); clearTimeout(entry.timer); this.pendingBytes -= entry.bytes;
+    this.recordCommand(entry,message.error?"failed":"completed",message.error?.code || null,{executionMs:message.durationMs ?? (entry.startedAt?Date.now()-entry.startedAt:null),cpuMs:message.cpuMs ?? null});
     if (message.error) { this.metrics.failed++; this.metrics.lastErrorCode = message.error.code; entry.reject(Object.assign(error(message.error.code), { statusCode: message.error.statusCode || 503, message: message.error.message || message.error.code, causeCode: message.error.causeCode, diagnostic: message.error.diagnostic })); }
     else { this.metrics.lastQueueMs = (entry.startedAt || Date.now()) - entry.queuedAt; this.metrics.lastExecutionMs=message.durationMs;this.metrics.lastTotalMs=Date.now()-entry.queuedAt;this.metrics.lastCpuMs=message.cpuMs ?? null; this.metadata = message.status; this.metrics.completed++; this.metrics.lastDurationMs = message.durationMs; entry.resolve(message.result); }
     this.pump();
@@ -159,6 +183,7 @@ export class StorageManager extends EventEmitter {
     const index = this.queue.indexOf(entry);
     if (index < 0) return;
     this.queue.splice(index, 1); this.pendingBytes -= entry.bytes; this.metrics.failed++;
+    this.recordCommand(entry,"failed","STORAGE_QUEUE_TIMEOUT");
     entry.reject(error("STORAGE_QUEUE_TIMEOUT"));
   }
   fail(reason) {
@@ -167,9 +192,9 @@ export class StorageManager extends EventEmitter {
     this.metrics.lastErrorCode = reason.code;
     this.readyReject?.(reason); this.closeReject?.(reason);
     this.metrics.failed += this.active.size + this.queue.length;
-    for (const entry of this.active.values()) { clearTimeout(entry.timer); entry.reject(error("STORAGE_OUTCOME_UNKNOWN")); }
+    for (const entry of this.active.values()) { clearTimeout(entry.timer); this.recordCommand(entry,"failed","STORAGE_OUTCOME_UNKNOWN");entry.reject(error("STORAGE_OUTCOME_UNKNOWN")); }
     this.active.clear();
-    for (const entry of this.queue.splice(0)) { clearTimeout(entry.timer); entry.reject(error("STORAGE_WORKER_FAILED")); }
+    for (const entry of this.queue.splice(0)) { clearTimeout(entry.timer); this.recordCommand(entry,"failed","STORAGE_WORKER_FAILED");entry.reject(error("STORAGE_WORKER_FAILED")); }
     this.pendingBytes = 0;
     this.termination = this.worker?.terminate();
     // An analysis waiting for its persistence RPC cannot finish after the

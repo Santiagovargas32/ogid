@@ -1,5 +1,11 @@
 # Base en /srv y observador de almacenamiento
 
+Estado comprobado el 14 de octubre de 2026: la misma ruta está montada sobre
+**ext4** tras la migración documentada en `storage-lifecycle-fix.md`; las referencias
+a ntfs3 más abajo corresponden a la inspección del 13 de octubre anterior a ella.
+La corrección de `STORAGE_COMMAND_TOO_LARGE` y el nuevo panel de operaciones
+están explicados en [market-worker-command-budget.md](market-worker-command-budget.md).
+
 El 13 de octubre de 2026 se cambió únicamente la ruta de la configuración local del operador a `/srv/bitcoin/ogid/db/ogid.sqlite`. `STORAGE_ENABLED=1` y `STORAGE_BUSINESS_ENABLED=1` ya estaban activos. El archivo `.env` es privado y no se versiona. El servidor estaba detenido y no se arrancó durante esta tarea.
 
 ## Configuración y próximo arranque
