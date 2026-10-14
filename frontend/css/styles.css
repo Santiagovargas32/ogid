@@ -2571,3 +2571,8 @@ body {
 .section-status[data-state="error"],.section-status[data-state="stale"] { color:#efb879; }
 @media(max-width:767.98px) { .news-feed { padding:.3rem .45rem; height:520px; } .news-item {padding:.7rem; gap:.6rem;} .news-item h3 {font-size:.94rem;} .news-thumb {width:60px;height:54px;flex-basis:60px;} .news-item-footer {align-items:start;flex-direction:column;gap:.5rem;} .news-toolbar {gap:.5rem;} .news-toolbar label {flex:1;} .news-toolbar select {max-width:100%;} .news-card-actions {flex-wrap:wrap;} .news-header-row>div {flex-wrap:wrap;} }
 @media(prefers-reduced-motion:reduce) { .news-arrival {animation:none;} .news-feed {scroll-behavior:auto;} }
+/* Worker diagnostics share the administrative palette and adapt to small screens. */
+.worker-operation-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 12px; padding: 12px; }
+.worker-operation-stats { display: flex; flex-wrap: wrap; gap: 16px; }
+.worker-queue-progress { display: block; width: 100%; height: 8px; margin: 6px 0; accent-color: #66c8e0; }
+.worker-operation-rejection { border-left: 3px solid #ffc107; padding-left: 10px; margin-top: 10px; color: #ffd778; }

@@ -83,6 +83,16 @@
                 <div class="row g-3 px-2 py-2">
                   <div class="col-12">
                     <section class="diagnostic-card">
+                      <header class="diagnostic-card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <span>Operaciones de almacenamiento</span>
+                        <span id="worker-operations-status" class="small text-light-emphasis" role="status">Esperando primera muestra…</span>
+                        <button id="refresh-worker-operations" class="btn btn-sm btn-outline-info" type="button">Actualizar operaciones</button>
+                      </header>
+                      <div id="worker-operations-body" aria-live="off"></div>
+                    </section>
+                  </div>
+                  <div class="col-12">
+                    <section class="diagnostic-card">
                       <header class="diagnostic-card-header">Server, SQLite &amp; Worker</header>
                       <div id="storage-diagnostics-body" class="diagnostic-list"></div>
                     </section>

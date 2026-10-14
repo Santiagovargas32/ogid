@@ -91,6 +91,7 @@ export const api = {
   getMarketAnalytics: (params = {}, options = {}) => request("/api/market/analytics", params, options),
   getApiLimits: (options = {}) => request("/api/admin/api-limits", {}, options),
   getPipelineStatus: (options = {}) => request("/api/admin/pipeline-status", {}, options),
+  getAdminRuntime: (options = {}) => request("/api/admin/runtime", {}, options),
   getAdminNewsRaw: (params = {}, options = {}) => request("/api/admin/news-raw", params, options),
   getAdminAiEnrichments: (params = {}, options = {}) => request("/api/admin/ai-enrichments", params, options),
   refreshMediaStreams: (payload = {}) => request("/api/media/streams/refresh", {}, { method: "POST", body: payload }),

@@ -8,6 +8,8 @@ router.get("/api-limits", getApiLimits);
 router.get("/news-raw", getNewsRaw);
 router.get("/pipeline-status", getPipelineStatus);
 router.get("/runtime", (_req,res) => res.json({ ok: true, data: {
+  sampledAt: new Date().toISOString(),
+  storage: res.app.locals.storageManager?.getStatus?.() || null,
   runtime: res.app.locals.runtimeMetrics.snapshot(),
   websocket: res.app.locals.socketServer.getHealth(),
   refresh: { news:res.app.locals.orchestrator.newsCycleTelemetry, market:res.app.locals.orchestrator.marketCycleTelemetry,

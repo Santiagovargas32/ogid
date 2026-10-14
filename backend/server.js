@@ -835,7 +835,13 @@ export function createAppServer(overrides = {}) {
     stateManager.state.pipelineStatus={...stateManager.state.pipelineStatus,[id]:stage};
     socketServer.broadcast("update",{pipelineStatus:stateManager.state.pipelineStatus});
   },persist:business?(id,stage)=>pipelinePersistence.save("pipeline-stage",{id,stage}):null});
-  if(business)config.market.analyzeInWorker=input=>monitor.run("market.analysis",()=>business.call("market","analyze",[input],{timeoutMs:30000}),{counts:result=>({processed:result.impact?.items?.length || 0})});
+  if(business){
+    config.market.newsFromStorage=true;
+    config.market.analyzeInWorker=input=>monitor.run("market.analysis",()=>business.call("market","analyze",[input],{timeoutMs:30000}),{
+      counts:result=>({processed:result.newsCoverage?.analysisArticleCount ?? result.impact?.items?.length ?? 0}),
+      revision:result=>result.newsCoverage?.revision ?? null
+    });
+  }
   storageManager.on("stage",(id,stage)=>monitor.update(id,stage));
   const researchGuard=async(component,work)=>{
     try{const result=await monitor.run(`research.${component}`,work);const pendingReplay=Boolean(researchPipeline[component]?.pendingReplay);researchPipeline[component]={...monitor.snapshot()[`research.${component}`],status:pendingReplay?"partial":"completed",pendingReplay};return result;}

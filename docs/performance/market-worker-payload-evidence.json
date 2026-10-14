@@ -1,0 +1,18 @@
+{
+  "measuredAt": "2026-10-14T17:25:56.567Z",
+  "databasePath": "/srv/bitcoin/ogid/db/ogid.sqlite",
+  "queryOnly": true,
+  "commandLimitBytes": 8388608,
+  "corpusArticles": 4307,
+  "corpusBytes": 8488467,
+  "previousEnvelopeBytes": 8906752,
+  "newEnvelopeBytes": 73646,
+  "calculationMs": 7326,
+  "impactItems": 18,
+  "predictionTickers": 18,
+  "newsRevision": 142904,
+  "analysisArticleCount": 4406,
+  "awarenessRevision": 6204,
+  "networkAcquisition": false,
+  "originalDatabaseWrites": false
+}

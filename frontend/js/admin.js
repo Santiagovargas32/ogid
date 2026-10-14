@@ -1,6 +1,7 @@
 import { api } from "./api.js";
 import { SectionRefresh } from "./adminRefresh.js";
 import { SmartPollLoop } from "./smartPollLoop.js";
+import { renderWorkerOperations } from "./workerOperations.js";
 
 const POLL_INTERVAL_MS = 60_000;
 const RAW_PAGE_SIZE = 100;
@@ -9,6 +10,11 @@ const elements = {};
 let pollHandle = null;
 let pollFailures = 0;
 let retryUntilMs = 0;
+let workerPollHandle = null;
+const workerSections = new SectionRefresh({onStatus(key,status,error,retained,dataAt){
+  const label=byId("worker-operations-status");
+  if(label)label.textContent=error ? `${retained?"Últimos datos conservados · ":""}${error.message}` : status==="loading" ? "Comprobando…" : `Actualizado ${formatShortTime(dataAt || new Date())}`;
+}});
 const sections = new SectionRefresh({ onStatus(key, status, error, retained, dataAt) {
   const anchor = document.getElementById(key);
   if (!anchor) return;
@@ -1084,6 +1090,20 @@ function startPolling() {
 
 async function bootstrap() {
   cacheElements();
+  let pageClosed=false;
+  window.addEventListener("pagehide", () => {
+    pageClosed=true;
+    pollHandle?.stop();
+    workerPollHandle?.stop();
+    workerSections.stop();
+    sections.stop();
+  },{once:true});
+  const refreshWorkers=()=>workerSections.refresh([{key:"worker-operations-body",load:signal=>api.getAdminRuntime({signal}),render:value=>{
+    byId("worker-operations-body").innerHTML=renderWorkerOperations(value.storage,{sampledAt:value.sampledAt});
+  }}]);
+  byId("refresh-worker-operations")?.addEventListener("click",refreshWorkers);
+  workerPollHandle=new SmartPollLoop({intervalMs:5000,hiddenIntervalMs:60000,task:refreshWorkers});
+  workerPollHandle.start();
   elements.refreshMediaStreamsBtn?.addEventListener("click", async () => {
     elements.refreshMediaStreamsBtn.disabled = true;
     try {
@@ -1098,11 +1118,7 @@ async function bootstrap() {
   elements.aggregateNewsRawNext?.addEventListener("click", async () => handleRawPaginationClick("rssAggregate", 1));
 
   await refreshAll();
-  startPolling();
-  window.addEventListener("pagehide", () => {
-    pollHandle?.stop();
-    sections.stop();
-  });
+  if(!pageClosed)startPolling();
 }
 
 document.addEventListener("DOMContentLoaded", () => {
