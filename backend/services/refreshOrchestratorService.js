@@ -864,7 +864,10 @@ class RefreshOrchestratorService {
         try{
           const projection=await this.config.market.analyzeInWorker(captured);
           if(this.stateManager.state.market.revision!==captured.marketRevision)continue;
-          if(captured.newsRevision!==undefined && this.stateManager.state.meta?.sourceMeta?.corpus?.revision!==captured.newsRevision)continue;
+          // SQL reads the corpus at execution time; its returned revision is authoritative.
+          const analyzedNewsRevision=projection.newsCoverage?.revision ?? captured.newsRevision;
+          const currentNewsRevision=this.stateManager.state.meta?.sourceMeta?.corpus?.revision;
+          if(currentNewsRevision!==undefined && analyzedNewsRevision!==undefined && currentNewsRevision!==analyzedNewsRevision)continue;
           const snapshot=this.stateManager.updateIntel({...projection,watchlistCountries:this.config.watchlistCountries});
           this.socketServer.broadcast("update",{meta:snapshot.meta,insights:snapshot.insights,predictions:snapshot.predictions,impact:snapshot.impact,impactHistory:snapshot.impactHistory},snapshot.meta);
         }catch(error){log.warn("market_projection_failed",{code:error.code || "MARKET_ANALYSIS_FAILED",command:error.diagnostic});}

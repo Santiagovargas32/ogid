@@ -61,10 +61,14 @@ ilimitado de todo el histórico.
 El histórico enviado contiene únicamente los últimos 24 puntos y los campos
 que consume la serie de acoplamiento. Las cotizaciones se publican mientras
 el análisis está pendiente; se mantiene la coalescencia y se descartan respuestas
-si han cambiado la revisión del mercado o el contexto de noticias del proceso
-HTTP. El lector usa la revisión de SQLite disponible al ejecutar, que puede
-ser posterior al último refresco del dashboard; no se presenta como una
-reconstrucción histórica congelada de ese refresco.
+si ha cambiado la revisión del mercado o si la revisión del corpus realmente
+analizado no coincide con la publicada en el proceso HTTP. Se compara
+`projection.newsCoverage.revision`, porque el lector usa la revisión de SQLite
+disponible al ejecutar. Una revisión 2 devuelta cuando el estado ya está en 2
+se aplica aunque se capturara la revisión 1 antes del envío. Los analizadores
+sin cobertura usan la revisión capturada como respaldo; si el estado aún no
+publicó una revisión, no se infiere obsolescencia. Esta lectura no se presenta
+como una reconstrucción histórica congelada del refresco inicial.
 
 Se mantiene un único escritor. La adquisición ya confirma los artículos en
 SQLite antes del análisis; los lotes existentes de ingestión y velas siguen
@@ -105,11 +109,14 @@ no se añade escritura de un log SQL por cada comando.
 Las regresiones verifican un corpus mayor que el presupuesto de petición sin
 recortarlo para transportarlo, igualdad de impactos/predicciones, los modos de
 Awareness, cotizaciones publicadas durante el análisis, coalescencia y descarte
-de contexto obsoleto. Verifican además límites del historial, rechazos por tamaño
+de contexto obsoleto. Cubren la aceptación de la revisión SQL vigente aunque
+avance durante la espera, el rechazo de un corpus devuelto obsoleto y el primer
+resultado antes de que el dashboard publique cobertura. Verifican además límites
+del historial, rechazos por tamaño
 y capacidad, timeout en cola, ausencia de argumentos privados y escape de HTML.
 La prueba HTTP comprueba que obtener el panel no incrementa los comandos SQL.
 
-Se ejecutaron 725 pruebas backend, 23 pruebas MCP y la comprobación de sintaxis
+Se ejecutaron 730 pruebas backend, 23 pruebas MCP y la comprobación de sintaxis
 del backend y frontend; todas pasaron. La validación real abrió la base con `readonly` y `query_only`; calculó
 los 18 tickers con la petición reducida. No arrancó otro escritor ni adquirió
 datos de proveedores. La comprobación del panel es de renderizado y contrato

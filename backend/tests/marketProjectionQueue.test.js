@@ -21,6 +21,29 @@ test('market projections coalesce pending work and discard obsolete market or ne
   assert.equal(applied.length,1);assert.equal(orchestrator.pendingCycles.size,0);
 });
 
+test('market projections validate the corpus returned by the worker rather than the pre-dispatch revision',async t=>{
+  for(const {name,capturedRevision,analyzedRevision,currentRevision,accepted} of [
+    {name:'accepts the newer corpus already published by a news cycle',capturedRevision:1,analyzedRevision:2,currentRevision:2,accepted:true},
+    {name:'rejects an obsolete corpus even when the captured revision matches current state',capturedRevision:2,analyzedRevision:1,currentRevision:2,accepted:false},
+    {name:'rejects a result superseded by another news cycle',capturedRevision:1,analyzedRevision:2,currentRevision:3,accepted:false},
+    {name:'allows the first stored projection before news coverage is published',capturedRevision:undefined,analyzedRevision:0,currentRevision:undefined,accepted:true}
+  ]){
+    await t.test(name,async()=>{
+      let release;const applied=[],broadcasts=[];
+      const state={market:{revision:'market-1'},meta:{sourceMeta:{corpus:{revision:capturedRevision}}}};
+      const orchestrator=new RefreshOrchestratorService({stateManager:{state,updateIntel:value=>{applied.push(value);return {...value,meta:{}};}},socketServer:{broadcast:(...args)=>broadcasts.push(args)},config:{market:{enabled:true,analyzeInWorker:()=>new Promise(resolve=>{release=resolve;})},watchlistCountries:[]}});
+      const task=orchestrator.scheduleMarketProjection({marketRevision:'market-1',newsRevision:capturedRevision});
+      state.meta.sourceMeta.corpus.revision=currentRevision;
+      const projection={newsCoverage:{revision:analyzedRevision},predictions:{tickers:[{ticker:'GD',predictionScore:2}]},impact:{items:[{ticker:'GD',impactScore:3}]}};
+      release(projection);await task;
+      assert.equal(applied.length,accepted?1:0);
+      assert.equal(broadcasts.length,accepted?1:0);
+      if(accepted){assert.deepEqual(applied[0].predictions,projection.predictions);assert.deepEqual(applied[0].impact,projection.impact);}
+      assert.equal(orchestrator.marketProjectionTask,null);assert.equal(orchestrator.pendingCycles.size,0);
+    });
+  }
+});
+
 test('quotes are published while derived analysis is blocked, then projections recover',async()=>{
  let release;const barrier=new Promise(resolve=>{release=resolve;});let calls=0;
  const runtime=createAppServer({port:0,host:'127.0.0.1',disableBackgroundRefresh:true,news:{providers:[],rssFeeds:[]},awareness:{mode:'off'},ai:{provider:'none',mode:'off'},
