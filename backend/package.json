@@ -22,6 +22,7 @@
     "storage:volume-check": "node scripts/storage-volume-check.js",
     "storage:migrate": "node scripts/storage-migrate.js",
     "storage:backup": "node scripts/storage-backup.js",
+    "storage:repair-009": "node scripts/storage-repair-009.js",
     "storage:inspect": "node scripts/storage-inspect.js"
   },
   "engines": {

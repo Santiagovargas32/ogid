@@ -31,3 +31,7 @@ backend/data/maintenance/p0-recovery-validation/
 /data/market/
 !/docs/performance/
 !/docs/performance/**
+docs
+docs/performance
+# Mantener los nuevos Markdown fuera del repositorio.
+*.md
