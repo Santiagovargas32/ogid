@@ -1,9 +1,10 @@
+import { RUNTIME_POLICY } from "../config/runtimePolicy.js";
 import "dotenv/config";
 import { sanitizeSensitiveData } from "../utils/sanitize.js";
 import { summarizeYahooError, YahooClient } from "../services/marketData/yahooClient.js";
 
 const enabled = process.env.RUN_LIVE_UPSTREAM_SMOKE === "1";
-const timeoutMs = Math.max(1_000, Number.parseInt(process.env.MARKET_TIMEOUT_MS || "10000", 10) || 10_000);
+const timeoutMs = RUNTIME_POLICY.market.timeoutMs;
 const yahooSymbols = [...new Set(String(process.env.MARKET_SMOKE_TICKERS || "SPY")
   .split(",")
   .map((value) => value.trim().toUpperCase())

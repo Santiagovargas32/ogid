@@ -1,3 +1,4 @@
+import { RUNTIME_POLICY } from "../config/runtimePolicy.js";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { classifyRssArticle } from "../services/news/rssClassifier.js";
@@ -112,7 +113,7 @@ function feedDiagnostics(feedStatus = []) {
 
 export async function runRssProbe({
   feedSpec,
-  timeoutMs = resolveTimeoutMs(process.env.NEWS_TIMEOUT_MS),
+  timeoutMs = RUNTIME_POLICY.news.timeoutMs,
   fetchImpl = globalThis.fetch,
   nowMs = Date.now()
 } = {}) {

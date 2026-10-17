@@ -1,3 +1,4 @@
+import { RUNTIME_POLICY } from "../../config/runtimePolicy.js";
 import { getCompany } from "../research/companyIdentity.js";
 import { createHash } from "node:crypto";
 import { sessionPolicyResolver } from "./sessionPolicyResolver.js";
@@ -5,7 +6,7 @@ import { sessionPolicyResolver } from "./sessionPolicyResolver.js";
 const VERIFIED_AT = "2026-07-16";
 const DEFAULT_ROLLOUT_BATCH = 1;
 
-export function resolveRolloutBatch(value = process.env.MARKET_WATCHLIST_ROLLOUT) {
+export function resolveRolloutBatch(value = RUNTIME_POLICY.market.watchlistRollout) {
   const parsed = Number.parseInt(String(value ?? ""), 10);
   return Number.isInteger(parsed) && parsed >= 1 && parsed <= 4 ? parsed : DEFAULT_ROLLOUT_BATCH;
 }

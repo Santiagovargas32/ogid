@@ -11,7 +11,7 @@ const LEVEL_PRIORITY = {
 const RECENT_LOG_LIMIT = 200;
 const recentLogs = [];
 
-const configuredLevel = String(process.env.LOG_LEVEL || "info").toLowerCase();
+const configuredLevel = String(process.env.LOG_LEVEL || "info").trim().toLowerCase();
 const DEFAULT_SCOPE = "app";
 
 function shouldLog(level) {

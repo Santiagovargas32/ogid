@@ -3,7 +3,7 @@ import { AdvancedCoordinator } from "./advancedSnapshots.js";
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
 import { Worker } from "node:worker_threads";
-import { storageConfig } from "./config.js";
+import { storageConfig, storageCommandTimeout } from "./config.js";
 const error = code => Object.assign(new Error(code), { code, statusCode: 503 });
 const commandLabel = value => typeof value === "string" ? value.slice(0,128) : null;
 const OPERATIONS = new Set(["storage.status", "storage.verify", "storage.checkpoint", "pipeline.record", "domain.configure", "domain.registry", "domain.call", "storage.import", "runtime.save", "runtime.load", "rss.fetch", "news.collect", "news.supplemental", "analysis.persist", "snapshot.prepare", "snapshot.claim", "snapshot.fail", "snapshot.pending"]);
@@ -88,7 +88,7 @@ export class StorageManager extends EventEmitter {
     }
     return this.getStatus();
   }
-  request(operation, input = {}, { requestId = randomUUID(), timeoutMs = this.options.timeoutMs, queueTimeoutMs = this.options.queueTimeoutMs } = {}) {
+  request(operation, input = {}, { requestId = randomUUID(), timeoutMs = storageCommandTimeout(this.options,operation,input), queueTimeoutMs = this.options.queueTimeoutMs } = {}) {
     if (this.state !== "ready") return this.localRequest(operation,input,{requestId,timeoutMs,queueTimeoutMs});
     if (this.advancedCoordinator && operation === "domain.call" && input.service === "advanced" && input.method === "getSnapshot") return this.advancedCoordinator.get(input);
     if (this.analysisManager && operation === "domain.call" && (ISOLATED_SERVICES.has(input.service) || (input.service === "news" && ISOLATED_NEWS_METHODS.has(input.method)))) return this.analysisManager.request(operation,input,{requestId,timeoutMs,queueTimeoutMs});
@@ -100,7 +100,7 @@ export class StorageManager extends EventEmitter {
     }
     return this.localRequest(operation,input,{requestId,timeoutMs,queueTimeoutMs});
   }
-  localRequest(operation, input = {}, { requestId = randomUUID(), timeoutMs = this.options.timeoutMs, queueTimeoutMs = this.options.queueTimeoutMs } = {}) {
+  localRequest(operation, input = {}, { requestId = randomUUID(), timeoutMs = storageCommandTimeout(this.options,operation,input), queueTimeoutMs = this.options.queueTimeoutMs } = {}) {
     if (!OPERATIONS.has(operation)) return Promise.reject(error("STORAGE_UNKNOWN_OPERATION"));
     if (this.state !== "ready") return Promise.reject(Object.assign(error("STORAGE_NOT_READY"), {
       causeCode: this.metrics.lastErrorCode,
@@ -143,7 +143,7 @@ export class StorageManager extends EventEmitter {
       if(index < 0)break;
       const [entry] = this.queue.splice(index,1); this.active.set(entry.id, entry);
       entry.dispatchedAt=Date.now();
-      try { this.worker.postMessage({ id: entry.id, encoded: entry.encoded }); }
+      try { this.worker.postMessage({ id: entry.id, encoded: entry.encoded, queueDeadline:entry.queuedAt+entry.queueTimeoutMs }); }
       catch { this.fail(error("STORAGE_WORKER_FAILED")); return; }
     }
     if (this.state === "closing" && !this.active.size && !this.queue.length) this.sendClose();
@@ -193,10 +193,23 @@ export class StorageManager extends EventEmitter {
   }
   expire(entry) {
     this.lastExpiredCommand={...entry.diagnostic,queuedAt:new Date(entry.queuedAt).toISOString(),elapsedMs:Date.now()-entry.queuedAt,executionMs:entry.startedAt?Date.now()-entry.startedAt:null,timeoutMs:entry.startedAt?entry.timeoutMs:entry.queueTimeoutMs,phase:this.active.has(entry.id)?(entry.startedAt?"executing":"dispatched"):"queued"};
-    if (this.active.has(entry.id)) { const reason=error("STORAGE_OUTCOME_UNKNOWN");reason.diagnostic=this.lastExpiredCommand;this.fail(reason); return; }
+    if (this.active.has(entry.id)) {
+      // Dispatch is not execution: the worker may still be busy with an earlier
+      // command. It checks queueDeadline before starting any side effects.
+      // Keep the slot until its start/expiry acknowledgement; other writes may
+      // still commit. A separate watchdog bounds a worker that never responds.
+      if(!entry.startedAt && !entry.waitingForStart){
+        entry.waitingForStart=true;
+        entry.timer=setTimeout(()=>this.expire(entry),this.options.timeoutMs);
+        return;
+      }
+      const reason=error("STORAGE_OUTCOME_UNKNOWN");
+      reason.causeCode=entry.startedAt?"STORAGE_EXECUTION_TIMEOUT":"STORAGE_DISPATCH_TIMEOUT";
+      reason.diagnostic=this.lastExpiredCommand;this.fail(reason);return;
+    }
     const index = this.queue.indexOf(entry);
     if (index < 0) return;
-    this.queue.splice(index, 1); this.pendingBytes -= entry.bytes; this.metrics.failed++;
+    clearTimeout(entry.timer);this.queue.splice(index, 1); this.pendingBytes -= entry.bytes; this.metrics.failed++;
     this.recordCommand(entry,"failed","STORAGE_QUEUE_TIMEOUT");
     entry.reject(error("STORAGE_QUEUE_TIMEOUT"));
   }
@@ -206,9 +219,9 @@ export class StorageManager extends EventEmitter {
     this.metrics.lastErrorCode = reason.code;this.metrics.lastErrorAt=new Date().toISOString();this.metrics.lastErrorCategory="worker";this.metrics.failuresByCategory.worker++;
     this.readyReject?.(reason); this.closeReject?.(reason);
     this.metrics.failed += this.active.size + this.queue.length;
-    for (const entry of this.active.values()) { clearTimeout(entry.timer); this.recordCommand(entry,"failed","STORAGE_OUTCOME_UNKNOWN");entry.reject(error("STORAGE_OUTCOME_UNKNOWN")); }
+    for (const entry of this.active.values()) { clearTimeout(entry.timer); this.recordCommand(entry,"failed","STORAGE_OUTCOME_UNKNOWN");entry.reject(Object.assign(error("STORAGE_OUTCOME_UNKNOWN"),{causeCode:reason.causeCode || reason.code,diagnostic:reason.diagnostic})); }
     this.active.clear();
-    for (const entry of this.queue.splice(0)) { clearTimeout(entry.timer); this.recordCommand(entry,"failed","STORAGE_WORKER_FAILED");entry.reject(error("STORAGE_WORKER_FAILED")); }
+    for (const entry of this.queue.splice(0)) { clearTimeout(entry.timer); this.recordCommand(entry,"failed","STORAGE_WORKER_FAILED");entry.reject(Object.assign(error("STORAGE_WORKER_FAILED"),{causeCode:reason.causeCode || reason.code,diagnostic:reason.diagnostic})); }
     this.pendingBytes = 0;
     this.termination = this.worker?.terminate().then(()=>{
       if(!this.options.analysisWorker){try{releaseTerminatedWriter(this.options.databasePath,this.options.writerToken);}catch(error){this.metrics.ownershipCleanupError=error.code || 'STORAGE_LEASE_RELEASE_FAILED';}}

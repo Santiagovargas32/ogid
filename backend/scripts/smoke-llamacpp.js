@@ -1,3 +1,4 @@
+import { RUNTIME_POLICY } from "../config/runtimePolicy.js";
 import "dotenv/config";
 import { createAiProvider } from "../services/ai/aiProviders.js";
 import { AiBudgetService } from "../services/ai/aiBudgetService.js";
@@ -13,11 +14,11 @@ if (process.env.RUN_LIVE_LLAMACPP_SMOKE !== "1") {
       provider: "llamacpp", mode: "shadow",
       baseUrl: process.env.LLAMACPP_BASE_URL, apiKey: process.env.LLAMACPP_API_KEY,
       summaryModel: process.env.LLAMACPP_MODEL_SUMMARY, reasoningModel: process.env.LLAMACPP_MODEL_REASONING,
-      jsonMode: process.env.LLAMACPP_JSON_MODE || "auto",
+      jsonMode: RUNTIME_POLICY.ai.jsonMode,
       allowPrivateHttp: process.env.LLAMACPP_ALLOW_PRIVATE_HTTP === "1",
-      timeoutMs: Number(process.env.AI_TIMEOUT_MS) || 180_000,
-      maxOutputTokens: Number(process.env.AI_MAX_OUTPUT_TOKENS) || 1_200,
-      maxRetries: Number(process.env.AI_MAX_RETRIES ?? 1), maxConcurrency: 1
+      timeoutMs: RUNTIME_POLICY.ai.timeoutMs,
+      maxOutputTokens: RUNTIME_POLICY.ai.maxOutputTokens,
+      maxRetries: RUNTIME_POLICY.ai.maxRetries, maxConcurrency: 1
     });
     const headers = { Accept: "application/json" };
     if (provider.apiKey) headers.Authorization = `Bearer ${provider.apiKey}`;

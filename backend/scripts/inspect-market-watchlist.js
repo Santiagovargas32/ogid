@@ -1,13 +1,11 @@
-import "dotenv/config";
+import "../config/loadEnvironment.js";
+import { fileURLToPath } from "node:url";
 import fs from "node:fs";
 import path from "node:path";
 
-const historyDir = path.resolve(process.cwd(), process.env.MARKET_HISTORY_DIR || "data/market");
+const historyDir = path.resolve(fileURLToPath(new URL("../",import.meta.url)), process.env.MARKET_HISTORY_DIR || "data/market");
 const selectionPath = path.join(historyDir, "watchlist-selection.json");
-const configuredTickers = [...new Set(String(process.env.MARKET_TICKERS || "")
-  .split(",")
-  .map((value) => value.trim().toUpperCase())
-  .filter(Boolean))];
+const configuredTickers = [];
 
 function report(payload) {
   process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
@@ -38,7 +36,7 @@ try {
   if (error?.code === "ENOENT") {
     report({
       ok: true,
-      selectionSource: "environment",
+      selectionSource: "default",
       selectionPath,
       persistedSelectionExists: false,
       configuredMarketTickers: configuredTickers,

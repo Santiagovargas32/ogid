@@ -5,7 +5,6 @@ for (const key of Object.keys(process.env)) {
   if (APPLICATION_ENV_KEYS.has(key) || APPLICATION_ENV_PREFIXES.some((prefix) => key.startsWith(prefix))) delete process.env[key];
 }
 process.env.NODE_ENV = "test";
-process.env.DISABLE_BACKGROUND_REFRESH = "1";
 
 const testMetadataSource = { provider: "test-fixture", verifiedAt: "2026-07-16" };
 const testEquity = (instrumentId, symbol, displayName, {

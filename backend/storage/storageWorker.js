@@ -1,3 +1,4 @@
+import { RUNTIME_POLICY } from "../config/runtimePolicy.js";
 import { assertWriterAvailable, acquireWriter, releaseWriter } from "./writerOwnership.js";
 import { parentPort, workerData, threadId } from "node:worker_threads";
 import { readDatabaseDiagnostics } from "./diagnostics.js";
@@ -22,7 +23,7 @@ function telemetry(){
   parentPort.postMessage({type:"telemetry",worker:{threadId,heartbeatAt:new Date().toISOString(),memory:{heapUsed:memory.heapUsed,heapTotal:memory.heapTotal,external:memory.external},activeCommands:[...activeCommands.values()],lastCompletedCommand,lastFailedCommand,database:diagnostics,rss:runtime?.rssDiagnostics || null,news:{corpus:runtime?.newsCorpus?.lastDiagnostics || null,collection:runtime?.newsPipeline?.diagnostics || null,projection:runtime?.newsPipeline?.projectionDiagnostics || null,supplemental:runtime?.newsPipeline?.supplementalDiagnostics || null}}});
 }
 const rpcPending=new Map();
-function rpc(operation,input){return new Promise((resolve,reject)=>{const id=randomUUID(),timer=setTimeout(()=>{rpcPending.delete(id);reject(Object.assign(new Error("Provider deadline"),{code:"STORAGE_PROVIDER_TIMEOUT"}));},120000);rpcPending.set(id,{resolve,reject,timer});parentPort.postMessage({type:"rpc",id,operation,input});});}
+function rpc(operation,input){return new Promise((resolve,reject)=>{const id=randomUUID(),timer=setTimeout(()=>{rpcPending.delete(id);reject(Object.assign(new Error("Provider deadline"),{code:"STORAGE_PROVIDER_TIMEOUT"}));},RUNTIME_POLICY.storage.providerTimeoutMs);rpcPending.set(id,{resolve,reject,timer});parentPort.postMessage({type:"rpc",id,operation,input});});}
 const fail = code => { throw Object.assign(new Error(code), { code }); };
 function size(file) { try { return statSync(file).size; } catch (error) { if (error.code === "ENOENT") return 0; throw error; } }
 function status() {
@@ -100,6 +101,9 @@ try {
       return;
     }
     try {
+      // An expired message may have waited behind synchronous SQLite work.
+      // Reject it before announcing execution or performing any write.
+      if(Number.isFinite(envelope.queueDeadline) && Date.now()>=envelope.queueDeadline)fail("STORAGE_QUEUE_TIMEOUT");
       const start = performance.now();
       // Attribution is valid only on the isolated analysis worker (one command at a time).
       const cpuStart = workerData.analysisWorker && typeof process.threadCpuUsage === "function" ? process.threadCpuUsage() : null;

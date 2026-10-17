@@ -121,14 +121,15 @@ test("rss lab server preloader clears credentials and keeps outbound traffic fai
     "./scripts/rss-lab-setup.js",
     "--input-type=module",
     "--eval",
-    `let blocked = null;
+    `const {profile}=await import("./scripts/rss-lab-setup.js");
+     let blocked = null;
      try { await fetch("https://blocked.example.test/data"); } catch (error) { blocked = error.code; }
      console.log(JSON.stringify({
        nodeEnv: process.env.NODE_ENV,
        port: process.env.PORT,
-       background: process.env.DISABLE_BACKGROUND_REFRESH,
+       background: String(Number(profile.options.disableBackgroundRefresh)),
        providers: process.env.NEWS_PROVIDERS,
-       feedBatch: process.env.NEWS_RSS_AGGREGATE_FEEDS_PER_RUN,
+       feedBatch: String(profile.options.news.rssAggregateFeedsPerRun),
        market: process.env.MARKET_PROVIDER,
        newsKey: process.env.NEWS_API_KEY,
        youtubeKey: process.env.YOUTUBE_API_KEY,

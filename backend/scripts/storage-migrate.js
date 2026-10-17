@@ -1,3 +1,4 @@
+import { RUNTIME_POLICY } from "../config/runtimePolicy.js";
 import dotenv from "dotenv";
 import { execFileSync } from "node:child_process";
 import { readFileSync, existsSync } from "node:fs";
@@ -26,7 +27,7 @@ const config=readConfig(),researchSources=loadResearchSources(process.env.RESEAR
 const resolve=(variable,fallback)=>path.resolve(backendDir,process.env[variable] || fallback);
 const selection=path.join(config.market.historyDir,"watchlist-selection.json");
 if(existsSync(selection))registerInstruments(JSON.parse(readFileSync(selection,"utf8")).instruments || []);
-const manager=new StorageManager({enabled:true,businessEnabled:true,databasePath,timeoutMs:300000,shutdownTimeoutMs:300000});
+const manager=new StorageManager({enabled:true,businessEnabled:true,databasePath,timeoutMs:RUNTIME_POLICY.storage.maintenanceTimeoutMs,shutdownTimeoutMs:RUNTIME_POLICY.storage.maintenanceTimeoutMs});
 try{
   await manager.start();await manager.request("domain.configure",{instruments:listVerifiedInstruments(),researchSources,rootDir:config.market.historyDir,rss:{rssFeeds:[]},signalPolicy:{}});
   const paths={

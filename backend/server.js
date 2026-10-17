@@ -1,8 +1,9 @@
+import "./config/loadEnvironment.js";
+import { RUNTIME_POLICY as POLICY } from "./config/runtimePolicy.js";
 import { randomUUID } from "node:crypto";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import dotenv from "dotenv";
 import express from "express";
 import helmet from "helmet";
 import routes from "./routes/index.js";
@@ -28,7 +29,7 @@ import { MarketWatchlistService } from "./services/market/marketWatchlistService
 import { MarketConditionsService } from "./services/market/marketConditionsService.js";
 import { MarketDataService, MarketDataStoreAdapter, YahooClient } from "./services/marketData/index.js";
 import { SlidingWindowRateLimiter } from "./services/marketData/rateLimit.js";
-import { resolveRolloutBatch, resolveVerifiedInstrumentReferences, listVerifiedInstruments } from "./services/market/instrumentRegistry.js";
+import { resolveVerifiedInstrumentReferences, listVerifiedInstruments } from "./services/market/instrumentRegistry.js";
 import { calculateMinimumSafeIntervalMs, MarketCreditScheduler, TWELVE_BASIC_POLICY } from "./services/market/marketCreditScheduler.js";
 import MediaStreamService from "./services/media/mediaStreamService.js";
 import { createSocketServer } from "./websocket/socketServer.js";
@@ -44,6 +45,7 @@ import { PipelinePersistence } from "./storage/pipelinePersistence.js";
 import { createBusinessAdapters } from "./storage/businessAdapters.js";
 import { StorageManager } from "./storage/StorageManager.js";
 import { EventLedger } from "./services/research/eventLedger.js";
+import { SecSourceAgent } from "./services/research/secSourceAgent.js";
 import { OfficialSourceService, loadResearchSources } from "./services/research/officialSources.js";
 import { HistoricalAcquisitionService } from "./services/market/historicalAcquisitionService.js";
 import { HistoricalImportService } from "./services/market/historicalImportService.js";
@@ -81,15 +83,7 @@ function toInt(value, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function toPositiveInt(value, fallback = null) {
-  const parsed = Number.parseInt(String(value ?? ""), 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
 
-function toNonNegativeInt(value, fallback = null) {
-  const parsed = Number.parseInt(String(value ?? ""), 10);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
-}
 
 function toList(value, fallback = []) {
   if (!value) {
@@ -102,18 +96,6 @@ function toList(value, fallback = []) {
     .filter(Boolean);
 }
 
-function toStructuredObject(value, fallback = {}) {
-  if (!value) {
-    return structuredClone(fallback);
-  }
-
-  try {
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === "object" ? parsed : structuredClone(fallback);
-  } catch {
-    return structuredClone(fallback);
-  }
-}
 
 function mergeNewsQueryPackGroups(baseGroups = {}, overrides = {}, marketTickers = []) {
   const overrideSource = overrides.queryPackGroups || overrides.queryPacks || {};
@@ -262,7 +244,6 @@ function normalizeMarketOffHoursStrategy(value = "") {
 
 const AI_PROVIDERS = new Set(["none", "nvidia", "llamacpp"]);
 const AI_MODES = new Set(["off", "shadow", "visible"]);
-const AI_FEATURES = new Set(["article-summary", "country-insight", "market-explanation"]);
 
 function normalizeAiProvider(value = "") {
   const normalized = String(value || "none").trim().toLowerCase();
@@ -275,9 +256,6 @@ function normalizeAiMode(value = "") {
   return AI_MODES.has(normalized) ? normalized : "off";
 }
 
-function normalizeAiFeatures(value) {
-  return [...new Set(toList(value, ["article-summary"]).map((item) => item.toLowerCase()).filter((item) => AI_FEATURES.has(item)))];
-}
 
 export function readConfig(overrides = {}) {
   validateNewsSourceCatalog(NEWS_SOURCE_CATALOG);
@@ -289,98 +267,41 @@ export function readConfig(overrides = {}) {
     apiKey: process.env.LLAMACPP_API_KEY || "",
     summaryModel: process.env.LLAMACPP_MODEL_SUMMARY || "",
     reasoningModel: process.env.LLAMACPP_MODEL_REASONING || process.env.LLAMACPP_MODEL_SUMMARY || "",
-    jsonMode: String(process.env.LLAMACPP_JSON_MODE || "auto").trim().toLowerCase(),
+    jsonMode: POLICY.ai.jsonMode,
     allowPrivateHttp: toBool(process.env.LLAMACPP_ALLOW_PRIVATE_HTTP, false)
   } : {
     baseUrl: process.env.NVIDIA_BASE_URL || "https://integrate.api.nvidia.com/v1",
     apiKey: process.env.NVIDIA_API_KEY || "",
-    structuredOutputMode: String(process.env.NVIDIA_STRUCTURED_OUTPUT_MODE || "guided-json").trim().toLowerCase(),
-    summaryModel: process.env.NVIDIA_MODEL_SUMMARY || process.env.NVIDIA_SUMMARY_MODEL || "",
-    reasoningModel: process.env.NVIDIA_MODEL_REASONING || process.env.NVIDIA_REASONING_MODEL || process.env.NVIDIA_MODEL_SUMMARY || process.env.NVIDIA_SUMMARY_MODEL || ""
+    structuredOutputMode: POLICY.ai.structuredOutputMode,
+    summaryModel: process.env.NVIDIA_MODEL_SUMMARY || "",
+    reasoningModel: process.env.NVIDIA_MODEL_REASONING || process.env.NVIDIA_MODEL_SUMMARY || ""
   };
   const newsOverrides = overrides.news || {};
-  const watchlistCountries = toList(process.env.WATCHLIST_COUNTRIES, ["US", "IL", "IR"]).map((value) =>
-    value.toUpperCase()
-  );
-  const newsProviders = toList(process.env.NEWS_PROVIDERS, ["newsapi"]).map((provider) =>
-    provider.toLowerCase()
-  );
-  const newsSourceAllowlist = toList(process.env.NEWS_SOURCE_ALLOWLIST, []).map((source) => source.toLowerCase());
-  const newsDomainAllowlist = toList(process.env.NEWS_DOMAIN_ALLOWLIST, []).map((domain) => domain.toLowerCase());
+  const watchlistCountries = [...POLICY.watchlistCountries];
+  const newsProviders = toList(process.env.NEWS_PROVIDERS, ["rss"]).map(provider=>provider.toLowerCase());
   const rssActiveFeeds = toFeedList(process.env.NEWS_RSS_FEEDS, DEFAULT_RSS_FEEDS);
-  const rssDisabledFeeds = toFeedList(
-    process.env.NEWS_RSS_DISABLED_FEEDS,
-    DEFAULT_RSS_DISABLED_FEEDS,
-    { disabled: true }
-  );
-  const refreshIntervalMs = toPositiveInt(process.env.REFRESH_INTERVAL_MS);
-  const newsPageSize = toPositiveInt(process.env.NEWS_PAGE_SIZE);
-  const newsIntervalMs = toPositiveInt(process.env.NEWS_INTERVAL_MS, refreshIntervalMs);
-  const rssAggregateIntervalMs = toPositiveInt(process.env.NEWS_RSS_AGGREGATE_INTERVAL_MS, 30_000);
-  const rssAggregateFeedsPerRun = toPositiveInt(
-    process.env.NEWS_RSS_AGGREGATE_FEEDS_PER_RUN,
-    18
-  );
-  const rssAggregateMaxItems = toPositiveInt(
-    process.env.NEWS_RSS_AGGREGATE_MAX_ITEMS,
-    900
-  );
+  const rssDisabledFeeds = toFeedList(process.env.NEWS_RSS_DISABLED_FEEDS, DEFAULT_RSS_DISABLED_FEEDS, {disabled:true});
   const envMarketProvider = toTrimmedString(process.env.MARKET_PROVIDER);
   const envMarketFallbackProvider = toTrimmedString(process.env.MARKET_PROVIDER_FALLBACK);
-  const marketWatchlistRollout = resolveRolloutBatch(process.env.MARKET_WATCHLIST_ROLLOUT);
-  const configuredMarketTickers = toList(process.env.MARKET_TICKERS, []).map((ticker) => ticker.toUpperCase());
-  const marketTickers = [...new Set(configuredMarketTickers)];
-  const enabledMarketInstruments = resolveVerifiedInstrumentReferences(marketTickers).instruments;
-  const marketRefreshIntervalMs = toPositiveInt(process.env.MARKET_REFRESH_INTERVAL_MS, refreshIntervalMs);
-  const marketCreditPolicy = {
-    declaredDailyLimit: toPositiveInt(process.env.MARKET_TWELVE_DECLARED_DAILY_LIMIT, 800),
-    declaredMinuteLimit: toPositiveInt(process.env.MARKET_TWELVE_DECLARED_MINUTE_LIMIT, 8),
-    normalSoftLimit: toPositiveInt(process.env.MARKET_TWELVE_NORMAL_SOFT_LIMIT, 600),
-    internalHardLimit: toPositiveInt(process.env.MARKET_TWELVE_INTERNAL_HARD_LIMIT, 700),
-    reservedCapacity: toPositiveInt(process.env.MARKET_TWELVE_RESERVED_CAPACITY, 100),
-    normalMinuteLimit: toPositiveInt(process.env.MARKET_TWELVE_NORMAL_MINUTE_LIMIT, 7),
-    absoluteMinuteLimit: toPositiveInt(process.env.MARKET_TWELVE_ABSOLUTE_MINUTE_LIMIT, 8),
-    costPerOperation: toNonNegativeInt(process.env.MARKET_TWELVE_COST_PER_OPERATION, 0),
-    costPerSymbol: toPositiveInt(process.env.MARKET_TWELVE_COST_PER_SYMBOL, 1)
-  };
-  const hotSymbolCount = enabledMarketInstruments.filter((instrument) => instrument.refreshTier === "hot").length;
-  const safeMarketActiveIntervalMs = normalizeMarketProvider(envMarketProvider) === "twelve"
-    ? calculateMinimumSafeIntervalMs({ symbolCount: Math.max(1, hotSymbolCount), dailyBudget: marketCreditPolicy.normalSoftLimit, policy: marketCreditPolicy })
-    : 0;
-  const marketActiveIntervalMs = Math.max(toPositiveInt(process.env.MARKET_ACTIVE_INTERVAL_MS, marketRefreshIntervalMs), safeMarketActiveIntervalMs);
-  const marketOffHoursIntervalMs = toPositiveInt(process.env.MARKET_OFFHOURS_INTERVAL_MS, marketActiveIntervalMs);
-  const newsBackoffMaxMs = toPositiveInt(process.env.NEWS_BACKOFF_MAX_MS, newsIntervalMs);
-  const normalizedNewsQueryPacks = normalizeNewsQueryPacks(
-    toStructuredObject(process.env.NEWS_QUERY_PACKS, DEFAULT_NEWS_QUERY_PACKS),
-    {
-      marketTickers,
-      defaultEditorialPacks: DEFAULT_NEWS_QUERY_PACKS
-    }
-  );
+  // Selection is already persisted and managed through the watchlist API.
+  const configuredMarketTickers = [];
+  const marketTickers = [];
+  const marketCreditPolicy = {...TWELVE_BASIC_POLICY};
+  const normalizedNewsQueryPacks = normalizeNewsQueryPacks(DEFAULT_NEWS_QUERY_PACKS, {marketTickers,defaultEditorialPacks:DEFAULT_NEWS_QUERY_PACKS});
 
   const config = {
-    port: toInt(process.env.PORT, 8080),
+    port: toInt(process.env.PORT, 3000),
     host: toTrimmedString(process.env.HOST) || undefined,
-    refreshIntervalMs: refreshIntervalMs ?? newsIntervalMs ?? marketRefreshIntervalMs ?? null,
-    wsHeartbeatMs: toInt(process.env.WS_HEARTBEAT_MS, 15_000),
-    wsTransportLimits: {
-      maxMessageBytes: toPositiveInt(process.env.WS_MAX_MESSAGE_BYTES, 65_536),
-      maxBufferedBytes: toPositiveInt(process.env.WS_MAX_BUFFERED_BYTES, 262_144),
-      maxQueueBytes: toPositiveInt(process.env.WS_MAX_QUEUE_BYTES, 262_144),
-      maxQueueItems: toPositiveInt(process.env.WS_MAX_QUEUE_ITEMS, 64),
-      slowClientMs: toPositiveInt(process.env.WS_SLOW_CLIENT_MS, 10_000),
-      closeGraceMs: toPositiveInt(process.env.WS_CLOSE_GRACE_MS, 5_000)
-    },
+    refreshIntervalMs: POLICY.refreshIntervalMs,
+    wsHeartbeatMs: POLICY.wsHeartbeatMs,
+    wsTransportLimits: {...POLICY.wsTransportLimits},
     wsTrustedProxyIps: toList(process.env.WS_TRUSTED_PROXY_IPS),
     wsAllowedOrigins: toList(process.env.WS_ALLOWED_ORIGINS),
     wsPath: "/ws",
     watchlistCountries,
-    manualRefresh: {
-      cooldownMs: toInt(process.env.MANUAL_REFRESH_COOLDOWN_MS, 120_000),
-      perClientWindowMs: toInt(process.env.MANUAL_REFRESH_PER_CLIENT_WINDOW_MS, 900_000),
-      perClientMax: toInt(process.env.MANUAL_REFRESH_PER_CLIENT_MAX, 3)
-    },
+    manualRefresh: {...POLICY.manualRefresh},
     news: {
+      ...structuredClone(POLICY.news),
       providers: newsProviders,
       newsApiKey: process.env.NEWS_API_KEY || "",
       newsApiBaseUrl: process.env.NEWS_API_BASE_URL || "https://newsapi.org/v2",
@@ -392,174 +313,57 @@ export function readConfig(overrides = {}) {
       rssFeeds: mergeFeedLists(rssActiveFeeds, rssDisabledFeeds),
       rssDisabledFeeds,
       sourceCatalog: NEWS_SOURCE_CATALOG,
-      query: process.env.NEWS_QUERY || "geopolitics OR conflict OR sanctions OR military",
       queryPacks: normalizedNewsQueryPacks.flattened,
       queryPackGroups: normalizedNewsQueryPacks,
-      language: process.env.NEWS_LANGUAGE || "en",
-      pageSize: newsPageSize,
-      timeoutMs: toInt(process.env.NEWS_TIMEOUT_MS, 9_000),
-      intervalMs: newsIntervalMs,
-      backoffMaxMs: newsBackoffMaxMs,
-      analyzeLimit: toInt(process.env.NEWS_ANALYZE_LIMIT, 3000),
-      displayLimit: toPositiveInt(process.env.NEWS_DISPLAY_LIMIT, 100),
-      projectionIntervalMs: toPositiveInt(process.env.NEWS_PROJECTION_INTERVAL_MS, 60000),
-      rssPollIntervalMs: toPositiveInt(process.env.NEWS_RSS_POLL_INTERVAL_MS, 60000),
-      rssFeedsPerCycle: toPositiveInt(process.env.NEWS_RSS_FEEDS_PER_CYCLE, 18),
-      freshnessMs: toPositiveInt(process.env.NEWS_FRESHNESS_MS, 600000),
-      dayTimeZone: process.env.NEWS_DAY_TIMEZONE || "Europe/Madrid",
-      candidateWindowHours: toInt(process.env.NEWS_CANDIDATE_WINDOW_HOURS, 36),
-      maxPerSource: toInt(process.env.NEWS_MAX_PER_SOURCE, 3),
-      maxSimilarHeadline: toInt(process.env.NEWS_MAX_SIMILAR_HEADLINE, 2),
-      rssAggregateIntervalMs,
-      rssAggregateFeedsPerRun,
-      rssAggregateMaxItems,
-      rssPipelineMode: process.env.NEWS_RSS_PIPELINE_MODE || "canonical",
-      rssGlobalConcurrency: toPositiveInt(process.env.NEWS_RSS_GLOBAL_CONCURRENCY, 4),
-      rssHostConcurrency: toPositiveInt(process.env.NEWS_RSS_HOST_CONCURRENCY, 1),
-      rssCycleDeadlineMs: toPositiveInt(process.env.NEWS_RSS_CYCLE_DEADLINE_MS, 25_000),
-      rssMaxResponseBytes: toPositiveInt(process.env.NEWS_RSS_MAX_RESPONSE_BYTES, 2_000_000),
-      rssMaxItemsPerFeed: toPositiveInt(process.env.NEWS_RSS_MAX_ITEMS_PER_FEED, 200),
       rssCanonicalStateFile: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, process.env.NEWS_RSS_CANONICAL_STATE_FILE || "data/rss-canonical-state.json"),
-      sourceAllowlist: newsSourceAllowlist,
-      domainAllowlist: newsDomainAllowlist,
-      intervalByBandMs: {
-        GREEN: toPositiveInt(process.env.NEWS_INTERVAL_GREEN_MS, newsIntervalMs),
-        YELLOW: toPositiveInt(process.env.NEWS_INTERVAL_YELLOW_MS, newsIntervalMs),
-        RED: toPositiveInt(process.env.NEWS_INTERVAL_RED_MS, newsIntervalMs),
-        CRITICAL: toPositiveInt(process.env.NEWS_INTERVAL_CRITICAL_MS, newsIntervalMs)
-      },
-      pageSizeByBand: {
-        GREEN: toPositiveInt(process.env.NEWS_PAGE_SIZE_GREEN, newsPageSize),
-        YELLOW: toPositiveInt(process.env.NEWS_PAGE_SIZE_YELLOW, newsPageSize),
-        RED: toPositiveInt(process.env.NEWS_PAGE_SIZE_RED, newsPageSize),
-        CRITICAL: toPositiveInt(process.env.NEWS_PAGE_SIZE_CRITICAL, newsPageSize)
-      },
       countries: watchlistCountries,
       marketTickers
     },
     awareness: {
+      ...POLICY.awareness,
       mode: normalizeAwarenessMode(process.env.AWARENESS_MODE || "off"),
-      timeoutMs: toPositiveInt(process.env.AWARENESS_TIMEOUT_MS, 9_000),
       userAgent: process.env.AWARENESS_USER_AGENT || "OGID-awareness/1.0 (+https://localhost; contact: local-operator)",
-      globalConcurrency: toPositiveInt(process.env.AWARENESS_GLOBAL_CONCURRENCY, 2),
-      hostConcurrency: toPositiveInt(process.env.AWARENESS_HOST_CONCURRENCY, 1),
-      persistent403Threshold: Math.min(10, toPositiveInt(process.env.AWARENESS_PERSISTENT_403_THRESHOLD, 3)),
-      forbiddenCooldownMs: toPositiveInt(process.env.AWARENESS_403_COOLDOWN_MS, 3_600_000),
       snapshotPath: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, process.env.AWARENESS_STATE_FILE || "data/intel/awareness-events.json"),
       auditPath: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, process.env.AWARENESS_AUDIT_FILE || "data/intel/awareness-events.jsonl"),
       pollAuditPath: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, process.env.AWARENESS_POLL_AUDIT_FILE || "data/intel/awareness-polls.jsonl")
     },
     ai: {
+      ...structuredClone(POLICY.ai),
       provider: aiProvider,
       mode: normalizeAiMode(process.env.AI_MODE),
-      features: normalizeAiFeatures(process.env.AI_FEATURES),
       ...aiTransport,
-      timeoutMs: toPositiveInt(process.env.AI_TIMEOUT_MS, 20_000),
-      maxRetries: Math.min(1, toNonNegativeInt(process.env.AI_MAX_RETRIES, 1)),
-      maxConcurrency: Math.min(2, toPositiveInt(process.env.AI_MAX_CONCURRENCY, 1)),
-      maxQueueSize: toPositiveInt(process.env.AI_QUEUE_MAX, 100),
-      maxJobsPerCycle: toPositiveInt(process.env.AI_MAX_JOBS_PER_CYCLE, 10),
-      maxInputChars: toPositiveInt(process.env.AI_MAX_INPUT_CHARS, 6_000),
-      maxOutputTokens: toPositiveInt(process.env.AI_MAX_OUTPUT_TOKENS, 1_200),
-      dailyRequestBudget: toPositiveInt(process.env.AI_DAILY_REQUEST_BUDGET || process.env.AI_REQUEST_DAILY_BUDGET, 50),
-      dailyTokenBudget: toPositiveInt(process.env.AI_DAILY_TOKEN_BUDGET || process.env.AI_TOKEN_DAILY_BUDGET, 100_000),
       stateFile: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, process.env.AI_STATE_FILE || "data/ai/ai-enrichments.json"),
       budgetStateFile: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, process.env.AI_BUDGET_STATE_FILE || "data/ai/ai-budget.json")
     },
     market: {
+      ...structuredClone(POLICY.market),
       enabled: Boolean(envMarketProvider),
       provider: normalizeMarketProvider(envMarketProvider),
       fallbackProvider: envMarketProvider ? normalizeMarketProvider(envMarketFallbackProvider) : "",
       disabledReason: envMarketProvider ? null : "market-provider-empty",
       providerChain: null,
-      twelveApiKey: process.env.MARKET_TWELVE_API_KEY || process.env.TWELVE_DATA_API_KEY || process.env.TWELVEDATA_API_KEY || "",
+      twelveApiKey: process.env.MARKET_TWELVE_API_KEY || "",
       twelveBaseUrl: process.env.MARKET_TWELVE_BASE_URL || "https://api.twelvedata.com",
-      twelveEnablePrepost: toBool(process.env.MARKET_TWELVE_PREPOST, false),
       yahooBaseUrl: process.env.MARKET_YAHOO_BASE_URL || "https://finance.yahoo.com",
-      yahooUserAgent: process.env.MARKET_YAHOO_USER_AGENT || "ogid/1.0",
-      timeoutMs: toInt(process.env.MARKET_TIMEOUT_MS, 10_000),
-      offHoursStrategy: normalizeMarketOffHoursStrategy(process.env.MARKET_OFFHOURS_STRATEGY),
       tickers: marketTickers,
       initialTickers: configuredMarketTickers,
-      watchlistRollout: marketWatchlistRollout,
-      refreshIntervalMs: marketRefreshIntervalMs,
-      minTickerTtlMs: toInt(process.env.MARKET_MIN_TICKER_TTL_MS, 45_000),
-      batchChunkSize: toPositiveInt(process.env.MARKET_BATCH_CHUNK_SIZE),
-      staleTtlMs: toInt(process.env.MARKET_STALE_TTL_MS, 14_400_000),
-      requestReserve: toNonNegativeInt(process.env.MARKET_REQUEST_RESERVE),
-      historyPersist: toBool(process.env.MARKET_HISTORY_PERSIST, true),
       historyDir: resolveMarketHistoryDir(process.env.MARKET_HISTORY_DIR),
       snapshotFile: process.env.MARKET_SNAPSHOT_FILE || "snapshot.json",
-      activeIntervalMs: marketActiveIntervalMs,
-      offHoursIntervalMs: marketOffHoursIntervalMs,
-      intervalByBandMs: {
-        GREEN: {
-          activeIntervalMs: Math.max(toPositiveInt(process.env.MARKET_ACTIVE_INTERVAL_GREEN_MS, marketActiveIntervalMs), safeMarketActiveIntervalMs),
-          offHoursIntervalMs: toPositiveInt(process.env.MARKET_OFFHOURS_INTERVAL_GREEN_MS, marketOffHoursIntervalMs)
-        },
-        YELLOW: {
-          activeIntervalMs: Math.max(toPositiveInt(process.env.MARKET_ACTIVE_INTERVAL_YELLOW_MS, marketActiveIntervalMs), safeMarketActiveIntervalMs),
-          offHoursIntervalMs: toPositiveInt(process.env.MARKET_OFFHOURS_INTERVAL_YELLOW_MS, marketOffHoursIntervalMs)
-        },
-        RED: {
-          activeIntervalMs: Math.max(toPositiveInt(process.env.MARKET_ACTIVE_INTERVAL_RED_MS, marketActiveIntervalMs), safeMarketActiveIntervalMs),
-          offHoursIntervalMs: toPositiveInt(process.env.MARKET_OFFHOURS_INTERVAL_RED_MS, marketOffHoursIntervalMs)
-        },
-        CRITICAL: {
-          activeIntervalMs: Math.max(toPositiveInt(process.env.MARKET_ACTIVE_INTERVAL_CRITICAL_MS, marketActiveIntervalMs), safeMarketActiveIntervalMs),
-          offHoursIntervalMs: toPositiveInt(process.env.MARKET_OFFHOURS_INTERVAL_CRITICAL_MS, marketOffHoursIntervalMs)
-        }
-      },
-      impactWindowMin: toInt(process.env.IMPACT_WINDOW_MIN, 120),
       creditPolicy: marketCreditPolicy,
       creditStateFile: process.env.NODE_ENV === "test" ? null : path.resolve(__dirname, process.env.MARKET_CREDIT_STATE_FILE || "data/market-credit-state.json"),
-      minimumSafeActiveIntervalMs: safeMarketActiveIntervalMs,
-      dailyCandles: {
-        enabled: toBool(process.env.MARKET_DAILY_CANDLES_ENABLED, process.env.NODE_ENV !== "test"),
-        adjustmentMode: ["splits", "none"].includes(process.env.MARKET_DAILY_CANDLES_ADJUSTMENT) ? process.env.MARKET_DAILY_CANDLES_ADJUSTMENT : "splits",
-        retentionDays: toPositiveInt(process.env.MARKET_DAILY_CANDLES_RETENTION_DAYS, 3650),
-        backfillMaxDays: toPositiveInt(process.env.MARKET_DAILY_CANDLES_BACKFILL_MAX_DAYS, 30),
-        equityDelayMinutes: toNonNegativeInt(process.env.MARKET_DAILY_CANDLES_EQUITY_DELAY_MIN, 15),
-        cryptoCloseDelayMinutes: toNonNegativeInt(process.env.MARKET_DAILY_CANDLES_CRYPTO_DELAY_MIN, 5)
-      },
-      intradayCandles: {
-        enabled: toBool(process.env.MARKET_INTRADAY_CANDLES_ENABLED, false),
-        interval: ["5min", "15min", "30min", "1h"].includes(process.env.MARKET_INTRADAY_CANDLES_INTERVAL) ? process.env.MARKET_INTRADAY_CANDLES_INTERVAL : "15min",
-        pollIntervalMs: toPositiveInt(process.env.MARKET_INTRADAY_CANDLES_POLL_MS, 900_000),
-        adjustmentMode: ["splits", "none"].includes(process.env.MARKET_INTRADAY_CANDLES_ADJUSTMENT) ? process.env.MARKET_INTRADAY_CANDLES_ADJUSTMENT : "splits"
-      }
+      dailyCandles: {...POLICY.market.dailyCandles,enabled:process.env.NODE_ENV !== "test" && POLICY.market.dailyCandles.enabled},
+      intradayCandles: {...POLICY.market.intradayCandles,enabled:process.env.NODE_ENV !== "test" && POLICY.market.intradayCandles.enabled}
     },
     apiLimits: {
-      newsapiDailyLimit: toPositiveInt(process.env.NEWSAPI_DAILY_LIMIT, 100),
-      newsapiDailyBudget: toPositiveInt(process.env.NEWSAPI_DAILY_BUDGET, 90),
-      gnewsDailyLimit: toPositiveInt(process.env.GNEWS_DAILY_LIMIT, 100),
-      gnewsDailyBudget: toPositiveInt(process.env.GNEWS_DAILY_BUDGET, 90),
-      mediastackMonthlyLimit: toPositiveInt(process.env.MEDIASTACK_MONTHLY_LIMIT, 100),
-      mediastackMonthlyBudget: toPositiveInt(process.env.MEDIASTACK_MONTHLY_BUDGET, 80),
-      rssDailyLimit: toPositiveInt(process.env.RSS_DAILY_LIMIT),
-      rssDailyBudget: toPositiveInt(process.env.RSS_DAILY_BUDGET),
-      gdeltDailyLimit: toPositiveInt(process.env.GDELT_DAILY_LIMIT),
-      gdeltDailyBudget: toPositiveInt(process.env.GDELT_DAILY_BUDGET),
-      twelveDailyLimit: toPositiveInt(process.env.MARKET_TWELVE_DAILY_LIMIT, 800),
-      twelveDailyBudget: toPositiveInt(process.env.MARKET_TWELVE_DAILY_BUDGET, 700),
-      twelveMinuteLimit: toPositiveInt(process.env.MARKET_TWELVE_MINUTE_LIMIT, 8),
-      twelveMinuteBudget: toPositiveInt(process.env.MARKET_TWELVE_MINUTE_BUDGET, 8),
-      yahooDailyLimit: toPositiveInt(process.env.MARKET_YAHOO_DAILY_LIMIT),
-      yahooDailyBudget: toPositiveInt(process.env.MARKET_YAHOO_DAILY_BUDGET)
+      ...POLICY.apiLimits,
+      twelveDailyLimit: marketCreditPolicy.declaredDailyLimit,
+      twelveDailyBudget: marketCreditPolicy.internalHardLimit,
+      twelveMinuteLimit: marketCreditPolicy.declaredMinuteLimit,
+      twelveMinuteBudget: marketCreditPolicy.absoluteMinuteLimit
     },
     media: {
-      refreshIntervalMs: toInt(process.env.MEDIA_STREAM_REFRESH_INTERVAL_MS, 300_000),
-      timeoutMs: toInt(process.env.MEDIA_STREAM_TIMEOUT_MS, 8_000),
-      youtube: {
-        apiKey: process.env.YOUTUBE_API_KEY || "",
-        searchDailyBudget: toPositiveInt(process.env.YOUTUBE_SEARCH_DAILY_BUDGET, 100),
-        searchReserve: toNonNegativeInt(process.env.YOUTUBE_SEARCH_RESERVE, 40),
-        resolveConcurrency: toPositiveInt(process.env.YOUTUBE_RESOLVE_CONCURRENCY, 2),
-        streamResolvePolicy: process.env.YOUTUBE_STREAM_RESOLVE_POLICY || "lazy",
-        criticalRefreshHours: toPositiveInt(process.env.YOUTUBE_CRITICAL_STREAM_REFRESH_HOURS, 6),
-        normalRefreshHours: toPositiveInt(process.env.YOUTUBE_NORMAL_STREAM_REFRESH_HOURS, 12),
-        lazyRefreshHours: toPositiveInt(process.env.YOUTUBE_LAZY_STREAM_REFRESH_HOURS, 24)
-      }
+      ...POLICY.media,
+      youtube: {...POLICY.media.youtube,apiKey:process.env.YOUTUBE_API_KEY || ""}
     },
     security: {
       adminApiToken: process.env.ADMIN_API_TOKEN || "",
@@ -567,7 +371,6 @@ export function readConfig(overrides = {}) {
       allowLanAdmin: toBool(process.env.ALLOW_LAN_ADMIN, true)
     }
   };
-
   const mergedConfig = {
     ...config,
     ...overrides,
@@ -653,7 +456,7 @@ export function readConfig(overrides = {}) {
       disableBackgroundRefresh:
         overrides.runtime?.disableBackgroundRefresh ??
         overrides.disableBackgroundRefresh ??
-        toBool(process.env.DISABLE_BACKGROUND_REFRESH, false)
+        process.env.NODE_ENV === "test"
     }
   };
 
@@ -705,6 +508,12 @@ export function readConfig(overrides = {}) {
     disabledReason
   };
 
+  const instruments=resolveVerifiedInstrumentReferences(mergedConfig.market.tickers).instruments;
+  const safeMarketActiveIntervalMs=marketEnabled && resolvedMarketProvider === "twelve"
+    ? calculateMinimumSafeIntervalMs({symbolCount:Math.max(1,instruments.filter(i=>i.refreshTier === "hot").length),dailyBudget:mergedConfig.market.creditPolicy.normalSoftLimit,policy:mergedConfig.market.creditPolicy}) : 0;
+  mergedConfig.market.minimumSafeActiveIntervalMs=safeMarketActiveIntervalMs;
+  mergedConfig.market.activeIntervalMs=Math.max(mergedConfig.market.activeIntervalMs,safeMarketActiveIntervalMs);
+  for(const [key,band] of Object.entries(mergedConfig.market.intervalByBandMs))mergedConfig.market.intervalByBandMs[key]={...band,activeIntervalMs:Math.max(band.activeIntervalMs,safeMarketActiveIntervalMs)};
   return mergedConfig;
 }
 
@@ -767,11 +576,11 @@ export function createAppServer(overrides = {}) {
   let businessContext = () => undefined;
   const pipelinePersistence = sqlBusiness ? new PipelinePersistence(storageManager) : null;
   const business = sqlBusiness ? createBusinessAdapters(storageManager, {rootDir:config.market.historyDir,enabled:config.market?.dailyCandles?.enabled !== false || config.market?.intradayCandles?.enabled === true,context:()=>businessContext()}) : null;
-  if (business) config.news.rssWorkerFetch = input => storageManager.request("rss.fetch",input,{timeoutMs:90000});
+  if (business) config.news.rssWorkerFetch = input => storageManager.request("rss.fetch",input);
   if (business) config.news.collectInWorker = async input => {
-    const result=await storageManager.request("news.collect",{...input,deferSupplemental:true},{timeoutMs:180000});
+    const result=await storageManager.request("news.collect",{...input,deferSupplemental:true});
     if(result.supplementalDue){
-      const task=storageManager.request("news.supplemental",{}, {timeoutMs:180000});
+      const task=storageManager.request("news.supplemental",{});
       activeCycles.add(task);
       task.catch(error=>log.warn("rss_supplemental_failed",{code:error.code || "RSS_SUPPLEMENTAL_FAILED"})).finally(()=>activeCycles.delete(task));
     }
@@ -789,7 +598,7 @@ export function createAppServer(overrides = {}) {
     onPersisted:business ? async({candles,persistence})=>{
       if(!persistence.inserted && !persistence.updated)return;
       for(const candle of new Map(candles.map(c=>[`${c.instrumentId}|${c.interval}`,c])).values())
-        await business.call("indicators","calculate",[{instrumentId:candle.instrumentId,interval:candle.interval,adjustmentMode:"splits",limit:500}],{timeoutMs:90000});
+        await business.call("indicators","calculate",[{instrumentId:candle.instrumentId,interval:candle.interval,adjustmentMode:"splits",limit:500}]);
     } : null
   });
   const marketDataService = overrides.marketDataService || config.market.marketDataService || new MarketDataService({
@@ -837,11 +646,13 @@ export function createAppServer(overrides = {}) {
   },persist:business?(id,stage)=>pipelinePersistence.save("pipeline-stage",{id,stage}):null});
   if(business){
     config.market.newsFromStorage=true;
-    config.market.analyzeInWorker=input=>monitor.run("market.analysis",()=>business.call("market","analyze",[input],{timeoutMs:30000}),{
+    config.market.analyzeInWorker=input=>monitor.run("market.analysis",()=>business.call("market","analyze",[input]),{
       counts:result=>({processed:result.newsCoverage?.analysisArticleCount ?? result.impact?.items?.length ?? 0}),
       revision:result=>result.newsCoverage?.revision ?? null
     });
   }
+  const secSourceAgent=new SecSourceAgent({service:officialSourceService,
+    instruments:()=>marketWatchlistService.selectedInstruments(),userAgent:process.env.RESEARCH_SEC_USER_AGENT || "",monitor});
   storageManager.on("stage",(id,stage)=>monitor.update(id,stage));
   const researchGuard=async(component,work)=>{
     try{const result=await monitor.run(`research.${component}`,work);const pendingReplay=Boolean(researchPipeline[component]?.pendingReplay);researchPipeline[component]={...monitor.snapshot()[`research.${component}`],status:pendingReplay?"partial":"completed",pendingReplay};return result;}
@@ -1008,6 +819,7 @@ export function createAppServer(overrides = {}) {
   app.locals.forecastEvaluationService = business?.forecasts || new ForecastEvaluationService({store:researchStore,candleStore:dailyCandleStore});
   app.locals.eventLedger = eventLedger;
   app.locals.officialSourceService = officialSourceService;
+  app.locals.secSourceAgent = secSourceAgent;
   app.locals.technicalContextService = technicalContextService;
   app.locals.scenarioService = scenarioService;
   app.locals.historicalAcquisitionService = business?.history || new HistoricalAcquisitionService({ledger:researchStore,marketDataService,candleStore:dailyCandleStore});
@@ -1078,7 +890,7 @@ export function createAppServer(overrides = {}) {
         // Providers import the versioned catalog locally; retain feed overrides,
         // but avoid transferring the complete catalog with each configuration.
         delete workerNews.sourceCatalog;
-        await storageManager.request("domain.configure", { requireImport:process.env.STORAGE_REQUIRE_IMPORT === "1",instruments:listVerifiedInstruments(),apiLimits:config.apiLimits,news:JSON.parse(JSON.stringify(workerNews)),researchSources,rootDir:config.market.historyDir,candlesEnabled:dailyCandleStore.enabled,intradayEnabled:config.market.intradayCandles.enabled,awarenessMode:config.awareness.mode,signalPolicy:overrides.signalPolicy || loadSignalPolicy(process.env.RESEARCH_SIGNAL_POLICY_FILE),rss:{rssFeeds:config.news.rssFeeds,news:{rssAggregateIntervalMs:config.news.rssAggregateIntervalMs,rssAggregateFeedsPerRun:config.news.rssAggregateFeedsPerRun,rssAggregateMaxItems:config.news.rssAggregateMaxItems},timeoutMs:config.news.timeoutMs,pipelineMode:config.news.rssPipelineMode},newsRetentionDays:Number(process.env.NEWS_RETENTION_DAYS) || 30},{timeoutMs:90000});
+        await storageManager.request("domain.configure", { requireImport:POLICY.storage.requireImport,instruments:listVerifiedInstruments(),apiLimits:config.apiLimits,news:JSON.parse(JSON.stringify(workerNews)),researchSources,rootDir:config.market.historyDir,candlesEnabled:dailyCandleStore.enabled,intradayEnabled:config.market.intradayCandles.enabled,awarenessMode:config.awareness.mode,signalPolicy:overrides.signalPolicy || loadSignalPolicy(process.env.RESEARCH_SIGNAL_POLICY_FILE),rss:{rssFeeds:config.news.rssFeeds,news:{rssAggregateIntervalMs:config.news.rssAggregateIntervalMs,rssAggregateFeedsPerRun:config.news.rssAggregateFeedsPerRun,rssAggregateMaxItems:config.news.rssAggregateMaxItems},timeoutMs:config.news.timeoutMs,pipelineMode:config.news.rssPipelineMode},newsRetentionDays:config.news.retentionDays});
         await newsArchive.coverage();
         await pipelinePersistence.hydrate({awarenessStore,aiStore,aiBudget,marketHistoryStore,quotaTracker:apiQuotaTracker});
         aiCoordinator.syncProjection();
@@ -1157,6 +969,7 @@ export function createAppServer(overrides = {}) {
       if (!config.runtime.disableBackgroundRefresh) {
         void awarenessService.start().catch((error) => log.warn("awareness_start_failed", { message: error.message }));
         orchestrator.start();
+        void secSourceAgent.start();
         mediaStreamService.start();
       }
       log.info("server_started", { port: server.address().port, refreshIntervalMs: config.news.intervalMs });
@@ -1179,7 +992,7 @@ export function createAppServer(overrides = {}) {
       // Attach rejection handlers immediately and drain every owner even when
       // one persistence operation fails. Storage must always release its handles.
       const backgroundStopped = Promise.all([
-        drain(()=>socketServer.close()), drain(()=>awarenessService.stop()),
+        drain(()=>socketServer.close()), drain(()=>awarenessService.stop()),drain(()=>secSourceAgent.stop()),
         drain(()=>mediaStreamService.stop()), drain(()=>marketDataService.close?.())
       ]);
       const cyclesStopped=drain(()=>orchestrator.stop());
@@ -1202,9 +1015,8 @@ export function createAppServer(overrides = {}) {
   };
 }
 
-async function run() {
-  dotenv.config({ path: path.resolve(__dirname, ".env") });
-  const runtime = createAppServer();
+export async function run(overrides = {}) {
+  const runtime = createAppServer(overrides);
   let shuttingDown = false;
 
   const shutdown = async (signal, exitCode = 0) => {

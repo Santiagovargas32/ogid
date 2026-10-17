@@ -94,7 +94,7 @@ export class AdvancedCoordinator {
   constructor(manager) {this.manager=manager;this.tasks=new Map();this.accepting=true;}
   async get(input) {
     if(!this.accepting)throw new AppError('Cierre en curso.',503,'STORAGE_NOT_READY');
-    const value=await this.manager.localRequest('snapshot.prepare',{options:input.args?.[0] || {},context:input.context},{timeoutMs:5000,queueTimeoutMs:5000});
+    const value=await this.manager.localRequest('snapshot.prepare',{options:input.args?.[0] || {},context:input.context});
     const {dispatchJobId,...response}=value;
     if(dispatchJobId)this.dispatch(dispatchJobId);
     return response;
@@ -104,7 +104,7 @@ export class AdvancedCoordinator {
     const task=(async()=>{
       const job=await this.manager.localRequest('snapshot.claim',{jobId});
       if(!job)return;
-      await this.manager.analysisManager.localRequest('domain.call',{service:'advanced',method:'getSnapshot',args:[{...job.options,force:true,asOf:job.asOf}],context:job.context,analysisJob:job},{timeoutMs:180000});
+      await this.manager.analysisManager.localRequest('domain.call',{service:'advanced',method:'getSnapshot',args:[{...job.options,force:true,asOf:job.asOf}],context:job.context,analysisJob:job});
     })().catch(async reason=>{
       // A commit may have succeeded before a lost reply; fail() never demotes it.
       try{await this.manager.localRequest('snapshot.fail',{jobId,code:reason.code || 'ANALYSIS_FAILED'});}catch{ /* durable running job is reconciled at restart */ }

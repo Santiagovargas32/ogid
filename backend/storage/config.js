@@ -1,3 +1,4 @@
+import { RUNTIME_POLICY } from "../config/runtimePolicy.js";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 const backendDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -7,23 +8,37 @@ function integer(value, fallback, minimum) {
   return number;
 }
 export function storageConfig(overrides = {}, env = process.env) {
-  const enabled = overrides.enabled ?? (env.STORAGE_ENABLED === "1");
+  const policy=RUNTIME_POLICY.storage;
+  // Production always uses the durable SQL backend. Tests/maintenance select
+  // infrastructure or legacy adapters through explicit constructor overrides.
+  const enabled=overrides.enabled ?? (env.NODE_ENV !== "test" && policy.enabled);
+  const businessEnabled=overrides.businessEnabled ?? (env.NODE_ENV !== "test" && policy.businessEnabled);
   return {
     enabled,
-    analysisWorker: overrides.analysisWorker === true,
-    isolateAnalysis: overrides.isolateAnalysis !== false,
-    businessEnabled: overrides.businessEnabled ?? (env.STORAGE_BUSINESS_ENABLED === "1"),
-    maxInFlight: integer(overrides.maxInFlight, (overrides.businessEnabled ?? (env.STORAGE_BUSINESS_ENABLED === "1")) ? 8 : 1, 1),
-    maxCpuInFlight: integer(overrides.maxCpuInFlight, 1, 1),
-    databasePath: path.resolve(backendDir, overrides.databasePath || env.STORAGE_DB_PATH || "data/sqlite/ogid.sqlite"),
-    queueMaxItems: integer(overrides.queueMaxItems ?? env.STORAGE_QUEUE_MAX_ITEMS, 128, 1),
-    queueMaxBytes: integer(overrides.queueMaxBytes ?? env.STORAGE_QUEUE_MAX_BYTES, (overrides.businessEnabled ?? (env.STORAGE_BUSINESS_ENABLED === "1")) ? 32 * 1024 * 1024 : 8 * 1024 * 1024, 1),
-    maxCommandBytes: integer(overrides.maxCommandBytes ?? env.STORAGE_MAX_COMMAND_BYTES, (overrides.businessEnabled ?? (env.STORAGE_BUSINESS_ENABLED === "1")) ? 8 * 1024 * 1024 : 256 * 1024, 1),
-    timeoutMs: integer(overrides.timeoutMs ?? env.STORAGE_TIMEOUT_MS, 15000, 1),
-    queueTimeoutMs: integer(overrides.queueTimeoutMs ?? env.STORAGE_QUEUE_TIMEOUT_MS, (overrides.businessEnabled ?? (env.STORAGE_BUSINESS_ENABLED === "1")) ? 90000 : 15000, 1),
-    startupTimeoutMs: integer(overrides.startupTimeoutMs, 30000, 1),
-    shutdownTimeoutMs: integer(overrides.shutdownTimeoutMs ?? env.STORAGE_SHUTDOWN_TIMEOUT_MS, 30000, 1),
-    busyTimeoutMs: integer(overrides.busyTimeoutMs, 2000, 0),
-    migrationsDir: overrides.migrationsDir
+    analysisWorker:overrides.analysisWorker === true,
+    isolateAnalysis:overrides.isolateAnalysis !== false,
+    businessEnabled,
+    maxInFlight:integer(overrides.maxInFlight,businessEnabled?policy.maxInFlight:1,1),
+    maxCpuInFlight:integer(overrides.maxCpuInFlight,policy.maxCpuInFlight,1),
+    databasePath:path.resolve(backendDir,overrides.databasePath || env.STORAGE_DB_PATH || "data/sqlite/ogid.sqlite"),
+    queueMaxItems:integer(overrides.queueMaxItems,policy.queueMaxItems,1),
+    queueMaxBytes:integer(overrides.queueMaxBytes,businessEnabled?policy.queueMaxBytes:8*1024*1024,1),
+    maxCommandBytes:integer(overrides.maxCommandBytes,businessEnabled?policy.maxCommandBytes:256*1024,1),
+    timeoutMs:integer(overrides.timeoutMs,policy.timeoutMs,1),
+    queueTimeoutMs:integer(overrides.queueTimeoutMs,policy.queueTimeoutMs,1),
+    startupTimeoutMs:integer(overrides.startupTimeoutMs,policy.startupTimeoutMs,1),
+    shutdownTimeoutMs:integer(overrides.shutdownTimeoutMs,policy.shutdownTimeoutMs,1),
+    busyTimeoutMs:integer(overrides.busyTimeoutMs,policy.busyTimeoutMs,0),
+    // A tool's explicit default deadline takes precedence over application
+    // profiles; an inherited worker map retains the owner's resolved profiles.
+    commandTimeouts:{...(overrides.timeoutMs === undefined?policy.commandTimeouts:{}),...overrides.commandTimeouts},
+    networkTimeoutMs:integer(overrides.networkTimeoutMs ?? overrides.timeoutMs,policy.networkTimeoutMs,1),
+    migrationsDir:overrides.migrationsDir
   };
+}
+
+export function storageCommandTimeout(options,operation,input={}) {
+  const key=operation === "domain.call" ? `${operation}:${input.service}:${input.method}` : operation;
+  return options.commandTimeouts?.[key] ?? (operation === "domain.call" && ["run","import","refresh"].includes(input.method)
+    ? options.networkTimeoutMs : options.timeoutMs);
 }

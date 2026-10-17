@@ -13,10 +13,10 @@ export function captureBuildIdentity(component, version) {
   function scan(dir) { for (const entry of readdirSync(path.join(root, dir), { withFileTypes: true }).sort((a,b) => a.name.localeCompare(b.name))) {
     const relative = path.join(dir, entry.name);
     if (entry.isDirectory()) scan(relative);
-    else if (entry.isFile() && /\.(js|json)$/.test(entry.name)) { digest.update(relative); digest.update(readFileSync(path.join(root, relative))); }
+    else if (entry.isFile() && /\.(js|json|sql)$/.test(entry.name)) { digest.update(relative); digest.update(readFileSync(path.join(root, relative))); }
   } }
   let artifactHash = null;
-  try { for (const dir of component === "backend" ? ["backend/contracts", "backend/controllers", "backend/middleware", "backend/routes", "backend/services", "backend/state", "backend/utils"] : ["integrations/ogid-mcp/src", "backend/contracts", "backend/utils"]) scan(dir);
+  try { for (const dir of component === "backend" ? ["backend/config", "backend/storage", "backend/contracts", "backend/controllers", "backend/middleware", "backend/routes", "backend/services", "backend/state", "backend/utils"] : ["integrations/ogid-mcp/src", "backend/contracts", "backend/utils"]) scan(dir);
     if (component === "backend") digest.update(readFileSync(path.join(root, "backend/server.js"))); artifactHash = digest.digest("hex");
   } catch { /* Un artefacto incompleto no acredita identidad. */ }
   const declared = process.env.OGID_BUILD_COMMIT;

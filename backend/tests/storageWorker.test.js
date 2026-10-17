@@ -158,6 +158,31 @@ test("server shutdown releases both SQL workers after stage persistence fails",a
   }finally{if(!stopped)await runtime.stop().catch(()=>{});await f.close();}
 });
 
+test("a dispatched command that expires before starting is skipped without killing an accepted write",async()=>{
+  const f=fixture({maxInFlight:2,timeoutMs:5000,busyTimeoutMs:3000});let lock;
+  try {
+    await f.manager.start();lock=new Database(f.databasePath);lock.exec("BEGIN IMMEDIATE");
+    const started=new Promise(resolve=>{
+      const onMessage=message=>{if(message.type==="command-started"){f.manager.worker.off("message",onMessage);resolve();}};
+      f.manager.worker.on("message",onMessage);
+    });
+    const firstRow=run(),expiredRow=run();
+    const first=f.manager.request("pipeline.record",firstRow);
+    const firstResult=assert.doesNotReject(first);
+    await started;
+    const expired=assert.rejects(f.manager.request("pipeline.record",expiredRow,{queueTimeoutMs:20}),{code:"STORAGE_QUEUE_TIMEOUT"});
+    await new Promise(resolve=>setTimeout(resolve,80));
+    assert.equal(f.manager.state,"ready");
+    lock.exec("ROLLBACK");
+    await Promise.all([firstResult,expired]);
+    assert.equal((await first).persisted,true);
+    assert.equal(f.manager.state,"ready");
+    assert.equal(f.manager.getStatus().queue.bytes,0);
+    assert.deepEqual(lock.prepare("SELECT run_id FROM pipeline_runs").all(),[{run_id:firstRow.runId}]);
+    assert.equal((await f.manager.request("storage.status")).businessStorage,"legacy-json");
+  } finally {if(lock?.inTransaction)lock.exec("ROLLBACK");lock?.close();await f.close();}
+});
+
 test("timeout of dispatched write reports unknown outcome and fails the worker",async()=>{
   const f=fixture({timeoutMs:100,busyTimeoutMs:3000});let lock;
   try {await f.manager.start();lock=new Database(f.databasePath);lock.exec("BEGIN IMMEDIATE");await assert.rejects(f.manager.request("pipeline.record",run()),{code:"STORAGE_OUTCOME_UNKNOWN"});assert.equal(f.manager.state,"failed");const command=f.manager.getStatus().lastExpiredCommand;assert.equal(command.operation,"pipeline.record");assert.equal(command.timeoutMs,100);assert.ok(["executing","dispatched"].includes(command.phase));lock.exec("ROLLBACK");}

@@ -51,3 +51,33 @@ test("admin worker panel shows both workers, command budgets and rejection reaso
   assert.ok(renderWorkerOperations({state:"disabled"}).includes("desactivado"));
   assert.ok(renderWorkerOperations({state:"ready"}).includes("Sin operaciones"));
 });
+
+
+test("a delayed start acknowledgement keeps the worker and its occupied slot alive",async()=>{
+  const manager=new StorageManager({enabled:true,maxInFlight:1,timeoutMs:1000});
+  let sent;
+  manager.state="ready";manager.worker={postMessage(value){sent=value;}};
+  const pending=manager.request("storage.status",{},{queueTimeoutMs:10});
+  const entry=[...manager.active.values()][0];
+  assert.equal(sent.queueDeadline,entry.queuedAt+10);
+  clearTimeout(entry.timer);manager.expire(entry);
+  assert.equal(manager.state,"ready");assert.equal(manager.active.size,1);
+  assert.equal(manager.pendingBytes,entry.bytes);
+  manager.handleMessage({type:"command-started",id:entry.id,startedAt:entry.queuedAt});
+  manager.handleMessage({id:entry.id,result:{ok:true},durationMs:1,status:{}});
+  assert.deepEqual(await pending,{ok:true});assert.equal(manager.pendingBytes,0);
+});
+
+test("a worker that never acknowledges a dispatched command still fails with the originating diagnostic",async()=>{
+  const manager=new StorageManager({enabled:true,analysisWorker:true,timeoutMs:1000});
+  manager.state="ready";manager.worker={postMessage(){},async terminate(){}};
+  const pending=manager.request("storage.status",{},{queueTimeoutMs:10});
+  const rejected=assert.rejects(pending,reason=>{
+    assert.equal(reason.code,"STORAGE_OUTCOME_UNKNOWN");assert.equal(reason.causeCode,"STORAGE_DISPATCH_TIMEOUT");
+    assert.equal(reason.diagnostic.operation,"storage.status");assert.equal(reason.diagnostic.phase,"dispatched");return true;
+  });
+  const entry=[...manager.active.values()][0];
+  clearTimeout(entry.timer);manager.expire(entry);
+  clearTimeout(entry.timer);manager.expire(entry);
+  await rejected;await manager.close();assert.equal(manager.state,"failed");assert.equal(manager.pendingBytes,0);
+});

@@ -1,0 +1,137 @@
+{
+  "schemaVersion": "sec-company-catalog-v1",
+  "verifiedAt": "2026-10-17",
+  "companies": [
+    {
+      "companyId": "sec-cik-0000789019",
+      "name": "MICROSOFT CORP",
+      "cik": "0000789019",
+      "symbols": [
+        "MSFT"
+      ],
+      "sourcePrefix": "sec-msft",
+      "metadataSource": {
+        "url": "https://data.sec.gov/submissions/CIK0000789019.json",
+        "verifiedAt": "2026-10-17"
+      }
+    },
+    {
+      "companyId": "sec-cik-0001045810",
+      "name": "NVIDIA CORP",
+      "cik": "0001045810",
+      "symbols": [
+        "NVDA"
+      ],
+      "sourcePrefix": "sec-nvda",
+      "metadataSource": {
+        "url": "https://data.sec.gov/submissions/CIK0001045810.json",
+        "verifiedAt": "2026-10-17"
+      }
+    },
+    {
+      "companyId": "sec-cik-0001652044",
+      "name": "Alphabet Inc.",
+      "cik": "0001652044",
+      "symbols": [
+        "GOOG",
+        "GOOGL"
+      ],
+      "sourcePrefix": "sec-alphabet",
+      "metadataSource": {
+        "url": "https://data.sec.gov/submissions/CIK0001652044.json",
+        "verifiedAt": "2026-10-17"
+      }
+    },
+    {
+      "companyId": "sec-cik-0000937966",
+      "name": "ASML HOLDING NV",
+      "cik": "0000937966",
+      "symbols": [
+        "ASML"
+      ],
+      "sourcePrefix": "sec-asml",
+      "metadataSource": {
+        "url": "https://data.sec.gov/submissions/CIK0000937966.json",
+        "verifiedAt": "2026-10-17"
+      }
+    },
+    {
+      "companyId": "sec-cik-0000002488",
+      "name": "ADVANCED MICRO DEVICES INC",
+      "cik": "0000002488",
+      "symbols": [
+        "AMD"
+      ],
+      "sourcePrefix": "sec-amd",
+      "metadataSource": {
+        "url": "https://data.sec.gov/submissions/CIK0000002488.json",
+        "verifiedAt": "2026-10-17"
+      }
+    },
+    {
+      "companyId": "sec-cik-0001341439",
+      "name": "ORACLE CORP",
+      "cik": "0001341439",
+      "symbols": [
+        "ORCL"
+      ],
+      "sourcePrefix": "sec-orcl",
+      "metadataSource": {
+        "url": "https://data.sec.gov/submissions/CIK0001341439.json",
+        "verifiedAt": "2026-10-17"
+      }
+    },
+    {
+      "companyId": "sec-cik-0000320193",
+      "name": "Apple Inc.",
+      "cik": "0000320193",
+      "symbols": [
+        "AAPL"
+      ],
+      "sourcePrefix": "sec-aapl",
+      "metadataSource": {
+        "url": "https://data.sec.gov/submissions/CIK0000320193.json",
+        "verifiedAt": "2026-10-17"
+      }
+    },
+    {
+      "companyId": "sec-cik-0000936468",
+      "name": "LOCKHEED MARTIN CORP",
+      "cik": "0000936468",
+      "symbols": [
+        "LMT"
+      ],
+      "sourcePrefix": "sec-lmt",
+      "metadataSource": {
+        "url": "https://data.sec.gov/submissions/CIK0000936468.json",
+        "verifiedAt": "2026-10-17"
+      }
+    },
+    {
+      "companyId": "sec-cik-0001133421",
+      "name": "NORTHROP GRUMMAN CORP /DE/",
+      "cik": "0001133421",
+      "symbols": [
+        "NOC"
+      ],
+      "sourcePrefix": "sec-noc",
+      "metadataSource": {
+        "url": "https://data.sec.gov/submissions/CIK0001133421.json",
+        "verifiedAt": "2026-10-17"
+      }
+    },
+    {
+      "companyId": "sec-cik-0000040533",
+      "name": "GENERAL DYNAMICS CORP",
+      "cik": "0000040533",
+      "symbols": [
+        "GD"
+      ],
+      "sourcePrefix": "sec-gd",
+      "metadataSource": {
+        "url": "https://data.sec.gov/submissions/CIK0000040533.json",
+        "verifiedAt": "2026-10-17"
+      }
+    }
+  ]
+}

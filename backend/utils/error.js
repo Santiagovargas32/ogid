@@ -27,6 +27,8 @@ export function errorHandler(error, req, res, _next) {
     path: req.originalUrl,
     statusCode,
     code,
+    causeCode: error.causeCode || null,
+    command: error.diagnostic || null,
     details: error.details || null,
     stack: statusCode >= 500 ? error.stack : undefined
   });

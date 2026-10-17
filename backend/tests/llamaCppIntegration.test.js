@@ -60,7 +60,7 @@ test("llama.cpp shadow persists all three features and public REST/WebSockets ex
   const runtime = createAppServer({ port: 0, host: "127.0.0.1", disableBackgroundRefresh: true,
     news: { providers: [], rssFeeds: [] }, market: { provider: "", historyPersist: false },
     aiProvider,
-    ai: { provider: "llamacpp", mode: "shadow", features: ["article-summary", "country-insight", "market-explanation"],
+    ai: { provider: "llamacpp", mode: "shadow", maxJobsPerCycle:10, features: ["article-summary", "country-insight", "market-explanation"],
       baseUrl: "http://localhost:8080/v1", apiKey: "private-test-key", summaryModel: "qwen3.8-27b",
       stateFile: join(directory, "enrichments.json"), budgetStateFile: join(directory, "budget.json") }
   });

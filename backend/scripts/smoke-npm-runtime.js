@@ -4,7 +4,7 @@ import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import WebSocket from 'ws';
-const child=spawn('npm',['start'],{cwd:fileURLToPath(new URL('..',import.meta.url)),detached:true,stdio:['ignore','pipe','pipe'],env:{...process.env,NODE_ENV:'test',HOST:'0.0.0.0',PORT:'0',DISABLE_BACKGROUND_REFRESH:'1',AI_PROVIDER:'none',AI_MODE:'off',AWARENESS_MODE:'off',MARKET_HISTORY_PERSIST:'0',MARKET_DAILY_CANDLES_ENABLED:'0',MARKET_INTRADAY_CANDLES_ENABLED:'0',LOG_LEVEL:'info'}});
+const child=spawn('npm',['start'],{cwd:fileURLToPath(new URL('..',import.meta.url)),detached:true,stdio:['ignore','pipe','pipe'],env:{...process.env,NODE_ENV:'test',HOST:'0.0.0.0',PORT:'0',AI_PROVIDER:'none',AI_MODE:'off',AWARENESS_MODE:'off',LOG_LEVEL:'info'}});
 let output='',errorOutput='',port;
 const exited=once(child,'exit');
 child.stdout.on('data',chunk=>{
@@ -23,8 +23,12 @@ try{
   const health=await fetch(base+'/api/health/ready');if(health.status!==200)throw Error(`readiness ${health.status}`);
   socket=new WebSocket(base.replace('http:','ws:')+'/ws',{origin:base});
   const messages=[];socket.on('message',raw=>messages.push(JSON.parse(raw).type));
-  await once(socket,'open');await delay(20);
-  if(!messages.includes('snapshot'))throw Error('missing WS snapshot');
+  await once(socket,'open');
+  const snapshotDeadline=performance.now()+3000;
+  while(!messages.includes('ws:ready:v2') && socket.readyState===WebSocket.OPEN && performance.now()<snapshotDeadline)await delay(10);
+  if(!messages.includes('ws:ready:v2'))throw Error('missing WS ready manifest');
+  const snapshot=await (await fetch(base+'/api/intel/snapshot?countries=ALL')).json();
+  if(!snapshot.ok)throw Error('missing HTTP snapshot');
   const closed=once(socket,'close');
   process.kill(-child.pid,'SIGTERM');
   const [code,reason]=await closed;await exited;await delay(100);
