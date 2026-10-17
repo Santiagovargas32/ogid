@@ -25,7 +25,7 @@ test("signal correlator withholds scores until the hourly baseline is sufficient
   }
 
   service.history.news.push({
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(now).toISOString(),
     value: 9
   });
 
@@ -123,4 +123,18 @@ test("signal correlator distinguishes 7-day and 30-day persisted baselines", () 
   assert.equal(thirtyDays.samples.baseline, 72);
   assert.notEqual(sevenDays.baselineMean, thirtyDays.baselineMean);
   assert.notEqual(sevenDays.anomalyScore, thirtyDays.anomalyScore);
+});
+
+test('7 and 30 day baselines match a reference with nonoverlapping active windows and exclude future samples',()=>{
+ const now=Date.parse('2026-10-16T12:00:00Z'),service=new SignalCorrelatorService({now:()=>now});
+ service.history.news=Array.from({length:800},(_,i)=>({timestamp:new Date(now-i*3600000).toISOString(),value:i%11,byCountry:{RU:i%11}}));
+ service.history.news.push({timestamp:new Date(now+1000).toISOString(),value:9999,byCountry:{RU:9999}});
+ for(const baselineDays of [7,30]){
+  const data=service.getAnomalies({countries:['RU'],activeWindowHours:24,baselineDays}),news=data.items.find(i=>i.signalType==='news');
+  const active=service.history.news.filter(r=>Date.parse(r.timestamp)<=now&&Date.parse(r.timestamp)>=now-24*3600000);
+  const baseline=service.history.news.filter(r=>Date.parse(r.timestamp)<now-24*3600000&&Date.parse(r.timestamp)>=now-baselineDays*86400000);
+  assert.equal(news.samples.active,active.length);assert.equal(news.samples.baseline,baseline.length);
+  assert.equal(news.baselineMean,Number((baseline.reduce((n,r)=>n+r.value,0)/baseline.length).toFixed(2)));
+  assert.equal(data.latestBucketAt,new Date(now).toISOString());
+ }
 });

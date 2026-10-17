@@ -1,3 +1,4 @@
+import { canonicalizeArticleUrl } from "../news/articleIdentity.js";
 import { BASELINE_COUNTRIES } from "../../utils/countryCatalog.js";
 import { computeCountryInstability, COUNTRY_INSTABILITY_METHODOLOGY } from "./countryInstabilityService.js";
 import { computeHotspotEscalation, HOTSPOT_ESCALATION_METHODOLOGY } from "./hotspotEscalationService.js";
@@ -25,7 +26,7 @@ export const COUNTRY_ENTITY_EXTRACTION_METHODOLOGY = Object.freeze({
 });
 
 export const ADVANCED_INTELLIGENCE_METHODOLOGY = Object.freeze({
-  version: "advanced-intelligence-v2",
+  version: "advanced-intelligence-v3",
   hotspot: HOTSPOT_ESCALATION_METHODOLOGY,
   geoConvergence: GEO_CONVERGENCE_METHODOLOGY,
   countryInstability: COUNTRY_INSTABILITY_METHODOLOGY,
@@ -176,23 +177,9 @@ function enrichAdvancedArticle(item = {}, countryMentions = []) {
   };
 }
 
-function canonicalUrl(value = "") {
-  const raw = String(value || "").trim();
-  if (!raw) return "";
-  try {
-    const url = new URL(raw);
-    url.hash = "";
-    for (const key of [...url.searchParams.keys()]) {
-      if (/^(utm_|fbclid|gclid)/i.test(key)) url.searchParams.delete(key);
-    }
-    return url.toString().replace(/\/$/, "").toLowerCase();
-  } catch {
-    return raw.replace(/[?#].*$/, "").replace(/\/$/, "").toLowerCase();
-  }
-}
 
 export function advancedArticleIdentity(item = {}) {
-  const url = canonicalUrl(item.url);
+  const url = canonicalizeArticleUrl(item.url);
   if (url) return `url:${url}`;
   const dedupeKey = String(item.dedupeKey || "").trim().toLowerCase();
   if (dedupeKey) return `dedupe:${dedupeKey}`;
@@ -224,12 +211,12 @@ export function buildAdvancedCorpus({ signalCorpus = [], aggregateItems = [], co
   let filteredByCountry = 0;
 
   for (const item of input) {
-    const timestampMs = new Date(item.publishedAt || item.timestamp || 0).getTime();
+    const timestampMs = Date.parse(item.publishedAt || item.timestamp || "");
     if (!Number.isFinite(timestampMs)) {
       invalidTimestamps += 1;
       continue;
     }
-    if (timestampMs < fromMs || timestampMs > Number(now) + 5 * 60 * 1_000) {
+    if (timestampMs < fromMs || timestampMs > Number(now)) {
       outsideWindow += 1;
       continue;
     }
@@ -246,7 +233,7 @@ export function buildAdvancedCorpus({ signalCorpus = [], aggregateItems = [], co
   }
 
   const articles = [...unique.values()].sort((left, right) =>
-    new Date(right.publishedAt || right.timestamp).getTime() - new Date(left.publishedAt || left.timestamp).getTime()
+    new Date(right.publishedAt || right.timestamp).getTime() - new Date(left.publishedAt || left.timestamp).getTime() || advancedArticleIdentity(left).localeCompare(advancedArticleIdentity(right))
   );
   return {
     articles,
@@ -304,7 +291,7 @@ export function buildFrequentTerms(articles = [], { previousArticles = null, win
   const previousFromMs = Number(now) - resolvedWindowHours * 2 * 60 * 60 * 1_000;
   const currentArticles = articles.filter((item) => {
     const timestampMs = new Date(item.publishedAt || item.timestamp).getTime();
-    return Number.isFinite(timestampMs) && timestampMs >= currentFromMs && timestampMs <= Number(now) + 5 * 60 * 1_000;
+    return Number.isFinite(timestampMs) && timestampMs >= currentFromMs && timestampMs <= Number(now);
   });
   const previousCandidates = Array.isArray(previousArticles) ? previousArticles : articles;
   const resolvedPreviousArticles = previousCandidates.filter((item) => {
@@ -316,7 +303,7 @@ export function buildFrequentTerms(articles = [], { previousArticles = null, win
   const previousTimestamps = resolvedPreviousArticles
     .map((item) => new Date(item.publishedAt || item.timestamp).getTime())
     .filter(Number.isFinite);
-  const oldestPreviousMs = previousTimestamps.length ? Math.min(...previousTimestamps) : null;
+  const oldestPreviousMs = previousTimestamps.length ? previousTimestamps.reduce((minimum,value)=>Math.min(minimum,value),Infinity) : null;
   const observedPreviousSpanHours = oldestPreviousMs === null
     ? 0
     : Math.min(resolvedWindowHours, (currentFromMs - oldestPreviousMs) / (60 * 60 * 1_000));
@@ -584,7 +571,9 @@ export class AdvancedIntelligenceService {
         eventsFilteredByCountry: allEvents.length - scoredEvents.length,
         truncated: false,
         requestedEventLimit: Math.max(50, Number(maxEvents || 450)),
-        scoringUsesCompleteWindow: true
+        scoringUsesCompleteWindow: aggregateNews.meta?.analytical ? !aggregateNews.meta.analytical.analysisTruncated : false,
+        coverageScope: aggregateNews.meta?.analytical ? "eligible-stored-revisions" : "provided-corpus; archive-coverage-unknown",
+        analysisTruncated: aggregateNews.meta?.analytical?.analysisTruncated ?? null
       },
       quality,
       marketAwareness: buildMarketAwarenessProjection(stateSnapshot.awareness, generatedAt),

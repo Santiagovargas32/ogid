@@ -37,7 +37,7 @@ export class SqlNewsArchive extends NewsArchive {
     this.db.prepare("INSERT INTO articles VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(article_id) DO UPDATE SET title=excluded.title,excerpt=excluded.excerpt,canonical_url=excluded.canonical_url,published_at=excluded.published_at,last_seen_at=excluded.last_seen_at,revision=excluded.revision,usage_policy=excluded.usage_policy,payload_json=excluded.payload_json").run(article.id,article.title,article.excerpt || null,article.url || null,article.publishedAt || null,article.receivedAt,article.archiveLastSeenAt,article.revision || 1,policy,JSON.stringify(article));
     for(const alias of article.originalIds || [])this.db.prepare("INSERT OR IGNORE INTO article_aliases VALUES(?,?)").run(alias,article.id);
     if(previous?.revision===article.revision)return;
-    this.db.prepare("INSERT OR IGNORE INTO article_revisions VALUES(?,?,?,?)").run(article.id,article.revision || 1,article.archiveChangedAt || article.archiveLastSeenAt,JSON.stringify(article));
+    this.db.prepare("INSERT OR IGNORE INTO article_revisions VALUES(?,?,?,?)").run(article.id,article.revision || 1,article.archiveLastSeenAt,JSON.stringify(article));
     for(const alias of article.originalIds || [])this.db.prepare("INSERT OR IGNORE INTO article_aliases VALUES(?,?)").run(alias,article.id);
     for(const table of ["article_instruments","article_countries","article_topics","article_sources"])this.db.prepare(`DELETE FROM ${table} WHERE article_id=?`).run(article.id);
     for(const i of listVerifiedInstruments()) {const reason=matchInstrument(article,i);if(reason){instrumentRow(this.db,i.instrumentId);this.db.prepare("INSERT INTO article_instruments VALUES(?,?,?)").run(article.id,i.instrumentId,JSON.stringify(reason));}}
@@ -74,52 +74,64 @@ export class SqlNewsArchive extends NewsArchive {
   coverage(filters={}){
     if(!this.db)return {};
     const s=this.db.prepare("SELECT count(*) AS totalStored,min(published_at) AS oldest,max(published_at) AS newest,min(received_at) AS oldestReceivedAt,max(received_at) AS newestReceivedAt,sum(published_at IS NULL) AS unknownPublicationCount FROM articles").get();
-    const retainedSince=new Date(Math.max(Date.parse(this.startedAt),this.now()-this.retentionDays*86400000)).toISOString();
+    const retainedSince=s.oldest || s.oldestReceivedAt || this.startedAt;
     return {...s,unknownPublicationCount:s.unknownPublicationCount || 0,retentionDays:null,retentionPolicy:"historical-facts-preserved; query-cursors-expire",startedAt:this.startedAt,retainedSince,lastIngestAt:this.lastIngestAt,requestedWindow:{from:filters.from || null,to:filters.to || null,timeField:filters.timeField || "publishedAt"},partial:!filters.from || Date.parse(filters.from)<Date.parse(retainedSince) || Boolean(this.capacityPrunedAt),acquisitionContinuity:"unknown",capacityPrunedAt:this.capacityPrunedAt,recoveryStatus:this.recoveryStatus,meaning:"collected permitted metadata; never all Internet news"};
   }
   getItem(id){const row=this.db.prepare("SELECT article_id FROM article_aliases WHERE alias=? LIMIT 1").get(id);const article=this.getRecord(id)||this.getRecord(row?.article_id || "");if(!article)throw new AppError("Artículo no disponible dentro de la retención del archivo.",404,"NEWS_ITEM_NOT_FOUND");return {article,coverage:this.coverage(),revision:this.revision,warnings:["No se devuelve texto completo; las fuentes duplicadas no son corroboraciones independientes."]};}
   cleanupSnapshots(){if(!this.db)return;this.db.prepare("DELETE FROM news_query_snapshots WHERE expires_at<=?").run(this.now());for(const [id,s]of this.snapshots)if(s.expiresAt<=this.now())this.snapshots.delete(id);}
   search(input={}){
-    this.cleanupSnapshots();const {limit=20,maxBytes=262144,cursor,...rawFilters}=input,filters=normalizeNewsFilters(rawFilters);let id,offset=0,snapshot;
-    if(cursor){({id,offset}=this.decodeCursor(cursor));snapshot=this.snapshots.get(id);if(Object.keys(rawFilters).length&&hash(filters)!==snapshot.filterHash)throw new AppError("Los filtros no pueden cambiar dentro de una revisión paginada.",400,"CURSOR_FILTER_MISMATCH");}
-    else {
-      const universe=listVerifiedInstruments(),resolutions=resolveReferences([...(filters.symbols || []),...(filters.instrumentIds || [])],{},universe);
+    const {limit=20,maxBytes=262144,cursor,...rawFilters}=input;
+    let id,offset=0,snapshot;
+    for(const [key,value]of this.snapshots)if(value.expiresAt<=this.now())this.snapshots.delete(key);
+    if(cursor){
+      ({id,offset}=this.decodeCursor(cursor));snapshot=this.snapshots.get(id);
+      if(Object.keys(rawFilters).length&&hash(normalizeNewsFilters(rawFilters))!==snapshot.filterHash)throw new AppError("Los filtros no pueden cambiar dentro de una revisión paginada.",400,"CURSOR_FILTER_MISMATCH");
+    }else{
+      const filters=normalizeNewsFilters(rawFilters),universe=listVerifiedInstruments();
+      const resolutions=resolveReferences([...(filters.symbols || []),...(filters.instrumentIds || [])],{},universe);
       if(resolutions.some(r=>r.status!=="resolved"))throw new AppError("Identidad inexistente o ambigua.",400,"UNRESOLVED_INSTRUMENT");
-      const instruments=resolutions.map(r=>universe.find(i=>i.instrumentId===r.instrumentId));
-      const field=filters.timeField || "publishedAt",column={publishedAt:"published_at",receivedAt:"received_at",updatedAt:"json_extract(payload_json,'$.updatedAt')",archiveChangedAt:"json_extract(payload_json,'$.archiveChangedAt')"}[field];
-      const predicates=[],args=[];for(const [bound,op]of [["from",">="],["to","<="]])if(filters[bound]){predicates.push(`${column}${op}?`);args.push(filters[bound]);}
-      for(const [key,table,col]of [["countries","article_countries","country"],["topics","article_topics","topic"]])if(filters[key]?.length){predicates.push(`article_id IN (SELECT article_id FROM ${table} WHERE ${col} IN (${filters[key].map(()=>"?").join(",")}))`);args.push(...filters[key]);}
-      while(this.snapshots.size>=this.maxSnapshots){const oldest=this.snapshots.keys().next().value;this.snapshots.delete(oldest);this.db.prepare("DELETE FROM news_query_snapshots WHERE snapshot_id=?").run(oldest);}
-      id=randomUUID();snapshot={filterHash:hash(filters),revision:this.revision,expiresAt:this.now()+this.cursorTtlMs,coverage:this.coverage(filters),total:0,syntheticCount:0,staleCount:0};
-      this.db.transaction(()=>{
-        this.db.prepare("INSERT INTO news_query_snapshots VALUES(?,?,?,?,?,?,?,?)").run(id,snapshot.expiresAt,snapshot.filterHash,snapshot.revision,JSON.stringify(snapshot.coverage),0,0,0);
-        const existing=this.db.prepare("SELECT coalesce(sum(total),0) AS n FROM news_query_snapshots").get().n;
-        const sql=`SELECT payload_json FROM articles ${predicates.length?`WHERE ${predicates.join(" AND ")}`:""} ORDER BY coalesce(${column},received_at) DESC,article_id ASC`;
-        for(const row of this.reader.prepare(sql).iterate(...args)){
-          const article=JSON.parse(row.payload_json),reasons=[];
-          if(filters.countries?.length)reasons.push(...article.countryMentions.filter(c=>filters.countries.includes(c)).map(c=>({kind:"country",method:"country-tag-or-detection",evidence:c})));
-          if(instruments.length){const matches=instruments.map(i=>matchInstrument(article,i)).filter(Boolean);if(!matches.length)continue;reasons.push(...matches);}
-          // JS matching preserves Unicode substring and the existing metadata semantics.
-          if(filters.q&&!`${article.title} ${article.excerpt || ""}`.toLowerCase().includes(filters.q.toLowerCase()))continue;
-          if(filters.sectors?.length&&!filters.sectors.some(s=>(article.sectors || []).includes(s)))continue;
-          if(filters.providers?.length&&!article.provenances.some(p=>filters.providers.includes(p.provider)))continue;
-          if(filters.sources?.length&&!article.provenances.some(p=>filters.sources.includes(p.sourceId)||filters.sources.includes(p.publisher)))continue;
-          if(filters.q)reasons.push({kind:"text",method:"case-insensitive-text",evidence:filters.q});
-          if(filters.topics?.length)reasons.push({kind:"topic",method:"collected-topic-tag",evidence:filters.topics.filter(t=>article.topics.includes(t)).join(", ")});
-          if(existing+snapshot.total>=this.maxSnapshotItems)throw new AppError("Acotar la ventana de búsqueda.",413,"SNAPSHOT_TOO_LARGE");
-          this.db.prepare("INSERT INTO news_query_items VALUES(?,?,?)").run(id,snapshot.total++,JSON.stringify({...article,matchReasons:reasons}));
-          if(article.synthetic || article.dataMode==="synthetic")snapshot.syntheticCount++;if(article.dataMode==="stale" || article.provenance?.stale)snapshot.staleCount++;
-        }
-        this.db.prepare("UPDATE news_query_snapshots SET total=?,synthetic_count=?,stale_count=? WHERE snapshot_id=?").run(snapshot.total,snapshot.syntheticCount,snapshot.staleCount,id);
-      }).immediate();this.snapshots.set(id,snapshot);
+      snapshot={filters,instruments:resolutions.map(r=>universe.find(i=>i.instrumentId===r.instrumentId)),filterHash:hash(filters),expiresAt:this.now()+this.cursorTtlMs,coverage:this.coverage(filters),total:0,syntheticCount:0,staleCount:0};
+      id=randomUUID();
     }
-    if(offset>snapshot.total)throw new AppError("Cursor fuera del resultado.",400,"INVALID_CURSOR");
     const data={articles:[],total:snapshot.total,hasMore:false,nextCursor:null,revision:snapshot.revision,snapshotId:id,cursorExpiresAt:new Date(snapshot.expiresAt).toISOString(),coverage:snapshot.coverage,quality:{syntheticCount:snapshot.syntheticCount,staleCount:snapshot.staleCount},warnings:["Archivo de metadata y extractos autorizados; no es cobertura completa de Internet.","La fecha de publicación desconocida queda fuera de ventanas publishedAt; consultar receivedAt de forma explícita.",...(snapshot.coverage.partial?["La cobertura solicitada es parcial por activación, retención o capacidad."]:[])]};
-    for(const row of this.db.prepare("SELECT payload_json FROM news_query_items WHERE snapshot_id=? AND position>=? ORDER BY position LIMIT ?").iterate(id,offset,limit)){
-      data.articles.push(JSON.parse(row.payload_json));const next=offset+data.articles.length;data.hasMore=next<snapshot.total;data.nextCursor=data.hasMore?this.cursor(id,next):null;
-      if(wireSize(data)>maxBytes-512){data.articles.pop();break;}
-    }
+    this.reader.transaction(()=>{
+      if(!cursor){snapshot.revision=readMeta(this.reader,"news.meta",{}).revision || 0;snapshot.upper=this.reader.prepare("SELECT coalesce(max(rowid),0) AS n FROM article_revisions").get().n;}
+      const filters=snapshot.filters,field=filters.timeField || 'publishedAt';
+      const column=({publishedAt:"json_extract(r.payload_json,'$.publishedAt')",receivedAt:"json_extract(r.payload_json,'$.receivedAt')",updatedAt:"json_extract(r.payload_json,'$.updatedAt')",archiveChangedAt:"json_extract(r.payload_json,'$.archiveChangedAt')"})[field];
+      const predicates=['r.rowid<=?','NOT EXISTS (SELECT 1 FROM article_revisions newer WHERE newer.article_id=r.article_id AND newer.revision>r.revision AND newer.rowid<=?)'],args=[snapshot.upper,snapshot.upper];
+      for(const [bound,op]of [['from','>='],['to','<=']])if(filters[bound]){predicates.push(`${column}${op}?`);args.push(filters[bound]);}
+      const query=`SELECT r.payload_json FROM article_revisions r WHERE ${predicates.join(' AND ')} ORDER BY coalesce(${column},json_extract(r.payload_json,'$.receivedAt')) DESC,r.article_id ASC`;
+      let matched=0,full=false;
+      for(const row of this.reader.prepare(query).iterate(...args)){
+        const article=JSON.parse(row.payload_json),reasons=[];
+        if(filters.countries?.length){const matches=(article.countryMentions || []).filter(c=>filters.countries.includes(c));if(!matches.length)continue;reasons.push(...matches.map(c=>({kind:'country',method:'country-tag-or-detection',evidence:c})));}
+        if(snapshot.instruments.length){const matches=snapshot.instruments.map(i=>matchInstrument(article,i)).filter(Boolean);if(!matches.length)continue;reasons.push(...matches);}
+        if(filters.q&&!`${article.title} ${article.excerpt || ''}`.toLowerCase().includes(filters.q.toLowerCase()))continue;
+        if(filters.sectors?.length&&!filters.sectors.some(v=>(article.sectors || []).includes(v)))continue;
+        if(filters.providers?.length&&!(article.provenances || []).some(p=>filters.providers.includes(p.provider)))continue;
+        if(filters.sources?.length&&!(article.provenances || []).some(p=>filters.sources.includes(p.sourceId)||filters.sources.includes(p.publisher)))continue;
+        if(filters.topics?.length&&!(article.topics || []).some(t=>filters.topics.includes(t)))continue;
+        if(filters.q)reasons.push({kind:'text',method:'case-insensitive-text',evidence:filters.q});
+        if(filters.topics?.length)reasons.push({kind:'topic',method:'collected-topic-tag',evidence:filters.topics.filter(t=>(article.topics || []).includes(t)).join(', ')});
+        const position=matched++;
+        if(!cursor){if(article.synthetic || article.dataMode==='synthetic')snapshot.syntheticCount++;if(article.dataMode==='stale'||article.provenance?.stale)snapshot.staleCount++;}
+        if(position<offset)continue;
+        if(data.articles.length<limit&&!full){
+          data.articles.push({...article,matchReasons:reasons});
+          // Include the largest cursor/envelope shape while budgeting the page.
+          data.nextCursor=this.cursor(id,offset+data.articles.length);data.hasMore=true;
+          if(wireSize(data)>maxBytes-1024){data.articles.pop();full=true;}
+        }
+        if(cursor&&(full||data.articles.length>=limit))break;
+      }
+      if(!cursor)snapshot.total=matched;
+    }).deferred();
+    if(!cursor){while(this.snapshots.size>=this.maxSnapshots)this.snapshots.delete(this.snapshots.keys().next().value);this.snapshots.set(id,snapshot);}
+    if(offset>snapshot.total)throw new AppError('Cursor fuera del resultado.',400,'INVALID_CURSOR');
+    data.total=snapshot.total;data.revision=snapshot.revision;data.quality={syntheticCount:snapshot.syntheticCount,staleCount:snapshot.staleCount};
     const next=offset+data.articles.length;data.hasMore=next<snapshot.total;data.nextCursor=data.hasMore?this.cursor(id,next):null;
-    if(!data.articles.length&&data.hasMore)throw new AppError("Un artículo no cabe en el presupuesto de salida.",413,"NEWS_ITEM_TOO_LARGE");if(wireSize(data)>maxBytes-512)throw new AppError("Metadata excede presupuesto.",413,"OUTPUT_TOO_LARGE");return data;
+    if(!data.articles.length&&data.hasMore)throw new AppError('Un artículo no cabe en el presupuesto.',413,'NEWS_ITEM_TOO_LARGE');
+    if(wireSize(data)>maxBytes-512)throw new AppError('Metadata excede presupuesto.',413,'OUTPUT_TOO_LARGE');
+    return data;
   }
 }

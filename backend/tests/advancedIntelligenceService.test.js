@@ -136,7 +136,7 @@ test("advanced snapshot shares one corpus, timestamp and methodology across ever
   assert.deepEqual(aggregateOptions.countries, []);
   assert.deepEqual(cached, snapshot);
   assert.equal(snapshot.schemaVersion, "advanced-intelligence-snapshot-v1");
-  assert.equal(snapshot.methodology.version, "advanced-intelligence-v2");
+  assert.equal(snapshot.methodology.version, "advanced-intelligence-v3");
   assert.equal(snapshot.methodology.severity.version, "rule-based-news-severity-v1");
   assert.equal(snapshot.methodology.frequentTerms.version, "frequent-headline-terms-v2");
   assert.equal(snapshot.methodology.anomaly.version, "signal-anomaly-v3");
@@ -159,7 +159,7 @@ test("advanced snapshot shares one corpus, timestamp and methodology across ever
     hotspot.components.military.score * 0.15;
   assert.ok(Math.abs(hotspot.hotspotScore - expected) < 0.02);
   assert.equal(hotspot.components.news.eventCount, 3);
-  assert.equal(snapshot.corpus.scoringUsesCompleteWindow, true);
+  assert.equal(snapshot.corpus.scoringUsesCompleteWindow, false);
   assert.equal(snapshot.frequentTerms.comparison.previousSampleSize, 1);
 
   const limited = await service.getSnapshot({ countries: ["US"], windowHours: 24, maxEvents: 50 });

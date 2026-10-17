@@ -27,13 +27,15 @@ function workerCard(worker, label, explanation, now) {
   const bad = ["failed","closed"].includes(worker.state);
   return `<article class="diagnostic-item worker-operation-card"><div class="diagnostic-item-header"><strong>${label}</strong><span class="diagnostic-pill ${bad ? "error" : worker.state === "ready" ? "ok" : "idle"}">${escape(states[worker.state] || "No disponible")}</span></div>
     <p class="small text-light-emphasis mb-2">${explanation}</p>
-    <div class="worker-operation-stats"><span><strong>${escape(queue.inFlight ?? "—")}</strong> en curso</span><span><strong>${escape(queue.pending ?? "—")}</strong> en cola</span><span><strong>${escape(worker.completed ?? "—")}</strong> completadas</span></div>
+    <div class="worker-operation-stats"><span><strong>${escape(queue.inFlight ?? "—")}</strong> en curso</span><span><strong>${escape(queue.pending ?? "—")}</strong> en cola</span><span><strong>${escape(worker.completed ?? "—")}</strong> operaciones completadas</span></div>
     <label class="small d-block mt-2">Presupuesto de peticiones: ${escape(bytes(queue.bytes))} / ${escape(bytes(queue.maxBytes))}<progress class="worker-queue-progress" max="100" value="${percent}" aria-label="Ocupación de la cola de ${label}"></progress></label>
     <div class="diagnostic-item-meta">Límite por comando: ${escape(bytes(queue.maxCommandBytes))} · Capacidad: ${escape(queue.maxItems ?? "—")} peticiones</div>
     <div class="diagnostic-item-meta">Fallidas: ${escape(worker.failed ?? "—")} · Rechazadas: ${escape(worker.rejected ?? "—")} · CPU activa: ${escape(queue.cpuInFlight ?? "—")} / ${escape(queue.maxCpuInFlight ?? "—")}</div>
     <div class="diagnostic-item-meta">Última ejecución: ${escape(duration(worker.lastExecutionMs))} · Espera: ${escape(duration(worker.lastQueueMs))} · CPU: ${escape(duration(worker.lastCpuMs))}</div>
     <div class="diagnostic-item-meta">Heartbeat: ${age === null ? "sin muestra" : `hace ${escape(duration(age))}`}${age > 15000 ? " · demorado; comprobar la operación activa" : ""}</div>
-    ${worker.lastErrorCode ? `<div class="text-warning small">Último error: ${escape(worker.lastErrorCode)}</div>` : ""}
+    <div class="diagnostic-item-meta">Último éxito: ${escape(time(worker.lastSuccessAt))} · Salida: ${escape(bytes(worker.lastOutputBytes))}</div>
+    ${worker.lastErrorCode ? `<div class="text-warning small">Último error histórico (${escape(time(worker.lastErrorAt))}, ${escape(worker.lastErrorCategory || "sin clasificar")}): ${escape(worker.lastErrorCode)} · ${worker.activeErrors?.length || 0} errores sin éxito posterior en la misma operación</div>` : ""}
+    <div class="diagnostic-item-meta">Fallos por clase: ${escape(Object.entries(worker.failuresByCategory || {}).map(([key,count])=>`${key}: ${count}`).join(" · "))}</div>
     ${rejected ? `<div class="worker-operation-rejection small">Último rechazo (${escape(time(rejected.finishedAt))}): ${escape(rejected.code)}<br>${escape([rejected.operation,rejected.service,rejected.method,rejected.kind].filter(Boolean).join(" / "))} · ${escape(bytes(rejected.bytes))} recibidos${rejected.code === "STORAGE_COMMAND_TOO_LARGE" ? `; límite ${escape(bytes(rejected.maxCommandBytes ?? queue.maxCommandBytes))}` : "; cola sin capacidad"}</div>` : ""}
   </article>`;
 }

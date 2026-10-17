@@ -1,8 +1,8 @@
 # Inventario API → MCP
 
-Contrato 1.3.0. Generado desde backend/contracts/ogidOperations.js; no editar a mano.
+Contrato 1.4.0. Generado desde backend/contracts/ogidOperations.js; no editar a mano.
 
-73 rutas JSON con método; 49 operaciones de investigación y 33 de operador. Las variantes almacenadas/proveedor comparten algunas rutas.
+74 rutas JSON con método; 50 operaciones de investigación y 33 de operador. Las variantes almacenadas/proveedor comparten algunas rutas.
 
 Las cuatro herramientas compatibles se conservan. ogid_get_awareness_sources compone el catálogo local versionado y la salud pública Awareness, sin una ruta adicional. El inventario cubre las rutas de backend/routes montadas bajo /api; WebSocket, archivos estáticos y transporte del túnel tienen contratos independientes.
 
@@ -40,6 +40,7 @@ Las cuatro herramientas compatibles se conservan. ogid_get_awareness_sources com
 | research.forecast-evaluation | GET /api/research/forecast-evaluation | ogid_query | research / read:stored | public | stored evaluation; no forecast registration or providers; no-provider |
 | research.forecast.register | POST /api/research/forecasts | ogid_operator | operator / forecasts:write | public | mutation; prospective local registration only |
 | research.scenarios | GET /api/research/scenarios | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
+| signals.change | GET /api/signals/change | ogid_query | research / read:stored | public | immutable historical public revision in base64 UTF-8 pages; verify sha256; never acknowledges processing; no-provider |
 | signals.delta | GET /api/signals/delta | ogid_query | research / read:stored | public | stored read; never advances consumer checkpoint; no-provider |
 | research.scenarios.refresh | POST /api/research/scenarios/refresh | ogid_operator | operator / signals:generate | public | mutation; stored calculations; no provider |
 | research.scenarios.delete | POST /api/research/scenarios/delete | ogid_operator | operator / signals:generate | public | mutation; local audited tombstone |
@@ -1750,9 +1751,45 @@ Retención: durable scenarios; bounded audited revisions. Procedencia: OGID runt
 }
 ```
 
+### signals.change
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "changeId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "offset": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 2147483647
+      },
+      "maxBytes": {
+        "type": "integer",
+        "minimum": 4096,
+        "maximum": 524288
+      }
+    },
+    "required": [
+      "changeId"
+    ],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
 ### signals.delta
 
-Retención: 30-day change journal; explicit gap errors. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+Retención: durable SQL journal; legacy retention gaps remain explicit; compact references resolve via signals.change. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
 
 ```json
 {

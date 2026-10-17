@@ -1,22 +1,24 @@
+import { releaseTerminatedWriter } from "./writerOwnership.js";
+import { AdvancedCoordinator } from "./advancedSnapshots.js";
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
 import { Worker } from "node:worker_threads";
 import { storageConfig } from "./config.js";
 const error = code => Object.assign(new Error(code), { code, statusCode: 503 });
 const commandLabel = value => typeof value === "string" ? value.slice(0,128) : null;
-const OPERATIONS = new Set(["storage.status", "storage.verify", "storage.checkpoint", "pipeline.record", "domain.configure", "domain.registry", "domain.call", "storage.import", "runtime.save", "runtime.load", "rss.fetch", "news.collect", "news.supplemental", "analysis.persist"]);
+const OPERATIONS = new Set(["storage.status", "storage.verify", "storage.checkpoint", "pipeline.record", "domain.configure", "domain.registry", "domain.call", "storage.import", "runtime.save", "runtime.load", "rss.fetch", "news.collect", "news.supplemental", "analysis.persist", "snapshot.prepare", "snapshot.claim", "snapshot.fail", "snapshot.pending"]);
 const ISOLATED_SERVICES = new Set(["market","technical","indicators","conditions","advanced","map","coupling"]);
-const ISOLATED_NEWS_METHODS = new Set(["getProjection","getFeed","getLiveFeed"]);
+const ISOLATED_NEWS_METHODS = new Set(["getProjection","getFeed","getLiveFeed","search"]);
 const CPU_SERVICES = new Set(["market","technical","indicators","conditions","advanced","map","portfolio","scenarios","forecasts","coupling","signals"]);
 
 export class StorageManager extends EventEmitter {
   constructor(options = {}) {
     super();
-    this.options = storageConfig(options);
+    this.options = {...storageConfig(options),writerToken:randomUUID()};
     this.state = this.options.enabled ? "new" : "disabled";
     this.queue = []; this.active = new Map(); this.pendingBytes = 0; this.metadata = {};
-    this.recentCommands = [];
-    this.metrics = { completed: 0, rejected: 0, failed: 0, lastDurationMs: null, lastErrorCode: null };
+    this.recentCommands = [];this.activeErrors=new Map();
+    this.metrics = { failuresByCategory:{write:0,query:0,calculation:0,transport:0,worker:0}, completed: 0, rejected: 0, failed: 0, lastDurationMs: null, lastErrorCode: null };
   }
   getStatus() {
     return { state: this.state, ...this.metadata, businessStorage: this.metadata.businessStorage || (this.options.businessEnabled ? "sqlite" : "legacy-json"), storagePhase: this.metadata.storagePhase || (this.options.businessEnabled ? "repositories" : "infrastructure"),
@@ -26,6 +28,7 @@ export class StorageManager extends EventEmitter {
       queuedCommands:this.queue.slice(0,50).map(entry=>this.describeCommand(entry,"queued")),
       queuedCommandsTruncated:this.queue.length>50,
       recentCommands:this.recentCommands.map(entry=>({...entry})),lastRejectedCommand:this.lastRejectedCommand ? {...this.lastRejectedCommand} : null,
+      activeErrors:[...this.activeErrors.values()],jobs:{active:this.advancedCoordinator?.tasks.size || 0},
       queue: { pending: this.queue.length, inFlight: this.active.size, cpuInFlight:[...this.active.values()].filter(entry=>entry.cpu).length,maxCpuInFlight:this.options.maxCpuInFlight,bytes: this.pendingBytes, maxItems: this.options.queueMaxItems, maxBytes: this.options.queueMaxBytes, maxCommandBytes: this.options.maxCommandBytes }, ...this.metrics };
   }
   describeCommand(entry, phase = entry.startedAt ? "executing" : "dispatched") {
@@ -81,15 +84,18 @@ export class StorageManager extends EventEmitter {
         }
       });
       await this.analysisManager.start();
+      this.advancedCoordinator=new AdvancedCoordinator(this);
     }
     return this.getStatus();
   }
   request(operation, input = {}, { requestId = randomUUID(), timeoutMs = this.options.timeoutMs, queueTimeoutMs = this.options.queueTimeoutMs } = {}) {
     if (this.state !== "ready") return this.localRequest(operation,input,{requestId,timeoutMs,queueTimeoutMs});
+    if (this.advancedCoordinator && operation === "domain.call" && input.service === "advanced" && input.method === "getSnapshot") return this.advancedCoordinator.get(input);
     if (this.analysisManager && operation === "domain.call" && (ISOLATED_SERVICES.has(input.service) || (input.service === "news" && ISOLATED_NEWS_METHODS.has(input.method)))) return this.analysisManager.request(operation,input,{requestId,timeoutMs,queueTimeoutMs});
     if (this.analysisManager && ["domain.configure","domain.registry"].includes(operation)) {
       return this.localRequest(operation,input,{requestId,timeoutMs,queueTimeoutMs}).then(async result=>{
-        await this.analysisManager.request(operation,{...input,analysisOnly:true},{requestId,timeoutMs,queueTimeoutMs});return result;
+        await this.analysisManager.request(operation,{...input,analysisOnly:true},{requestId,timeoutMs,queueTimeoutMs});
+        if(operation==="domain.configure")await this.advancedCoordinator?.recover();return result;
       });
     }
     return this.localRequest(operation,input,{requestId,timeoutMs,queueTimeoutMs});
@@ -172,9 +178,17 @@ export class StorageManager extends EventEmitter {
     }
     const entry = this.active.get(message.id); if (!entry) return;
     this.active.delete(message.id); clearTimeout(entry.timer); this.pendingBytes -= entry.bytes;
-    this.recordCommand(entry,message.error?"failed":"completed",message.error?.code || null,{executionMs:message.durationMs ?? (entry.startedAt?Date.now()-entry.startedAt:null),cpuMs:message.cpuMs ?? null});
-    if (message.error) { this.metrics.failed++; this.metrics.lastErrorCode = message.error.code; entry.reject(Object.assign(error(message.error.code), { statusCode: message.error.statusCode || 503, message: message.error.message || message.error.code, causeCode: message.error.causeCode, diagnostic: message.error.diagnostic })); }
-    else { this.metrics.lastQueueMs = (entry.startedAt || Date.now()) - entry.queuedAt; this.metrics.lastExecutionMs=message.durationMs;this.metrics.lastTotalMs=Date.now()-entry.queuedAt;this.metrics.lastCpuMs=message.cpuMs ?? null; this.metadata = message.status; this.metrics.completed++; this.metrics.lastDurationMs = message.durationMs; entry.resolve(message.result); }
+    this.recordCommand(entry,message.error?"failed":"completed",message.error?.code || null,{executionMs:message.durationMs ?? (entry.startedAt?Date.now()-entry.startedAt:null),cpuMs:message.cpuMs ?? null,outputBytes:message.outputBytes ?? null,commitMs:message.commitMs ?? null});
+    if (message.error) {
+      const code=message.error.code;
+      const category=/^(SIGNAL_ITEM_TOO_LARGE|NEWS_ITEM_TOO_LARGE|OUTPUT_TOO_LARGE)$/.test(code)?'transport':this.options.analysisWorker?'calculation':/^(SQLITE_|STORAGE_IDEMPOTENCY)/.test(code)?'write':'query';
+      this.metrics.failuresByCategory[category]++;this.metrics.lastErrorCategory=category;this.metrics.lastErrorAt=new Date().toISOString();
+      this.activeErrors.set(JSON.stringify(entry.diagnostic),{...entry.diagnostic,code,category,at:this.metrics.lastErrorAt});
+      if(this.activeErrors.size>50)this.activeErrors.delete(this.activeErrors.keys().next().value);
+      this.metrics.failed++; this.metrics.lastErrorCode = message.error.code; entry.reject(Object.assign(error(message.error.code), { statusCode: message.error.statusCode || 503, message: message.error.message || message.error.code, causeCode: message.error.causeCode, diagnostic: message.error.diagnostic })); }
+    else {this.metrics.lastSuccessAt=new Date().toISOString();this.metrics.lastOutputBytes=message.outputBytes ?? null;
+      this.activeErrors.delete(JSON.stringify(entry.diagnostic));
+      this.metrics.lastQueueMs = (entry.startedAt || Date.now()) - entry.queuedAt; this.metrics.lastExecutionMs=message.durationMs;this.metrics.lastTotalMs=Date.now()-entry.queuedAt;this.metrics.lastCpuMs=message.cpuMs ?? null; this.metadata = message.status; this.metrics.completed++; this.metrics.lastDurationMs = message.durationMs; entry.resolve(message.result); }
     this.pump();
   }
   expire(entry) {
@@ -189,14 +203,16 @@ export class StorageManager extends EventEmitter {
   fail(reason) {
     if (["closed", "failed"].includes(this.state)) return;
     this.state = "failed"; clearTimeout(this.startTimer); clearTimeout(this.closeTimer);
-    this.metrics.lastErrorCode = reason.code;
+    this.metrics.lastErrorCode = reason.code;this.metrics.lastErrorAt=new Date().toISOString();this.metrics.lastErrorCategory="worker";this.metrics.failuresByCategory.worker++;
     this.readyReject?.(reason); this.closeReject?.(reason);
     this.metrics.failed += this.active.size + this.queue.length;
     for (const entry of this.active.values()) { clearTimeout(entry.timer); this.recordCommand(entry,"failed","STORAGE_OUTCOME_UNKNOWN");entry.reject(error("STORAGE_OUTCOME_UNKNOWN")); }
     this.active.clear();
     for (const entry of this.queue.splice(0)) { clearTimeout(entry.timer); this.recordCommand(entry,"failed","STORAGE_WORKER_FAILED");entry.reject(error("STORAGE_WORKER_FAILED")); }
     this.pendingBytes = 0;
-    this.termination = this.worker?.terminate();
+    this.termination = this.worker?.terminate().then(()=>{
+      if(!this.options.analysisWorker){try{releaseTerminatedWriter(this.options.databasePath,this.options.writerToken);}catch(error){this.metrics.ownershipCleanupError=error.code || 'STORAGE_LEASE_RELEASE_FAILED';}}
+    });
     // An analysis waiting for its persistence RPC cannot finish after the
     // writer dies. Reject it now instead of waiting for the provider deadline.
     this.analysisManager?.fail(reason);
@@ -211,6 +227,7 @@ export class StorageManager extends EventEmitter {
   async close() {
     if(this.initializing){try{await this.startTask;}catch{/* Release whichever workers started. */}}
     if(!this.analysisManager)return this.closeLocal();
+    await this.advancedCoordinator?.close();
     // Accepted analyses may still need the primary writer to commit their result.
     try { await this.analysisManager?.close(); }
     finally { await this.closeLocal(); }

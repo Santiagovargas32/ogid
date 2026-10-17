@@ -1,3 +1,4 @@
+import { publicProjection } from "../../utils/researchProjection.js";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { stableHash } from "../../utils/stableHash.js";
 import { createHash } from "node:crypto";
@@ -79,20 +80,53 @@ export class MaterialAlertStore {
     }catch(error){if(error instanceof AppError)throw error;throw new AppError("Cursor de cambios inválido.",400,"INVALID_CURSOR");}
   }
   validateConsumer(id) { if(!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$/.test(id||"")||["constructor","prototype","__proto__"].includes(id))throw new AppError("Identidad de consumidor inválida.",400,"INVALID_CONSUMER"); }
+  changeFloor() {
+    const cutoff=new Date(this.now()-this.retentionDays*86400000).toISOString();
+    return Math.max(this.research.retainedAfter,this.research.changes.filter(c=>c.generatedAt<cutoff).at(-1)?.sequence || 0);
+  }
+  changePage(current,limit) {
+    return this.research.changes.filter(c=>c.sequence>current.after&&c.sequence<=current.upper&&(!current.instrumentIds.length||current.instrumentIds.includes(c.instrumentId))).slice(0,limit+1);
+  }
+  materializeChange(row){return row;}
+  changeById(changeId) {return this.research.changes.find(row=>row.changeId===changeId);}
+  changeDetailBytes(row) {return Buffer.from(JSON.stringify(publicProjection(row,0,Infinity)));}
+  compactChange(row) {
+    const bytes=this.changeDetailBytes(row);
+    const {snapshot,...header}=row;
+    return {...header,snapshot:null,status:snapshot?.status || null,representation:'historical-reference-v1',
+      detail:{operation:'signals.change',changeId:row.changeId,sequence:row.sequence,revision:row.revision,
+        encoding:'base64-json-utf8',projection:'public-v1',bytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')}};
+  }
+  getChange({changeId,offset=0,maxBytes=262144}={}) {
+    const row=this.changeById(changeId);
+    if(!row)throw new AppError('Revisión histórica no disponible.',404,'SIGNAL_CHANGE_NOT_FOUND');
+    const bytes=this.changeDetailBytes(row);
+    if(!Number.isSafeInteger(offset)||offset<0||offset>bytes.length)throw new AppError('Offset inválido.',400,'INVALID_CHANGE_OFFSET');
+    // <=1024 base64 characters survives the public MCP projection unchanged.
+    const end=Math.min(bytes.length,offset+768);
+    const data={changeId,sequence:row.sequence,revision:row.revision,encoding:'base64-json-utf8',projection:'public-v1',
+      sha256:createHash('sha256').update(bytes).digest('hex'),totalBytes:bytes.length,offset,
+      chunk:bytes.subarray(offset,end).toString('base64'),hasMore:end<bytes.length,nextOffset:end<bytes.length?end:null};
+    if(Buffer.byteLength(JSON.stringify(data))*2+768>maxBytes)throw new AppError('Presupuesto de detalle insuficiente.',413,'OUTPUT_TOO_LARGE');
+    return data;
+  }
   delta({consumerId,cursor,instrumentIds,limit=20,maxBytes=262144}={}) {
     if(consumerId)this.validateConsumer(consumerId);
     const scope=[...new Set(instrumentIds||[])].sort();const current=cursor?this.decodeChangeCursor(cursor):{consumerId:consumerId||"research",after:this.research.consumers[consumerId||"research"]?.sequence||0,upper:this.research.sequence,instrumentIds:scope,expiresAt:this.now()+900000};
     this.validateConsumer(current.consumerId);
     if(consumerId&&consumerId!==current.consumerId||instrumentIds&&stableHash(scope)!==stableHash(current.instrumentIds))throw new AppError("Filtros distintos del cursor.",400,"CURSOR_FILTER_MISMATCH");
-    const cutoff=new Date(this.now()-this.retentionDays*86400000).toISOString();const expired=this.research.changes.filter(c=>c.generatedAt<cutoff);const floor=Math.max(this.research.retainedAfter,expired.at(-1)?.sequence||0);
+    const floor=this.changeFloor();
     if(current.after<floor)throw new AppError("Retención superada; no equivale a ausencia de novedades. Recuperar escenarios actuales y establecer checkpoint explícito.",410,"CHANGE_RETENTION_GAP");
     if(current.upper>this.research.sequence)throw new AppError("Ledger de cambios restaurado a una revisión anterior.",409,"CHANGE_HISTORY_CHANGED");
-    const rows=this.research.changes.filter(c=>c.sequence>current.after&&c.sequence<=current.upper&&(!current.instrumentIds.length||current.instrumentIds.includes(c.instrumentId)));
+    const rows=this.changePage(current,limit);
     const data={consumerId:current.consumerId,changes:[],snapshotId:`changes-${current.upper}`,asOf:new Date(this.now()).toISOString(),throughSequence:current.after,hasMore:false,nextCursor:null,checkpointCursor:null,checkpoint:this.research.consumers[current.consumerId]||{sequence:0,acknowledgedAt:null},coverage:{retainedAfter:floor,latestSequence:this.research.sequence,retentionDays:this.retentionDays},delivery:{verified:false,receiptAvailable:false},warnings:["Reading does not advance checkpoints or acknowledge delivery.","No durable ChatGPT delivery receipt is available; checkpoint acknowledges processing only."]};
     const wireBytes=()=>{const payload={ok:true,queriedAt:data.asOf,origin:"OGID",data,warnings:data.warnings,truncated:false};return Buffer.byteLength(JSON.stringify({structuredContent:payload,content:[{type:"text",text:JSON.stringify(payload)}]}));};
     const update=()=>{const last=data.changes.at(-1)?.sequence||current.after;data.hasMore=rows.some(c=>c.sequence>last);data.throughSequence=data.hasMore?last:current.upper;const encoded=this.encodeChangeCursor({...current,after:data.throughSequence});data.checkpointCursor=encoded;data.nextCursor=data.hasMore?encoded:null;};
-    update();for(const row of rows.slice(0,limit)){data.changes.push(structuredClone(row));update();if(wireBytes()>maxBytes-512){data.changes.pop();update();break;}}
-    if(!data.changes.length&&rows.length)throw new AppError("Un cambio no cabe; aumentar presupuesto sin avanzar.",413,"SIGNAL_ITEM_TOO_LARGE");
+    update();for(const header of rows.slice(0,limit)){const row=this.materializeChange(header);data.changes.push(structuredClone(row));update();if(wireBytes()>maxBytes-512){
+      data.changes[data.changes.length-1]=this.compactChange(row);update();
+      if(wireBytes()>maxBytes-512){data.changes.pop();update();break;}
+    }}
+    if(!data.changes.length&&rows.length)throw new AppError("La referencia no cabe; recuperar revisión mediante signals.change sin avanzar el checkpoint.",413,"SIGNAL_ITEM_TOO_LARGE");
     if(wireBytes()>maxBytes-512)throw new AppError("Metadata excede presupuesto.",413,"OUTPUT_TOO_LARGE");return data;
   }
   acknowledgeChanges({consumerId,checkpointCursor,expectedSequence}) {

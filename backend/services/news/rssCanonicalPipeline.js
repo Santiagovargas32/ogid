@@ -31,6 +31,7 @@ export class RssCanonicalPipeline {
     const started=this.now(),deadline=started+this.cycleDeadlineMs,selected=this.selectEligible(started),global=new Semaphore(this.globalConcurrency);
     this.controller=new AbortController();const signal=this.controller.signal;const timer=setTimeout(()=>this.controller.abort(new DOMException('RSS cycle deadline','TimeoutError')),this.cycleDeadlineMs);
     this.metrics.queued=selected.length;this.metrics.deferred=0;const known=new Set([...this.corpus,...[...this.states.values()].flatMap(s=>s.articles||[])].map(articleIdentity));
+    const before={states:new Map(selected.map(feed=>[feed.feedId,structuredClone(this.state(feed.feedId))])),corpus:this.corpus,generatedAt:this.generatedAt};
     this.metrics.lastParseMs=0;this.metrics.lastClassifyMs=0;
     try {
       const results=await Promise.all(selected.map(async feed=>{
@@ -43,7 +44,7 @@ export class RssCanonicalPipeline {
         finally{if(!startedFeed)this.metrics.queued--;}
       }));
       this.metrics.deferred=results.filter(r=>r.status==='deferred').length;
-      const incoming=results.filter(r=>r.status==='ok'||r.status==='empty').flatMap(r=>r.articles||[]);
+      const incoming=results.filter(r=>r.status==='ok'||r.status==='empty').flatMap(r=>r.acquiredArticles || r.articles || []);
       this.metrics.newArticles=new Set(incoming.map(articleIdentity).filter(id=>!known.has(id))).size;
       // Un callback por lote; 304/fallo/deferred no reingieren el corpus antiguo.
       const archiveStarted=performance.now();
@@ -55,10 +56,15 @@ export class RssCanonicalPipeline {
       this.corpus=merged.items;this.metrics.cycles++;this.metrics.lastDurationMs=Math.max(0,this.now()-started);this.metrics.latencyMs+=this.metrics.lastDurationMs;
       this.generatedAt=new Date(this.now()).toISOString();this.persist();
       return { ...this.snapshot(selected.length), selectedFeedIds: selected.map(f=>f.feedId) };
+    }catch(error){
+      // A 200 response must not leave a new ETag behind when its articles failed
+      // to commit: a subsequent 304 would otherwise hide the unarchived change.
+      for(const [id,state]of before.states)this.states.set(id,state);
+      this.corpus=before.corpus;this.generatedAt=before.generatedAt;throw error;
     }finally{clearTimeout(timer);this.controller=null;this.metrics.queued=0;}
   }
   snapshot(selectedFeedCount=0){
-    const feedStatus=this.catalog.feeds.map(feed=>{const s=this.state(feed.feedId);const iso=n=>n?new Date(n).toISOString():null;return {feedId:feed.feedId,label:feed.label,url:feed.canonicalUrl,disabled:feed.disabled,status:feed.disabled?"skipped":s.status,healthStatus:s.healthStatus,count:s.articles.length,lastAttemptAt:iso(s.lastAttemptAt),lastSuccessAt:iso(s.lastSuccessAt),nextEligibleAt:iso(s.nextEligibleAt),cooldownUntil:iso(s.cooldownUntil),consecutiveErrors:s.consecutiveErrors,error:feed.disabled?feed.reason:s.error||null,hasEtag:Boolean(s.etag),hasLastModified:Boolean(s.lastModified)};});
+    const feedStatus=this.catalog.feeds.map(feed=>{const s=this.state(feed.feedId);const iso=n=>n?new Date(n).toISOString():null;return {feedId:feed.feedId,label:feed.label,url:feed.canonicalUrl,disabled:feed.disabled,status:feed.disabled?"skipped":s.status,healthStatus:s.healthStatus,count:s.articles.length,acquiredCount:s.acquiredCount ?? null,previewTruncated:s.previewTruncated || false,lastAttemptAt:iso(s.lastAttemptAt),lastSuccessAt:iso(s.lastSuccessAt),nextEligibleAt:iso(s.nextEligibleAt),cooldownUntil:iso(s.cooldownUntil),consecutiveErrors:s.consecutiveErrors,error:feed.disabled?feed.reason:s.error||null,hasEtag:Boolean(s.etag),hasLastModified:Boolean(s.lastModified)};});
     const enabled=feedStatus.filter(f=>!f.disabled),checked=enabled.filter(f=>f.lastAttemptAt).length;
     return {generatedAt:this.generatedAt||null,items:this.corpus,meta:{provider:'rss-canonical',selectedFeedCount,feedStatus,metrics:{...this.metrics,hostsLimited:[...this.hostCooldowns.values()].filter(t=>t>this.now()).length,persistence:{...this.writer?.metrics,error:this.writer?.lastError?.message||null}},catalogStats:this.catalog.stats,coverage:{enabled:enabled.length,checked,unqueried:enabled.length-checked},availability:this.corpus.length?(enabled.some(f=>f.healthStatus==='degraded'||f.healthStatus==='unhealthy')?'degraded':'healthy'):'no-recoverable-data'}};
   }
@@ -80,15 +86,16 @@ export class RssCanonicalPipeline {
       if(!hasFeedEnvelope(xml)||!(/<\/(?:[\w.-]+:)?(?:rss|feed)\s*>/i.test(xml)||/<(?:[\w.-]+:)?(?:rss|feed)\b[^>]*\/\s*>/i.test(xml)) || ((xml.match(/<(?:[\w.-]+:)?(?:item|entry)\b/g)||[]).length !== (xml.match(/<\/(?:[\w.-]+:)?(?:item|entry)\s*>/g)||[]).length))throw Error('rss-malformed-xml');
       const fetchedAt=new Date(this.now()).toISOString();
       const parseStarted=performance.now();
-      const parsed=parseFeedArticles(xml,feed.label,feed,this.maxItemsPerFeed);
+      // The response byte budget bounds acquisition; per-feed item limits only bound the retained preview.
+      const parsed=parseFeedArticles(xml,feed.label,feed,Number.MAX_SAFE_INTEGER);
       this.metrics.lastParseMs+=performance.now()-parseStarted;
       const classifyStarted=performance.now();
       const articles=parsed.map(a=>classifyRssArticle({...a,id:articleIdentity(a),receivedAt:fetchedAt,provenance:{...a.provenance,feedId:feed.feedId,sourceId:feed.sourceId,sourceType:feed.type,queryProvider:feed.queryProvider,canonicalUrl:feed.canonicalUrl,fetchedAt,pipeline:'canonical-rss',stale:false}}));
       this.metrics.lastClassifyMs+=performance.now()-classifyStarted;
       signal.throwIfAborted();
       if (this.now() >= Math.min(deadline, now + this.timeoutMs)) throw new DOMException('RSS parse budget exceeded','TimeoutError');
-      state.etag=response.headers.get('etag')||null;state.lastModified=response.headers.get('last-modified')||null;state.lastSuccessAt=this.now();state.consecutiveErrors=0;state.healthStatus='healthy';state.cooldownUntil=null;state.error=null;state.articles=articles;state.status=articles.length?'ok':'empty';
-      return {feedId:feed.feedId,status:state.status,articles};
+      state.etag=response.headers.get('etag')||null;state.lastModified=response.headers.get('last-modified')||null;state.lastSuccessAt=this.now();state.consecutiveErrors=0;state.healthStatus='healthy';state.cooldownUntil=null;state.error=null;state.articles=articles.slice(0,this.maxItemsPerFeed);state.acquiredCount=articles.length;state.previewTruncated=articles.length>state.articles.length;state.status=articles.length?'ok':'empty';
+      return {feedId:feed.feedId,status:state.status,articles:state.articles,acquiredArticles:articles};
     }catch(error){
       state.consecutiveErrors++;state.healthStatus=state.consecutiveErrors>=3?'unhealthy':'degraded';state.error=error.message;
       state.cooldownUntil=this.now()+Math.max(error.retryAfterMs||0,Math.min(6*3600_000,900_000*2**(state.consecutiveErrors-1)));this.metrics.errors++;

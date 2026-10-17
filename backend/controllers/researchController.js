@@ -56,3 +56,5 @@ export async function recoverSignals(req,res){res.json({ok:true,data:await res.a
 
 export async function getForecastEvaluation(req,res){res.json({ok:true,data:await res.app.locals.forecastEvaluationService.evaluate(params(req,"research.forecast-evaluation"))});}
 export async function registerForecast(req,res){res.json({ok:true,data:await res.app.locals.forecastEvaluationService.record(operatorBody(req,"research.forecast.register"))});}
+
+export async function getSignalChange(req,res){res.json({ok:true,data:await res.app.locals.materialAlertStore.getChange(params(req,"signals.change"))});}

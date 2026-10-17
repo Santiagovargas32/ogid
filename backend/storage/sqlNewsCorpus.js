@@ -139,6 +139,63 @@ export class SqlNewsCorpus {
     } finally { reader.close(); }
   }
 
+  async readAnalytical({asOf = new Date().toISOString(), windowHours = 48, maxBytes = 64 * 1024 * 1024, awarenessMode = "off",revisionWatermark = null} = {}) {
+    const now=Date.parse(asOf),from=new Date(now-windowHours*HOUR).toISOString();
+    if(!Number.isFinite(now))throw new Error("Invalid analytical asOf");
+    const reader=new Database(this.archive.db.name,{readonly:true,timeout:1500});
+    const rows=[],inputManifest=[];let bytes=0,eligible=0,truncated=false,revision,excluded,legacyAvailabilityCount=0;
+    try {
+      reader.pragma('query_only=ON');reader.exec('BEGIN');
+      revision=readMeta(reader,'news.meta',{}).revision || 0;
+      revisionWatermark ??= reader.prepare('SELECT coalesce(max(rowid),0) AS n FROM article_revisions').get().n;
+      const rollout=reader.prepare('SELECT applied_at FROM schema_migrations WHERE version=9').get()?.applied_at || asOf;
+      excluded=reader.prepare(`SELECT coalesce(sum(json_extract(r.payload_json,'$.publishedAt') IS NULL),0) AS unknownPublicationCount,
+        coalesce(sum(json_extract(r.payload_json,'$.publishedAt')>?),0) AS futurePublicationCount FROM article_revisions r
+        WHERE r.rowid<=? AND r.observed_at<=? AND NOT EXISTS (SELECT 1 FROM article_revisions newer
+          WHERE newer.article_id=r.article_id AND newer.observed_at<=? AND newer.rowid<=? AND newer.revision>r.revision)`)
+        .get(asOf,revisionWatermark,asOf,asOf,revisionWatermark);
+      // Choose each article's last available revision, including corrections that
+      // move its publication date out of the requested window. No future revision
+      // is substituted for the revision known at inputsAsOf.
+      const query=reader.prepare(`SELECT r.payload_json,r.observed_at FROM article_revisions r
+        WHERE r.rowid<=? AND r.observed_at<=? AND json_extract(r.payload_json,'$.publishedAt')>=?
+          AND json_extract(r.payload_json,'$.publishedAt')<=?
+          AND NOT EXISTS (SELECT 1 FROM article_revisions newer WHERE newer.article_id=r.article_id
+            AND newer.observed_at<=? AND newer.rowid<=? AND newer.revision>r.revision)
+        ORDER BY r.article_id`);
+      for(const row of query.iterate(revisionWatermark,asOf,from,asOf,asOf,revisionWatermark)) {
+        const stored=JSON.parse(row.payload_json);
+        if(!stored.title?.trim() || !stored.url || stored.synthetic || ['synthetic','fallback','seeded'].includes(stored.dataMode) || stored.provenance?.synthetic)continue;
+        eligible++;
+        const size=Buffer.byteLength(row.payload_json);
+        if(bytes+size>maxBytes){truncated=true;continue;}
+        bytes+=size;if(row.observed_at<rollout)legacyAvailabilityCount++;rows.push(stored);inputManifest.push([stored.id,stored.revision,stored.analysisFeatures?.methodVersion || 'permitted-metadata']);
+      }
+      reader.exec('COMMIT');
+    } finally {reader.close();}
+    // Release the WAL snapshot before classification or asynchronous yielding.
+    const articles=[];
+    for(const stored of rows) {
+      const normalized=normalizeArticles([{...stored,description:stored.excerpt || ''}],stored.provider)[0];
+      if(normalized){
+        const features=stored.analysisFeatures?.methodVersion==='news-features-v1'?stored.analysisFeatures:{};
+        articles.push({...normalized,id:stored.id,revision:stored.revision,contentRevision:stored.contentRevision,
+          countryMentions:[...new Set([...(stored.countryMentions || []),...(normalized.countryMentions || [])])],
+          sentiment:features.sentiment || normalized.sentiment,conflict:features.conflict || normalized.conflict,
+          financial:features.financial || normalized.financial,content:'',fullText:'',provenances:stored.provenances});
+      }
+      if(articles.length%256===0)await new Promise(resolve=>setImmediate(resolve));
+    }
+    const branches=partitionNewsArticles(articles,{reuseClassification:true});
+    const signalCorpus=branches.geopolitical;
+    const marketSignalCorpus=awarenessMode==='visible'?[...new Map([...signalCorpus,...branches.financial].map(a=>[a.id,a])).values()]:signalCorpus;
+    return {articles,signalCorpus,marketSignalCorpus,meta:{source:'sqlite-article-revisions',revision,asOf,from,to:asOf,windowHours,
+      eligibleCount:eligible,scannedCount:eligible,analysisCount:articles.length,marketAnalysisCount:marketSignalCorpus.length,marketExcludedCount:articles.length-marketSignalCorpus.length,analysisTruncated:truncated,
+      truncationReason:truncated?'analytical-input-byte-budget':null,maxInputBytes:maxBytes,inputBytes:bytes,
+      ...excluded,normalizationExcludedCount:rows.length-articles.length,legacyAvailabilityCount,duplicateCount:0,inputManifest:{hash:stableHash(inputManifest),count:inputManifest.length,queryVersion:'article-revisions-asof-v1',revisionWatermark,asOf,from,to:asOf,maxBytes,order:'article_id'},coverageMeaning:'all eligible stored revisions within the byte budget; acquisition continuity unknown',
+      sourceCount:new Set(articles.flatMap(a=>(a.provenances || []).map(p=>p.sourceId || p.publisher || p.provider))).size}};
+  }
+
   async getArchiveFeed({countries=[],sources=[],limit=40,page=1,order="recent",q="",windowHours=null}={}) {
     const boundedLimit=Math.min(500,Math.max(1,Number(limit)||40)),offset=(Math.min(10000,Math.max(1,Number(page)||1))-1)*boundedLimit;
     const reader=new Database(this.archive.db.name,{readonly:true});const heap=[];const compare=(a,b)=>compareNews(a,b,order);

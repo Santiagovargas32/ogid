@@ -127,12 +127,32 @@ export class SqlCandleStore {
 
 export class SqlAlertStore extends MaterialAlertStore {
   constructor(db) {
-    super(); this.db=db;
+    super(); this.db=db;this.retentionDays=null;this.reload();
+  }
+  reload(){
+    const db=this.db;
     this.observed=new Map(this.rows("observed"));this.acknowledged=new Map(this.rows("acknowledged"));
     const meta=readMeta(db,"alerts.meta",{sequence:0,retainedAfter:0,cursorKey:randomBytes(32).toString("base64url")});
-    this.research={...meta,scenarios:Object.fromEntries(this.rows("scenarios")),signals:Object.fromEntries(this.rows("signals")),consumers:Object.fromEntries(this.rows("consumers")),changes:db.prepare("SELECT payload_json FROM signal_changes ORDER BY sequence").all().map(r=>JSON.parse(r.payload_json))};
+    this.research={...meta,scenarios:Object.fromEntries(this.rows("scenarios")),signals:Object.fromEntries(this.rows("signals")),consumers:Object.fromEntries(this.rows("consumers")),changes:[]};
     this.persisted=new Map();for(const r of db.prepare("SELECT * FROM alert_rows").all())this.persisted.set(`${r.collection}|${r.entity_id}`,r.payload_json);
   }
+  // Only uncommitted changes live in memory. Historical facts remain in SQL.
+  prune() { /* SQL facts have no automatic retention. */ }
+  changeFloor(){return this.research.retainedAfter;}
+  changePage(current,limit) {
+    const filters=current.instrumentIds.length?` AND json_extract(payload_json,'$.instrumentId') IN (${current.instrumentIds.map(()=>'?').join(',')})`:'';
+    return this.db.prepare(`SELECT sequence FROM signal_changes WHERE sequence>? AND sequence<=?${filters} ORDER BY sequence LIMIT ?`).all(current.after,current.upper,...current.instrumentIds,limit+1);
+  }
+  materializeChange(row){return JSON.parse(this.db.prepare('SELECT payload_json FROM signal_changes WHERE sequence=?').get(row.sequence).payload_json);}
+  changeById(id) {
+    const sequence=Number(/^change-(\d+)-/.exec(id || '')?.[1]);
+    if(!Number.isSafeInteger(sequence))return undefined;
+    const row=this.db.prepare('SELECT payload_json FROM signal_changes WHERE sequence=?').get(sequence);
+    const value=row?JSON.parse(row.payload_json):undefined;return value?.changeId===id?value:undefined;
+  }
+  researchTransaction(fn){try{return super.researchTransaction(fn);}catch(error){this.reload();throw error;}}
+  candidates(values){try{return super.candidates(values);}catch(error){this.reload();throw error;}}
+  acknowledge(input){try{return super.acknowledge(input);}catch(error){this.reload();throw error;}}
   rows(collection) { return this.db.prepare("SELECT entity_id,payload_json FROM alert_rows WHERE collection=?").all(collection).map(r=>[r.entity_id,JSON.parse(r.payload_json)]); }
   persist() {
     if(!this.db) return;
@@ -147,10 +167,10 @@ export class SqlAlertStore extends MaterialAlertStore {
         this.db.prepare("INSERT OR IGNORE INTO signal_changes VALUES(?,?,?)").run(c.sequence,c.generatedAt,JSON.stringify(c));
         this.db.prepare("INSERT OR IGNORE INTO outbox(change_id,entity_kind,entity_id,revision,observed_at,payload_json) VALUES(?,?,?,?,?,?)").run(c.changeId,c.kind,c.entityId,c.revision || 1,c.observedAt || c.generatedAt,JSON.stringify(c));
       }
-      for(const [consumerId,row]of Object.entries(this.research.consumers))this.db.prepare("INSERT INTO consumer_checkpoints VALUES(?,?,?) ON CONFLICT(consumer_id) DO UPDATE SET sequence=excluded.sequence,acknowledged_at=excluded.acknowledged_at").run(consumerId,row.sequence,row.acknowledgedAt || new Date(this.now()).toISOString());
-      this.db.prepare("DELETE FROM signal_changes WHERE sequence<=?").run(this.research.retainedAfter);
+      for(const [consumerId,row]of Object.entries(this.research.consumers))this.db.prepare("INSERT INTO consumer_checkpoints VALUES(?,?,?) ON CONFLICT(consumer_id) DO UPDATE SET sequence=excluded.sequence,acknowledged_at=excluded.acknowledged_at WHERE consumer_checkpoints.sequence!=excluded.sequence OR consumer_checkpoints.acknowledged_at!=excluded.acknowledged_at").run(consumerId,row.sequence,row.acknowledgedAt || new Date(this.now()).toISOString());
+      // Preserve historical changes, including imported retention boundaries.
       writeMeta(this.db,"alerts.meta",Object.fromEntries(["sequence","retainedAfter","cursorKey"].map(k=>[k,this.research[k]])));
-    }).immediate();this.persisted=next;
+    }).immediate();this.persisted=next;this.research.changes=[];
   }
 }
 

@@ -41,7 +41,7 @@ test("inventario: todas las rutas JSON montadas tienen contrato y permiso; rutas
     return routes;
   };
   const mounted = new Set(enumerate("index.js", "/api")); const registered = new Set(OGID_OPERATIONS.map(op => `${op.method} ${op.path}`));
-  assert.deepEqual([...mounted].sort(), [...registered].sort()); assert.equal(OPERATIONS_VERSION, "1.3.0");
+  assert.deepEqual([...mounted].sort(), [...registered].sort()); assert.equal(OPERATIONS_VERSION, "1.4.0");
   for (const operation of OGID_OPERATIONS) { assert.ok(operation.scope); assert.ok(operation.effects); assert.ok(operation.projection); assert.equal(operation.parameters.additionalProperties, false); assert.ok(["research", "operator"].includes(operation.profile)); }
 });
 test("todas las lecturas MCP sobre backend real: almacenadas, sin refresh/cuotas, identidades y separación operador", async () => {
@@ -58,9 +58,11 @@ test("todas las lecturas MCP sobre backend real: almacenadas, sin refresh/cuotas
   runtime.mediaStreamService.snapshot = { generatedAt: null, sections: { situational: [{ id: "fixture-stream", name: "Fixture", availability: "unavailable" }], webcams: [] }, summary: {} };
   archive.ingest([{ id: "fixture-original", title: "NVIDIA earnings", url: "https://example.org/nvidia", provider: "rss", publishedAt: new Date().toISOString() }]);
   const id = archive.search().articles[0].id; const nvda = getInstrumentByCanonicalSymbol("NVDA").instrumentId;
+  const alertStore=runtime.app.locals.materialAlertStore;
+  const change=alertStore.researchTransaction(state=>alertStore.appendChange(state,{kind:'fixture',entityId:'fixture',revision:1,snapshot:{status:'watch'}}));
   try {
     for (const operation of OGID_OPERATIONS.filter(op => op.profile === "research")) {
-      const params = ["market.candles","market.indicators","market.technical-context"].includes(operation.id) ? { instrumentId: nvda } : operation.id === "etf.holdings" ? {instrumentId:getInstrumentByCanonicalSymbol("QQQ").instrumentId} : operation.id === "market.history.job" ? {jobId:runtime.app.locals.historicalAcquisitionService.create({requestId:"fixture",instrumentIds:[nvda]}).jobId} : operation.id === "research.companyfacts" ? {companyId:"unavailable-fixture"} : operation.id === "portfolio.context" ? { mode: "weekly", instrumentIds: [nvda] } : {};
+      const params = operation.id === "signals.change" ? {changeId:change.changeId} : ["market.candles","market.indicators","market.technical-context"].includes(operation.id) ? { instrumentId: nvda } : operation.id === "etf.holdings" ? {instrumentId:getInstrumentByCanonicalSymbol("QQQ").instrumentId} : operation.id === "market.history.job" ? {jobId:runtime.app.locals.historicalAcquisitionService.create({requestId:"fixture",instrumentIds:[nvda]}).jobId} : operation.id === "research.companyfacts" ? {companyId:"unavailable-fixture"} : operation.id === "portfolio.context" ? { mode: "weekly", instrumentIds: [nvda] } : {};
       const path = operation.pathParameters ? { id: operation.id === "news.item" ? id : "fixture-stream" } : undefined;
       const data = await read.operation(operation.id, params, undefined, path); assert.ok(data && typeof data === "object", operation.id);
       const output = JSON.stringify(projectOperation(operation, data)); assert.ok(!output.includes("/home/fedora"), operation.id);

@@ -23,7 +23,7 @@ export function createBusinessAdapters(manager, {rootDir,enabled=true,context=()
   const signals=proxy("signals",["recordSnapshot","getAnomalies"]);
   signals.recordSnapshot=(snapshot,aggregate)=>call("signals","recordSnapshot",[{meta:{lastRefreshAt:snapshot.meta?.lastRefreshAt},signalCorpus:snapshot.signalCorpus || [],impact:snapshot.impact,predictions:snapshot.predictions,market:{quotes:snapshot.market?.quotes || {}}},aggregate]);
   return {call,news,candles,
-    store:proxy("store",["view","getRow"]),events:proxy("events",["ingest","search","replayAwareness"]),alerts:proxy("alerts",["acknowledge","delta","acknowledgeChanges","recoverCheckpoint"]),
+    store:proxy("store",["view","getRow"]),events:proxy("events",["ingest","search","replayAwareness"]),alerts:proxy("alerts",["acknowledge","delta","getChange","acknowledgeChanges","recoverCheckpoint"]),
     sources:proxy("sources",["status","run","holdings"]),history:proxy("history",["create","get","run","coverage"]),imports:proxy("imports",["datasets","import"]),
     technical:proxy("technical",["get"]),indicators:proxy("indicators",["calculate"]),coupling:proxy("coupling",["calculate"]),scenarios:proxy("scenarios",["refresh","list","remove"]),
     forecasts:proxy("forecasts",["evaluate","record"]),portfolio:proxy("portfolio",["getContext"],{context:true}),

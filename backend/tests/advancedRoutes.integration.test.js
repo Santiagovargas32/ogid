@@ -78,7 +78,7 @@ test("advanced map and intelligence routes return bounded additive payloads", as
     assert.equal(advancedResponse.status, 200);
     assert.equal(advancedPayload.ok, true);
     assert.equal(advancedPayload.data.schemaVersion, "advanced-intelligence-snapshot-v1");
-    assert.equal(advancedPayload.data.methodology.version, "advanced-intelligence-v2");
+    assert.equal(advancedPayload.data.methodology.version, "advanced-intelligence-v3");
     assert.deepEqual(advancedPayload.data.filters.countries, ["UA"]);
     assert.equal(advancedPayload.data.window.hours, 24);
     assert.ok(Number.isInteger(advancedPayload.data.corpus.uniqueArticles));

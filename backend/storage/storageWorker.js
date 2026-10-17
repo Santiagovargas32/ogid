@@ -1,3 +1,4 @@
+import { assertWriterAvailable, acquireWriter, releaseWriter } from "./writerOwnership.js";
 import { parentPort, workerData, threadId } from "node:worker_threads";
 import { readDatabaseDiagnostics } from "./diagnostics.js";
 import { mkdirSync, statSync, chmodSync } from "node:fs";
@@ -25,7 +26,7 @@ function rpc(operation,input){return new Promise((resolve,reject)=>{const id=ran
 const fail = code => { throw Object.assign(new Error(code), { code }); };
 function size(file) { try { return statSync(file).size; } catch (error) { if (error.code === "ENOENT") return 0; throw error; } }
 function status() {
-  return { queryOnly:database.pragma("query_only",{simple:true}) === 1,sqliteVersion: version, migrations, databaseBytes: size(workerData.databasePath), walBytes: size(`${workerData.databasePath}-wal`), businessStorage: readMeta(database,"businessStorage",workerData.businessEnabled ? "sqlite" : "legacy-json"), storagePhase: readMeta(database,"businessStorage",workerData.businessEnabled ? "sqlite" : "legacy-json") === "sqlite" ? "repositories" : "infrastructure" };
+  return { readOnlyConnection:database.readonly,queryOnly:database.pragma("query_only",{simple:true}) === 1,sqliteVersion: version, migrations, databaseBytes: size(workerData.databasePath), walBytes: size(`${workerData.databasePath}-wal`), businessStorage: readMeta(database,"businessStorage",workerData.businessEnabled ? "sqlite" : "legacy-json"), storagePhase: readMeta(database,"businessStorage",workerData.businessEnabled ? "sqlite" : "legacy-json") === "sqlite" ? "repositories" : "infrastructure" };
 }
 function pipelineRecord(input) {
   if (!input || !/^[A-Za-z0-9._:-]{1,128}$/.test(input.runId || "") || !/^[a-z-]{1,64}$/.test(input.pipelineId || "")) fail("STORAGE_INVALID_COMMAND");
@@ -36,7 +37,16 @@ function pipelineRecord(input) {
   database.prepare(`INSERT INTO pipeline_runs VALUES(?,?,?,?,?,?,?)`).run(input.runId,input.pipelineId,input.startedAt,input.completedAt || null,input.status,JSON.stringify(input.counts),input.errorCode || null);
   return { runId: input.runId, persisted: true };
 }
-function execute(operation, input) {
+function execute(operation, input, requestId) {
+  if(operation.startsWith("snapshot.")) {
+    if(workerData.analysisWorker)fail("STORAGE_READ_ONLY");
+    const method=operation.slice(9);
+    if(method==="prepare")return runtime.advancedSnapshots.prepare(input);
+    if(method==="claim")return runtime.advancedSnapshots.claim(input.jobId);
+    if(method==="fail")return runtime.advancedSnapshots.fail(input);
+    if(method==="pending")return runtime.advancedSnapshots.pending();
+    fail("STORAGE_UNKNOWN_OPERATION");
+  }
   if(operation === "analysis.persist")return runtime.persistDerived(input);
   if(operation === "domain.registry") return runtime.registry(input.instruments);
   if(operation === "domain.configure") {
@@ -46,7 +56,7 @@ function execute(operation, input) {
   }
   if(operation === "domain.call") {
     if(input.service === "admin" && input.method === "history") return runtime.adminHistory();
-    return runtime.call(input);
+    return runtime.call({...input,requestId});
   }
   if(operation === "storage.import") return importLegacy(database,runtime,input);
   if(operation === "runtime.save") return runtime.save(input.kind,input.payload);
@@ -62,14 +72,15 @@ function execute(operation, input) {
 }
 try {
   mkdirSync(path.dirname(workerData.databasePath), { recursive: true, mode: 0o700 });
-  database = new Database(workerData.databasePath, { timeout: workerData.busyTimeoutMs });
-  chmodSync(workerData.databasePath, 0o600);
+  database = new Database(workerData.databasePath, { readonly:workerData.analysisWorker, fileMustExist:workerData.analysisWorker, timeout: workerData.busyTimeoutMs });
+  if(!workerData.analysisWorker)chmodSync(workerData.databasePath, 0o600);
   version = database.prepare("SELECT sqlite_version() AS v").get().v;
   const [major, minor, patch] = version.split(".").map(Number);
   if (major < 3 || (major === 3 && (minor < 51 || (minor === 51 && patch < 3)))) fail("STORAGE_SQLITE_VERSION");
-  if (database.pragma("journal_mode=WAL", { simple: true }) !== "wal") fail("STORAGE_WAL_UNAVAILABLE");
+  if (database.pragma(workerData.analysisWorker ? "journal_mode" : "journal_mode=WAL", { simple: true }) !== "wal") fail("STORAGE_WAL_UNAVAILABLE");
   database.pragma("synchronous=FULL"); database.pragma("foreign_keys=ON");
-  migrations = migrate(database, workerData.migrationsDir);
+  if(workerData.analysisWorker){database.pragma("query_only=ON");migrations=database.prepare("SELECT version,name,applied_at AS appliedAt FROM schema_migrations ORDER BY version").all();}
+  else {assertWriterAvailable(database);migrations = migrate(database, workerData.migrationsDir);acquireWriter(database,workerData.writerToken);}
   cacheStatements(database);
   runtime=new BusinessRuntime(database,rpc,(id,stage)=>parentPort.postMessage({type:"stage",id,stage}));
   parentPort.postMessage({ type: "ready", status: status() });
@@ -84,7 +95,7 @@ try {
     message.id = envelope.id;
     if (message.operation === "storage.close") {
       clearInterval(heartbeat);
-      try { runtime?.close(); database.close(); parentPort.postMessage({ id: message.id, result: { closed: true } }); parentPort.close(); }
+      try { runtime?.close(); if(!workerData.analysisWorker)releaseWriter(database,workerData.writerToken); database.close(); parentPort.postMessage({ id: message.id, result: { closed: true } }); parentPort.close(); }
       catch { parentPort.postMessage({ id: message.id, error: { code: "STORAGE_CLOSE_FAILED" } }); }
       return;
     }
@@ -94,22 +105,22 @@ try {
       const cpuStart = workerData.analysisWorker && typeof process.threadCpuUsage === "function" ? process.threadCpuUsage() : null;
       const command={operation:message.operation,service:message.input?.service || null,method:message.input?.method || null,kind:message.input?.kind || null,startedAt:new Date().toISOString()};
       activeCommands.set(message.id,command);parentPort.postMessage({type:"command-started",id:message.id,startedAt:Date.now()});
-      let result;
-      if (message.operation === "pipeline.record") {
+      let result;runtime.lastCommitMs=null;
+      if (["pipeline.record","runtime.save"].includes(message.operation)) {
         const requestId = message.requestId;
         if (!/^[A-Za-z0-9._:-]{1,128}$/.test(requestId || "")) fail("STORAGE_INVALID_REQUEST_ID");
         const hash = stableHash([message.operation,message.input]);
         result = database.transaction(() => {
           const previous = database.prepare("SELECT * FROM storage_commands WHERE request_id=?").get(requestId);
           if (previous) { if (previous.input_hash !== hash) fail("STORAGE_IDEMPOTENCY_CONFLICT"); return JSON.parse(previous.result_json); }
-          const value = execute(message.operation,message.input);
+          const value = execute(message.operation,message.input,message.requestId);
           database.prepare("INSERT INTO storage_commands VALUES(?,?,?,?,?)").run(requestId,message.operation,hash,JSON.stringify(value),new Date().toISOString());
           return value;
         }).immediate();
-      } else { result = await execute(message.operation,message.input); }
+      } else { result = await execute(message.operation,message.input,message.requestId); }
       const cpu = cpuStart ? process.threadCpuUsage(cpuStart) : null;
       const cpuMs = cpu ? (cpu.user + cpu.system) / 1000 : null;
-      parentPort.postMessage({ id: message.id, result, durationMs: performance.now() - start, cpuMs, status: status() });
+      parentPort.postMessage({ id: message.id, result, durationMs: performance.now() - start, cpuMs, outputBytes:Buffer.byteLength(JSON.stringify(result ?? null)),commitMs:runtime.lastCommitMs ?? null, status: status() });
       lastCompletedCommand={...command,completedAt:new Date().toISOString(),durationMs:performance.now()-start,cpuMs};
     } catch (error) {
       lastFailedCommand={...activeCommands.get(message.id),failedAt:new Date().toISOString(),code:error.code || "STORAGE_COMMAND_FAILED"};
@@ -119,7 +130,7 @@ try {
     }finally{activeCommands.delete(message.id);}
   });
 } catch (error) {
-  try { database?.close(); } catch { /* startup failure already propagated */ }
+  try { if(database&&!workerData.analysisWorker)releaseWriter(database,workerData.writerToken); database?.close(); } catch { /* startup failure already propagated */ }
   parentPort.postMessage({ type: "failed", error: { code: /^(STORAGE_|SQLITE_|EACCES|ENOENT|ENOSPC)[A-Z0-9_]*$/.test(error.code || "") ? error.code : "STORAGE_START_FAILED" } });
   parentPort.close();
 }

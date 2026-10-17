@@ -1,3 +1,4 @@
+import { stableHash } from "../utils/stableHash.js";
 import { fetchAggregatedNews } from "../services/news/newsAggregatorService.js";
 import { normalizeAdminArticles } from "../services/normalizeService.js";
 import { computeMarketImpact } from "../services/market/impactEngineService.js";
@@ -53,10 +54,11 @@ export class SqlNewsPipeline {
     return this.supplementalInFlight;
   }
   async runSupplemental(){
-    const started=performance.now();
+    const started=performance.now(),previousCursor=this.runtime.rssGeneratedCursor;let committed=false;
     this.supplementalDiagnostics={stage:"fetching-and-archiving",startedAt:new Date().toISOString()};
     try{
       const snapshot=await this.runtime.services.rss.refresh();
+      committed=true;
       this.runtime.save("rss",this.runtime.services.rss.lastSnapshot);
       this.runtime.persistedRssSnapshot=this.runtime.services.rss.lastSnapshot;
       if(snapshot.meta.totalItems>0 && this.diagnostics){
@@ -69,6 +71,7 @@ export class SqlNewsPipeline {
       this.supplementalDiagnostics={...this.supplementalDiagnostics,stage:"failed",code:error.code || "RSS_SUPPLEMENTAL_FAILED",durationMs:Math.round(performance.now()-started)};
       throw error;
     }finally{
+      if(!committed)this.runtime.rssGeneratedCursor=previousCursor;
       this.runtime.nextGeneratedCollectAt=Date.now()+this.config.rssAggregateIntervalMs;
       this.runtime.save("rss-generated",{nextOffset:this.runtime.rssGeneratedCursor,nextCollectAt:this.runtime.nextGeneratedCollectAt});
     }
@@ -80,15 +83,21 @@ export class SqlNewsPipeline {
     this.runtime.progress("news.projection","running");
     const context=this.runtime.context, snapshot=context.snapshot || {};
     const corpus=await this.corpus.read({countries:input.countries || this.config.watchlistCountries || [], awarenessMode:input.awarenessMode || this.config.awarenessMode || "off"});
+    const cacheKey=stableHash([input,corpus.meta.revision,corpus.meta.asOf,context.selectedInstrumentIds,snapshot.countries,snapshot.market,snapshot.impactHistory,snapshot.predictions,Math.floor(Date.now()/30000)]);
+    if(this.projectionCache?.key===cacheKey){
+      this.runtime.progress('news.projection','completed',{processed:this.projectionCache.result.news.length,revision:corpus.meta.revision});
+      return structuredClone(this.projectionCache.result);
+    }
     this.projectionDiagnostics={...this.projectionDiagnostics,stage:"market-impact",corpusMs:Math.round(performance.now()-started),marketAnalysisCount:corpus.marketSignalCorpus.length};
     const riskResult=riskWithPrevious(corpus.riskResult, snapshot.countries);
+    const analytical=await this.corpus.readAnalytical({asOf:corpus.meta.asOf,windowHours:this.config.candidateWindowHours || 36,awarenessMode:input.awarenessMode || this.config.awarenessMode || 'off'});
     const market=context.selectedInstrumentIds || [], instruments=listVerifiedInstruments().filter(instrument => market.includes(instrument.instrumentId));
     const tickers=input.tickers || instruments.map(instrument => instrument.canonicalSymbol);
     const acquisitionAt=this.diagnostics?.lastSuccessfulAt || corpus.meta.lastIngestAt;
     const age=acquisitionAt ? Date.now()-Date.parse(acquisitionAt) : Infinity;
     const sourceMode=corpus.meta.eligibleCount ? (age <= (this.config.freshnessMs || 600000) ? "live" : "stale") : "unavailable";
     const inputMode=snapshot.market?.sourceMode === "fallback" ? "mixed" : sourceMode;
-    const common={articles:corpus.marketSignalCorpus, countries:riskResult.countries, marketQuotes:snapshot.market?.quotes || {}, tickers, instruments, inputMode};
+    const common={articles:analytical.marketSignalCorpus, countries:riskResult.countries, marketQuotes:snapshot.market?.quotes || {}, tickers, instruments, inputMode};
     this.runtime.progress("news.impact","running");
     const impact=computeMarketImpact({...common, countryFilter:input.countries || this.config.watchlistCountries || [], windowMin:input.impactWindowMin || 240, impactHistory:snapshot.impactHistory || [], predictionScores:snapshot.predictions?.predictionScoreByTicker || {}});
     this.runtime.progress("news.impact","completed",{processed:impact.items?.length || 0});
@@ -97,15 +106,19 @@ export class SqlNewsPipeline {
     const predictions=generatePredictions(common);
     const insights=generateInsights({countries:riskResult.countries, previousCountries:snapshot.countries || {}, inputMode});
     this.runtime.progress("news.predictions","completed",{processed:predictions.tickers?.length || 0});
-    const meta={...corpus.meta,lastSuccessfulAcquisitionAt:this.diagnostics?.lastSuccessfulAt || null,lastAcquisitionAttemptAt:this.diagnostics?.startedAt || null,freshnessBasis:this.diagnostics?.lastSuccessfulAt ? "provider-collection" : "archive-last-ingest",sourceMode};
+    const meta={...corpus.meta,selectionTruncated:corpus.meta.analysisTruncated,analysisTruncated:analytical.meta.analysisTruncated,truncationReason:analytical.meta.truncationReason,marketAnalysisCount:analytical.marketSignalCorpus.length,analyticalInput:analytical.meta.inputManifest,lastSuccessfulAcquisitionAt:this.diagnostics?.lastSuccessfulAt || null,lastAcquisitionAttemptAt:this.diagnostics?.startedAt || null,freshnessBasis:this.diagnostics?.lastSuccessfulAt ? "provider-collection" : "archive-last-ingest",sourceMode};
     const {displayCandidates, ...projection}=corpus;
     const result={...projection, meta, riskResult, impact, predictions, insights, sourceMode};
     const checkpoint={kind:"news-projection",persisted:true,...meta, collection:this.diagnostics || null};
     this.projectionDiagnostics.stage="saving";
-    if(this.runtime.analysisOnly)await this.runtime.rpc("analysis.persist",{type:"news-projection",checkpoint});
-    else this.runtime.persistDerived({type:"news-projection",checkpoint});
+    const record={input,result:{meta,riskResult,impact,predictions,insights,sourceMode,methodVersion:'news-projection-v2',generatedAt:meta.asOf,inputsAsOf:meta.asOf,
+      inputHash:stableHash([meta.revision,input,snapshot.market?.quotes,snapshot.countries,analytical.meta.inputManifest]),
+      reproducibility:{complete:false,reason:'legacy ranking and state context are not versioned in older projections'},coverage:meta}};
+    if(this.runtime.analysisOnly)await this.runtime.rpc("analysis.persist",{type:"news-projection",checkpoint,record});
+    else this.runtime.persistDerived({type:"news-projection",checkpoint,record});
     this.projectionDiagnostics={...this.projectionDiagnostics,stage:"completed",completedAt:new Date().toISOString(),durationMs:Math.round(performance.now()-started)};
     this.runtime.progress("news.projection","completed",{processed:result.news.length,revision:meta.revision});
+    this.projectionCache={key:cacheKey,result:structuredClone(result)};
     return result;
   }
   getFeed(options) { return this.corpus.getFeed(options); }

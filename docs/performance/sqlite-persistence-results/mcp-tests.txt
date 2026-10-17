@@ -1,0 +1,9 @@
+✔ MCP stdio real: catálogo ampliado, cuatro herramientas compatibles e inputs rechazados (555.862214ms)
+ℹ tests 24
+ℹ suites 0
+ℹ pass 24
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3426.335861

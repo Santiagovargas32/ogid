@@ -1,8 +1,9 @@
+import { canonicalizeArticleUrl } from "../news/articleIdentity.js";
 import { createHash } from "node:crypto";
 import { getCountryByIso2 } from "../../utils/countryCatalog.js";
 
 export const OSINT_FUSION_METHODOLOGY = Object.freeze({
-  version: "osint-event-fusion-v2",
+  version: "osint-event-fusion-v3",
   deduplicationKey: "articleId+country+eventType",
   newsTypeProjection: "one event per distinct topic tag and country",
   maximumTopicTypesPerArticle: 8,
@@ -14,7 +15,7 @@ function hashId(value = "") {
 }
 
 function articleIdentity(article = {}) {
-  const url = String(article.url || "").trim().toLowerCase().replace(/[?#].*$/, "");
+  const url = canonicalizeArticleUrl(article.url);
   if (url) {
     return `url:${url}`;
   }

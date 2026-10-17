@@ -1,0 +1,134 @@
+{
+  "node": "v24.22.0",
+  "root": "baseline/backend",
+  "fixture": {
+    "articles": 7200,
+    "historicalArticles": 7200,
+    "sources": 24,
+    "hours": 48,
+    "historicalHours": 7249,
+    "signalHistoryDays": 30
+  },
+  "durationMs": 12756,
+  "rounds": 3,
+  "firstMs": 4158.020676,
+  "readyMs": 0,
+  "corpus": {
+    "inputArticles": 6000,
+    "windowedArticles": 6000,
+    "uniqueArticles": 3000,
+    "duplicatesRemoved": 3000,
+    "invalidTimestamps": 0,
+    "outsideWindow": 0,
+    "filteredByCountry": 0,
+    "previousWindowArticles": 0,
+    "availableEventCount": 3000,
+    "eventCount": 3000,
+    "eventsFilteredByCountry": 0,
+    "truncated": false,
+    "requestedEventLimit": 450,
+    "scoringUsesCompleteWindow": true
+  },
+  "newsCoverage": {
+    "source": "sqlite",
+    "revision": 14400,
+    "asOf": "2026-10-17T08:16:26.127Z",
+    "from": "2026-10-15T08:16:26.127Z",
+    "to": "2026-10-17T08:16:26.127Z",
+    "dayStart": "2026-10-16T22:00:00.000Z",
+    "dayTimeZone": "Europe/Madrid",
+    "windowHours": 48,
+    "scannedCount": 7200,
+    "eligibleCount": 7200,
+    "duplicateCount": 0,
+    "dailyCandidateCount": 1650,
+    "displayCandidateCount": 1650,
+    "geopoliticalCandidateCount": 7200,
+    "financialCandidateCount": 0,
+    "analysisCount": 3000,
+    "marketAnalysisCount": 3000,
+    "displayCount": 40,
+    "analyzeLimit": 3000,
+    "displayLimit": 40,
+    "analysisTruncated": true,
+    "riskUsesAllDailyCandidates": true,
+    "providerCounts": {
+      "rss": 7200
+    },
+    "sourceCount": 24,
+    "lastIngestAt": "2026-10-17T08:16:22.703Z",
+    "latestGeopoliticalPublishedAt": "2026-10-17T08:16:12.437Z",
+    "durationMs": 2788
+  },
+  "latency": {
+    "reads": {
+      "n": 60,
+      "p50": 4054.981724000001,
+      "p95": 4112.432763999997,
+      "p99": 4121.514491000002,
+      "max": 4121.514491000002
+    },
+    "status": {
+      "n": 3,
+      "p50": 2.5214559999985795,
+      "p95": 3.3268580000003567,
+      "p99": 3.3268580000003567,
+      "max": 3.3268580000003567
+    },
+    "ingest": {
+      "n": 147,
+      "p50": 66.60526100000061,
+      "p95": 74.95065699999941,
+      "p99": 90.26803500000096,
+      "max": 98.70436300000074
+    }
+  },
+  "memory": {
+    "rssMin": 539856896,
+    "rssMax": 563724288,
+    "firstQuarterMedian": 539856896,
+    "lastQuarterMedian": 563724288
+  },
+  "eventLoop": {
+    "p95Ms": 20.594687,
+    "maxMs": 34.144255
+  },
+  "wal": {
+    "initial": 8318312,
+    "last": 8318312,
+    "max": 8318312
+  },
+  "counts": {
+    "articles": 14403,
+    "article_revisions": 14403,
+    "analysis_runs": 4,
+    "pipeline_runs": 868
+  },
+  "jobs": null,
+  "duplicatePublications": null,
+  "writerCommands": 67,
+  "queue": {
+    "pending": 0,
+    "inFlight": 0,
+    "cpuInFlight": 0,
+    "maxCpuInFlight": 1,
+    "bytes": 0,
+    "maxItems": 128,
+    "maxBytes": 33554432,
+    "maxCommandBytes": 8388608
+  },
+  "queuePeak": {
+    "pending": 0,
+    "bytes": 0,
+    "analysisPending": 19
+  },
+  "errors": [],
+  "verify": {
+    "integrity": [
+      {
+        "integrity_check": "ok"
+      }
+    ],
+    "foreignKeys": []
+  }
+}

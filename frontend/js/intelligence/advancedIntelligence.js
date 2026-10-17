@@ -72,7 +72,8 @@ export function buildAdvancedMetaHtml(payload = {}) {
     <span class="intel-meta-item">Generated ${escapeHtml(formatGeneratedAt(payload.generatedAt))}</span>
     <span class="intel-meta-item">Window ${escapeHtml(payload.window?.label || "--")}</span>
     <span class="intel-meta-item">Corpus ${Number(corpus.uniqueArticles || 0)} unique / ${Number(corpus.windowedArticles || 0)} windowed / ${Number(corpus.inputArticles || 0)} input</span>
-    <span class="intel-meta-item">${escapeHtml(eventLabel)}</span>
+    <span class="intel-meta-item">${escapeHtml(eventLabel)} (an article may produce several events)</span>
+    ${payload.newsCoverage?.analysisTruncated ? `<span class="intel-meta-item">Partial analysis: ${escapeHtml(payload.newsCoverage.truncationReason || "input selection")}</span>` : ""}
     <span class="intel-meta-item intel-quality intel-quality-${mode}" title="${escapeHtml(qualityTitle)}">${escapeHtml(provider)} &middot; ${escapeHtml(mode)} (${escapeHtml(quality.modeScope || "quality")})</span>
     <span class="intel-meta-item">Method ${escapeHtml(methodologyVersion)}</span>
   `;
@@ -108,6 +109,8 @@ export function startAdvancedIntelligence({
   let requestToken = 0;
   let lastSnapshot = null;
   let lastSnapshotContext = "";
+  let pendingPollMs = null;
+  let pendingAttempts = 0;
 
   const currentCountries = () => countryParam(typeof getCountries === "function" ? getCountries() : "");
 
@@ -179,7 +182,22 @@ export function startAdvancedIntelligence({
         pendingRefresh = true;
         return null;
       }
-      renderSnapshot(payload || {}, countries);
+      const lifecycle=payload?.lifecycle;
+      if(lifecycle) {
+        const pending=["preparing","refreshing"].includes(lifecycle.status);
+        pendingAttempts=pending?pendingAttempts+1:0;
+        pendingPollMs=pending?Math.min(15000,Math.max(2000,Number(lifecycle.retryAfterMs)||2000)*1.4**Math.min(6,pendingAttempts-1)):null;
+        if(payload.generatedAt)renderSnapshot(payload,countries);
+        else if(lastSnapshotContext!==countries){
+          lastSnapshot=null;
+          for(const root of Object.values(roots))if(root)root.innerHTML='<div class="small">Preparing advanced intelligence snapshot...</div>';
+        }
+        if(lifecycle.status==="failed")renderFailure(new Error(lifecycle.errorCode || "Calculation failed"),countries);
+        else if(pending){
+          if(metaRoot){metaRoot.className="intel-panel-meta";metaRoot.innerHTML=`<span>${payload.generatedAt?"Updating snapshot":"Preparing snapshot"}: ${escapeHtml(lifecycle.jobStatus || "queued")}</span>${lastSnapshot?buildAdvancedMetaHtml(lastSnapshot):""}`;}
+          if(panel)panel.dataset.advancedRefresh=payload.generatedAt?"refreshing":"preparing";
+        } else if(lifecycle.stale && panel)panel.dataset.advancedRefresh="stale";
+      } else {pendingPollMs=null;pendingAttempts=0;renderSnapshot(payload || {}, countries);}
       return payload;
     } catch (error) {
       if (!stopped && token === requestToken && countries === currentCountries()) {
@@ -200,6 +218,7 @@ export function startAdvancedIntelligence({
   const loop = new SmartPollLoop({
     intervalMs,
     hiddenIntervalMs,
+    delayResolver: ({hidden}) => pendingPollMs ? (hidden?Math.max(15000,pendingPollMs):pendingPollMs) : (hidden?hiddenIntervalMs:intervalMs),
     task: loadSnapshot
   });
 

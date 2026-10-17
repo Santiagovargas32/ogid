@@ -64,3 +64,24 @@ test("cliente MCP real y backend real: diez herramientas, paginación, mercado a
     assert.deepEqual(records.filter(row => row.mode).map(row => row.mode).sort(), ["agenda", "daily", "material", "weekly"]);
   } finally { await client.close(); await runtime.stop(); }
 });
+
+test('MCP reconstructs an oversized historical change within the full wire budget without acknowledgement',async()=>{
+ createRequire(import.meta.url)('../../../backend/tests/testSetup.cjs');
+ const {createAppServer}=await import('../../../backend/server.js');
+ const {createHash}=await import('node:crypto');
+ const runtime=createAppServer({port:0,host:'127.0.0.1',disableBackgroundRefresh:true,news:{providers:[],rssFeeds:[]},market:{enabled:false,historyPersist:false,tickers:[],initialTickers:[]}});await runtime.start();
+ const alerts=runtime.app.locals.materialAlertStore;
+ const snapshot={status:'watch',context:{text:'á漢🙂'.repeat(2000)},evidence:Array.from({length:80},(_,i)=>({eventId:`event-${i}`,revision:1}))};
+ const row=alerts.researchTransaction(s=>alerts.appendChange(s,{kind:'signal-revision',entityId:'fixture',revision:1,snapshot}));
+ const client=new Client({name:'ogid-large-change-e2e',version:'1'});
+ const transport=new StdioClientTransport({command:process.execPath,args:[fileURLToPath(new URL('../src/index.js',import.meta.url))],env:{PATH:process.env.PATH,OGID_BASE_URL:`http://127.0.0.1:${runtime.server.address().port}`,OGID_MAX_OUTPUT_BYTES:'4096'},stderr:'pipe'});
+ try{
+  await client.connect(transport);
+  const call=async(operationId,parameters)=>{const response=await client.callTool({name:'ogid_query',arguments:{operationId,parameters}});assert.equal(response.structuredContent.ok,true,JSON.stringify(response.structuredContent));assert.ok(Buffer.byteLength(JSON.stringify(response))<=4096);return response.structuredContent.data;};
+  const first=await call('signals.delta',{consumerId:'e2e-large',maxBytes:4096});assert.equal(first.changes[0].changeId,row.changeId);assert.equal(first.changes[0].representation,'historical-reference-v1');
+  const chunks=[];let offset=0,detail;
+  do{detail=await call('signals.change',{changeId:row.changeId,offset,maxBytes:4096});chunks.push(Buffer.from(detail.chunk,'base64'));offset=detail.nextOffset;}while(detail.hasMore);
+  const bytes=Buffer.concat(chunks);assert.equal(createHash('sha256').update(bytes).digest('hex'),detail.sha256);assert.deepEqual(JSON.parse(bytes).snapshot,snapshot);
+  const again=await call('signals.delta',{consumerId:'e2e-large',maxBytes:4096});assert.equal(again.changes[0].changeId,row.changeId);assert.equal(alerts.research.consumers['e2e-large'],undefined);
+ }finally{await client.close();await transport.close();await runtime.stop();}
+});

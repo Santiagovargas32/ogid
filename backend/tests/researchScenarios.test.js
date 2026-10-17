@@ -35,7 +35,7 @@ test("delta retention gap, expiry, byte budgets and filtered acknowledgement are
  now+=900001;assert.throws(()=>store.delta({cursor:first.checkpointCursor}),e=>e.code==="CURSOR_EXPIRED");
  const filtered=store.delta({consumerId:"test",instrumentIds:[id]});assert.throws(()=>store.acknowledgeChanges({consumerId:"test",checkpointCursor:filtered.checkpointCursor,expectedSequence:3}),e=>e.code==="FILTERED_CHECKPOINT_FORBIDDEN");
  const large=new MaterialAlertStore({now:()=>now});large.researchTransaction(s=>large.appendChange(s,{kind:"large",entityId:"e",revision:1,snapshot:{text:"x".repeat(10000)}}));
- assert.throws(()=>large.delta({consumerId:"test",maxBytes:4096}),e=>e.code==="SIGNAL_ITEM_TOO_LARGE");assert.equal(large.delta({consumerId:"test",maxBytes:65536}).changes.length,1);
+ assert.equal(large.delta({consumerId:"test",maxBytes:4096}).changes[0].representation,"historical-reference-v1");assert.equal(large.delta({consumerId:"test",maxBytes:65536}).changes.length,1);
 });
 test("missing usable candles creates pending-data; expiry never claims a financial outcome",()=>{
  let now=Date.parse("2026-10-08T22:00:00Z");const alerts=new MaterialAlertStore({now:()=>now});const ctx={...context(),quality:{reason:"insufficient_data",stale:true}};

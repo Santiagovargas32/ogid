@@ -1,3 +1,4 @@
+import { Semaphore } from "../../shared/cancellableSemaphore.js";
 import { publicationDate } from "../articleIdentity.js";
 import { parseRateLimitHeaders } from "../../admin/apiQuotaTrackerService.js";
 import { providerRuntime } from "../../providers/providerRuntime.js";
@@ -149,14 +150,17 @@ export async function fetchRss({
   }
 
   if (activeFeeds.length > 1) {
-    const deadline = Date.now() + deadlineMs, results = new Array(activeFeeds.length); let cursor = 0;
-    await Promise.all(Array.from({ length: Math.min(Math.max(1, concurrency), activeFeeds.length) }, async () => {
-      while (cursor < activeFeeds.length) {
-        const index = cursor++, feed = activeFeeds[index], remaining = deadline - Date.now();
-        results[index] = remaining <= 0
-          ? { articles: [], sourceMeta: { feedStatus: [{ label: feed.label || "RSS", url: String(feed.url || feed), status: "deadline", count: 0 }] } }
-          : await fetchRss({ feeds: [feed], timeoutMs: Math.min(timeoutMs, remaining), retries: retries ?? 0, concurrency: 1, deadlineMs: remaining });
-      }
+    const deadline = Date.now() + deadlineMs, results = new Array(activeFeeds.length);
+    const global=new Semaphore(concurrency),hosts=new Map();
+    await Promise.all(activeFeeds.map(async(feed,index)=>{
+      let host;try{host=new URL(String(feed.url || feed)).host;}catch{host='invalid';}
+      if(!hosts.has(host))hosts.set(host,new Semaphore(1));
+      await hosts.get(host).use(()=>global.use(async()=>{
+        const remaining=deadline-Date.now();
+        results[index]=remaining<=0
+          ? {articles:[],sourceMeta:{feedStatus:[{label:feed.label || 'RSS',url:String(feed.url || feed),status:'deadline',count:0}]}}
+          : await fetchRss({feeds:[feed],timeoutMs:Math.min(timeoutMs,remaining),retries:retries ?? 0,concurrency:1,deadlineMs:remaining});
+      }));
     }));
     const articles = results.flatMap(r => r.articles);
     return { provider: "rss", articles, sourceMeta: { provider: "rss", totalResults: articles.length,
@@ -231,6 +235,7 @@ export async function fetchRss({
         redirected: Boolean(response.redirected)
       };
 
+      if(response.status===304){feedStatus.push({label,url:urlValue,status:'not-modified',count:0,error:null,...responseMeta});await response.body?.cancel();continue;}
       if (!response.ok) {
         feedStatus.push({
           label,
@@ -266,14 +271,15 @@ export async function fetchRss({
           url: urlValue,
           status: "empty",
           count: 0,
-          error: "feed-without-items",
+          error: null,
+          reason: "feed-without-items",
           payloadBytes,
           ...responseMeta
         });
         continue;
       }
 
-      const parsedArticles = parseFeedArticles(payload, label, feed);
+      const parsedArticles = parseFeedArticles(payload, label, feed, Number.MAX_SAFE_INTEGER);
       const timestampFallbackCount = parsedArticles.filter((article) =>
         !article.publishedAt
       ).length;

@@ -1,3 +1,4 @@
+import { canonicalizeArticleUrl } from "../news/articleIdentity.js";
 import { dirname } from "node:path";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { createLogger } from "../../utils/logger.js";
@@ -56,12 +57,12 @@ function trimHistory(history = [], maxAgeMs = 30 * 24 * 60 * 60 * 1_000, nowMs =
   const thresholdMs = nowMs - maxAgeMs;
   return history.filter((entry) => {
     const timestampMs = validTimestampMs(entry?.timestamp);
-    return timestampMs !== null && timestampMs >= thresholdMs && timestampMs <= nowMs + 5 * 60 * 1_000;
+    return timestampMs !== null && timestampMs >= thresholdMs && timestampMs <= nowMs;
   });
 }
 
 function articleKey(item = {}) {
-  const url = String(item.url || "").trim().toLowerCase().replace(/[?#].*$/, "");
+  const url = canonicalizeArticleUrl(item.url);
   if (url) return `url:${url}`;
   const title = String(item.title || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
   return `title:${title}`;
@@ -252,7 +253,7 @@ export class SignalCorrelatorService {
     const items = SIGNAL_TYPES.map((type) => {
       const history = (this.history[type] || []).filter((entry) => {
         const timestampMs = validTimestampMs(entry.timestamp);
-        return timestampMs !== null && timestampMs >= baselineThresholdMs && timestampMs <= nowMs + 5 * 60 * 1_000;
+        return timestampMs !== null && timestampMs >= baselineThresholdMs && timestampMs <= nowMs;
       });
       const activeEntries = history.filter((entry) => validTimestampMs(entry.timestamp) >= activeThresholdMs);
       const baselineEntries = history.filter((entry) => validTimestampMs(entry.timestamp) < activeThresholdMs);
@@ -319,13 +320,13 @@ export class SignalCorrelatorService {
       generatedAt: new Date(nowMs).toISOString(),
       latestBucketAt: SIGNAL_TYPES.flatMap((type) => this.history[type] || [])
         .map((entry) => entry.timestamp)
-        .filter(Boolean)
+        .filter(value=>Number.isFinite(Date.parse(value))&&Date.parse(value)<=nowMs)
         .sort()
         .at(-1) || null,
       status: overallStatus,
       methodologyVersion: METHODOLOGY_VERSION,
       scope: normalizedCountries.length ? { type: "countries", countries: normalizedCountries } : { type: "global", countries: [] },
-      window: { activeWindowHours: resolvedActiveHours, baselineDays: resolvedBaselineDays },
+      window: { activeWindowHours: resolvedActiveHours, baselineDays: resolvedBaselineDays,activeFrom:new Date(activeThresholdMs).toISOString(),activeTo:new Date(nowMs).toISOString(),baselineFrom:new Date(baselineThresholdMs).toISOString(),baselineToExclusive:new Date(activeThresholdMs).toISOString(),baselineSemantics:"lookback days ending at asOf, excluding active window" },
       configuration: {
         valid: configurationValid,
         minimumBaselineDays,

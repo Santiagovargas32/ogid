@@ -1,0 +1,135 @@
+{
+  "node": "v24.22.0",
+  "root": "working-tree/backend",
+  "fixture": {
+    "articles": 7200,
+    "historicalArticles": 7200,
+    "sources": 24,
+    "hours": 48,
+    "historicalHours": 7249,
+    "signalHistoryDays": 30
+  },
+  "durationMs": 1801873,
+  "rounds": 1724,
+  "firstMs": 2.8392319999984466,
+  "readyMs": 3032,
+  "corpus": {
+    "inputArticles": 7200,
+    "windowedArticles": 3600,
+    "uniqueArticles": 3600,
+    "duplicatesRemoved": 0,
+    "invalidTimestamps": 0,
+    "outsideWindow": 3600,
+    "filteredByCountry": 0,
+    "previousWindowArticles": 3600,
+    "availableEventCount": 3600,
+    "eventCount": 3600,
+    "eventsFilteredByCountry": 0,
+    "truncated": false,
+    "requestedEventLimit": 450,
+    "scoringUsesCompleteWindow": true,
+    "coverageScope": "eligible-stored-revisions",
+    "analysisTruncated": false
+  },
+  "newsCoverage": {
+    "source": "sqlite-article-revisions",
+    "revision": 14400,
+    "asOf": "2026-10-16T20:57:31.089Z",
+    "from": "2026-10-14T20:57:31.089Z",
+    "to": "2026-10-16T20:57:31.089Z",
+    "windowHours": 48,
+    "eligibleCount": 7200,
+    "scannedCount": 7200,
+    "analysisCount": 7200,
+    "marketAnalysisCount": 7200,
+    "marketExcludedCount": 0,
+    "analysisTruncated": false,
+    "truncationReason": null,
+    "maxInputBytes": 67108864,
+    "inputBytes": 9177288,
+    "unknownPublicationCount": 0,
+    "futurePublicationCount": 0,
+    "normalizationExcludedCount": 0,
+    "legacyAvailabilityCount": 0,
+    "duplicateCount": 0,
+    "coverageMeaning": "all eligible stored revisions within the byte budget; acquisition continuity unknown",
+    "sourceCount": 24
+  },
+  "latency": {
+    "reads": {
+      "n": 34480,
+      "p50": 24.489275000058115,
+      "p95": 42.26679400005378,
+      "p99": 44.950490999995964,
+      "max": 66.29637699999148
+    },
+    "status": {
+      "n": 1724,
+      "p50": 42.969670000020415,
+      "p95": 46.262866999953985,
+      "p99": 50.09187999996357,
+      "max": 66.35273900000902
+    },
+    "ingest": {
+      "n": 1868,
+      "p50": 3.0955470001790673,
+      "p95": 84.369459,
+      "p99": 100.61104200000045,
+      "max": 163.50128899999982
+    }
+  },
+  "memory": {
+    "rssMin": 517464064,
+    "rssMax": 902389760,
+    "firstQuarterMedian": 777814016,
+    "lastQuarterMedian": 884588544
+  },
+  "eventLoop": {
+    "p95Ms": 20.496383,
+    "maxMs": 28.999679
+  },
+  "wal": {
+    "initial": 8128792,
+    "last": 8128792,
+    "max": 8128792
+  },
+  "counts": {
+    "articles": 16124,
+    "article_revisions": 16124,
+    "analysis_runs": 545,
+    "pipeline_runs": 2589
+  },
+  "jobs": [
+    {
+      "status": "complete",
+      "n": 545,
+      "attempts": 545
+    }
+  ],
+  "duplicatePublications": 0,
+  "writerCommands": 39017,
+  "queue": {
+    "pending": 0,
+    "inFlight": 0,
+    "cpuInFlight": 0,
+    "maxCpuInFlight": 1,
+    "bytes": 0,
+    "maxItems": 128,
+    "maxBytes": 33554432,
+    "maxCommandBytes": 8388608
+  },
+  "queuePeak": {
+    "pending": 15,
+    "bytes": 313278,
+    "analysisPending": 0
+  },
+  "errors": [],
+  "verify": {
+    "integrity": [
+      {
+        "integrity_check": "ok"
+      }
+    ],
+    "foreignKeys": []
+  }
+}

@@ -1,0 +1,6 @@
+npm warn Unknown global config "tmp". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+
+> ogid-mcp@0.4.0 inventory:check
+> node scripts/inventory.js --check
+
+Inventario válido: 74 rutas, 83 operaciones.

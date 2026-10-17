@@ -95,6 +95,7 @@ test("ten concurrent analyses use read-only SQL and commit results through the i
       ...Array.from({length: 10}, (_, i) => f.call(i % 2 ? "conditions" : "advanced", "getSnapshot", {countries: ["US"]})),
       f.call("news", "ingest", Array.from({length: 100}, (_, i) => article(i + 2)))
     ]);
+    await Promise.allSettled(f.manager.advancedCoordinator.tasks.values());
     assert.equal(f.manager.analysisManager.getStatus().queryOnly, true);
     assert.equal(f.manager.analysisManager.getStatus().failed, 0);
     const db = new Database(f.db, {readonly: true});

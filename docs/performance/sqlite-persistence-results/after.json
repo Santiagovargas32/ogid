@@ -1,0 +1,135 @@
+{
+  "node": "v24.22.0",
+  "root": "working-tree/backend",
+  "fixture": {
+    "articles": 7200,
+    "historicalArticles": 7200,
+    "sources": 24,
+    "hours": 48,
+    "historicalHours": 7249,
+    "signalHistoryDays": 30
+  },
+  "durationMs": 3595,
+  "rounds": 3,
+  "firstMs": 3.4479629999987083,
+  "readyMs": 3032,
+  "corpus": {
+    "inputArticles": 7200,
+    "windowedArticles": 3600,
+    "uniqueArticles": 3600,
+    "duplicatesRemoved": 0,
+    "invalidTimestamps": 0,
+    "outsideWindow": 3600,
+    "filteredByCountry": 0,
+    "previousWindowArticles": 3600,
+    "availableEventCount": 3600,
+    "eventCount": 3600,
+    "eventsFilteredByCountry": 0,
+    "truncated": false,
+    "requestedEventLimit": 450,
+    "scoringUsesCompleteWindow": true,
+    "coverageScope": "eligible-stored-revisions",
+    "analysisTruncated": false
+  },
+  "newsCoverage": {
+    "source": "sqlite-article-revisions",
+    "revision": 14400,
+    "asOf": "2026-10-16T20:56:18.519Z",
+    "from": "2026-10-14T20:56:18.519Z",
+    "to": "2026-10-16T20:56:18.519Z",
+    "windowHours": 48,
+    "eligibleCount": 7200,
+    "scannedCount": 7200,
+    "analysisCount": 7200,
+    "marketAnalysisCount": 7200,
+    "marketExcludedCount": 0,
+    "analysisTruncated": false,
+    "truncationReason": null,
+    "maxInputBytes": 67108864,
+    "inputBytes": 9177288,
+    "unknownPublicationCount": 0,
+    "futurePublicationCount": 0,
+    "normalizationExcludedCount": 0,
+    "legacyAvailabilityCount": 0,
+    "duplicateCount": 0,
+    "coverageMeaning": "all eligible stored revisions within the byte budget; acquisition continuity unknown",
+    "sourceCount": 24
+  },
+  "latency": {
+    "reads": {
+      "n": 60,
+      "p50": 25.829028000000108,
+      "p95": 45.08968200000163,
+      "p99": 48.28761499999746,
+      "max": 48.28761499999746
+    },
+    "status": {
+      "n": 3,
+      "p50": 45.342295999998896,
+      "p95": 48.339507000000594,
+      "p99": 48.339507000000594,
+      "max": 48.339507000000594
+    },
+    "ingest": {
+      "n": 147,
+      "p50": 87.31058899999971,
+      "p95": 94.43321800000012,
+      "p99": 107.97559900000124,
+      "max": 113.4264519999997
+    }
+  },
+  "memory": {
+    "rssMin": 465711104,
+    "rssMax": 489041920,
+    "firstQuarterMedian": 465711104,
+    "lastQuarterMedian": 489041920
+  },
+  "eventLoop": {
+    "p95Ms": 20.725759,
+    "maxMs": 28.377087
+  },
+  "wal": {
+    "initial": 8128792,
+    "last": 8128792,
+    "max": 8128792
+  },
+  "counts": {
+    "articles": 14403,
+    "article_revisions": 14403,
+    "analysis_runs": 2,
+    "pipeline_runs": 868
+  },
+  "jobs": [
+    {
+      "status": "complete",
+      "n": 2,
+      "attempts": 2
+    }
+  ],
+  "duplicatePublications": 0,
+  "writerCommands": 69,
+  "queue": {
+    "pending": 0,
+    "inFlight": 0,
+    "cpuInFlight": 0,
+    "maxCpuInFlight": 1,
+    "bytes": 0,
+    "maxItems": 128,
+    "maxBytes": 33554432,
+    "maxCommandBytes": 8388608
+  },
+  "queuePeak": {
+    "pending": 12,
+    "bytes": 4215,
+    "analysisPending": 0
+  },
+  "errors": [],
+  "verify": {
+    "integrity": [
+      {
+        "integrity_check": "ok"
+      }
+    ],
+    "foreignKeys": []
+  }
+}

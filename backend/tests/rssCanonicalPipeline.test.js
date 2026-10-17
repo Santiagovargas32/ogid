@@ -82,3 +82,18 @@ test("shadow mode publishes only the legacy projection and records equivalence",
     service.rollbackToLegacy(); assert.equal(service.pipelineMode, "legacy");
   } finally { globalThis.fetch = originalFetch; }
 });
+
+test('archive failure rolls back validators and re-fetches an uncommitted revision',async()=>{
+ let now=1000,fail=true;const requests=[],archived=[];
+ const pipeline=new RssCanonicalPipeline({catalog:buildCanonicalRssCatalog({primaryFeeds:[feed('durable')]}),now:()=>now,
+  fetchImpl:async(_url,options)=>{requests.push(options.headers);return response(xml('Revised item'),200,{ETag:'"new"'});},
+  onCollected:async values=>{if(fail)throw Object.assign(Error('disk full'),{code:'SQLITE_FULL'});archived.push(...values);}});
+ await assert.rejects(pipeline.runCycle(),{code:'SQLITE_FULL'});assert.equal(pipeline.state('durable').etag,null);assert.equal(pipeline.corpus.length,0);
+ fail=false;now+=2;await pipeline.runCycle();assert.equal(requests[1]['If-None-Match'],undefined);assert.equal(archived.length,1);assert.equal(pipeline.state('durable').etag,'"new"');
+});
+
+test('canonical acquisition archives every parsed item before the configured preview cap',async()=>{
+ const body='<rss><channel>'+Array.from({length:205},(_,i)=>`<item><title>Russia ${i}</title><link>https://fixture.invalid/${i}</link></item>`).join('')+'</channel></rss>';
+ const archived=[];const pipeline=new RssCanonicalPipeline({catalog:buildCanonicalRssCatalog({primaryFeeds:[feed('all')]}),maxItemsPerFeed:3,maxCorpusItems:2,fetchImpl:async()=>response(body),onCollected:async rows=>archived.push(...rows)});
+ const result=await pipeline.runCycle();assert.equal(archived.length,205);assert.ok(result.items.length<=2);assert.equal(result.meta.feedStatus[0].acquiredCount,205);assert.equal(result.meta.feedStatus[0].previewTruncated,true);
+});

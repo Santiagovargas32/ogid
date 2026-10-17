@@ -59,10 +59,12 @@ export async function getAdvancedIntelligenceSnapshot(req, res) {
 
 export async function getCountryInstability(req, res) {
   const snapshot = await advancedSnapshot(req, res, { defaultCountries: [] });
+  if(!snapshot.generatedAt)return res.json(mapResponse(snapshot));
   const result = snapshot.countryInstability;
   res.json(
     mapResponse({
       generatedAt: snapshot.generatedAt,
+      lifecycle: snapshot.lifecycle,
       ranking: result.ranking,
       countries: result.countries,
       window: snapshot.window,
@@ -75,9 +77,11 @@ export async function getCountryInstability(req, res) {
 
 export async function getHotspotsV2(req, res) {
   const snapshot = await advancedSnapshot(req, res, { defaultCountries: [] });
+  if(!snapshot.generatedAt)return res.json(mapResponse(snapshot));
   res.json(
     mapResponse({
       generatedAt: snapshot.generatedAt,
+      lifecycle: snapshot.lifecycle,
       hotspots: snapshot.hotspots,
       eventCount: snapshot.corpus.eventCount,
       window: snapshot.window,
@@ -90,9 +94,11 @@ export async function getHotspotsV2(req, res) {
 
 export async function getIntelAnomalies(req, res) {
   const snapshot = await advancedSnapshot(req, res, { defaultCountries: [] });
+  if(!snapshot.generatedAt)return res.json(mapResponse(snapshot));
   res.json(mapResponse({
     ...snapshot.anomalies,
     generatedAt: snapshot.generatedAt,
+      lifecycle: snapshot.lifecycle,
     corpus: snapshot.corpus,
     quality: snapshot.quality,
     methodology: snapshot.methodology.anomaly

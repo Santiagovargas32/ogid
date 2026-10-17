@@ -39,7 +39,9 @@ test('a blocked/terminated analysis worker leaves transactional persistence avai
     // A synchronous CPU load on the analysis worker is emulated by its real termination;
     // delayed responses and unknown outcomes are covered by StorageManager deadline tests.
     await worker.terminate();await new Promise(resolve=>setImmediate(resolve));
-    await assert.rejects(manager.request('domain.call',{service:'advanced',method:'getSnapshot',args:[{}]}),{code:'STORAGE_NOT_READY'});
+    const pending=await manager.request('domain.call',{service:'advanced',method:'getSnapshot',args:[{}]});assert.equal(pending.lifecycle.status,'preparing');
+    await Promise.allSettled(manager.advancedCoordinator.tasks.values());
+    const failed=await manager.request('domain.call',{service:'advanced',method:'getSnapshot',args:[{}]});assert.equal(failed.lifecycle.status,'failed');assert.equal(failed.lifecycle.errorCode,'STORAGE_NOT_READY');
     const saved=await manager.request('runtime.save',{kind:'test-isolation',payload:{revision:7}});assert.equal(saved.persisted,true);
     assert.deepEqual(await manager.request('runtime.load',{kind:'test-isolation'}),{revision:7});
     assert.equal((await manager.request('storage.verify')).integrity[0].integrity_check,'ok');channel.port1.close();channel.port2.close();
