@@ -90,7 +90,7 @@ export class SqlNewsArchive extends NewsArchive {
       const filters=normalizeNewsFilters(rawFilters),universe=listVerifiedInstruments();
       const resolutions=resolveReferences([...(filters.symbols || []),...(filters.instrumentIds || [])],{},universe);
       if(resolutions.some(r=>r.status!=="resolved"))throw new AppError("Identidad inexistente o ambigua.",400,"UNRESOLVED_INSTRUMENT");
-      snapshot={filters,instruments:resolutions.map(r=>universe.find(i=>i.instrumentId===r.instrumentId)),filterHash:hash(filters),expiresAt:this.now()+this.cursorTtlMs,coverage:this.coverage(filters),total:0,syntheticCount:0,staleCount:0};
+      snapshot={filters,instruments:resolutions.map(r=>universe.find(i=>i.instrumentId===r.instrumentId)),filterHash:hash(filters),expiresAt:this.now()+this.cursorTtlMs,coverage:this.coverage(filters),total:0,syntheticCount:0,staleCount:0,rows:[]};
       id=randomUUID();
     }
     const data={articles:[],total:snapshot.total,hasMore:false,nextCursor:null,revision:snapshot.revision,snapshotId:id,cursorExpiresAt:new Date(snapshot.expiresAt).toISOString(),coverage:snapshot.coverage,quality:{syntheticCount:snapshot.syntheticCount,staleCount:snapshot.staleCount},warnings:["Archivo de metadata y extractos autorizados; no es cobertura completa de Internet.","La fecha de publicación desconocida queda fuera de ventanas publishedAt; consultar receivedAt de forma explícita.",...(snapshot.coverage.partial?["La cobertura solicitada es parcial por activación, retención o capacidad."]:[])]};
@@ -100,10 +100,15 @@ export class SqlNewsArchive extends NewsArchive {
       const column=({publishedAt:"json_extract(r.payload_json,'$.publishedAt')",receivedAt:"json_extract(r.payload_json,'$.receivedAt')",updatedAt:"json_extract(r.payload_json,'$.updatedAt')",archiveChangedAt:"json_extract(r.payload_json,'$.archiveChangedAt')"})[field];
       const predicates=['r.rowid<=?','NOT EXISTS (SELECT 1 FROM article_revisions newer WHERE newer.article_id=r.article_id AND newer.revision>r.revision AND newer.rowid<=?)'],args=[snapshot.upper,snapshot.upper];
       for(const [bound,op]of [['from','>='],['to','<=']])if(filters[bound]){predicates.push(`${column}${op}?`);args.push(filters[bound]);}
-      const query=`SELECT r.payload_json FROM article_revisions r WHERE ${predicates.join(' AND ')} ORDER BY coalesce(${column},json_extract(r.payload_json,'$.receivedAt')) DESC,r.article_id ASC`;
-      let matched=0,full=false;
-      for(const row of this.reader.prepare(query).iterate(...args)){
-        const article=JSON.parse(row.payload_json),reasons=[];
+      // Sort only immutable row references, keeping payloads out of SQLite's temporary sorter.
+      const query=`SELECT r.rowid AS rowid FROM article_revisions r WHERE ${predicates.join(' AND ')} ORDER BY coalesce(${column},json_extract(r.payload_json,'$.receivedAt')) DESC,r.article_id ASC`;
+      let matched=cursor?offset:0,full=false;
+      // Later pages resolve the frozen references directly instead of scanning
+      // and sorting the entire revision corpus again for every cursor.
+      const rows=cursor?snapshot.rows.slice(offset,offset+limit).map(rowid=>({rowid})):this.reader.prepare(query).iterate(...args);
+      const payload=this.reader.prepare("SELECT payload_json FROM article_revisions WHERE rowid=?");
+      for(const row of rows){
+        const article=JSON.parse(payload.get(row.rowid).payload_json),reasons=[];
         if(filters.countries?.length){const matches=(article.countryMentions || []).filter(c=>filters.countries.includes(c));if(!matches.length)continue;reasons.push(...matches.map(c=>({kind:'country',method:'country-tag-or-detection',evidence:c})));}
         if(snapshot.instruments.length){const matches=snapshot.instruments.map(i=>matchInstrument(article,i)).filter(Boolean);if(!matches.length)continue;reasons.push(...matches);}
         if(filters.q&&!`${article.title} ${article.excerpt || ''}`.toLowerCase().includes(filters.q.toLowerCase()))continue;
@@ -114,7 +119,12 @@ export class SqlNewsArchive extends NewsArchive {
         if(filters.q)reasons.push({kind:'text',method:'case-insensitive-text',evidence:filters.q});
         if(filters.topics?.length)reasons.push({kind:'topic',method:'collected-topic-tag',evidence:filters.topics.filter(t=>(article.topics || []).includes(t)).join(', ')});
         const position=matched++;
-        if(!cursor){if(article.synthetic || article.dataMode==='synthetic')snapshot.syntheticCount++;if(article.dataMode==='stale'||article.provenance?.stale)snapshot.staleCount++;}
+        if(!cursor){
+          if(snapshot.rows.length>=this.maxSnapshotItems)throw new AppError('El resultado excede la capacidad de revisiones; acotar la ventana.',413,'SNAPSHOT_TOO_LARGE');
+          snapshot.rows.push(row.rowid);
+          if(article.synthetic || article.dataMode==='synthetic')snapshot.syntheticCount++;
+          if(article.dataMode==='stale'||article.provenance?.stale)snapshot.staleCount++;
+        }
         if(position<offset)continue;
         if(data.articles.length<limit&&!full){
           data.articles.push({...article,matchReasons:reasons});
@@ -126,7 +136,14 @@ export class SqlNewsArchive extends NewsArchive {
       }
       if(!cursor)snapshot.total=matched;
     }).deferred();
-    if(!cursor){while(this.snapshots.size>=this.maxSnapshots)this.snapshots.delete(this.snapshots.keys().next().value);this.snapshots.set(id,snapshot);}
+    if(!cursor){
+      let retained=[...this.snapshots.values()].reduce((sum,value)=>sum+value.rows.length,0);
+      while(this.snapshots.size>=this.maxSnapshots || retained+snapshot.rows.length>this.maxSnapshotItems){
+        const oldest=this.snapshots.keys().next().value;
+        retained-=this.snapshots.get(oldest).rows.length;this.snapshots.delete(oldest);
+      }
+      this.snapshots.set(id,snapshot);
+    }
     if(offset>snapshot.total)throw new AppError('Cursor fuera del resultado.',400,'INVALID_CURSOR');
     data.total=snapshot.total;data.revision=snapshot.revision;data.quality={syntheticCount:snapshot.syntheticCount,staleCount:snapshot.staleCount};
     const next=offset+data.articles.length;data.hasMore=next<snapshot.total;data.nextCursor=data.hasMore?this.cursor(id,next):null;

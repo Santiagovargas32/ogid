@@ -170,13 +170,53 @@ test('cached projections retain their original input descriptor and do not persi
  }finally{runtime.close();f.close();}
 });
 
-test('search pagination freezes revision watermark without persisting query rows',()=>{
+test('search pagination freezes revision watermark without rescanning or persisting query rows',t=>{
  const f=sqlFixture();let now=Date.parse('2026-10-16T12:00:00Z');const archive=new SqlNewsArchive(f.db,{now:()=>now});try{
   const rows=Array.from({length:4},(_,i)=>({id:`page-${i}`,title:`Russia report ${i}`,url:`https://fixture.invalid/page-${i}`,publishedAt:new Date(now-i*3600000).toISOString(),provider:'rss'}));archive.ingest(rows);
   const before=f.db.prepare('SELECT total_changes() AS n').get().n;
   const first=archive.search({limit:2});assert.equal(first.total,4);assert.equal(f.db.prepare('SELECT total_changes() AS n').get().n,before);
   archive.ingest([{...rows[3],title:'Changed at the same millisecond'}]);
+  const prepare=archive.reader.prepare.bind(archive.reader);
+  t.mock.method(archive.reader,'prepare',sql=>{
+    assert.ok(!/NOT EXISTS|ORDER BY/.test(sql),'cursor pages must use point reads of frozen revisions');
+    return prepare(sql);
+  });
   const second=archive.search({limit:2,cursor:first.nextCursor});assert.equal(second.total,4);assert.ok(second.articles.some(a=>a.title==='Russia report 3'));
   assert.equal(f.db.prepare('SELECT count(*) AS n FROM news_query_snapshots').get().n,0);
+ }finally{archive.close();f.close();}
+});
+
+test('archiveChangedAt cursor pages respect byte budgets and preserve frozen country matches',t=>{
+ const f=sqlFixture(),now=Date.parse('2026-10-17T09:00:00Z'),archive=new SqlNewsArchive(f.db,{now:()=>now});try{
+  const rows=Array.from({length:40},(_,i)=>({id:`budget-${i}`,title:`Russia report ${i} ${'detail '.repeat(80)}`,url:`https://fixture.invalid/budget-${i}`,publishedAt:new Date(now-i*1000).toISOString(),provider:'rss',countryMentions:['RU']}));
+  archive.ingest(rows);
+  const filters={countries:['RU'],timeField:'archiveChangedAt',from:new Date(now-1000).toISOString(),to:new Date(now+1000).toISOString()},input={...filters,limit:50,maxBytes:12000};
+  let page=archive.search(input);assert.equal(page.total,40);assert.ok(page.articles.length>0&&page.articles.length<40);
+  const snapshotId=page.snapshotId,revision=page.revision,expected=rows.map(row=>archive.getItem(row.id).article.id).sort();
+  archive.ingest(rows.map(row=>({...row,title:'Changed report',countryMentions:['CN']})));
+  const prepare=archive.reader.prepare.bind(archive.reader);
+  t.mock.method(archive.reader,'prepare',sql=>{assert.ok(!/NOT EXISTS|ORDER BY/.test(sql));return prepare(sql);});
+  const seen=[];
+  for(let pages=0;;pages++){
+   const payload={ok:true,queriedAt:new Date(now).toISOString(),origin:'OGID',data:page,warnings:page.warnings,truncated:false};
+   assert.ok(Buffer.byteLength(JSON.stringify({structuredContent:payload,content:[{type:'text',text:JSON.stringify(payload)}]}))<=input.maxBytes);
+   assert.ok(pages<40);assert.equal(page.snapshotId,snapshotId);assert.equal(page.revision,revision);assert.equal(page.total,40);
+   for(const article of page.articles){seen.push(article.id);assert.ok(article.title.startsWith('Russia report'));assert.ok(article.matchReasons.some(reason=>reason.kind==='country'&&reason.evidence==='RU'));}
+   if(!page.hasMore)break;
+   page=archive.search({...input,cursor:page.nextCursor});
+  }
+  assert.deepEqual(seen,expected);assert.equal(new Set(seen).size,40);assert.equal(page.nextCursor,null);
+ }finally{archive.close();f.close();}
+});
+
+test('SQL query references stay bounded and evicted cursors expire',()=>{
+ const f=sqlFixture(),archive=new SqlNewsArchive(f.db,{maxSnapshotItems:3});try{
+  archive.ingest(Array.from({length:4},(_,i)=>({id:`bounded-${i}`,title:`Russia report ${i}`,url:`https://fixture.invalid/bounded-${i}`,provider:'rss'})));
+  assert.throws(()=>archive.search({limit:1}),{code:'SNAPSHOT_TOO_LARGE',statusCode:413});assert.equal(archive.snapshots.size,0);
+  const first=archive.search({q:'report 0',limit:1}),second=archive.search({q:'report 1',limit:1});
+  archive.search({q:'report 2',limit:1});archive.search({q:'report 3',limit:1});
+  assert.ok([...archive.snapshots.values()].reduce((sum,snapshot)=>sum+snapshot.rows.length,0)<=3);
+  assert.throws(()=>archive.search({cursor:archive.cursor(first.snapshotId,0)}),{code:'CURSOR_EXPIRED'});
+  assert.equal(archive.search({cursor:archive.cursor(second.snapshotId,0)}).total,1);
  }finally{archive.close();f.close();}
 });
