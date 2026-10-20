@@ -524,6 +524,7 @@ export function createAppServer(overrides = {}) {
   }
   if((agentConfig.mode !== 'off'||agentConfig.health?.state==='degraded') && config.ai.provider === 'llamacpp')config.ai.mode='off';
   const storageManager = overrides.storageManager || new StorageManager(overrides.storage);
+  storageManager.deferEventIndex?.();
 
   const frontendPath = path.resolve(__dirname, "../frontend");
   const app = express();
@@ -947,6 +948,7 @@ export function createAppServer(overrides = {}) {
       }
       app.locals.initializing=false;
       runtimeMetrics.start(performance.now() - startupAt);
+      storageManager.resumeEventIndex?.({release:true});
       const aiStatus = aiCoordinator.getAdminSnapshot();
       log.info("api_config_status", {
         newsApiKeyConfigured: isRealKey(config.news.newsApiKey),
@@ -1004,6 +1006,7 @@ export function createAppServer(overrides = {}) {
       const drain=async work=>{try{await work();}catch(error){failures.push(error);}};
       try {
       runtimeMetrics.stop();
+      storageManager.deferEventIndex?.();
       pipelinePersistence?.resumeStageWrites();
       // Close admission immediately. Waiting for an accepted analysis must not
       // leave acquisition timers running and submitting more work during drain.

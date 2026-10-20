@@ -17,6 +17,7 @@ try{
  await page.waitForFunction(()=>document.getElementById('agent-activity-body')?.textContent.includes('Trabajos acumulados'),{timeout:30000});
  assert.equal(await page.locator('#agent-activity-body table').count(),1);
  await page.waitForFunction(()=>document.getElementById('agent-background-model')?.disabled===false,{timeout:30000});
+ report.models=await page.locator('#agent-background-model').evaluate(select=>({total:select.options.length,enabled:[...select.options].filter(o=>!o.disabled).length,selected:select.value}));
  assert.equal(await page.locator('#ai-enrichments-body,#ai-diagnostics-body').count(),0);
  report.checks.push('Actual admin mounts jobs, processes and publications without legacy AI requests');
  const xss=await page.evaluate(async()=>{

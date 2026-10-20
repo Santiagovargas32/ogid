@@ -37,7 +37,7 @@ export function mountAgentAdmin() {
     pending=true;apply.disabled=true;select.disabled=true;reload.disabled=true;message.textContent="Guardando selección…";
     try{
       const result=await request("/api/admin/agent/model",{method:"POST",body:JSON.stringify({model:select.value})});
-      dirty=false;if(result.pending){message.textContent=`Carga solicitada: ${result.model}. Consulta el progreso al actualizar modelos.`;return;}message.textContent=`Modelo seleccionado: ${result.backgroundModel}. Se aplicará a las siguientes tareas.`;
+      dirty=false;if(result.pending){models={...models,activation:{...result,state:'queued'}};message.textContent=`Carga solicitada: ${result.model}. Consulta el progreso al actualizar modelos.`;return;}message.textContent=`Modelo seleccionado: ${result.backgroundModel}. Se aplicará a las siguientes tareas.`;
       await refresh();
     }catch{message.textContent="No se pudo cambiar el modelo. Actualiza el catálogo y comprueba que el modelo esté validado y disponible.";}
     finally{pending=false;select.disabled=false;reload.disabled=false;apply.disabled=false;}
@@ -116,13 +116,14 @@ export function mountAgentAdmin() {
     }
   }
   void refresh();void loadModels();
-  const timer = setInterval(()=>{void refresh();if(models?.activation?.state==='queued')void loadModels();}, 5000);
+  const timer = setInterval(refresh,30000);
+  const modelTimer=setInterval(()=>{if(models?.activation?.state==='queued')void loadModels();},3000);
   window.addEventListener(
     "pagehide",
     () => {
       stopped = true;
       controller.abort();
-      clearInterval(timer);
+      clearInterval(timer);clearInterval(modelTimer);
     },
     { once: true },
   );

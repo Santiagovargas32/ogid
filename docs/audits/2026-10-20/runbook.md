@@ -1,19 +1,21 @@
 # Operación y recuperación de OGID
 
-Aplicable a las correcciones locales sobre `5ac40d7`, esquema 001–017. No autoriza despliegue ni cambios a servicios existentes. Mantener llama.cpp y su modelo residente. El inicio normal sigue siendo exclusivamente:
+Aplicable a la continuación local sobre `55cd35f`, esquema 001–018. Conservar llama.cpp; OGID y sus hijos se gestionan con npm. El catálogo y la selección durable se han alineado a GPT OSS 20B. Resultados y límites actuales: [model-registry.md](model-registry.md). El inicio normal sigue siendo exclusivamente:
 
 ```bash
 cd /home/fedora/ogid/backend
 npm start
 ```
 
-## Incidente posterior que condiciona la siguiente vigilancia
+## Estado vigente del registro y los modelos
 
-La ejecución de las 15:22–15:31 CEST terminó por timeout del escritor en domain.registry al reconstruir el índice de eventos. Sigue pendiente de corrección; no considerar aprobada la vigilancia. El operador cambió después llama.cpp/.env a GPT, pero catálogo y selección durable del agente siguen en Qwen. **La configuración descrita en el apartado siguiente corresponde al cierre de la mejora anterior y ya no describe el modelo solicitado actualmente en .env.** Antes de otra aceptación de 24 h, resolver el bloqueo del registro y validar/alinear GPT sin alterar ejecuciones previas. Diagnóstico completo: [last-run-review.md](last-run-review.md). Esta revisión no cambió servicios, configuración ni base.
+El timeout anterior de `domain.registry` se corrigió mediante reconstrucción durable por generaciones y páginas, con publicación atómica al terminar. El índice anterior sigue disponible; `Event index` indica el progreso en `/admin`. No esperar que desaparezca inmediatamente «building» en un histórico grande. Reiniciar reanuda el cursor. La migración 018 se aplica automáticamente por el escritor al arrancar; en la base principal ya está aplicada. No ejecutar SQL manual, borrar la base o copiar un `.sqlite` activo ignorando WAL.
 
-## Estado tras las mejoras operativas
+`.env` operativo: `AGENT_MODEL_MANIFEST=data/agent-runtime/models.json`, `AGENT_OPENCODE_BINARY=data/agent-runtime/bin/opencode`, `AGENT_BACKGROUND_MODEL=llamacpp/gpt-oss-20b`, `AGENT_MODE=shadow`, `AGENT_TASK_MODES={}`, los tres componentes on y legacy `AI_PROVIDER=none` / `AI_MODE=off`. La selección durable también es GPT. Los runs previos conservan su modelo; cambiar el default no reescribe su identidad.
 
-Las rutas de operación ya están preparadas en el `.env` local y no dependen de los ficheros de ensayo: `AGENT_MODEL_MANIFEST=data/agent-runtime/models.json`, `AGENT_OPENCODE_BINARY=data/agent-runtime/bin/opencode`, modelo `llamacpp/qwen3-coder`, `AGENT_MODE=shadow`, `AGENT_TASK_MODES={}`, los tres componentes on y legacy none/off. Conservar llama.cpp residente. La base principal sigue en esquema 001–017; estas mejoras no requieren SQL manual ni migraciones nuevas.
+Los nueve modelos descubiertos mediante llama.cpp/OpenCode están habilitados en el selector. Seleccionar solicita carga y validación asíncronas; esperar confirmación, no lanzar otro cambio mientras sigue pendiente. Siete superaron el contrato real del router. Mistral Small y Qwen q4 fallaron por memoria con sus presets actuales: permanecen seleccionables para reintento, pero no verificados. No ejecutar validate-all durante la vigilancia: puede volver a causar OOM. Listar el catálogo no carga modelos. Cargar otro modelo respeta una inferencia ya en curso.
+
+El incidente de las 15:22–15:31 CEST y la configuración Qwen anterior son históricos: [last-run-review.md](last-run-review.md). Mantener shadow; no se han acreditado 24 horas estables ni todas las tareas con cada modelo.
 
 El panel antiguo se ha sustituido por procesos, trabajos y publicaciones del agente. En `/admin` se pueden revisar respuestas shadow completas y sus límites/referencias; las rutas públicas continúan ocultándolas. Ya no hace falta consultar SQLite para leer las cinco publicaciones más recientes. Progreso y contadores del arranque están separados de los históricos. La descripción de la inspección inicial que sigue abajo es histórica, no la configuración vigente.
 
@@ -34,7 +36,11 @@ cd /home/fedora/ogid/backend
 node scripts/agent-shadow-observe.js "../.agent-validation/shadow-24h-$(date +%Y%m%d-%H%M%S)" 24
 ```
 
-Esperar readiness y worker conectado; comprobar que las tareas son shadow, paused=false y que los trabajos cambian de fase/terminan. La telemetría distingue modo desconocido durante inicialización de modo visible. No reiniciar una ejecución válida por observar contadores acumulados constantes. Para cerrar usar Ctrl+C una vez y esperar server_stopped y cleanupErrors=0: los ciclos ya aceptados pueden necesitar drenaje. Revisar también que desaparezcan los procesos hijos gestionados. Resultados y limitaciones de esta revisión en [improvements.md](improvements.md).
+En el arranque frío medido, readiness tardó unos 66 s; los 503 iniciales son inicialización y deben dar paso a ready. La reconstrucción histórica puede continuar después de readiness, mostrando building y su contador, sin sustituir aún la generación anterior. Esperar readiness y worker conectado; comprobar que las tareas son shadow, paused=false y que los trabajos cambian de fase/terminan. La telemetría distingue modo desconocido durante inicialización de modo visible. No reiniciar una ejecución válida por observar contadores acumulados constantes. Para cerrar usar Ctrl+C una vez y esperar server_stopped y cleanupErrors=0: los ciclos ya aceptados pueden necesitar drenaje. Revisar también que desaparezcan los procesos hijos gestionados. Resultados actuales en [model-registry.md](model-registry.md); la mejora previa queda en [improvements.md](improvements.md).
+
+## Cierre de la comprobación actual
+
+Último backend temporal de esta continuación: PID 132950, cerrado 20/10 a las 19:35:29 CEST con cleanupErrors=0. Sus seis procesos propios desaparecieron, puertos 3000/4096/4097 cerrados y llama.cpp 8080 con GPT residente. Comprobar que el operador no haya arrancado otro antes de npm start. La observación de este artefacto fue de seis minutos; no certifica 24 horas. Resumen y pendientes: [model-registry.md](model-registry.md).
 
 ## Dónde ver el trabajo y la respuesta
 
@@ -44,11 +50,11 @@ Los logs registran diagnósticos; el observador guarda telemetría en samples.js
 
 El corte inicial de las 11:16–11:34 UTC detectaba rutas operativas ausentes, cero publicaciones y UI heredada. Es histórico y queda en [live-shadow-review.md](live-shadow-review.md). Se corrigió durante esta implementación; **no aplicar las antiguas rutas de ensayo del catálogo/binario**. La configuración vigente es la indicada arriba.
 
-## Resultado de la validación temporal
+## Resultado histórico de la validación temporal anterior
 
 El backend de prueba sobre la base principal se cerró a las 13:08:33 UTC con cleanupErrors=0. Desaparecieron backend, broker, OpenCode, MCP y worker propios; llama.cpp continuó escuchando en 8080. No se deja otro backend iniciado por esta revisión. Comprobar de nuevo antes de arrancar, porque el operador puede haber iniciado otro posteriormente.
 
-La base sigue en 017: no requiere SQL manual ni reiniciarla. Se conservan 501 fuentes configuradas/generadas, históricos y la ruta `/srv/bitcoin/ogid/db/ogid.sqlite`. Los totales al cierre y las pruebas están en [validation.md](validation.md). Mantener none/off para AI legacy y shadow para el agente. Los datos/contratos backend históricos se conservan aunque se retiró su interfaz antigua.
+Ese cierre anterior correspondía al esquema 017. El estado actual es 018: no requiere SQL manual ni reiniciar la base. Se conservan 501 fuentes configuradas/generadas, históricos y la ruta `/srv/bitcoin/ogid/db/ogid.sqlite`. Los totales al cierre y las pruebas están en [validation.md](validation.md). Mantener none/off para AI legacy y shadow para el agente. Los datos/contratos backend históricos se conservan aunque se retiró su interfaz antigua.
 
 ## Preparar un arranque
 
@@ -60,7 +66,7 @@ La base sigue en 017: no requiere SQL manual ni reiniciarla. Se conservan 501 fu
 node scripts/agent-preflight.js --output=../.agent-validation/preflight-operacion.json
 ```
 
-El preflight no autoriza visibilidad. Consulta `/models` sin autoload y `/props` sólo para residentes; no carga/cambia modelos. Deben coincidir alias, contexto y slots. En esta auditoría: qwen3-coder, 65.536, un slot. La instalación personal observada es OpenCode 2.0.32; el runtime gestionado exige el binario 2.0.31 y SHA-256 `2df936a20cf74af5706020342164628f9a31978c50c2b0ad306b42b614fe245d`. No apuntar una versión distinta sin validar contratos y comportamiento. El binario operativo verificado está en `backend/data/agent-runtime/bin/opencode`, sin sustituir la instalación personal.
+El preflight no autoriza visibilidad. Consulta `/models` sin autoload y `/props` sólo para residentes; no carga/cambia modelos. Deben coincidir alias, contexto y slots. En el cierre actual: GPT OSS 20B, 131.072, un slot; consultar inventario para otros modelos. La instalación personal observada es OpenCode 2.0.32; el runtime gestionado exige el binario 2.0.31 y SHA-256 `2df936a20cf74af5706020342164628f9a31978c50c2b0ad306b42b614fe245d`. No apuntar una versión distinta sin validar contratos y comportamiento. El binario operativo verificado está en `backend/data/agent-runtime/bin/opencode`, sin sustituir la instalación personal.
 
 4. Arrancar con npm y observar estados. `spawnedAt/pid` sólo indican creación. Broker/OpenCode pasan por probes; worker necesita informe healthy después de verificar OpenCode/MCP y contactar backend. Consultar:
 
@@ -116,6 +122,6 @@ Los criterios fijados para el soak sintético de esta auditoría están en [vali
 
 ## Rollback compatible
 
-La auditoría no introduce migraciones nuevas. Una revisión con los mismos checksums 001–017 puede abrir el esquema ensayado; `main` de referencia sólo llega a 009 y **no es un rollback de aplicación compatible sobre esta base**. No hacer downgrade borrando tablas o migraciones.
+La continuación introduce 018, sin modificar 001–017. Usar una revisión compatible con 018 y con el índice por generaciones; no abrir la base 018 con una revisión <=017 ni borrar tablas/migraciones para forzar un downgrade. `main` de referencia sólo llega a 009 y tampoco es un rollback de aplicación compatible. Se conserva `before-018.sqlite`, copia consistente 017 con quick_check correcto y FK vacío; no sustituye automáticamente la base activa. Validar cualquier revisión candidata sobre otra copia consistente antes de cambiarla.
 
 La contención operativa es desactivar analista mediante `.env` para el siguiente arranque normal y conservar almacenamiento/cálculos. Preparar primero copia consistente y comprobar revisión candidata sobre ella. Un cambio de revisión de un servicio existente necesita autorización operativa propia; esta auditoría no lo realiza. Una restauración de backup pierde escrituras posteriores: requiere procedimiento y ventana explícitos, no es una corrección rutinaria de la cola.

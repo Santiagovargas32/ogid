@@ -92,7 +92,7 @@ export class StorageManager extends EventEmitter {
     return this.getStatus();
   }
   createAnalysisManager(role="analysis") {
-      const reader = new StorageManager({...this.options,analysisWorker:true,readerRole:role,maxInFlight:1});
+      const reader = new StorageManager({...this.options,analysisWorker:true,readerRole:role,maxInFlight:role==='queries'?2:1});
       reader.rpcHandler=(operation,input)=>operation === "analysis.persist"
         ? this.localRequest(operation,input) : this.rpcHandler?.(operation,input);
       if(role==="analysis")reader.on("stage",(...args)=>this.emit("stage",...args));
@@ -166,12 +166,15 @@ export class StorageManager extends EventEmitter {
     if(!this.options.analysisWorker && ['domain.configure','domain.registry'].includes(operation))return this.localRequest(operation,input,{requestId,timeoutMs,queueTimeoutMs}).then(result=>{this.resumeEventIndex();return result;});
     return this.localRequest(operation,input,{requestId,timeoutMs,queueTimeoutMs});
   }
-  resumeEventIndex(){
+  deferEventIndex(){this.eventIndexDeferred=true;}
+  resumeEventIndex({release=false}={}){
+    if(!this.options.businessEnabled)return;
+    if(release)this.eventIndexDeferred=false;
     this.eventIndexRequested=true;
-    if(this.eventIndexTask||this.closingRequested)return;
+    if(this.eventIndexDeferred||this.eventIndexTask||this.closingRequested)return;
     this.eventIndexError=null;this.eventIndexAbort=new AbortController();
     this.eventIndexTask=(async()=>{
-      while(this.state==='ready'&&!this.closingRequested){
+      while(this.state==='ready'&&!this.closingRequested&&!this.eventIndexDeferred){
         this.eventIndexRequested=false;
         const result=await this.localRequest('domain.indexPage',{});
         this.eventIndexState=result;

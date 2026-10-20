@@ -1,0 +1,336 @@
+{
+  "schemaVersion": "ogid-model-registry-validation-v1",
+  "checkedAt": "2026-10-20T17:44:09.099148+00:00",
+  "branch": "feat/agentic-intelligence",
+  "head": "55cd35f9f4ec32a8f5c61d28fd2a99fe16dc116a",
+  "codeDiffSha256": "bc472fd723cb385a9714e9075f5f0688490eb4245f878f6306b49aaca5274a92",
+  "workingChangesNotCommittedByAssistant": true,
+  "environment": {
+    "project": "/home/fedora/ogid",
+    "primaryDatabase": "/srv/bitcoin/ogid/db/ogid.sqlite",
+    "node": "22.23.3",
+    "sqlite": "3.53.4",
+    "betterSqlite3": "13.0.3",
+    "opencode": "2.0.31",
+    "llamaBuild": "b10741-9d817213a",
+    "logicalCpus": 12,
+    "memoryBytes": 16640933888,
+    "schema": 18
+  },
+  "tests": {
+    "backend": {
+      "passed": 910,
+      "failed": 0,
+      "skipped": 0,
+      "durationMs": 85104.611202
+    },
+    "mcp": {
+      "passed": 29,
+      "failed": 0,
+      "routes": 81,
+      "operations": 90
+    },
+    "build": "passed",
+    "check": "passed",
+    "productionAuditVulnerabilities": 0
+  },
+  "models": {
+    "default": "llamacpp/gpt-oss-20b",
+    "selectable": 9,
+    "routerContractsPassed": 7,
+    "resourceFailures": [
+      "mistral-small-32",
+      "qwen38-q4-base"
+    ],
+    "allModelsEndToEndValidated": false,
+    "finalResident": {
+      "at": "2026-10-20T17:35:47.084Z",
+      "defaultModel": "llamacpp/gpt-oss-20b",
+      "resident": [
+        "gpt-oss-20b"
+      ],
+      "otherProcessesUnmodified": true
+    },
+    "browser": {
+      "startedAt": "2026-10-20T17:31:44.811Z",
+      "base": "http://127.0.0.1:3000",
+      "checks": [
+        "Actual admin mounts jobs, processes and publications without legacy AI requests",
+        "Model content is rendered as text, never HTML or executable links"
+      ],
+      "errors": [],
+      "legacyRequests": 0,
+      "models": {
+        "total": 9,
+        "enabled": 9,
+        "selected": "llamacpp/gpt-oss-20b"
+      },
+      "status": "passed",
+      "finishedAt": "2026-10-20T17:31:47.446Z"
+    },
+    "realSmoke": {
+      "kind": "terminal-managed-real-inference",
+      "startedAt": "2026-10-20T17:18:09.305Z",
+      "checks": [
+        "Backend starts broker, isolated OpenCode and worker without systemd; authenticated MCP ready",
+        "Real background brief validated and persisted in shadow; hidden from public API",
+        "Enabled chat: device/CSRF, HTTP send, SSE, model response and cited history persisted",
+        "Chat cancellation authorized through HTTP",
+        "Shutdown leaves no managed child processes"
+      ],
+      "status": "passed",
+      "productionDatabaseModified": false,
+      "chat": {
+        "status": "completed",
+        "messages": 2,
+        "citationsValidated": true,
+        "sseBytes": 1182
+      },
+      "finishedAt": "2026-10-20T17:20:10.008Z"
+    }
+  },
+  "primaryRuntime": {
+    "startedAt": "2026-10-20T17:28:31.848Z",
+    "readyAt": "2026-10-20T17:29:37.739Z",
+    "stoppedAt": "2026-10-20T17:35:29.541Z",
+    "elapsedMs": 417693,
+    "counts": {
+      "articles": 108689,
+      "article_revisions": 225797,
+      "events": 112859,
+      "candles": 37105,
+      "analysis_runs": 13810
+    },
+    "indexAtCut": {
+      "generation": "5119ee54-3e35-4161-879a-28be95366887",
+      "fingerprint": "a069583e1a34adb285715650a51c9f39333bf692547ba22546704aed10bdf59b",
+      "cursorKind": "rowid",
+      "cursor": 56420,
+      "processed": 56420,
+      "startedAt": "2026-10-20T15:42:12.801Z"
+    },
+    "completedWriterCommands": 1329,
+    "failedWriterCommands": 0,
+    "readersReadonlyQueryOnly": true,
+    "observer": {
+      "samples": 7,
+      "observedMs": 360017,
+      "unavailableSamples": 1,
+      "workerDisconnectedSamples": 2,
+      "storageHeartbeatDelayedSamples": 1,
+      "maxAnalysisRecoveries": 0,
+      "maxQueryRecoveries": 0,
+      "maxRss": 1187258368,
+      "maxWalBytes": 4532032,
+      "completedObservation": true
+    },
+    "httpWs": {
+      "startedAt": "2026-10-20T17:31:42.270Z",
+      "requestedSeconds": 30,
+      "clients": 10,
+      "slowClientPauseMs": 5000,
+      "opened": 10,
+      "unexpectedCloses": 0,
+      "wsErrors": 0,
+      "messages": 40,
+      "bytes": 9890,
+      "http": {
+        "/api/health/ready": {
+          "attempts": 6,
+          "requests": 6,
+          "errors": 0,
+          "statuses": {
+            "200": 6
+          },
+          "bytes": 222,
+          "p50Ms": 2.999815999999555,
+          "p95Ms": 40.135088999999994,
+          "p99Ms": 40.135088999999994
+        },
+        "/api/admin/agent": {
+          "attempts": 6,
+          "requests": 6,
+          "errors": 0,
+          "statuses": {
+            "200": 6
+          },
+          "bytes": 527594,
+          "p50Ms": 7.76055500000075,
+          "p95Ms": 82.8000690000008,
+          "p99Ms": 82.8000690000008
+        },
+        "/api/intel/news?limit=40&countries=ALL": {
+          "attempts": 5,
+          "requests": 5,
+          "errors": 0,
+          "statuses": {
+            "200": 5
+          },
+          "bytes": 464091,
+          "p50Ms": 1821.753971000002,
+          "p95Ms": 1975.9311319999997,
+          "p99Ms": 1975.9311319999997
+        }
+      },
+      "elapsedMs": 31242,
+      "finishedAt": "2026-10-20T17:32:13.512Z",
+      "state": "completed"
+    },
+    "sourceAfterClose": {
+      "at": "2026-10-20T17:43:16.778Z",
+      "writerOwner": [],
+      "jobs": [
+        {
+          "status": "cancelled",
+          "count": 1
+        },
+        {
+          "status": "completed",
+          "count": 10
+        },
+        {
+          "status": "failed",
+          "count": 75
+        },
+        {
+          "status": "incomplete",
+          "count": 62
+        },
+        {
+          "status": "queued",
+          "count": 23
+        },
+        {
+          "status": "superseded",
+          "count": 109
+        }
+      ],
+      "gptJob": {
+        "task": "global_intelligence_brief",
+        "model": "llamacpp/gpt-oss-20b",
+        "status": "incomplete",
+        "error_code": "ABORT_ERR",
+        "updated_at": "2026-10-20T17:35:10.031Z"
+      },
+      "interruptAcknowledged": true,
+      "publications": {
+        "count": 5,
+        "latestAt": "2026-10-20T13:03:23.347Z"
+      },
+      "duplicates": [],
+      "partialPublications": {
+        "n": 0
+      }
+    },
+    "cleanup": {
+      "at": "2026-10-20T17:36:35.075Z",
+      "ownedPids": [
+        132950,
+        134452,
+        134475,
+        134482,
+        134524,
+        134540
+      ],
+      "stillAlive": [],
+      "ports": {
+        "3000": "closed",
+        "4096": "closed",
+        "4097": "closed",
+        "8080": "listening"
+      },
+      "mainShutdown": "server_stopped cleanupErrors=0",
+      "copyValidationMayRun": true
+    }
+  },
+  "backup": {
+    "startedAt": "2026-10-20T14:12:42.913Z",
+    "source": "/srv/bitcoin/ogid/db/ogid.sqlite",
+    "copy": "/srv/bitcoin/ogid/validation/20261020-model-registry/before-018.sqlite",
+    "method": "SQLite Backup API",
+    "sourceReadOnly": true,
+    "backupCompletedAt": "2026-10-20T14:14:05.731Z",
+    "migrations": 17,
+    "quickCheck": "ok",
+    "foreignKeys": [],
+    "status": "passed",
+    "finishedAt": "2026-10-20T15:18:19.499Z"
+  },
+  "representativeCopy": {
+    "startedAt": "2026-10-20T17:35:43.784Z",
+    "database": "/srv/bitcoin/ogid/validation/20261020-model-registry/candidate-018.sqlite",
+    "productionDatabaseModified": false,
+    "kind": "full historical event-index build with concurrent writer commands",
+    "resumedBuild": {
+      "generation": "a2678227-6e77-4fdd-8ad7-a3ab9b15098f",
+      "fingerprint": "a069583e1a34adb285715650a51c9f39333bf692547ba22546704aed10bdf59b",
+      "cursorKind": "rowid",
+      "cursor": 24080,
+      "processed": 24080,
+      "startedAt": "2026-10-20T17:10:58.799Z"
+    },
+    "status": "passed",
+    "lastBuild": {
+      "generation": "a2678227-6e77-4fdd-8ad7-a3ab9b15098f",
+      "fingerprint": "a069583e1a34adb285715650a51c9f39333bf692547ba22546704aed10bdf59b",
+      "cursorKind": "rowid",
+      "cursor": 112291,
+      "processed": 112291,
+      "startedAt": "2026-10-20T17:10:58.799Z",
+      "completedAt": "2026-10-20T17:42:25.557Z"
+    },
+    "active": "a2678227-6e77-4fdd-8ad7-a3ab9b15098f",
+    "events": 112291,
+    "indexedEvents": 1399,
+    "foreignKeys": [],
+    "sameGenerationResumed": true,
+    "closedState": "closed",
+    "finishedAt": "2026-10-20T17:42:27.330Z",
+    "newEventsProcessedThisPass": 88211,
+    "metrics": {
+      "pages": 1383,
+      "executionMs": {
+        "p50": 191.848404999997,
+        "p95": 425.1537220000173,
+        "p99": 770.738731999998,
+        "max": 974.7605810000096
+      },
+      "queueMs": {
+        "p95": 115,
+        "max": 1158
+      },
+      "samples": 399,
+      "maxWriterHeartbeatAgeMs": 6285,
+      "maxProcessRssBytes": 591167488,
+      "failedSamples": 0
+    },
+    "continuousThirtyMinuteSoak": false,
+    "foreignKeyCheckScope": "event_index_links"
+  },
+  "acceptance": {
+    "keepShadow": true,
+    "productionStable": false,
+    "completed24Hours": false,
+    "newMainCorpusPublicationThisPass": false,
+    "limitations": [
+      "Two configured models could not load with existing hardware/presets",
+      "Principal index still building; resumes automatically",
+      "No new main-corpus publication during short final runtime",
+      "RSS/memory and delayed heartbeat require sustained monitoring",
+      "New backup quick_check/FK passed; full integrity_check not run",
+      "Seven router contracts do not attest all OpenCode tasks or semantic quality",
+      "No LAN/proxy certification"
+    ]
+  },
+  "finalReadOnlyCheck": {
+    "at": "2026-10-20T17:44:30.302Z",
+    "resident": [
+      "gpt-oss-20b"
+    ],
+    "catalogModels": 9,
+    "readyContracts": 7,
+    "nodeProcessesRemaining": 0,
+    "sharedDocumentsChecked": 17,
+    "secretHits": 0
+  }
+}

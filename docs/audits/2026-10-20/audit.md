@@ -1,5 +1,7 @@
 # Auditoría OGID — 20 de octubre de 2026
 
+Estado posterior a este corte: [catálogo GPT/modelos, registro por generaciones y validación sobre 55cd35f](model-registry.md). Este documento conserva la revisión previa; el runbook describe la operación vigente.
+
 **Resultado: correcciones implementadas y verificadas; mantener shadow. No se acredita estabilidad de producción ni una observación de 24 horas.**
 
 Seguimiento posterior del primer arranque real del usuario: [incidentes shadow, corte 11:34 UTC](live-shadow-review.md). Incluye un rechazo nuevo por evidencia stale, progreso de adquisición, desajuste de telemetría RSS y latencias/memoria que requieren investigación. No sustituye los resultados anteriores ni acredita las mejoras pendientes.

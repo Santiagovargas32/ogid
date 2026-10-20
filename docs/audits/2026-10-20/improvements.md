@@ -1,5 +1,7 @@
 # Mejoras del agente y del panel administrativo
 
+Estado posterior a este corte: [catálogo GPT/modelos, registro por generaciones y validación sobre 55cd35f](model-registry.md). Este documento conserva la revisión previa; el runbook describe la operación vigente.
+
 Rama local `feat/agentic-intelligence`, base `5ac40d7cd126320443b9ce41ac0855f979f1db7b` con cambios sin publicar. Esta revisión implementa los hallazgos de [live-shadow-review.md](live-shadow-review.md); conserva ese corte como evidencia anterior. Los resultados finales del ensayo se registran al cerrar su observación, sin convertir pruebas de fixtures en validación de la base principal.
 
 ## Cambios implementados

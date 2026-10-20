@@ -16,7 +16,7 @@ function buildPath(path, params = {}) {
 }
 
 export const HTTP_DEADLINES=Object.freeze({default:12000,analysis:275000,storedRead:185000,watchlist:45000});
-function requestDeadline(path){return /\/(advanced-snapshot|conditions|analytics)$/.test(path)?HTTP_DEADLINES.analysis:/\/(candles|awareness-snapshot)$/.test(path)?HTTP_DEADLINES.storedRead:path==='/api/market/watchlist'?HTTP_DEADLINES.watchlist:HTTP_DEADLINES.default;}
+function requestDeadline(path){return /\/(advanced-snapshot|conditions|analytics)$/.test(path)?HTTP_DEADLINES.analysis:/\/(candles|awareness-snapshot)$/.test(path)?HTTP_DEADLINES.storedRead:['/api/intel/news','/api/news/aggregate'].includes(path)?HTTP_DEADLINES.storedRead:path==='/api/market/watchlist'?HTTP_DEADLINES.watchlist:HTTP_DEADLINES.default;}
 const pageController = new AbortController();
 window.addEventListener("pagehide", () => pageController.abort(), { once: true });
 

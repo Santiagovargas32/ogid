@@ -23,15 +23,21 @@ export function writeEventImpacts(db,event,impacts){
 }
 // One short writer transaction per page. New/revised events dual-write the build
 // in their existing business transaction, including inserts behind this cursor.
-export function eventIndexPage(db,{limit=16}={}){
- if(!Number.isSafeInteger(limit)||limit<1||limit>64)throw Object.assign(Error('Invalid index page'),{code:'STORAGE_INVALID_COMMAND'});
+export function eventIndexPage(db,{limit=64,budgetMs=250}={}){
+ if(!Number.isSafeInteger(limit)||limit<1||limit>64||!Number.isSafeInteger(budgetMs)||budgetMs<1||budgetMs>1000)throw Object.assign(Error('Invalid index page'),{code:'STORAGE_INVALID_COMMAND'});
  return db.transaction(()=>{
   const build=get(db,'events.index.build');if(!build)return eventIndexStatus(db);
-  const rows=build.cursor===null?db.prepare('SELECT rowid AS sequence,event_id,payload_json FROM events ORDER BY rowid LIMIT ?').all(limit):db.prepare('SELECT rowid AS sequence,event_id,payload_json FROM events WHERE rowid>? ORDER BY rowid LIMIT ?').all(build.cursor,limit);
-  if(!rows.length){retire(db,eventIndexView(db).generation);put(db,'events.index.lastBuild',{...build,completedAt:new Date().toISOString()});put(db,'events.index.active',build.generation);put(db,'events.index',build.fingerprint);put(db,'research.revision',(get(db,'research.revision')||0)+1);db.prepare('DELETE FROM runtime_meta WHERE key=?').run('events.index.build');return eventIndexStatus(db);}
+  const first=db.prepare('SELECT rowid AS sequence,event_id,payload_json FROM events ORDER BY rowid LIMIT 1'),next=db.prepare('SELECT rowid AS sequence,event_id,payload_json FROM events WHERE rowid>? ORDER BY rowid LIMIT 1');
   const ledger=new EventLedger({store:{}}),universe=listVerifiedInstruments(),remove=db.prepare('DELETE FROM event_index_links WHERE generation=? AND event_id=?'),insert=db.prepare('INSERT INTO event_index_links VALUES(?,?,?,?)');
-  for(const row of rows){const event=JSON.parse(row.payload_json);remove.run(build.generation,row.event_id);for(const i of ledger.impact(event,universe))insert.run(build.generation,row.event_id,i.instrumentId,JSON.stringify(i));}
-  build.cursor=rows.at(-1).sequence;build.processed+=rows.length;put(db,'events.index.build',build);return eventIndexStatus(db);
+  const started=performance.now();let processed=0;
+  for(let n=0;n<limit;n++){
+    const row=build.cursor===null?first.get():next.get(build.cursor);if(!row)break;
+    const event=JSON.parse(row.payload_json);remove.run(build.generation,row.event_id);for(const i of ledger.impact(event,universe))insert.run(build.generation,row.event_id,i.instrumentId,JSON.stringify(i));
+    build.cursor=row.sequence;processed++;
+    if(performance.now()-started>=budgetMs)break;
+  }
+  if(!processed){retire(db,eventIndexView(db).generation);put(db,'events.index.lastBuild',{...build,completedAt:new Date().toISOString()});put(db,'events.index.active',build.generation);put(db,'events.index',build.fingerprint);put(db,'research.revision',(get(db,'research.revision')||0)+1);db.prepare('DELETE FROM runtime_meta WHERE key=?').run('events.index.build');return eventIndexStatus(db);}
+  build.processed+=processed;put(db,'events.index.build',build);return eventIndexStatus(db);
  }).immediate();
 }
 // Bounded retention of inactive generations; never remove active/building facts.
