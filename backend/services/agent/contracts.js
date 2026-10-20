@@ -1,6 +1,6 @@
 import Ajv from "ajv";
 import { AppError } from "../../utils/error.js";
-export const PROMPT_VERSION = "ogid-analyst-v1.4";
+export const PROMPT_VERSION = "ogid-analyst-v1.5";
 export const TASKS = [
   "global_intelligence_brief",
   "geopolitical_alert_assessment",
@@ -220,6 +220,12 @@ export function normalizePublicationEvidence(value) {
   });
   return {...value,evidenceIds:[...ids],technicalFacts};
 }
+export function evidencePublicationCode(item) {
+  if(item.quality?.synthetic || item.quality?.dataMode==='synthetic')return 'AGENT_SYNTHETIC_EVIDENCE';
+  if(item.quality?.stale || item.quality?.dataMode==='stale')return 'AGENT_STALE_EVIDENCE';
+  if(item.quality?.dataMode==='fallback')return 'AGENT_FALLBACK_EVIDENCE';
+  return null;
+}
 export function assertPublication(
   value,
   { job, snapshot, lookup, now = Date.now() },
@@ -238,12 +244,8 @@ export function assertPublication(
       Date.parse(item.availableAt) > Date.parse(snapshot.asOf)
     )
       throw agentError("AGENT_FUTURE_EVIDENCE");
-    if (
-      item.quality?.synthetic ||
-      item.quality?.stale ||
-      ["synthetic", "fallback", "stale"].includes(item.quality?.dataMode)
-    )
-      throw agentError("AGENT_SYNTHETIC_EVIDENCE");
+    const qualityCode=evidencePublicationCode(item);
+    if(qualityCode)throw agentError(qualityCode,400,{evidenceId:id.slice(0,256),reason:qualityCode});
     items.set(id, item);
   }
   for (const driver of value.drivers || [])
@@ -360,5 +362,5 @@ agent.clusters sólo agrupa noticias: admite snapshotId, clusterId, cursor y lim
 Para evidencia grande usa agent.evidence.chunk con format="utf8" y nextOffset hasta hasMore=false; no interpretes texto base64 como si ya lo hubieras leído.
 Para valorar alertas usa alertAssessments y cita su revisión congelada de dominio geopolitical-alert. Una valoración no cambia la veracidad de la alerta.
 Incluye en evidenceIds tanto las revisiones de alerta como las fuentes citadas en valoraciones, drivers, escenarios intradía y technicalFacts.
-Si faltan datos técnicos o vigencia, direction=unavailable. probability=null, confidenceKind=qualitative-uncalibrated, horizonte=24 horas.
+Lee quality y publicationEligibility de cada evidencia antes de usarla. Las evidencias stale, synthetic o fallback se conservan como contexto, pero están PROHIBIDAS en evidenceIds, technicalFacts y afirmaciones publicables. No copies sus cifras. Consulta coverage y evidencia elegible; explica la falta de vigencia en limitations y missingEvidence. Si faltan datos técnicos o vigencia, direction=unavailable. probability=null, confidenceKind=qualitative-uncalibrated, horizonte=24 horas.
 Responde con el schema solicitado; para chat usa texto con al menos una cita exacta [evidence:ID] del snapshot, también al explicar que faltan datos. No escribas URLs inventadas. No muestres razonamiento privado.`;

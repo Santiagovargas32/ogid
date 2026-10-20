@@ -1,0 +1,4931 @@
+{
+  "file": "improvement-validated-runtime-20261020.log",
+  "sha256": "f76de19758219afe10180d9a1906daa482551082131fd1a7096437e3f5d14536",
+  "bytes": 1462139,
+  "lines": 3828,
+  "jsonRows": 3824,
+  "nonJsonLines": 4,
+  "firstAt": "2026-10-20T12:28:45.789Z",
+  "lastAt": "2026-10-20T13:08:33.382Z",
+  "observedSeconds": 2387.593,
+  "head": "not-recorded",
+  "configuration": "not-fully-recorded",
+  "phases": {
+    "startup": 25,
+    "running": 3793,
+    "shutdown": 6
+  },
+  "levels": {
+    "info": 3643,
+    "warn": 45,
+    "error": 136
+  },
+  "lifecycle": [
+    {
+      "line": 30,
+      "timestamp": "2026-10-20T12:30:14.026Z",
+      "level": "info",
+      "scope": "backend/server",
+      "message": "server_started"
+    },
+    {
+      "line": 31,
+      "timestamp": "2026-10-20T12:30:14.628Z",
+      "level": "info",
+      "scope": "backend/server",
+      "message": "agent_component_started",
+      "component": "broker"
+    },
+    {
+      "line": 33,
+      "timestamp": "2026-10-20T12:30:16.866Z",
+      "level": "info",
+      "scope": "backend/server",
+      "message": "agent_component_started",
+      "component": "opencode"
+    },
+    {
+      "line": 43,
+      "timestamp": "2026-10-20T12:30:26.383Z",
+      "level": "info",
+      "scope": "backend/server",
+      "message": "agent_component_started",
+      "component": "worker"
+    },
+    {
+      "line": 2972,
+      "timestamp": "2026-10-20T12:58:08.258Z",
+      "level": "warn",
+      "scope": "backend/server",
+      "message": "agent_component_exited",
+      "component": "worker",
+      "exitCode": 0,
+      "signal": null
+    },
+    {
+      "line": 2973,
+      "timestamp": "2026-10-20T12:58:08.258Z",
+      "level": "warn",
+      "scope": "backend/server",
+      "message": "agent_component_unavailable",
+      "code": "AGENT_COMPONENT_EXITED",
+      "component": "worker"
+    },
+    {
+      "line": 2986,
+      "timestamp": "2026-10-20T12:58:17.787Z",
+      "level": "info",
+      "scope": "backend/server",
+      "message": "agent_component_started",
+      "component": "worker"
+    },
+    {
+      "line": 3823,
+      "timestamp": "2026-10-20T13:08:30.725Z",
+      "level": "info",
+      "scope": "backend/server",
+      "message": "shutdown_signal_received",
+      "signal": "SIGTERM"
+    },
+    {
+      "line": 3828,
+      "timestamp": "2026-10-20T13:08:33.382Z",
+      "level": "info",
+      "scope": "backend/server",
+      "message": "server_stopped",
+      "cleanupErrors": 0
+    }
+  ],
+  "websocket": [
+    {
+      "line": 554,
+      "timestamp": "2026-10-20T12:36:49.325Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_connected",
+      "connectionId": "6e67f653-0888-4fdd-8a64-7ce633cf8efb",
+      "endpoint": "/ws"
+    },
+    {
+      "line": 555,
+      "timestamp": "2026-10-20T12:36:49.326Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_connected",
+      "connectionId": "8810d7ca-d05f-4642-b1ab-c4fe0162997b",
+      "endpoint": "/ws"
+    },
+    {
+      "line": 556,
+      "timestamp": "2026-10-20T12:36:49.326Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_connected",
+      "connectionId": "be0d7179-8f6c-4e9d-ab12-c8266788c38f",
+      "endpoint": "/ws"
+    },
+    {
+      "line": 557,
+      "timestamp": "2026-10-20T12:36:49.327Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_connected",
+      "connectionId": "cb87f1d0-f160-4cf2-898b-137004840eb3",
+      "endpoint": "/ws"
+    },
+    {
+      "line": 558,
+      "timestamp": "2026-10-20T12:36:49.328Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_connected",
+      "connectionId": "fe8105e6-cd20-4187-8d57-a7da6cfcab94",
+      "endpoint": "/ws"
+    },
+    {
+      "line": 559,
+      "timestamp": "2026-10-20T12:36:49.328Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_connected",
+      "connectionId": "c88b4ecd-8a57-47d6-9eba-fe2700b45feb",
+      "endpoint": "/ws"
+    },
+    {
+      "line": 560,
+      "timestamp": "2026-10-20T12:36:49.329Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_connected",
+      "connectionId": "649d08f0-5d00-405a-8f6a-7b68abbae69c",
+      "endpoint": "/ws"
+    },
+    {
+      "line": 561,
+      "timestamp": "2026-10-20T12:36:49.329Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_connected",
+      "connectionId": "da14fdbf-d755-4235-b3d8-18eee4a1294f",
+      "endpoint": "/ws"
+    },
+    {
+      "line": 562,
+      "timestamp": "2026-10-20T12:36:49.330Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_connected",
+      "connectionId": "7b328560-2560-4b0a-9586-9de6d65a3acb",
+      "endpoint": "/ws"
+    },
+    {
+      "line": 563,
+      "timestamp": "2026-10-20T12:36:49.331Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_connected",
+      "connectionId": "a626aa77-9399-4aae-be07-c51e2d6d1f0f",
+      "endpoint": "/ws"
+    },
+    {
+      "line": 2595,
+      "timestamp": "2026-10-20T12:55:10.567Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_disconnected",
+      "durationMs": 1101242.992392,
+      "connectionId": "6e67f653-0888-4fdd-8a64-7ce633cf8efb",
+      "closeCode": 1000,
+      "endpoint": "/ws"
+    },
+    {
+      "line": 2596,
+      "timestamp": "2026-10-20T12:55:10.568Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_disconnected",
+      "durationMs": 1101237.189605,
+      "connectionId": "a626aa77-9399-4aae-be07-c51e2d6d1f0f",
+      "closeCode": 1000,
+      "endpoint": "/ws"
+    },
+    {
+      "line": 2597,
+      "timestamp": "2026-10-20T12:55:10.568Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_disconnected",
+      "durationMs": 1101238.363536,
+      "connectionId": "7b328560-2560-4b0a-9586-9de6d65a3acb",
+      "closeCode": 1000,
+      "endpoint": "/ws"
+    },
+    {
+      "line": 2598,
+      "timestamp": "2026-10-20T12:55:10.568Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_disconnected",
+      "durationMs": 1101239.1596300001,
+      "connectionId": "da14fdbf-d755-4235-b3d8-18eee4a1294f",
+      "closeCode": 1000,
+      "endpoint": "/ws"
+    },
+    {
+      "line": 2599,
+      "timestamp": "2026-10-20T12:55:10.568Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_disconnected",
+      "durationMs": 1101239.779256,
+      "connectionId": "649d08f0-5d00-405a-8f6a-7b68abbae69c",
+      "closeCode": 1000,
+      "endpoint": "/ws"
+    },
+    {
+      "line": 2600,
+      "timestamp": "2026-10-20T12:55:10.568Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_disconnected",
+      "durationMs": 1101240.4328259998,
+      "connectionId": "c88b4ecd-8a57-47d6-9eba-fe2700b45feb",
+      "closeCode": 1000,
+      "endpoint": "/ws"
+    },
+    {
+      "line": 2601,
+      "timestamp": "2026-10-20T12:55:10.569Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_disconnected",
+      "durationMs": 1101241.192764,
+      "connectionId": "fe8105e6-cd20-4187-8d57-a7da6cfcab94",
+      "closeCode": 1000,
+      "endpoint": "/ws"
+    },
+    {
+      "line": 2602,
+      "timestamp": "2026-10-20T12:55:10.569Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_disconnected",
+      "durationMs": 1101241.837086,
+      "connectionId": "cb87f1d0-f160-4cf2-898b-137004840eb3",
+      "closeCode": 1000,
+      "endpoint": "/ws"
+    },
+    {
+      "line": 2603,
+      "timestamp": "2026-10-20T12:55:10.569Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_disconnected",
+      "durationMs": 1101242.6188949998,
+      "connectionId": "be0d7179-8f6c-4e9d-ab12-c8266788c38f",
+      "closeCode": 1000,
+      "endpoint": "/ws"
+    },
+    {
+      "line": 2604,
+      "timestamp": "2026-10-20T12:55:10.569Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_disconnected",
+      "durationMs": 1101243.412234,
+      "connectionId": "8810d7ca-d05f-4642-b1ab-c4fe0162997b",
+      "closeCode": 1000,
+      "endpoint": "/ws"
+    },
+    {
+      "line": 2634,
+      "timestamp": "2026-10-20T12:55:29.657Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_connected",
+      "connectionId": "62c99363-4b88-4750-b81c-f20897e8630f",
+      "endpoint": "/ws"
+    },
+    {
+      "line": 2635,
+      "timestamp": "2026-10-20T12:55:29.658Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_connected",
+      "connectionId": "2ca23493-2de3-48df-b690-dd365791fd37",
+      "endpoint": "/ws"
+    },
+    {
+      "line": 2636,
+      "timestamp": "2026-10-20T12:55:29.659Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_connected",
+      "connectionId": "5e054307-7fac-4fb2-9755-95eb2e7f602c",
+      "endpoint": "/ws"
+    },
+    {
+      "line": 2637,
+      "timestamp": "2026-10-20T12:55:29.661Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_connected",
+      "connectionId": "010dde7b-3070-492e-a9fc-1aacf2dfbaee",
+      "endpoint": "/ws"
+    },
+    {
+      "line": 2638,
+      "timestamp": "2026-10-20T12:55:29.662Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_connected",
+      "connectionId": "698e3081-92f9-454b-8bf8-3a9fcda047e7",
+      "endpoint": "/ws"
+    },
+    {
+      "line": 2639,
+      "timestamp": "2026-10-20T12:55:29.663Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_connected",
+      "connectionId": "7a2c283d-6566-4933-894a-bd7fb612ff93",
+      "endpoint": "/ws"
+    },
+    {
+      "line": 2640,
+      "timestamp": "2026-10-20T12:55:29.664Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_connected",
+      "connectionId": "04c2a7da-f9e0-4edf-8411-58ea0798f4fd",
+      "endpoint": "/ws"
+    },
+    {
+      "line": 2641,
+      "timestamp": "2026-10-20T12:55:29.667Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_connected",
+      "connectionId": "7ef581d6-e0fb-4c8e-83b4-55f6f5561bb2",
+      "endpoint": "/ws"
+    },
+    {
+      "line": 2642,
+      "timestamp": "2026-10-20T12:55:29.668Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_connected",
+      "connectionId": "7a33571f-d381-4dcc-9afe-4b22183d9ab1",
+      "endpoint": "/ws"
+    },
+    {
+      "line": 2643,
+      "timestamp": "2026-10-20T12:55:29.670Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_connected",
+      "connectionId": "8ccdcbe7-38db-409b-8b4f-181a08c5fbac",
+      "endpoint": "/ws"
+    },
+    {
+      "line": 3204,
+      "timestamp": "2026-10-20T13:00:29.617Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_disconnected",
+      "durationMs": 299960.5242519998,
+      "connectionId": "62c99363-4b88-4750-b81c-f20897e8630f",
+      "closeCode": 1000,
+      "endpoint": "/ws"
+    },
+    {
+      "line": 3205,
+      "timestamp": "2026-10-20T13:00:29.618Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_disconnected",
+      "durationMs": 299950.0571019999,
+      "connectionId": "7a33571f-d381-4dcc-9afe-4b22183d9ab1",
+      "closeCode": 1000,
+      "endpoint": "/ws"
+    },
+    {
+      "line": 3206,
+      "timestamp": "2026-10-20T13:00:29.618Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_disconnected",
+      "durationMs": 299951.557151,
+      "connectionId": "7ef581d6-e0fb-4c8e-83b4-55f6f5561bb2",
+      "closeCode": 1000,
+      "endpoint": "/ws"
+    },
+    {
+      "line": 3207,
+      "timestamp": "2026-10-20T13:00:29.618Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_disconnected",
+      "durationMs": 299953.75772699993,
+      "connectionId": "04c2a7da-f9e0-4edf-8411-58ea0798f4fd",
+      "closeCode": 1000,
+      "endpoint": "/ws"
+    },
+    {
+      "line": 3208,
+      "timestamp": "2026-10-20T13:00:29.618Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_disconnected",
+      "durationMs": 299955.14012699993,
+      "connectionId": "7a2c283d-6566-4933-894a-bd7fb612ff93",
+      "closeCode": 1000,
+      "endpoint": "/ws"
+    },
+    {
+      "line": 3209,
+      "timestamp": "2026-10-20T13:00:29.618Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_disconnected",
+      "durationMs": 299956.56469499995,
+      "connectionId": "698e3081-92f9-454b-8bf8-3a9fcda047e7",
+      "closeCode": 1000,
+      "endpoint": "/ws"
+    },
+    {
+      "line": 3210,
+      "timestamp": "2026-10-20T13:00:29.618Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_disconnected",
+      "durationMs": 299958.16394899995,
+      "connectionId": "010dde7b-3070-492e-a9fc-1aacf2dfbaee",
+      "closeCode": 1000,
+      "endpoint": "/ws"
+    },
+    {
+      "line": 3211,
+      "timestamp": "2026-10-20T13:00:29.619Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_disconnected",
+      "durationMs": 299959.66980899987,
+      "connectionId": "5e054307-7fac-4fb2-9755-95eb2e7f602c",
+      "closeCode": 1000,
+      "endpoint": "/ws"
+    },
+    {
+      "line": 3212,
+      "timestamp": "2026-10-20T13:00:29.619Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_disconnected",
+      "durationMs": 299960.95450600004,
+      "connectionId": "2ca23493-2de3-48df-b690-dd365791fd37",
+      "closeCode": 1000,
+      "endpoint": "/ws"
+    },
+    {
+      "line": 3213,
+      "timestamp": "2026-10-20T13:00:29.619Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_disconnected",
+      "durationMs": 299950.029571,
+      "connectionId": "8ccdcbe7-38db-409b-8b4f-181a08c5fbac",
+      "closeCode": 1000,
+      "endpoint": "/ws"
+    }
+  ],
+  "gapsOver30Seconds": [
+    {
+      "afterLine": 28,
+      "beforeLine": 29,
+      "seconds": 31.224
+    }
+  ],
+  "signatures": [
+    {
+      "signature": [
+        "backend/utils/error",
+        "request_failed",
+        "NOT_FOUND",
+        "None",
+        "None",
+        "GET",
+        "None"
+      ],
+      "count": 110,
+      "first": {
+        "line": 566,
+        "timestamp": "2026-10-20T12:36:49.348Z",
+        "level": "error",
+        "scope": "backend/utils/error",
+        "message": "request_failed",
+        "code": "NOT_FOUND",
+        "causeCode": null,
+        "requestId": "508c651d-ac81-4a72-b4ee-ccf7f22592f1",
+        "method": "GET",
+        "statusCode": 404,
+        "endpoint": "/api/news"
+      },
+      "lastLine": 2588,
+      "context": [
+        {
+          "line": 564,
+          "timestamp": "2026-10-20T12:36:49.332Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "3e7e07b1-215b-487f-aad5-26efb464d493",
+          "method": "GET",
+          "statusCode": 200,
+          "durationMs": 0.59,
+          "endpoint": "/api/health/ready"
+        },
+        {
+          "line": 565,
+          "timestamp": "2026-10-20T12:36:49.344Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "bfe24a6e-0d8e-45f9-934c-6f08cc73f526",
+          "method": "GET",
+          "statusCode": 200,
+          "durationMs": 3.76,
+          "endpoint": "/api/admin/agent"
+        },
+        {
+          "line": 566,
+          "timestamp": "2026-10-20T12:36:49.348Z",
+          "level": "error",
+          "scope": "backend/utils/error",
+          "message": "request_failed",
+          "code": "NOT_FOUND",
+          "causeCode": null,
+          "requestId": "508c651d-ac81-4a72-b4ee-ccf7f22592f1",
+          "method": "GET",
+          "statusCode": 404,
+          "endpoint": "/api/news"
+        },
+        {
+          "line": 567,
+          "timestamp": "2026-10-20T12:36:49.348Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "508c651d-ac81-4a72-b4ee-ccf7f22592f1",
+          "method": "GET",
+          "statusCode": 404,
+          "durationMs": 1.36,
+          "endpoint": "/api/news"
+        },
+        {
+          "line": 568,
+          "timestamp": "2026-10-20T12:36:49.400Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "cb91d374-993c-4268-bbd2-0d247e050cd2",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 934.33,
+          "endpoint": "/api/agent/v1/internal/pendingCancellations"
+        }
+      ],
+      "phases": {
+        "running": 110
+      }
+    },
+    {
+      "signature": [
+        "backend/storage/worker",
+        "storage_slow_sql",
+        "None",
+        "None",
+        "None",
+        "None",
+        "85aead628fca0ac53e5d0a9ac9f3f64d4e61fdd781eb00f48695e1e71351f123"
+      ],
+      "count": 14,
+      "first": {
+        "line": 42,
+        "timestamp": "2026-10-20T12:30:26.253Z",
+        "level": "warn",
+        "scope": "backend/storage/worker",
+        "message": "storage_slow_sql",
+        "threadId": 2,
+        "durationMs": 3377,
+        "sqlSignatureSha256": "85aead628fca0ac53e5d0a9ac9f3f64d4e61fdd781eb00f48695e1e71351f123"
+      },
+      "lastLine": 92,
+      "context": [
+        {
+          "line": 40,
+          "timestamp": "2026-10-20T12:30:25.611Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "8bc570d1-dc26-4595-88f0-114bcf206e59",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 1111.82,
+          "endpoint": "/api/agent/v1/internal/claim"
+        },
+        {
+          "line": 41,
+          "timestamp": "2026-10-20T12:30:26.154Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "4de05680-874f-4a0b-b700-0dc03e2d074d",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 538.15,
+          "endpoint": "/api/agent/v1/internal/workerReport"
+        },
+        {
+          "line": 42,
+          "timestamp": "2026-10-20T12:30:26.253Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 2,
+          "durationMs": 3377,
+          "sqlSignatureSha256": "85aead628fca0ac53e5d0a9ac9f3f64d4e61fdd781eb00f48695e1e71351f123"
+        },
+        {
+          "line": 43,
+          "timestamp": "2026-10-20T12:30:26.383Z",
+          "level": "info",
+          "scope": "backend/server",
+          "message": "agent_component_started",
+          "component": "worker"
+        },
+        {
+          "line": 44,
+          "timestamp": "2026-10-20T12:30:28.576Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "fd4a0ded-1cd3-4848-bd18-4374ce912ded",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 419.46,
+          "endpoint": "/api/agent/v1/internal/consume"
+        }
+      ],
+      "phases": {
+        "running": 14
+      }
+    },
+    {
+      "signature": [
+        "backend/services/news/newsAggregatorService",
+        "news_fallback_engaged",
+        "None",
+        "None",
+        "None",
+        "None",
+        "None"
+      ],
+      "count": 6,
+      "first": {
+        "line": 469,
+        "timestamp": "2026-10-20T12:35:50.828Z",
+        "level": "warn",
+        "scope": "backend/services/news/newsAggregatorService",
+        "message": "news_fallback_engaged"
+      },
+      "lastLine": 2487,
+      "context": [
+        {
+          "line": 467,
+          "timestamp": "2026-10-20T12:35:50.225Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "e18cbff5-7666-4665-8cb7-8e51eff96350",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 281.67,
+          "endpoint": "/api/agent/v1/internal/claim"
+        },
+        {
+          "line": 468,
+          "timestamp": "2026-10-20T12:35:50.827Z",
+          "level": "info",
+          "scope": "backend/services/news/newsAggregatorService",
+          "message": "news_provider_summary",
+          "durationMs": 37721
+        },
+        {
+          "line": 469,
+          "timestamp": "2026-10-20T12:35:50.828Z",
+          "level": "warn",
+          "scope": "backend/services/news/newsAggregatorService",
+          "message": "news_fallback_engaged"
+        },
+        {
+          "line": 470,
+          "timestamp": "2026-10-20T12:35:54.228Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "c87a3d32-ce65-4c1c-a2d6-8836c03672ba",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 2001.83,
+          "endpoint": "/api/agent/v1/internal/consume"
+        },
+        {
+          "line": 471,
+          "timestamp": "2026-10-20T12:35:54.355Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "85b29824-c763-4567-aaaf-1f02c80f32c6",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 125.66,
+          "endpoint": "/api/agent/v1/internal/pendingCancellations"
+        }
+      ],
+      "phases": {
+        "running": 6
+      }
+    },
+    {
+      "signature": [
+        "backend/storage/worker",
+        "storage_slow_sql",
+        "None",
+        "None",
+        "None",
+        "None",
+        "0b7e7d277f4f535880569c64424096f9914bbf56cfdecb562893e08863490e73"
+      ],
+      "count": 5,
+      "first": {
+        "line": 21,
+        "timestamp": "2026-10-20T12:29:34.752Z",
+        "level": "warn",
+        "scope": "backend/storage/worker",
+        "message": "storage_slow_sql",
+        "threadId": 1,
+        "durationMs": 2841,
+        "sqlSignatureSha256": "0b7e7d277f4f535880569c64424096f9914bbf56cfdecb562893e08863490e73"
+      },
+      "lastLine": 28,
+      "context": [
+        {
+          "line": 19,
+          "timestamp": "2026-10-20T12:29:17.044Z",
+          "level": "info",
+          "scope": "backend/server",
+          "message": "storage_initializing"
+        },
+        {
+          "line": 20,
+          "timestamp": "2026-10-20T12:29:28.896Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 3,
+          "durationMs": 10077,
+          "sqlSignatureSha256": "1787300fd67c1a5a0712487ca59e01e1edd54e7a9171261cb6ee1859742b940e"
+        },
+        {
+          "line": 21,
+          "timestamp": "2026-10-20T12:29:34.752Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 1,
+          "durationMs": 2841,
+          "sqlSignatureSha256": "0b7e7d277f4f535880569c64424096f9914bbf56cfdecb562893e08863490e73"
+        },
+        {
+          "line": 22,
+          "timestamp": "2026-10-20T12:29:36.147Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "e53504c1-f5a3-4eb8-8d17-f0531d082ab0",
+          "method": "GET",
+          "statusCode": 503,
+          "durationMs": 0.54,
+          "endpoint": "/api/admin/agent"
+        },
+        {
+          "line": 23,
+          "timestamp": "2026-10-20T12:29:36.149Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "63ca4e6b-ef7a-4b08-82a8-a422bbfb5548",
+          "method": "GET",
+          "statusCode": 200,
+          "durationMs": 2.76,
+          "endpoint": "/api/health"
+        }
+      ],
+      "phases": {
+        "startup": 5
+      }
+    },
+    {
+      "signature": [
+        "backend/storage/worker",
+        "storage_slow_sql",
+        "None",
+        "None",
+        "None",
+        "None",
+        "3da702ded72de7cc27f3a00a9b6592e62cdf49e54b0efe21fbb0b873baa17503"
+      ],
+      "count": 4,
+      "first": {
+        "line": 35,
+        "timestamp": "2026-10-20T12:30:18.961Z",
+        "level": "warn",
+        "scope": "backend/storage/worker",
+        "message": "storage_slow_sql",
+        "threadId": 1,
+        "durationMs": 1174,
+        "sqlSignatureSha256": "3da702ded72de7cc27f3a00a9b6592e62cdf49e54b0efe21fbb0b873baa17503"
+      },
+      "lastLine": 3188,
+      "context": [
+        {
+          "line": 33,
+          "timestamp": "2026-10-20T12:30:16.866Z",
+          "level": "info",
+          "scope": "backend/server",
+          "message": "agent_component_started",
+          "component": "opencode"
+        },
+        {
+          "line": 34,
+          "timestamp": "2026-10-20T12:30:17.094Z",
+          "level": "info",
+          "scope": "backend/services/news/newsAggregatorService",
+          "message": "news_provider_request_start"
+        },
+        {
+          "line": 35,
+          "timestamp": "2026-10-20T12:30:18.961Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 1,
+          "durationMs": 1174,
+          "sqlSignatureSha256": "3da702ded72de7cc27f3a00a9b6592e62cdf49e54b0efe21fbb0b873baa17503"
+        },
+        {
+          "line": 36,
+          "timestamp": "2026-10-20T12:30:19.646Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "d68715ec-c7e6-4f40-a000-ba0b8e83cf3e",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 2616,
+          "endpoint": "/api/agent/v1/internal/reconcileCandidates"
+        },
+        {
+          "line": 37,
+          "timestamp": "2026-10-20T12:30:22.875Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "3d12c092-731b-4982-8ab2-7b65bb1eb36b",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 3218.44,
+          "endpoint": "/api/agent/v1/internal/resume"
+        }
+      ],
+      "phases": {
+        "running": 4
+      }
+    },
+    {
+      "signature": [
+        "backend/storage/worker",
+        "storage_command_failed",
+        "AGENT_INTRADAY_DATA_REQUIRED",
+        "agent.call",
+        "None",
+        "publish",
+        "None"
+      ],
+      "count": 3,
+      "first": {
+        "line": 1724,
+        "timestamp": "2026-10-20T12:47:05.540Z",
+        "level": "error",
+        "scope": "backend/storage/worker",
+        "message": "storage_command_failed",
+        "code": "AGENT_INTRADAY_DATA_REQUIRED",
+        "operation": "agent.call",
+        "method": "publish"
+      },
+      "lastLine": 2704,
+      "context": [
+        {
+          "line": 1722,
+          "timestamp": "2026-10-20T12:47:05.449Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "7bddffe6-9278-4cca-9d03-219637f192ec",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 0.98,
+          "endpoint": "/api/agent/v1/internal/run"
+        },
+        {
+          "line": 1723,
+          "timestamp": "2026-10-20T12:47:05.537Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "59de3288-5602-482d-8044-b31ce5b420ff",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 78.44,
+          "endpoint": "/api/agent/v1/internal/state"
+        },
+        {
+          "line": 1724,
+          "timestamp": "2026-10-20T12:47:05.540Z",
+          "level": "error",
+          "scope": "backend/storage/worker",
+          "message": "storage_command_failed",
+          "code": "AGENT_INTRADAY_DATA_REQUIRED",
+          "operation": "agent.call",
+          "method": "publish"
+        },
+        {
+          "line": 1725,
+          "timestamp": "2026-10-20T12:47:05.541Z",
+          "level": "error",
+          "scope": "backend/utils/error",
+          "message": "request_failed",
+          "code": "AGENT_INTRADAY_DATA_REQUIRED",
+          "causeCode": null,
+          "requestId": "29308468-523f-495d-8af7-d1de5f889b25",
+          "method": "POST",
+          "statusCode": 400,
+          "endpoint": "/api/agent/v1/internal/publish"
+        },
+        {
+          "line": 1726,
+          "timestamp": "2026-10-20T12:47:05.541Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "29308468-523f-495d-8af7-d1de5f889b25",
+          "method": "POST",
+          "statusCode": 400,
+          "durationMs": 2.69,
+          "endpoint": "/api/agent/v1/internal/publish"
+        }
+      ],
+      "phases": {
+        "running": 3
+      }
+    },
+    {
+      "signature": [
+        "backend/utils/error",
+        "request_failed",
+        "AGENT_INTRADAY_DATA_REQUIRED",
+        "None",
+        "None",
+        "POST",
+        "None"
+      ],
+      "count": 3,
+      "first": {
+        "line": 1725,
+        "timestamp": "2026-10-20T12:47:05.541Z",
+        "level": "error",
+        "scope": "backend/utils/error",
+        "message": "request_failed",
+        "code": "AGENT_INTRADAY_DATA_REQUIRED",
+        "causeCode": null,
+        "requestId": "29308468-523f-495d-8af7-d1de5f889b25",
+        "method": "POST",
+        "statusCode": 400,
+        "endpoint": "/api/agent/v1/internal/publish"
+      },
+      "lastLine": 2706,
+      "context": [
+        {
+          "line": 1723,
+          "timestamp": "2026-10-20T12:47:05.537Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "59de3288-5602-482d-8044-b31ce5b420ff",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 78.44,
+          "endpoint": "/api/agent/v1/internal/state"
+        },
+        {
+          "line": 1724,
+          "timestamp": "2026-10-20T12:47:05.540Z",
+          "level": "error",
+          "scope": "backend/storage/worker",
+          "message": "storage_command_failed",
+          "code": "AGENT_INTRADAY_DATA_REQUIRED",
+          "operation": "agent.call",
+          "method": "publish"
+        },
+        {
+          "line": 1725,
+          "timestamp": "2026-10-20T12:47:05.541Z",
+          "level": "error",
+          "scope": "backend/utils/error",
+          "message": "request_failed",
+          "code": "AGENT_INTRADAY_DATA_REQUIRED",
+          "causeCode": null,
+          "requestId": "29308468-523f-495d-8af7-d1de5f889b25",
+          "method": "POST",
+          "statusCode": 400,
+          "endpoint": "/api/agent/v1/internal/publish"
+        },
+        {
+          "line": 1726,
+          "timestamp": "2026-10-20T12:47:05.541Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "29308468-523f-495d-8af7-d1de5f889b25",
+          "method": "POST",
+          "statusCode": 400,
+          "durationMs": 2.69,
+          "endpoint": "/api/agent/v1/internal/publish"
+        },
+        {
+          "line": 1727,
+          "timestamp": "2026-10-20T12:47:05.543Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "aeee2d11-e3f6-46d2-a82c-526d63ba78a9",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 0.88,
+          "endpoint": "/api/agent/v1/internal/run"
+        }
+      ],
+      "phases": {
+        "running": 3
+      }
+    },
+    {
+      "signature": [
+        "backend/storage/worker",
+        "storage_command_failed",
+        "AGENT_INVALIDATION_REQUIRED",
+        "agent.call",
+        "None",
+        "publish",
+        "None"
+      ],
+      "count": 2,
+      "first": {
+        "line": 332,
+        "timestamp": "2026-10-20T12:33:58.046Z",
+        "level": "error",
+        "scope": "backend/storage/worker",
+        "message": "storage_command_failed",
+        "code": "AGENT_INVALIDATION_REQUIRED",
+        "operation": "agent.call",
+        "method": "publish"
+      },
+      "lastLine": 3604,
+      "context": [
+        {
+          "line": 330,
+          "timestamp": "2026-10-20T12:33:57.174Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "6b50f3f1-ab4c-4fb9-bfb9-f3bf3eebfbb1",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 0.98,
+          "endpoint": "/api/agent/v1/internal/run"
+        },
+        {
+          "line": 331,
+          "timestamp": "2026-10-20T12:33:57.792Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "3abe7733-e19d-496d-b89a-be83bf516dae",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 608.03,
+          "endpoint": "/api/agent/v1/internal/state"
+        },
+        {
+          "line": 332,
+          "timestamp": "2026-10-20T12:33:58.046Z",
+          "level": "error",
+          "scope": "backend/storage/worker",
+          "message": "storage_command_failed",
+          "code": "AGENT_INVALIDATION_REQUIRED",
+          "operation": "agent.call",
+          "method": "publish"
+        },
+        {
+          "line": 333,
+          "timestamp": "2026-10-20T12:33:58.047Z",
+          "level": "error",
+          "scope": "backend/utils/error",
+          "message": "request_failed",
+          "code": "AGENT_INVALIDATION_REQUIRED",
+          "causeCode": null,
+          "requestId": "650eaa82-fdb3-48c7-a45f-d76113dce26f",
+          "method": "POST",
+          "statusCode": 400,
+          "endpoint": "/api/agent/v1/internal/publish"
+        },
+        {
+          "line": 334,
+          "timestamp": "2026-10-20T12:33:58.047Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "650eaa82-fdb3-48c7-a45f-d76113dce26f",
+          "method": "POST",
+          "statusCode": 400,
+          "durationMs": 251.32,
+          "endpoint": "/api/agent/v1/internal/publish"
+        }
+      ],
+      "phases": {
+        "running": 2
+      }
+    },
+    {
+      "signature": [
+        "backend/utils/error",
+        "request_failed",
+        "AGENT_INVALIDATION_REQUIRED",
+        "None",
+        "None",
+        "POST",
+        "None"
+      ],
+      "count": 2,
+      "first": {
+        "line": 333,
+        "timestamp": "2026-10-20T12:33:58.047Z",
+        "level": "error",
+        "scope": "backend/utils/error",
+        "message": "request_failed",
+        "code": "AGENT_INVALIDATION_REQUIRED",
+        "causeCode": null,
+        "requestId": "650eaa82-fdb3-48c7-a45f-d76113dce26f",
+        "method": "POST",
+        "statusCode": 400,
+        "endpoint": "/api/agent/v1/internal/publish"
+      },
+      "lastLine": 3605,
+      "context": [
+        {
+          "line": 331,
+          "timestamp": "2026-10-20T12:33:57.792Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "3abe7733-e19d-496d-b89a-be83bf516dae",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 608.03,
+          "endpoint": "/api/agent/v1/internal/state"
+        },
+        {
+          "line": 332,
+          "timestamp": "2026-10-20T12:33:58.046Z",
+          "level": "error",
+          "scope": "backend/storage/worker",
+          "message": "storage_command_failed",
+          "code": "AGENT_INVALIDATION_REQUIRED",
+          "operation": "agent.call",
+          "method": "publish"
+        },
+        {
+          "line": 333,
+          "timestamp": "2026-10-20T12:33:58.047Z",
+          "level": "error",
+          "scope": "backend/utils/error",
+          "message": "request_failed",
+          "code": "AGENT_INVALIDATION_REQUIRED",
+          "causeCode": null,
+          "requestId": "650eaa82-fdb3-48c7-a45f-d76113dce26f",
+          "method": "POST",
+          "statusCode": 400,
+          "endpoint": "/api/agent/v1/internal/publish"
+        },
+        {
+          "line": 334,
+          "timestamp": "2026-10-20T12:33:58.047Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "650eaa82-fdb3-48c7-a45f-d76113dce26f",
+          "method": "POST",
+          "statusCode": 400,
+          "durationMs": 251.32,
+          "endpoint": "/api/agent/v1/internal/publish"
+        },
+        {
+          "line": 335,
+          "timestamp": "2026-10-20T12:33:58.088Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "bd736300-1439-4cea-ae2d-daafab0be02d",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 1.02,
+          "endpoint": "/api/agent/v1/internal/run"
+        }
+      ],
+      "phases": {
+        "running": 2
+      }
+    },
+    {
+      "signature": [
+        "backend/storage/worker",
+        "storage_slow_sql",
+        "None",
+        "None",
+        "None",
+        "None",
+        "b91f464b0c1cc16ea37aac3002fed204c6ca56f55e036d923b224b2d5f23ed33"
+      ],
+      "count": 2,
+      "first": {
+        "line": 463,
+        "timestamp": "2026-10-20T12:35:48.327Z",
+        "level": "warn",
+        "scope": "backend/storage/worker",
+        "message": "storage_slow_sql",
+        "threadId": 2,
+        "durationMs": 8232,
+        "sqlSignatureSha256": "b91f464b0c1cc16ea37aac3002fed204c6ca56f55e036d923b224b2d5f23ed33"
+      },
+      "lastLine": 3398,
+      "context": [
+        {
+          "line": 461,
+          "timestamp": "2026-10-20T12:35:45.413Z",
+          "level": "info",
+          "scope": "backend/services/awareness/awarenessService",
+          "message": "awareness_cycle_completed"
+        },
+        {
+          "line": 462,
+          "timestamp": "2026-10-20T12:35:45.510Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "6ecd7a16-8313-413f-9452-36cdb5c257a3",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 453.38,
+          "endpoint": "/api/agent/v1/internal/workerReport"
+        },
+        {
+          "line": 463,
+          "timestamp": "2026-10-20T12:35:48.327Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 2,
+          "durationMs": 8232,
+          "sqlSignatureSha256": "b91f464b0c1cc16ea37aac3002fed204c6ca56f55e036d923b224b2d5f23ed33"
+        },
+        {
+          "line": 464,
+          "timestamp": "2026-10-20T12:35:48.628Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "660e80e8-5663-4d5c-9f07-a199147d9729",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 1116.29,
+          "endpoint": "/api/agent/v1/internal/consume"
+        },
+        {
+          "line": 465,
+          "timestamp": "2026-10-20T12:35:49.942Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "2875b28b-b8d2-4235-9d4e-b0334927a74f",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 1312.42,
+          "endpoint": "/api/agent/v1/internal/pendingCancellations"
+        }
+      ],
+      "phases": {
+        "running": 2
+      }
+    },
+    {
+      "signature": [
+        "backend/storage/worker",
+        "storage_command_failed",
+        "AGENT_TECHNICAL_FACTS_REQUIRED",
+        "agent.call",
+        "None",
+        "publish",
+        "None"
+      ],
+      "count": 2,
+      "first": {
+        "line": 823,
+        "timestamp": "2026-10-20T12:39:06.279Z",
+        "level": "error",
+        "scope": "backend/storage/worker",
+        "message": "storage_command_failed",
+        "code": "AGENT_TECHNICAL_FACTS_REQUIRED",
+        "operation": "agent.call",
+        "method": "publish"
+      },
+      "lastLine": 1036,
+      "context": [
+        {
+          "line": 821,
+          "timestamp": "2026-10-20T12:39:05.892Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "50c6aa11-33f3-49eb-b50e-2f06389559ed",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 3324.83,
+          "endpoint": "/api/agent/v1/internal/state"
+        },
+        {
+          "line": 822,
+          "timestamp": "2026-10-20T12:39:05.986Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "5ee9ff4c-3cb5-4c42-b2d0-55b74335ab37",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 2302.63,
+          "endpoint": "/api/agent/v1/internal/consume"
+        },
+        {
+          "line": 823,
+          "timestamp": "2026-10-20T12:39:06.279Z",
+          "level": "error",
+          "scope": "backend/storage/worker",
+          "message": "storage_command_failed",
+          "code": "AGENT_TECHNICAL_FACTS_REQUIRED",
+          "operation": "agent.call",
+          "method": "publish"
+        },
+        {
+          "line": 824,
+          "timestamp": "2026-10-20T12:39:06.280Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "21358853-4115-4d69-8d77-b552f1a85304",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 293.01,
+          "endpoint": "/api/agent/v1/internal/pendingCancellations"
+        },
+        {
+          "line": 825,
+          "timestamp": "2026-10-20T12:39:06.280Z",
+          "level": "error",
+          "scope": "backend/utils/error",
+          "message": "request_failed",
+          "code": "AGENT_TECHNICAL_FACTS_REQUIRED",
+          "causeCode": null,
+          "requestId": "4dbb6e44-e980-4eb5-b22c-e8313435f1c4",
+          "method": "POST",
+          "statusCode": 400,
+          "endpoint": "/api/agent/v1/internal/publish"
+        }
+      ],
+      "phases": {
+        "running": 2
+      }
+    },
+    {
+      "signature": [
+        "backend/utils/error",
+        "request_failed",
+        "AGENT_TECHNICAL_FACTS_REQUIRED",
+        "None",
+        "None",
+        "POST",
+        "None"
+      ],
+      "count": 2,
+      "first": {
+        "line": 825,
+        "timestamp": "2026-10-20T12:39:06.280Z",
+        "level": "error",
+        "scope": "backend/utils/error",
+        "message": "request_failed",
+        "code": "AGENT_TECHNICAL_FACTS_REQUIRED",
+        "causeCode": null,
+        "requestId": "4dbb6e44-e980-4eb5-b22c-e8313435f1c4",
+        "method": "POST",
+        "statusCode": 400,
+        "endpoint": "/api/agent/v1/internal/publish"
+      },
+      "lastLine": 1037,
+      "context": [
+        {
+          "line": 823,
+          "timestamp": "2026-10-20T12:39:06.279Z",
+          "level": "error",
+          "scope": "backend/storage/worker",
+          "message": "storage_command_failed",
+          "code": "AGENT_TECHNICAL_FACTS_REQUIRED",
+          "operation": "agent.call",
+          "method": "publish"
+        },
+        {
+          "line": 824,
+          "timestamp": "2026-10-20T12:39:06.280Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "21358853-4115-4d69-8d77-b552f1a85304",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 293.01,
+          "endpoint": "/api/agent/v1/internal/pendingCancellations"
+        },
+        {
+          "line": 825,
+          "timestamp": "2026-10-20T12:39:06.280Z",
+          "level": "error",
+          "scope": "backend/utils/error",
+          "message": "request_failed",
+          "code": "AGENT_TECHNICAL_FACTS_REQUIRED",
+          "causeCode": null,
+          "requestId": "4dbb6e44-e980-4eb5-b22c-e8313435f1c4",
+          "method": "POST",
+          "statusCode": 400,
+          "endpoint": "/api/agent/v1/internal/publish"
+        },
+        {
+          "line": 826,
+          "timestamp": "2026-10-20T12:39:06.280Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "4dbb6e44-e980-4eb5-b22c-e8313435f1c4",
+          "method": "POST",
+          "statusCode": 400,
+          "durationMs": 387.09,
+          "endpoint": "/api/agent/v1/internal/publish"
+        },
+        {
+          "line": 827,
+          "timestamp": "2026-10-20T12:39:06.320Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "5d626da5-6bb0-45a9-a1be-aa159494d0ce",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 1.01,
+          "endpoint": "/api/agent/v1/internal/run"
+        }
+      ],
+      "phases": {
+        "running": 2
+      }
+    },
+    {
+      "signature": [
+        "backend/storage/worker",
+        "storage_command_failed",
+        "AGENT_STALE_EVIDENCE",
+        "agent.call",
+        "None",
+        "publish",
+        "None"
+      ],
+      "count": 2,
+      "first": {
+        "line": 1203,
+        "timestamp": "2026-10-20T12:42:22.985Z",
+        "level": "error",
+        "scope": "backend/storage/worker",
+        "message": "storage_command_failed",
+        "code": "AGENT_STALE_EVIDENCE",
+        "operation": "agent.call",
+        "method": "publish"
+      },
+      "lastLine": 1287,
+      "context": [
+        {
+          "line": 1201,
+          "timestamp": "2026-10-20T12:42:22.183Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "5a4da458-27c5-4c6f-b4bd-f816cf16db49",
+          "method": "GET",
+          "statusCode": 404,
+          "durationMs": 0.7,
+          "endpoint": "/api/news"
+        },
+        {
+          "line": 1202,
+          "timestamp": "2026-10-20T12:42:22.985Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "57d9cb24-2187-49d8-a10e-2f532c20d29c",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 1478.59,
+          "endpoint": "/api/agent/v1/internal/consume"
+        },
+        {
+          "line": 1203,
+          "timestamp": "2026-10-20T12:42:22.985Z",
+          "level": "error",
+          "scope": "backend/storage/worker",
+          "message": "storage_command_failed",
+          "code": "AGENT_STALE_EVIDENCE",
+          "operation": "agent.call",
+          "method": "publish"
+        },
+        {
+          "line": 1204,
+          "timestamp": "2026-10-20T12:42:22.986Z",
+          "level": "error",
+          "scope": "backend/utils/error",
+          "message": "request_failed",
+          "code": "AGENT_STALE_EVIDENCE",
+          "causeCode": null,
+          "requestId": "55e240bc-845a-4199-8121-c16856f0cb2f",
+          "method": "POST",
+          "statusCode": 400,
+          "endpoint": "/api/agent/v1/internal/publish"
+        },
+        {
+          "line": 1205,
+          "timestamp": "2026-10-20T12:42:22.986Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "55e240bc-845a-4199-8121-c16856f0cb2f",
+          "method": "POST",
+          "statusCode": 400,
+          "durationMs": 3481.54,
+          "endpoint": "/api/agent/v1/internal/publish"
+        }
+      ],
+      "phases": {
+        "running": 2
+      }
+    },
+    {
+      "signature": [
+        "backend/utils/error",
+        "request_failed",
+        "AGENT_STALE_EVIDENCE",
+        "None",
+        "None",
+        "POST",
+        "None"
+      ],
+      "count": 2,
+      "first": {
+        "line": 1204,
+        "timestamp": "2026-10-20T12:42:22.986Z",
+        "level": "error",
+        "scope": "backend/utils/error",
+        "message": "request_failed",
+        "code": "AGENT_STALE_EVIDENCE",
+        "causeCode": null,
+        "requestId": "55e240bc-845a-4199-8121-c16856f0cb2f",
+        "method": "POST",
+        "statusCode": 400,
+        "endpoint": "/api/agent/v1/internal/publish"
+      },
+      "lastLine": 1285,
+      "context": [
+        {
+          "line": 1202,
+          "timestamp": "2026-10-20T12:42:22.985Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "57d9cb24-2187-49d8-a10e-2f532c20d29c",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 1478.59,
+          "endpoint": "/api/agent/v1/internal/consume"
+        },
+        {
+          "line": 1203,
+          "timestamp": "2026-10-20T12:42:22.985Z",
+          "level": "error",
+          "scope": "backend/storage/worker",
+          "message": "storage_command_failed",
+          "code": "AGENT_STALE_EVIDENCE",
+          "operation": "agent.call",
+          "method": "publish"
+        },
+        {
+          "line": 1204,
+          "timestamp": "2026-10-20T12:42:22.986Z",
+          "level": "error",
+          "scope": "backend/utils/error",
+          "message": "request_failed",
+          "code": "AGENT_STALE_EVIDENCE",
+          "causeCode": null,
+          "requestId": "55e240bc-845a-4199-8121-c16856f0cb2f",
+          "method": "POST",
+          "statusCode": 400,
+          "endpoint": "/api/agent/v1/internal/publish"
+        },
+        {
+          "line": 1205,
+          "timestamp": "2026-10-20T12:42:22.986Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "55e240bc-845a-4199-8121-c16856f0cb2f",
+          "method": "POST",
+          "statusCode": 400,
+          "durationMs": 3481.54,
+          "endpoint": "/api/agent/v1/internal/publish"
+        },
+        {
+          "line": 1206,
+          "timestamp": "2026-10-20T12:42:23.039Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "df547541-f334-47e6-b4ff-2141ba705274",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 1.04,
+          "endpoint": "/api/agent/v1/internal/run"
+        }
+      ],
+      "phases": {
+        "running": 2
+      }
+    },
+    {
+      "signature": [
+        "backend/storage/worker",
+        "storage_command_failed",
+        "AGENT_TASK_MISMATCH",
+        "agent.call",
+        "None",
+        "publish",
+        "None"
+      ],
+      "count": 2,
+      "first": {
+        "line": 1891,
+        "timestamp": "2026-10-20T12:48:22.457Z",
+        "level": "error",
+        "scope": "backend/storage/worker",
+        "message": "storage_command_failed",
+        "code": "AGENT_TASK_MISMATCH",
+        "operation": "agent.call",
+        "method": "publish"
+      },
+      "lastLine": 2882,
+      "context": [
+        {
+          "line": 1889,
+          "timestamp": "2026-10-20T12:48:21.835Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "4391daf4-cd75-4549-b650-cd4f6888de95",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 1.04,
+          "endpoint": "/api/agent/v1/internal/run"
+        },
+        {
+          "line": 1890,
+          "timestamp": "2026-10-20T12:48:22.327Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "cc9255e0-76b9-4561-8b4d-3950f63569fd",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 485.99,
+          "endpoint": "/api/agent/v1/internal/state"
+        },
+        {
+          "line": 1891,
+          "timestamp": "2026-10-20T12:48:22.457Z",
+          "level": "error",
+          "scope": "backend/storage/worker",
+          "message": "storage_command_failed",
+          "code": "AGENT_TASK_MISMATCH",
+          "operation": "agent.call",
+          "method": "publish"
+        },
+        {
+          "line": 1892,
+          "timestamp": "2026-10-20T12:48:22.458Z",
+          "level": "error",
+          "scope": "backend/utils/error",
+          "message": "request_failed",
+          "code": "AGENT_TASK_MISMATCH",
+          "causeCode": null,
+          "requestId": "4f232848-becb-4c10-978f-c3e916eb78ec",
+          "method": "POST",
+          "statusCode": 400,
+          "endpoint": "/api/agent/v1/internal/publish"
+        },
+        {
+          "line": 1893,
+          "timestamp": "2026-10-20T12:48:22.458Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "4f232848-becb-4c10-978f-c3e916eb78ec",
+          "method": "POST",
+          "statusCode": 400,
+          "durationMs": 129.73,
+          "endpoint": "/api/agent/v1/internal/publish"
+        }
+      ],
+      "phases": {
+        "running": 2
+      }
+    },
+    {
+      "signature": [
+        "backend/utils/error",
+        "request_failed",
+        "AGENT_TASK_MISMATCH",
+        "None",
+        "None",
+        "POST",
+        "None"
+      ],
+      "count": 2,
+      "first": {
+        "line": 1892,
+        "timestamp": "2026-10-20T12:48:22.458Z",
+        "level": "error",
+        "scope": "backend/utils/error",
+        "message": "request_failed",
+        "code": "AGENT_TASK_MISMATCH",
+        "causeCode": null,
+        "requestId": "4f232848-becb-4c10-978f-c3e916eb78ec",
+        "method": "POST",
+        "statusCode": 400,
+        "endpoint": "/api/agent/v1/internal/publish"
+      },
+      "lastLine": 2883,
+      "context": [
+        {
+          "line": 1890,
+          "timestamp": "2026-10-20T12:48:22.327Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "cc9255e0-76b9-4561-8b4d-3950f63569fd",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 485.99,
+          "endpoint": "/api/agent/v1/internal/state"
+        },
+        {
+          "line": 1891,
+          "timestamp": "2026-10-20T12:48:22.457Z",
+          "level": "error",
+          "scope": "backend/storage/worker",
+          "message": "storage_command_failed",
+          "code": "AGENT_TASK_MISMATCH",
+          "operation": "agent.call",
+          "method": "publish"
+        },
+        {
+          "line": 1892,
+          "timestamp": "2026-10-20T12:48:22.458Z",
+          "level": "error",
+          "scope": "backend/utils/error",
+          "message": "request_failed",
+          "code": "AGENT_TASK_MISMATCH",
+          "causeCode": null,
+          "requestId": "4f232848-becb-4c10-978f-c3e916eb78ec",
+          "method": "POST",
+          "statusCode": 400,
+          "endpoint": "/api/agent/v1/internal/publish"
+        },
+        {
+          "line": 1893,
+          "timestamp": "2026-10-20T12:48:22.458Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "4f232848-becb-4c10-978f-c3e916eb78ec",
+          "method": "POST",
+          "statusCode": 400,
+          "durationMs": 129.73,
+          "endpoint": "/api/agent/v1/internal/publish"
+        },
+        {
+          "line": 1894,
+          "timestamp": "2026-10-20T12:48:22.460Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "78894292-8d8b-4e92-b7d4-204d4f91bdd1",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 0.87,
+          "endpoint": "/api/agent/v1/internal/run"
+        }
+      ],
+      "phases": {
+        "running": 2
+      }
+    },
+    {
+      "signature": [
+        "backend/storage/worker",
+        "storage_slow_sql",
+        "None",
+        "None",
+        "None",
+        "None",
+        "4dc3e8a59935eec17bf0036dd34e37a60deffbab6c9acee831bad698147492c5"
+      ],
+      "count": 2,
+      "first": {
+        "line": 3271,
+        "timestamp": "2026-10-20T13:01:26.086Z",
+        "level": "warn",
+        "scope": "backend/storage/worker",
+        "message": "storage_slow_sql",
+        "threadId": 1,
+        "durationMs": 13581,
+        "sqlSignatureSha256": "4dc3e8a59935eec17bf0036dd34e37a60deffbab6c9acee831bad698147492c5"
+      },
+      "lastLine": 3272,
+      "context": [
+        {
+          "line": 3269,
+          "timestamp": "2026-10-20T13:01:17.129Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "0d134c57-28f0-471a-9169-7cf6579633b5",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 0.9,
+          "endpoint": "/api/agent/v1/internal/run"
+        },
+        {
+          "line": 3270,
+          "timestamp": "2026-10-20T13:01:19.139Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "bf2144a5-81a7-4045-8866-05fe8dc0005e",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 0.83,
+          "endpoint": "/api/agent/v1/internal/run"
+        },
+        {
+          "line": 3271,
+          "timestamp": "2026-10-20T13:01:26.086Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 1,
+          "durationMs": 13581,
+          "sqlSignatureSha256": "4dc3e8a59935eec17bf0036dd34e37a60deffbab6c9acee831bad698147492c5"
+        },
+        {
+          "line": 3272,
+          "timestamp": "2026-10-20T13:01:33.257Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 1,
+          "durationMs": 5759,
+          "sqlSignatureSha256": "4dc3e8a59935eec17bf0036dd34e37a60deffbab6c9acee831bad698147492c5"
+        },
+        {
+          "line": 3273,
+          "timestamp": "2026-10-20T13:01:36.214Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 1,
+          "durationMs": 1884,
+          "sqlSignatureSha256": "21f3b06deefa857192c37a30f044844e2f62762d2a499e048982469de0ba1d21"
+        }
+      ],
+      "phases": {
+        "running": 2
+      }
+    },
+    {
+      "signature": [
+        "backend/storage/worker",
+        "storage_slow_sql",
+        "None",
+        "None",
+        "None",
+        "None",
+        "b1e25eeac5b8c9d6a7caacd12984b6ffd242f86e4a860114d7f7a59607e77904"
+      ],
+      "count": 1,
+      "first": {
+        "line": 9,
+        "timestamp": "2026-10-20T12:28:51.696Z",
+        "level": "warn",
+        "scope": "backend/storage/worker",
+        "message": "storage_slow_sql",
+        "threadId": 1,
+        "durationMs": 2247,
+        "sqlSignatureSha256": "b1e25eeac5b8c9d6a7caacd12984b6ffd242f86e4a860114d7f7a59607e77904"
+      },
+      "lastLine": 9,
+      "context": [
+        {
+          "line": 7,
+          "timestamp": "2026-10-20T12:28:47.089Z",
+          "level": "info",
+          "scope": "backend/server",
+          "message": "storage_initializing"
+        },
+        {
+          "line": 8,
+          "timestamp": "2026-10-20T12:28:49.276Z",
+          "level": "info",
+          "scope": "backend/server",
+          "message": "storage_initializing"
+        },
+        {
+          "line": 9,
+          "timestamp": "2026-10-20T12:28:51.696Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 1,
+          "durationMs": 2247,
+          "sqlSignatureSha256": "b1e25eeac5b8c9d6a7caacd12984b6ffd242f86e4a860114d7f7a59607e77904"
+        },
+        {
+          "line": 10,
+          "timestamp": "2026-10-20T12:29:09.680Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "23a1afcf-bdec-4a04-890a-87cf178e5b84",
+          "method": "GET",
+          "statusCode": 200,
+          "durationMs": 7.02,
+          "endpoint": "/api/health"
+        },
+        {
+          "line": 11,
+          "timestamp": "2026-10-20T12:29:09.683Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "6021764a-fc99-4851-a8af-875d02877ce9",
+          "method": "GET",
+          "statusCode": 503,
+          "durationMs": 1.42,
+          "endpoint": "/api/health/ready"
+        }
+      ],
+      "phases": {
+        "startup": 1
+      }
+    },
+    {
+      "signature": [
+        "backend/storage/worker",
+        "storage_slow_sql",
+        "None",
+        "None",
+        "None",
+        "None",
+        "b16b0910bf24fb0720cbcc59d10fae0ae84ccac41f4d1e4af5602f6b2dea8890"
+      ],
+      "count": 1,
+      "first": {
+        "line": 15,
+        "timestamp": "2026-10-20T12:29:07.614Z",
+        "level": "warn",
+        "scope": "backend/storage/worker",
+        "message": "storage_slow_sql",
+        "threadId": 1,
+        "durationMs": 15668,
+        "sqlSignatureSha256": "b16b0910bf24fb0720cbcc59d10fae0ae84ccac41f4d1e4af5602f6b2dea8890"
+      },
+      "lastLine": 15,
+      "context": [
+        {
+          "line": 13,
+          "timestamp": "2026-10-20T12:29:16.985Z",
+          "level": "info",
+          "scope": "backend/server",
+          "message": "storage_initializing"
+        },
+        {
+          "line": 14,
+          "timestamp": "2026-10-20T12:29:16.985Z",
+          "level": "info",
+          "scope": "backend/server",
+          "message": "storage_initializing"
+        },
+        {
+          "line": 15,
+          "timestamp": "2026-10-20T12:29:07.614Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 1,
+          "durationMs": 15668,
+          "sqlSignatureSha256": "b16b0910bf24fb0720cbcc59d10fae0ae84ccac41f4d1e4af5602f6b2dea8890"
+        },
+        {
+          "line": 16,
+          "timestamp": "2026-10-20T12:29:16.989Z",
+          "level": "info",
+          "scope": "backend/server",
+          "message": "storage_initializing"
+        },
+        {
+          "line": 17,
+          "timestamp": "2026-10-20T12:29:16.991Z",
+          "level": "info",
+          "scope": "backend/server",
+          "message": "storage_initializing"
+        }
+      ],
+      "phases": {
+        "startup": 1
+      }
+    },
+    {
+      "signature": [
+        "backend/storage/worker",
+        "storage_slow_sql",
+        "None",
+        "None",
+        "None",
+        "None",
+        "1787300fd67c1a5a0712487ca59e01e1edd54e7a9171261cb6ee1859742b940e"
+      ],
+      "count": 1,
+      "first": {
+        "line": 20,
+        "timestamp": "2026-10-20T12:29:28.896Z",
+        "level": "warn",
+        "scope": "backend/storage/worker",
+        "message": "storage_slow_sql",
+        "threadId": 3,
+        "durationMs": 10077,
+        "sqlSignatureSha256": "1787300fd67c1a5a0712487ca59e01e1edd54e7a9171261cb6ee1859742b940e"
+      },
+      "lastLine": 20,
+      "context": [
+        {
+          "line": 18,
+          "timestamp": "2026-10-20T12:29:17.044Z",
+          "level": "info",
+          "scope": "backend/server",
+          "message": "storage_initializing"
+        },
+        {
+          "line": 19,
+          "timestamp": "2026-10-20T12:29:17.044Z",
+          "level": "info",
+          "scope": "backend/server",
+          "message": "storage_initializing"
+        },
+        {
+          "line": 20,
+          "timestamp": "2026-10-20T12:29:28.896Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 3,
+          "durationMs": 10077,
+          "sqlSignatureSha256": "1787300fd67c1a5a0712487ca59e01e1edd54e7a9171261cb6ee1859742b940e"
+        },
+        {
+          "line": 21,
+          "timestamp": "2026-10-20T12:29:34.752Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 1,
+          "durationMs": 2841,
+          "sqlSignatureSha256": "0b7e7d277f4f535880569c64424096f9914bbf56cfdecb562893e08863490e73"
+        },
+        {
+          "line": 22,
+          "timestamp": "2026-10-20T12:29:36.147Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "e53504c1-f5a3-4eb8-8d17-f0531d082ab0",
+          "method": "GET",
+          "statusCode": 503,
+          "durationMs": 0.54,
+          "endpoint": "/api/admin/agent"
+        }
+      ],
+      "phases": {
+        "startup": 1
+      }
+    },
+    {
+      "signature": [
+        "backend/storage/worker",
+        "storage_slow_sql",
+        "None",
+        "None",
+        "None",
+        "None",
+        "2a6bc9aa93081ab48862afb849dfc07ddd7988d6af3e8f70af9b860efb53ce04"
+      ],
+      "count": 1,
+      "first": {
+        "line": 466,
+        "timestamp": "2026-10-20T12:35:50.055Z",
+        "level": "warn",
+        "scope": "backend/storage/worker",
+        "message": "storage_slow_sql",
+        "threadId": 2,
+        "durationMs": 1324,
+        "sqlSignatureSha256": "2a6bc9aa93081ab48862afb849dfc07ddd7988d6af3e8f70af9b860efb53ce04"
+      },
+      "lastLine": 466,
+      "context": [
+        {
+          "line": 464,
+          "timestamp": "2026-10-20T12:35:48.628Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "660e80e8-5663-4d5c-9f07-a199147d9729",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 1116.29,
+          "endpoint": "/api/agent/v1/internal/consume"
+        },
+        {
+          "line": 465,
+          "timestamp": "2026-10-20T12:35:49.942Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "2875b28b-b8d2-4235-9d4e-b0334927a74f",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 1312.42,
+          "endpoint": "/api/agent/v1/internal/pendingCancellations"
+        },
+        {
+          "line": 466,
+          "timestamp": "2026-10-20T12:35:50.055Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 2,
+          "durationMs": 1324,
+          "sqlSignatureSha256": "2a6bc9aa93081ab48862afb849dfc07ddd7988d6af3e8f70af9b860efb53ce04"
+        },
+        {
+          "line": 467,
+          "timestamp": "2026-10-20T12:35:50.225Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "e18cbff5-7666-4665-8cb7-8e51eff96350",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 281.67,
+          "endpoint": "/api/agent/v1/internal/claim"
+        },
+        {
+          "line": 468,
+          "timestamp": "2026-10-20T12:35:50.827Z",
+          "level": "info",
+          "scope": "backend/services/news/newsAggregatorService",
+          "message": "news_provider_summary",
+          "durationMs": 37721
+        }
+      ],
+      "phases": {
+        "running": 1
+      }
+    },
+    {
+      "signature": [
+        "backend/storage/worker",
+        "storage_slow_sql",
+        "None",
+        "None",
+        "None",
+        "None",
+        "c6c6080a0fc7be4f94f9ed6128880d38f9275daadde861f0355848c1c819af2e"
+      ],
+      "count": 1,
+      "first": {
+        "line": 1028,
+        "timestamp": "2026-10-20T12:40:58.810Z",
+        "level": "warn",
+        "scope": "backend/storage/worker",
+        "message": "storage_slow_sql",
+        "threadId": 1,
+        "durationMs": 2886,
+        "sqlSignatureSha256": "c6c6080a0fc7be4f94f9ed6128880d38f9275daadde861f0355848c1c819af2e"
+      },
+      "lastLine": 1028,
+      "context": [
+        {
+          "line": 1026,
+          "timestamp": "2026-10-20T12:40:55.786Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "1c0194db-c31c-44d7-b4c0-3f8689963974",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 517.49,
+          "endpoint": "/api/agent/v1/internal/consume"
+        },
+        {
+          "line": 1027,
+          "timestamp": "2026-10-20T12:40:57.182Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "07320762-ae70-4432-904e-2cc0ae3545a8",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 0.99,
+          "endpoint": "/api/agent/v1/internal/run"
+        },
+        {
+          "line": 1028,
+          "timestamp": "2026-10-20T12:40:58.810Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 1,
+          "durationMs": 2886,
+          "sqlSignatureSha256": "c6c6080a0fc7be4f94f9ed6128880d38f9275daadde861f0355848c1c819af2e"
+        },
+        {
+          "line": 1029,
+          "timestamp": "2026-10-20T12:40:58.845Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "f44aee90-f1db-4d70-afbc-0a4366de44ac",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 3057.76,
+          "endpoint": "/api/agent/v1/internal/pendingCancellations"
+        },
+        {
+          "line": 1030,
+          "timestamp": "2026-10-20T12:40:59.193Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "ccd1eabe-2fe9-482d-ac25-7027e9a10920",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 0.87,
+          "endpoint": "/api/agent/v1/internal/run"
+        }
+      ],
+      "phases": {
+        "running": 1
+      }
+    },
+    {
+      "signature": [
+        "backend/utils/error",
+        "request_failed",
+        "AGENT_LEASE_LOST",
+        "None",
+        "None",
+        "POST",
+        "None"
+      ],
+      "count": 1,
+      "first": {
+        "line": 1300,
+        "timestamp": "2026-10-20T12:43:14.519Z",
+        "level": "error",
+        "scope": "backend/utils/error",
+        "message": "request_failed",
+        "code": "AGENT_LEASE_LOST",
+        "causeCode": null,
+        "requestId": "fe0a0864-a1eb-4358-ada8-18c94d9b8919",
+        "method": "POST",
+        "statusCode": 409,
+        "endpoint": "/api/agent/v1/internal/heartbeat"
+      },
+      "lastLine": 1300,
+      "context": [
+        {
+          "line": 1298,
+          "timestamp": "2026-10-20T12:43:14.369Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "4a54fd4e-e5fc-47c6-8134-fe087bfc0c9c",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 440.95,
+          "endpoint": "/api/agent/v1/internal/state"
+        },
+        {
+          "line": 1299,
+          "timestamp": "2026-10-20T12:43:14.519Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "cf0f198c-d964-41bc-b27d-f2b260f1dc6c",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 449.49,
+          "endpoint": "/api/agent/v1/internal/pendingCancellations"
+        },
+        {
+          "line": 1300,
+          "timestamp": "2026-10-20T12:43:14.519Z",
+          "level": "error",
+          "scope": "backend/utils/error",
+          "message": "request_failed",
+          "code": "AGENT_LEASE_LOST",
+          "causeCode": null,
+          "requestId": "fe0a0864-a1eb-4358-ada8-18c94d9b8919",
+          "method": "POST",
+          "statusCode": 409,
+          "endpoint": "/api/agent/v1/internal/heartbeat"
+        },
+        {
+          "line": 1301,
+          "timestamp": "2026-10-20T12:43:14.499Z",
+          "level": "error",
+          "scope": "backend/storage/worker",
+          "message": "storage_command_failed",
+          "code": "AGENT_LEASE_LOST",
+          "operation": "agent.call",
+          "method": "heartbeat"
+        },
+        {
+          "line": 1302,
+          "timestamp": "2026-10-20T12:43:15.216Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "681c421f-f085-431d-845e-550b840ce468",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 694.28,
+          "endpoint": "/api/agent/v1/internal/claim"
+        }
+      ],
+      "phases": {
+        "running": 1
+      }
+    },
+    {
+      "signature": [
+        "backend/storage/worker",
+        "storage_command_failed",
+        "AGENT_LEASE_LOST",
+        "agent.call",
+        "None",
+        "heartbeat",
+        "None"
+      ],
+      "count": 1,
+      "first": {
+        "line": 1301,
+        "timestamp": "2026-10-20T12:43:14.499Z",
+        "level": "error",
+        "scope": "backend/storage/worker",
+        "message": "storage_command_failed",
+        "code": "AGENT_LEASE_LOST",
+        "operation": "agent.call",
+        "method": "heartbeat"
+      },
+      "lastLine": 1301,
+      "context": [
+        {
+          "line": 1299,
+          "timestamp": "2026-10-20T12:43:14.519Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "cf0f198c-d964-41bc-b27d-f2b260f1dc6c",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 449.49,
+          "endpoint": "/api/agent/v1/internal/pendingCancellations"
+        },
+        {
+          "line": 1300,
+          "timestamp": "2026-10-20T12:43:14.519Z",
+          "level": "error",
+          "scope": "backend/utils/error",
+          "message": "request_failed",
+          "code": "AGENT_LEASE_LOST",
+          "causeCode": null,
+          "requestId": "fe0a0864-a1eb-4358-ada8-18c94d9b8919",
+          "method": "POST",
+          "statusCode": 409,
+          "endpoint": "/api/agent/v1/internal/heartbeat"
+        },
+        {
+          "line": 1301,
+          "timestamp": "2026-10-20T12:43:14.499Z",
+          "level": "error",
+          "scope": "backend/storage/worker",
+          "message": "storage_command_failed",
+          "code": "AGENT_LEASE_LOST",
+          "operation": "agent.call",
+          "method": "heartbeat"
+        },
+        {
+          "line": 1302,
+          "timestamp": "2026-10-20T12:43:15.216Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "681c421f-f085-431d-845e-550b840ce468",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 694.28,
+          "endpoint": "/api/agent/v1/internal/claim"
+        },
+        {
+          "line": 1303,
+          "timestamp": "2026-10-20T12:43:18.143Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "d8b667fc-7015-46df-a985-e086ca6398f4",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 924.54,
+          "endpoint": "/api/agent/v1/internal/consume"
+        }
+      ],
+      "phases": {
+        "running": 1
+      }
+    },
+    {
+      "signature": [
+        "backend/storage/worker",
+        "storage_slow_sql",
+        "None",
+        "None",
+        "None",
+        "None",
+        "70620503c501f8dca8f042b5fcdf046312d8e8253a9f97eef78859e50b60c7dd"
+      ],
+      "count": 1,
+      "first": {
+        "line": 1937,
+        "timestamp": "2026-10-20T12:48:41.898Z",
+        "level": "warn",
+        "scope": "backend/storage/worker",
+        "message": "storage_slow_sql",
+        "threadId": 2,
+        "durationMs": 3707,
+        "sqlSignatureSha256": "70620503c501f8dca8f042b5fcdf046312d8e8253a9f97eef78859e50b60c7dd"
+      },
+      "lastLine": 1937,
+      "context": [
+        {
+          "line": 1935,
+          "timestamp": "2026-10-20T12:48:37.403Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "191b011f-66fc-420d-834d-e8704d253d98",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 225.52,
+          "endpoint": "/api/agent/v1/internal/pendingCancellations"
+        },
+        {
+          "line": 1936,
+          "timestamp": "2026-10-20T12:48:37.955Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "52ac8240-b12f-4a59-8789-8d1f279d1d8a",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 550.38,
+          "endpoint": "/api/agent/v1/internal/claim"
+        },
+        {
+          "line": 1937,
+          "timestamp": "2026-10-20T12:48:41.898Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 2,
+          "durationMs": 3707,
+          "sqlSignatureSha256": "70620503c501f8dca8f042b5fcdf046312d8e8253a9f97eef78859e50b60c7dd"
+        },
+        {
+          "line": 1938,
+          "timestamp": "2026-10-20T12:48:41.935Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 1,
+          "durationMs": 2232,
+          "sqlSignatureSha256": "75059d3dfebeb43c66a81b64af5f1dcebdc267b9a629c4561d5d25a7ca4b29b0"
+        },
+        {
+          "line": 1939,
+          "timestamp": "2026-10-20T12:48:43.029Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "cea1e0c7-409c-4881-9a1b-0dfae6627d8e",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 3071.83,
+          "endpoint": "/api/agent/v1/internal/consume"
+        }
+      ],
+      "phases": {
+        "running": 1
+      }
+    },
+    {
+      "signature": [
+        "backend/storage/worker",
+        "storage_slow_sql",
+        "None",
+        "None",
+        "None",
+        "None",
+        "75059d3dfebeb43c66a81b64af5f1dcebdc267b9a629c4561d5d25a7ca4b29b0"
+      ],
+      "count": 1,
+      "first": {
+        "line": 1938,
+        "timestamp": "2026-10-20T12:48:41.935Z",
+        "level": "warn",
+        "scope": "backend/storage/worker",
+        "message": "storage_slow_sql",
+        "threadId": 1,
+        "durationMs": 2232,
+        "sqlSignatureSha256": "75059d3dfebeb43c66a81b64af5f1dcebdc267b9a629c4561d5d25a7ca4b29b0"
+      },
+      "lastLine": 1938,
+      "context": [
+        {
+          "line": 1936,
+          "timestamp": "2026-10-20T12:48:37.955Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "52ac8240-b12f-4a59-8789-8d1f279d1d8a",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 550.38,
+          "endpoint": "/api/agent/v1/internal/claim"
+        },
+        {
+          "line": 1937,
+          "timestamp": "2026-10-20T12:48:41.898Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 2,
+          "durationMs": 3707,
+          "sqlSignatureSha256": "70620503c501f8dca8f042b5fcdf046312d8e8253a9f97eef78859e50b60c7dd"
+        },
+        {
+          "line": 1938,
+          "timestamp": "2026-10-20T12:48:41.935Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 1,
+          "durationMs": 2232,
+          "sqlSignatureSha256": "75059d3dfebeb43c66a81b64af5f1dcebdc267b9a629c4561d5d25a7ca4b29b0"
+        },
+        {
+          "line": 1939,
+          "timestamp": "2026-10-20T12:48:43.029Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "cea1e0c7-409c-4881-9a1b-0dfae6627d8e",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 3071.83,
+          "endpoint": "/api/agent/v1/internal/consume"
+        },
+        {
+          "line": 1940,
+          "timestamp": "2026-10-20T12:48:43.123Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "0ad3912d-f4a2-4d5d-a5ed-4c5699e0705b",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 92.17,
+          "endpoint": "/api/agent/v1/internal/pendingCancellations"
+        }
+      ],
+      "phases": {
+        "running": 1
+      }
+    },
+    {
+      "signature": [
+        "backend/storage/worker",
+        "storage_slow_sql",
+        "None",
+        "None",
+        "None",
+        "None",
+        "3bdfd0bd74e8996ce08c6b7a2226abfcbbb9643127366cc9f79067dcd8470e75"
+      ],
+      "count": 1,
+      "first": {
+        "line": 2969,
+        "timestamp": "2026-10-20T12:58:07.897Z",
+        "level": "warn",
+        "scope": "backend/storage/worker",
+        "message": "storage_slow_sql",
+        "threadId": 1,
+        "durationMs": 1047,
+        "sqlSignatureSha256": "3bdfd0bd74e8996ce08c6b7a2226abfcbbb9643127366cc9f79067dcd8470e75"
+      },
+      "lastLine": 2969,
+      "context": [
+        {
+          "line": 2967,
+          "timestamp": "2026-10-20T12:58:05.993Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "19969a17-8724-445d-9f3a-a9e626d37509",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 349.56,
+          "endpoint": "/api/agent/v1/internal/interruptClaim"
+        },
+        {
+          "line": 2968,
+          "timestamp": "2026-10-20T12:58:06.649Z",
+          "level": "info",
+          "scope": "backend/services/refreshOrchestratorService",
+          "message": "news_cycle_completed",
+          "durationMs": 18883
+        },
+        {
+          "line": 2969,
+          "timestamp": "2026-10-20T12:58:07.897Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 1,
+          "durationMs": 1047,
+          "sqlSignatureSha256": "3bdfd0bd74e8996ce08c6b7a2226abfcbbb9643127366cc9f79067dcd8470e75"
+        },
+        {
+          "line": 2970,
+          "timestamp": "2026-10-20T12:58:07.897Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "48a64cef-432a-4971-9fc1-a93e7edae6eb",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 1900.94,
+          "endpoint": "/api/agent/v1/internal/cancelAcknowledged"
+        },
+        {
+          "line": 2971,
+          "timestamp": "2026-10-20T12:58:08.245Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "076ef5f8-d30c-48c2-bc1a-23e781ecdbf2",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 346.62,
+          "endpoint": "/api/agent/v1/internal/state"
+        }
+      ],
+      "phases": {
+        "running": 1
+      }
+    },
+    {
+      "signature": [
+        "backend/server",
+        "agent_component_exited",
+        "None",
+        "None",
+        "None",
+        "None",
+        "None"
+      ],
+      "count": 1,
+      "first": {
+        "line": 2972,
+        "timestamp": "2026-10-20T12:58:08.258Z",
+        "level": "warn",
+        "scope": "backend/server",
+        "message": "agent_component_exited",
+        "component": "worker",
+        "exitCode": 0,
+        "signal": null
+      },
+      "lastLine": 2972,
+      "context": [
+        {
+          "line": 2970,
+          "timestamp": "2026-10-20T12:58:07.897Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "48a64cef-432a-4971-9fc1-a93e7edae6eb",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 1900.94,
+          "endpoint": "/api/agent/v1/internal/cancelAcknowledged"
+        },
+        {
+          "line": 2971,
+          "timestamp": "2026-10-20T12:58:08.245Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "076ef5f8-d30c-48c2-bc1a-23e781ecdbf2",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 346.62,
+          "endpoint": "/api/agent/v1/internal/state"
+        },
+        {
+          "line": 2972,
+          "timestamp": "2026-10-20T12:58:08.258Z",
+          "level": "warn",
+          "scope": "backend/server",
+          "message": "agent_component_exited",
+          "component": "worker",
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "line": 2973,
+          "timestamp": "2026-10-20T12:58:08.258Z",
+          "level": "warn",
+          "scope": "backend/server",
+          "message": "agent_component_unavailable",
+          "code": "AGENT_COMPONENT_EXITED",
+          "component": "worker"
+        },
+        {
+          "line": 2974,
+          "timestamp": "2026-10-20T12:58:09.644Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "0dc4a15e-eee8-49cc-bbc0-c23419147bbc",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 219.71,
+          "endpoint": "/api/agent/v1/internal/reconcileCandidates"
+        }
+      ],
+      "phases": {
+        "running": 1
+      }
+    },
+    {
+      "signature": [
+        "backend/server",
+        "agent_component_unavailable",
+        "AGENT_COMPONENT_EXITED",
+        "None",
+        "None",
+        "None",
+        "None"
+      ],
+      "count": 1,
+      "first": {
+        "line": 2973,
+        "timestamp": "2026-10-20T12:58:08.258Z",
+        "level": "warn",
+        "scope": "backend/server",
+        "message": "agent_component_unavailable",
+        "code": "AGENT_COMPONENT_EXITED",
+        "component": "worker"
+      },
+      "lastLine": 2973,
+      "context": [
+        {
+          "line": 2971,
+          "timestamp": "2026-10-20T12:58:08.245Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "076ef5f8-d30c-48c2-bc1a-23e781ecdbf2",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 346.62,
+          "endpoint": "/api/agent/v1/internal/state"
+        },
+        {
+          "line": 2972,
+          "timestamp": "2026-10-20T12:58:08.258Z",
+          "level": "warn",
+          "scope": "backend/server",
+          "message": "agent_component_exited",
+          "component": "worker",
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "line": 2973,
+          "timestamp": "2026-10-20T12:58:08.258Z",
+          "level": "warn",
+          "scope": "backend/server",
+          "message": "agent_component_unavailable",
+          "code": "AGENT_COMPONENT_EXITED",
+          "component": "worker"
+        },
+        {
+          "line": 2974,
+          "timestamp": "2026-10-20T12:58:09.644Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "0dc4a15e-eee8-49cc-bbc0-c23419147bbc",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 219.71,
+          "endpoint": "/api/agent/v1/internal/reconcileCandidates"
+        },
+        {
+          "line": 2975,
+          "timestamp": "2026-10-20T12:58:13.322Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "c5672808-0ce1-4c0e-88aa-12c11b06f4e9",
+          "method": "GET",
+          "statusCode": 200,
+          "durationMs": 0.8,
+          "endpoint": "/api/health/ready"
+        }
+      ],
+      "phases": {
+        "running": 1
+      }
+    },
+    {
+      "signature": [
+        "backend/storage/worker",
+        "storage_slow_sql",
+        "None",
+        "None",
+        "None",
+        "None",
+        "21f3b06deefa857192c37a30f044844e2f62762d2a499e048982469de0ba1d21"
+      ],
+      "count": 1,
+      "first": {
+        "line": 3273,
+        "timestamp": "2026-10-20T13:01:36.214Z",
+        "level": "warn",
+        "scope": "backend/storage/worker",
+        "message": "storage_slow_sql",
+        "threadId": 1,
+        "durationMs": 1884,
+        "sqlSignatureSha256": "21f3b06deefa857192c37a30f044844e2f62762d2a499e048982469de0ba1d21"
+      },
+      "lastLine": 3273,
+      "context": [
+        {
+          "line": 3271,
+          "timestamp": "2026-10-20T13:01:26.086Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 1,
+          "durationMs": 13581,
+          "sqlSignatureSha256": "4dc3e8a59935eec17bf0036dd34e37a60deffbab6c9acee831bad698147492c5"
+        },
+        {
+          "line": 3272,
+          "timestamp": "2026-10-20T13:01:33.257Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 1,
+          "durationMs": 5759,
+          "sqlSignatureSha256": "4dc3e8a59935eec17bf0036dd34e37a60deffbab6c9acee831bad698147492c5"
+        },
+        {
+          "line": 3273,
+          "timestamp": "2026-10-20T13:01:36.214Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 1,
+          "durationMs": 1884,
+          "sqlSignatureSha256": "21f3b06deefa857192c37a30f044844e2f62762d2a499e048982469de0ba1d21"
+        },
+        {
+          "line": 3274,
+          "timestamp": "2026-10-20T13:01:41.401Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "f1a6f84b-f9e5-4828-a91c-18e7fb8eef51",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 27318.03,
+          "endpoint": "/api/agent/v1/internal/consume"
+        },
+        {
+          "line": 3275,
+          "timestamp": "2026-10-20T13:01:41.491Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "a3e21241-f1bd-40be-9206-4774fd23642a",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 22343.48,
+          "endpoint": "/api/agent/v1/internal/state"
+        }
+      ],
+      "phases": {
+        "running": 1
+      }
+    },
+    {
+      "signature": [
+        "backend/utils/error",
+        "request_failed",
+        "AGENT_UNVERIFIED_NUMBER",
+        "None",
+        "None",
+        "POST",
+        "None"
+      ],
+      "count": 1,
+      "first": {
+        "line": 3278,
+        "timestamp": "2026-10-20T13:01:42.558Z",
+        "level": "error",
+        "scope": "backend/utils/error",
+        "message": "request_failed",
+        "code": "AGENT_UNVERIFIED_NUMBER",
+        "causeCode": null,
+        "requestId": "4f67d482-deef-4633-b9b3-385f88cc0a6d",
+        "method": "POST",
+        "statusCode": 400,
+        "endpoint": "/api/agent/v1/internal/publish"
+      },
+      "lastLine": 3278,
+      "context": [
+        {
+          "line": 3276,
+          "timestamp": "2026-10-20T13:01:41.560Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "7c860191-4e1b-42c0-b361-9651e6c5a328",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 9976.98,
+          "endpoint": "/api/agent/v1/internal/heartbeat"
+        },
+        {
+          "line": 3277,
+          "timestamp": "2026-10-20T13:01:42.556Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "3ff2b07a-dd0b-4a4c-b4ce-9d061bfe4c0d",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 1154.4,
+          "endpoint": "/api/agent/v1/internal/pendingCancellations"
+        },
+        {
+          "line": 3278,
+          "timestamp": "2026-10-20T13:01:42.558Z",
+          "level": "error",
+          "scope": "backend/utils/error",
+          "message": "request_failed",
+          "code": "AGENT_UNVERIFIED_NUMBER",
+          "causeCode": null,
+          "requestId": "4f67d482-deef-4633-b9b3-385f88cc0a6d",
+          "method": "POST",
+          "statusCode": 400,
+          "endpoint": "/api/agent/v1/internal/publish"
+        },
+        {
+          "line": 3279,
+          "timestamp": "2026-10-20T13:01:42.558Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "4f67d482-deef-4633-b9b3-385f88cc0a6d",
+          "method": "POST",
+          "statusCode": 400,
+          "durationMs": 1063.31,
+          "endpoint": "/api/agent/v1/internal/publish"
+        },
+        {
+          "line": 3280,
+          "timestamp": "2026-10-20T13:01:42.672Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "8e9a6c44-9e89-415d-adea-413bbbfb8662",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 1.04,
+          "endpoint": "/api/agent/v1/internal/run"
+        }
+      ],
+      "phases": {
+        "running": 1
+      }
+    },
+    {
+      "signature": [
+        "backend/storage/worker",
+        "storage_command_failed",
+        "AGENT_UNVERIFIED_NUMBER",
+        "agent.call",
+        "None",
+        "publish",
+        "None"
+      ],
+      "count": 1,
+      "first": {
+        "line": 3284,
+        "timestamp": "2026-10-20T13:01:42.534Z",
+        "level": "error",
+        "scope": "backend/storage/worker",
+        "message": "storage_command_failed",
+        "code": "AGENT_UNVERIFIED_NUMBER",
+        "operation": "agent.call",
+        "method": "publish"
+      },
+      "lastLine": 3284,
+      "context": [
+        {
+          "line": 3282,
+          "timestamp": "2026-10-20T13:01:43.660Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "92c8b56d-52d7-4380-a750-d435919a6632",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 524.04,
+          "endpoint": "/api/agent/v1/internal/workerReport"
+        },
+        {
+          "line": 3283,
+          "timestamp": "2026-10-20T13:01:44.683Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "9102f8ba-5e16-44e7-a517-28da108f9ed0",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 0.97,
+          "endpoint": "/api/agent/v1/internal/run"
+        },
+        {
+          "line": 3284,
+          "timestamp": "2026-10-20T13:01:42.534Z",
+          "level": "error",
+          "scope": "backend/storage/worker",
+          "message": "storage_command_failed",
+          "code": "AGENT_UNVERIFIED_NUMBER",
+          "operation": "agent.call",
+          "method": "publish"
+        },
+        {
+          "line": 3285,
+          "timestamp": "2026-10-20T13:01:46.693Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "2af41780-58a9-47de-9915-496dad2c86d0",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 0.91,
+          "endpoint": "/api/agent/v1/internal/run"
+        },
+        {
+          "line": 3286,
+          "timestamp": "2026-10-20T13:01:46.860Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "bc1ffcc4-0004-488b-8dfb-838e9b41243a",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 1195.8,
+          "endpoint": "/api/agent/v1/internal/reconcileCandidates"
+        }
+      ],
+      "phases": {
+        "running": 1
+      }
+    },
+    {
+      "signature": [
+        "backend/services/news/newsAggregatorService",
+        "news_provider_failed",
+        "None",
+        "None",
+        "None",
+        "None",
+        "None"
+      ],
+      "count": 1,
+      "first": {
+        "line": 3524,
+        "timestamp": "2026-10-20T13:05:07.731Z",
+        "level": "warn",
+        "scope": "backend/services/news/newsAggregatorService",
+        "message": "news_provider_failed"
+      },
+      "lastLine": 3524,
+      "context": [
+        {
+          "line": 3522,
+          "timestamp": "2026-10-20T13:05:07.427Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "5de0ee60-f8d5-422e-9cc9-4b71c0156f08",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 139.85,
+          "endpoint": "/api/agent/v1/internal/claim"
+        },
+        {
+          "line": 3523,
+          "timestamp": "2026-10-20T13:05:07.518Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "65114ea1-d0ee-4bfc-838b-e673d44550c9",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 1.05,
+          "endpoint": "/api/agent/v1/internal/run"
+        },
+        {
+          "line": 3524,
+          "timestamp": "2026-10-20T13:05:07.731Z",
+          "level": "warn",
+          "scope": "backend/services/news/newsAggregatorService",
+          "message": "news_provider_failed"
+        },
+        {
+          "line": 3525,
+          "timestamp": "2026-10-20T13:05:07.731Z",
+          "level": "info",
+          "scope": "backend/services/news/newsAggregatorService",
+          "message": "news_provider_request_start"
+        },
+        {
+          "line": 3526,
+          "timestamp": "2026-10-20T13:05:09.527Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "1807da39-ef33-4c19-8544-ddd8dde252af",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 0.88,
+          "endpoint": "/api/agent/v1/internal/run"
+        }
+      ],
+      "phases": {
+        "running": 1
+      }
+    }
+  ],
+  "http": [
+    {
+      "endpoint": "GET /admin",
+      "requests": 1,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 1
+      },
+      "latencySamples": 1,
+      "p50Ms": 2.68,
+      "p95Ms": 2.68,
+      "p99Ms": 2.68,
+      "firstLine": 1175
+    },
+    {
+      "endpoint": "GET /api/admin/agent",
+      "requests": 173,
+      "serverErrors": 2,
+      "serverErrorRate": 0.011560693641618497,
+      "statuses": {
+        "503": 2,
+        "200": 171
+      },
+      "latencySamples": 173,
+      "p50Ms": 4.33,
+      "p95Ms": 8.54,
+      "p99Ms": 1654.9,
+      "firstLine": 12
+    },
+    {
+      "endpoint": "GET /api/admin/api-limits",
+      "requests": 1,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 1
+      },
+      "latencySamples": 1,
+      "p50Ms": 9.11,
+      "p95Ms": 9.11,
+      "p99Ms": 9.11,
+      "firstLine": 1191
+    },
+    {
+      "endpoint": "GET /api/admin/pipeline-status",
+      "requests": 1,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 1
+      },
+      "latencySamples": 1,
+      "p50Ms": 40.56,
+      "p95Ms": 40.56,
+      "p99Ms": 40.56,
+      "firstLine": 1192
+    },
+    {
+      "endpoint": "GET /api/admin/runtime",
+      "requests": 1,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 1
+      },
+      "latencySamples": 1,
+      "p50Ms": 3.31,
+      "p95Ms": 3.31,
+      "p99Ms": 3.31,
+      "firstLine": 1187
+    },
+    {
+      "endpoint": "GET /api/agent/v1/brief",
+      "requests": 2,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 2
+      },
+      "latencySamples": 2,
+      "p50Ms": 1.14,
+      "p95Ms": 1.3,
+      "p99Ms": 1.3,
+      "firstLine": 767
+    },
+    {
+      "endpoint": "GET /api/agent/v1/clusters",
+      "requests": 3,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 3
+      },
+      "latencySamples": 3,
+      "p50Ms": 1.74,
+      "p95Ms": 1.78,
+      "p99Ms": 1.78,
+      "firstLine": 1786
+    },
+    {
+      "endpoint": "GET /api/agent/v1/evidence",
+      "requests": 26,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 26
+      },
+      "latencySamples": 26,
+      "p50Ms": 7.82,
+      "p95Ms": 824.56,
+      "p99Ms": 1154.52,
+      "firstLine": 140
+    },
+    {
+      "endpoint": "GET /api/agent/v1/models",
+      "requests": 1,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 1
+      },
+      "latencySamples": 1,
+      "p50Ms": 12.11,
+      "p95Ms": 12.11,
+      "p99Ms": 12.11,
+      "firstLine": 1189
+    },
+    {
+      "endpoint": "GET /api/capabilities",
+      "requests": 8,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 8
+      },
+      "latencySamples": 8,
+      "p50Ms": 1.86,
+      "p95Ms": 825.54,
+      "p99Ms": 825.54,
+      "firstLine": 199
+    },
+    {
+      "endpoint": "GET /api/health",
+      "requests": 35,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 35
+      },
+      "latencySamples": 35,
+      "p50Ms": 2.18,
+      "p95Ms": 6.38,
+      "p99Ms": 7.02,
+      "firstLine": 10
+    },
+    {
+      "endpoint": "GET /api/health/ready",
+      "requests": 169,
+      "serverErrors": 2,
+      "serverErrorRate": 0.011834319526627219,
+      "statuses": {
+        "503": 2,
+        "200": 167
+      },
+      "latencySamples": 169,
+      "p50Ms": 0.76,
+      "p95Ms": 3.05,
+      "p99Ms": 4.17,
+      "firstLine": 11
+    },
+    {
+      "endpoint": "GET /api/intel/news",
+      "requests": 27,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 27
+      },
+      "latencySamples": 27,
+      "p50Ms": 1450.43,
+      "p95Ms": 1669.9,
+      "p99Ms": 1723.67,
+      "firstLine": 2646
+    },
+    {
+      "endpoint": "GET /api/news",
+      "requests": 110,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "404": 110
+      },
+      "latencySamples": 110,
+      "p50Ms": 0.65,
+      "p95Ms": 1.06,
+      "p99Ms": 1.65,
+      "firstLine": 567
+    },
+    {
+      "endpoint": "GET /assets/ogid-logo.svg",
+      "requests": 1,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 1
+      },
+      "latencySamples": 1,
+      "p50Ms": 5.38,
+      "p95Ms": 5.38,
+      "p99Ms": 5.38,
+      "firstLine": 1178
+    },
+    {
+      "endpoint": "GET /css/styles.css",
+      "requests": 1,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 1
+      },
+      "latencySamples": 1,
+      "p50Ms": 1.7,
+      "p95Ms": 1.7,
+      "p99Ms": 1.7,
+      "firstLine": 1176
+    },
+    {
+      "endpoint": "GET /js/admin.js",
+      "requests": 1,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 1
+      },
+      "latencySamples": 1,
+      "p50Ms": 2,
+      "p95Ms": 2,
+      "p99Ms": 2,
+      "firstLine": 1177
+    },
+    {
+      "endpoint": "GET /js/adminRefresh.js",
+      "requests": 1,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 1
+      },
+      "latencySamples": 1,
+      "p50Ms": 4.6,
+      "p95Ms": 4.6,
+      "p99Ms": 4.6,
+      "firstLine": 1181
+    },
+    {
+      "endpoint": "GET /js/agentAdmin.js",
+      "requests": 1,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 1
+      },
+      "latencySamples": 1,
+      "p50Ms": 2.43,
+      "p95Ms": 2.43,
+      "p99Ms": 2.43,
+      "firstLine": 1179
+    },
+    {
+      "endpoint": "GET /js/agentModels.js",
+      "requests": 1,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 1
+      },
+      "latencySamples": 1,
+      "p50Ms": 1.78,
+      "p95Ms": 1.78,
+      "p99Ms": 1.78,
+      "firstLine": 1184
+    },
+    {
+      "endpoint": "GET /js/agentOperationsView.js",
+      "requests": 1,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 1
+      },
+      "latencySamples": 1,
+      "p50Ms": 2.02,
+      "p95Ms": 2.02,
+      "p99Ms": 2.02,
+      "firstLine": 1185
+    },
+    {
+      "endpoint": "GET /js/api.js",
+      "requests": 1,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 1
+      },
+      "latencySamples": 1,
+      "p50Ms": 4.11,
+      "p95Ms": 4.11,
+      "p99Ms": 4.11,
+      "firstLine": 1180
+    },
+    {
+      "endpoint": "GET /js/smartPollLoop.js",
+      "requests": 1,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 1
+      },
+      "latencySamples": 1,
+      "p50Ms": 5.04,
+      "p95Ms": 5.04,
+      "p99Ms": 5.04,
+      "firstLine": 1182
+    },
+    {
+      "endpoint": "GET /js/workerOperations.js",
+      "requests": 1,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 1
+      },
+      "latencySamples": 1,
+      "p50Ms": 5.39,
+      "p95Ms": 5.39,
+      "p99Ms": 5.39,
+      "firstLine": 1183
+    },
+    {
+      "endpoint": "POST /api/agent/v1/internal/cancelAcknowledged",
+      "requests": 12,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 12
+      },
+      "latencySamples": 12,
+      "p50Ms": 768.94,
+      "p95Ms": 3705.97,
+      "p99Ms": 3705.97,
+      "firstLine": 108
+    },
+    {
+      "endpoint": "POST /api/agent/v1/internal/claim",
+      "requests": 526,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 526
+      },
+      "latencySamples": 526,
+      "p50Ms": 384.69,
+      "p95Ms": 2662.89,
+      "p99Ms": 4831.64,
+      "firstLine": 40
+    },
+    {
+      "endpoint": "POST /api/agent/v1/internal/consume",
+      "requests": 526,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 526
+      },
+      "latencySamples": 526,
+      "p50Ms": 612.59,
+      "p95Ms": 3096.63,
+      "p99Ms": 4650.37,
+      "firstLine": 38
+    },
+    {
+      "endpoint": "POST /api/agent/v1/internal/evidence",
+      "requests": 15,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 15
+      },
+      "latencySamples": 15,
+      "p50Ms": 7.31,
+      "p95Ms": 253.58,
+      "p99Ms": 253.58,
+      "firstLine": 99
+    },
+    {
+      "endpoint": "POST /api/agent/v1/internal/heartbeat",
+      "requests": 98,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 98
+      },
+      "latencySamples": 98,
+      "p50Ms": 696.21,
+      "p95Ms": 3673.54,
+      "p99Ms": 9976.98,
+      "firstLine": 67
+    },
+    {
+      "endpoint": "POST /api/agent/v1/internal/interruptClaim",
+      "requests": 12,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 12
+      },
+      "latencySamples": 12,
+      "p50Ms": 644.03,
+      "p95Ms": 4189.28,
+      "p99Ms": 4189.28,
+      "firstLine": 104
+    },
+    {
+      "endpoint": "POST /api/agent/v1/internal/link",
+      "requests": 15,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 15
+      },
+      "latencySamples": 15,
+      "p50Ms": 297.99,
+      "p95Ms": 1641.36,
+      "p99Ms": 1641.36,
+      "firstLine": 100
+    },
+    {
+      "endpoint": "POST /api/agent/v1/internal/memory",
+      "requests": 15,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 15
+      },
+      "latencySamples": 15,
+      "p50Ms": 1.06,
+      "p95Ms": 524.27,
+      "p99Ms": 524.27,
+      "firstLine": 97
+    },
+    {
+      "endpoint": "POST /api/agent/v1/internal/pendingCancellations",
+      "requests": 526,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 526
+      },
+      "latencySamples": 526,
+      "p50Ms": 228.4,
+      "p95Ms": 1710.64,
+      "p99Ms": 4708.93,
+      "firstLine": 39
+    },
+    {
+      "endpoint": "POST /api/agent/v1/internal/publish",
+      "requests": 15,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "400": 12,
+        "200": 3
+      },
+      "latencySamples": 15,
+      "p50Ms": 841.91,
+      "p95Ms": 3481.54,
+      "p99Ms": 3481.54,
+      "firstLine": 334
+    },
+    {
+      "endpoint": "POST /api/agent/v1/internal/reconcileCandidates",
+      "requests": 37,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 37
+      },
+      "latencySamples": 37,
+      "p50Ms": 400.19,
+      "p95Ms": 2789.86,
+      "p99Ms": 3245.92,
+      "firstLine": 36
+    },
+    {
+      "endpoint": "POST /api/agent/v1/internal/resume",
+      "requests": 4,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 4
+      },
+      "latencySamples": 4,
+      "p50Ms": 2102.46,
+      "p95Ms": 4569.36,
+      "p99Ms": 4569.36,
+      "firstLine": 37
+    },
+    {
+      "endpoint": "POST /api/agent/v1/internal/run",
+      "requests": 941,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 941
+      },
+      "latencySamples": 941,
+      "p50Ms": 0.99,
+      "p95Ms": 63,
+      "p99Ms": 1453.75,
+      "firstLine": 102
+    },
+    {
+      "endpoint": "POST /api/agent/v1/internal/snapshot",
+      "requests": 15,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 15
+      },
+      "latencySamples": 15,
+      "p50Ms": 12109.62,
+      "p95Ms": 49994.53,
+      "p99Ms": 49994.53,
+      "firstLine": 96
+    },
+    {
+      "endpoint": "POST /api/agent/v1/internal/state",
+      "requests": 51,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 51
+      },
+      "latencySamples": 51,
+      "p50Ms": 409.05,
+      "p95Ms": 3043.72,
+      "p99Ms": 22343.48,
+      "firstLine": 101
+    },
+    {
+      "endpoint": "POST /api/agent/v1/internal/workerReport",
+      "requests": 71,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 71
+      },
+      "latencySamples": 71,
+      "p50Ms": 430.81,
+      "p95Ms": 3099.57,
+      "p99Ms": 4497.91,
+      "firstLine": 41
+    }
+  ],
+  "correlations": [
+    {
+      "id": "connectionId:010dde7b-3070-492e-a9fc-1aacf2dfbaee",
+      "lines": [
+        2637,
+        3210
+      ]
+    },
+    {
+      "id": "connectionId:04c2a7da-f9e0-4edf-8411-58ea0798f4fd",
+      "lines": [
+        2640,
+        3207
+      ]
+    },
+    {
+      "id": "connectionId:2ca23493-2de3-48df-b690-dd365791fd37",
+      "lines": [
+        2635,
+        3212
+      ]
+    },
+    {
+      "id": "connectionId:5e054307-7fac-4fb2-9755-95eb2e7f602c",
+      "lines": [
+        2636,
+        3211
+      ]
+    },
+    {
+      "id": "connectionId:62c99363-4b88-4750-b81c-f20897e8630f",
+      "lines": [
+        2634,
+        3204
+      ]
+    },
+    {
+      "id": "connectionId:649d08f0-5d00-405a-8f6a-7b68abbae69c",
+      "lines": [
+        560,
+        2599
+      ]
+    },
+    {
+      "id": "connectionId:698e3081-92f9-454b-8bf8-3a9fcda047e7",
+      "lines": [
+        2638,
+        3209
+      ]
+    },
+    {
+      "id": "connectionId:6e67f653-0888-4fdd-8a64-7ce633cf8efb",
+      "lines": [
+        554,
+        2595
+      ]
+    },
+    {
+      "id": "connectionId:7a2c283d-6566-4933-894a-bd7fb612ff93",
+      "lines": [
+        2639,
+        3208
+      ]
+    },
+    {
+      "id": "connectionId:7a33571f-d381-4dcc-9afe-4b22183d9ab1",
+      "lines": [
+        2642,
+        3205
+      ]
+    },
+    {
+      "id": "connectionId:7b328560-2560-4b0a-9586-9de6d65a3acb",
+      "lines": [
+        562,
+        2597
+      ]
+    },
+    {
+      "id": "connectionId:7ef581d6-e0fb-4c8e-83b4-55f6f5561bb2",
+      "lines": [
+        2641,
+        3206
+      ]
+    },
+    {
+      "id": "connectionId:8810d7ca-d05f-4642-b1ab-c4fe0162997b",
+      "lines": [
+        555,
+        2604
+      ]
+    },
+    {
+      "id": "connectionId:8ccdcbe7-38db-409b-8b4f-181a08c5fbac",
+      "lines": [
+        2643,
+        3213
+      ]
+    },
+    {
+      "id": "connectionId:a626aa77-9399-4aae-be07-c51e2d6d1f0f",
+      "lines": [
+        563,
+        2596
+      ]
+    },
+    {
+      "id": "connectionId:be0d7179-8f6c-4e9d-ab12-c8266788c38f",
+      "lines": [
+        556,
+        2603
+      ]
+    },
+    {
+      "id": "connectionId:c88b4ecd-8a57-47d6-9eba-fe2700b45feb",
+      "lines": [
+        559,
+        2600
+      ]
+    },
+    {
+      "id": "connectionId:cb87f1d0-f160-4cf2-898b-137004840eb3",
+      "lines": [
+        557,
+        2602
+      ]
+    },
+    {
+      "id": "connectionId:da14fdbf-d755-4235-b3d8-18eee4a1294f",
+      "lines": [
+        561,
+        2598
+      ]
+    },
+    {
+      "id": "connectionId:fe8105e6-cd20-4187-8d57-a7da6cfcab94",
+      "lines": [
+        558,
+        2601
+      ]
+    },
+    {
+      "id": "requestId:01dd839d-a7e3-4ae5-b597-2dd809ce55e0",
+      "lines": [
+        1016,
+        1017
+      ]
+    },
+    {
+      "id": "requestId:049a4846-47a4-44b8-9eca-b23406b518d5",
+      "lines": [
+        2570,
+        2571
+      ]
+    },
+    {
+      "id": "requestId:0ea4759c-5043-4c50-99dd-1304ca37312b",
+      "lines": [
+        1963,
+        1964
+      ]
+    },
+    {
+      "id": "requestId:14860c3c-7c3e-4a13-a1a5-97cfea746324",
+      "lines": [
+        779,
+        780
+      ]
+    },
+    {
+      "id": "requestId:171f04b5-3ce6-444e-9fbe-1b5f59de9ca1",
+      "lines": [
+        645,
+        646
+      ]
+    },
+    {
+      "id": "requestId:17cc03bd-3760-4bde-a88b-2ef82e1017f0",
+      "lines": [
+        2479,
+        2480
+      ]
+    },
+    {
+      "id": "requestId:198905b6-58fc-4e55-8d58-5107c3e11d4b",
+      "lines": [
+        1129,
+        1130
+      ]
+    },
+    {
+      "id": "requestId:1a0afe87-48ea-4c13-ae65-4aa4e8649564",
+      "lines": [
+        625,
+        626
+      ]
+    },
+    {
+      "id": "requestId:1d9d7933-13af-4042-ad5f-ba958d3580b5",
+      "lines": [
+        2153,
+        2154
+      ]
+    },
+    {
+      "id": "requestId:1f5529c4-323e-4ab5-8160-10d7418d01b7",
+      "lines": [
+        667,
+        668
+      ]
+    },
+    {
+      "id": "requestId:1fbc26fa-3a1d-4570-a6c0-7a280ac91ebb",
+      "lines": [
+        2006,
+        2007
+      ]
+    },
+    {
+      "id": "requestId:2042a490-bf56-4a4a-a17a-80ceafa7a9fc",
+      "lines": [
+        2530,
+        2531
+      ]
+    },
+    {
+      "id": "requestId:2492c6c3-9753-475f-ba29-04ec4ef57268",
+      "lines": [
+        851,
+        852
+      ]
+    },
+    {
+      "id": "requestId:2798d628-3563-4828-8fc6-f589964348d7",
+      "lines": [
+        2383,
+        2384
+      ]
+    },
+    {
+      "id": "requestId:29308468-523f-495d-8af7-d1de5f889b25",
+      "lines": [
+        1725,
+        1726
+      ]
+    },
+    {
+      "id": "requestId:29883a9c-776c-4473-8fec-a0c3aa2b6d1c",
+      "lines": [
+        2345,
+        2346
+      ]
+    },
+    {
+      "id": "requestId:29cc4bc8-1c2d-44d2-a59c-3eda11d8df10",
+      "lines": [
+        1272,
+        1273
+      ]
+    },
+    {
+      "id": "requestId:2caa7020-f4eb-4aa6-ba12-981f38e02a9f",
+      "lines": [
+        1590,
+        1591
+      ]
+    },
+    {
+      "id": "requestId:2d73a3c1-6b2d-4d2a-92fd-be6181fca3a8",
+      "lines": [
+        1364,
+        1365
+      ]
+    },
+    {
+      "id": "requestId:2dbdddc4-a075-4ca4-aad3-7d07e31d1b8b",
+      "lines": [
+        1506,
+        1507
+      ]
+    },
+    {
+      "id": "requestId:2f634195-1521-4577-b63d-39274a6eb631",
+      "lines": [
+        948,
+        949
+      ]
+    },
+    {
+      "id": "requestId:34605dec-47c8-418c-b2bb-b2c3cf9495fc",
+      "lines": [
+        1647,
+        1648
+      ]
+    },
+    {
+      "id": "requestId:34c54eb7-b5b8-4d29-af75-21c8ff5084a3",
+      "lines": [
+        2136,
+        2137
+      ]
+    },
+    {
+      "id": "requestId:35d9381f-ae6a-48fc-972f-cb749da02d55",
+      "lines": [
+        1419,
+        1420
+      ]
+    },
+    {
+      "id": "requestId:37d2f80f-14b6-40eb-82b0-f5c08e9946bd",
+      "lines": [
+        1975,
+        1976
+      ]
+    },
+    {
+      "id": "requestId:3974732b-5e47-46d2-8b7a-d8f4154abd91",
+      "lines": [
+        1670,
+        1671
+      ]
+    },
+    {
+      "id": "requestId:39b24057-e306-45fe-8aaa-5c58b52e7729",
+      "lines": [
+        2706,
+        2707
+      ]
+    },
+    {
+      "id": "requestId:3b2a3b0d-9c47-4422-9b60-eee89b278216",
+      "lines": [
+        2401,
+        2402
+      ]
+    },
+    {
+      "id": "requestId:3e610398-5419-4794-ab84-95b0f9087394",
+      "lines": [
+        814,
+        815
+      ]
+    },
+    {
+      "id": "requestId:3edb8944-fbae-445c-a615-968dbec2ac12",
+      "lines": [
+        2265,
+        2266
+      ]
+    },
+    {
+      "id": "requestId:41f70fc4-b8ee-4151-96a7-26851c0d351a",
+      "lines": [
+        1033,
+        1034
+      ]
+    },
+    {
+      "id": "requestId:44f40c08-fda3-4c49-97bd-2681d613c641",
+      "lines": [
+        1145,
+        1146
+      ]
+    },
+    {
+      "id": "requestId:47f9a948-18ec-4aac-8c77-473abf7bc8a9",
+      "lines": [
+        2588,
+        2589
+      ]
+    },
+    {
+      "id": "requestId:4bfcb3d8-03e3-4815-adc5-03a6ff87e884",
+      "lines": [
+        1085,
+        1086
+      ]
+    },
+    {
+      "id": "requestId:4cbece25-9276-4fe9-aea0-7e6e85a1b62b",
+      "lines": [
+        1037,
+        1038
+      ]
+    },
+    {
+      "id": "requestId:4dbb6e44-e980-4eb5-b22c-e8313435f1c4",
+      "lines": [
+        825,
+        826
+      ]
+    },
+    {
+      "id": "requestId:4f232848-becb-4c10-978f-c3e916eb78ec",
+      "lines": [
+        1892,
+        1893
+      ]
+    },
+    {
+      "id": "requestId:4f67d482-deef-4633-b9b3-385f88cc0a6d",
+      "lines": [
+        3278,
+        3279
+      ]
+    },
+    {
+      "id": "requestId:508c651d-ac81-4a72-b4ee-ccf7f22592f1",
+      "lines": [
+        566,
+        567
+      ]
+    },
+    {
+      "id": "requestId:51800c4a-a1c8-4e19-8a58-fd82e2970483",
+      "lines": [
+        2292,
+        2293
+      ]
+    },
+    {
+      "id": "requestId:52dd13a1-2105-4bc7-ada1-713f23a10870",
+      "lines": [
+        2883,
+        2884
+      ]
+    },
+    {
+      "id": "requestId:55e240bc-845a-4199-8121-c16856f0cb2f",
+      "lines": [
+        1204,
+        1205
+      ]
+    },
+    {
+      "id": "requestId:562bb0c7-9a45-45f3-9254-229ee1808204",
+      "lines": [
+        916,
+        917
+      ]
+    },
+    {
+      "id": "requestId:5a129283-25aa-484c-a5d0-094d32168b37",
+      "lines": [
+        3605,
+        3606
+      ]
+    },
+    {
+      "id": "requestId:5a4da458-27c5-4c6f-b4bd-f816cf16db49",
+      "lines": [
+        1200,
+        1201
+      ]
+    },
+    {
+      "id": "requestId:5eaa93d4-822e-4b71-bc02-8a26eb2f40ce",
+      "lines": [
+        1442,
+        1443
+      ]
+    },
+    {
+      "id": "requestId:60d9b765-dfb9-4476-9087-9f26e1b3a026",
+      "lines": [
+        1569,
+        1570
+      ]
+    },
+    {
+      "id": "requestId:615240d1-c340-4980-9042-dd7cd00bccf1",
+      "lines": [
+        969,
+        970
+      ]
+    },
+    {
+      "id": "requestId:6233519d-039f-4c4a-aaf3-2e7356d16144",
+      "lines": [
+        1475,
+        1476
+      ]
+    },
+    {
+      "id": "requestId:650eaa82-fdb3-48c7-a45f-d76113dce26f",
+      "lines": [
+        333,
+        334
+      ]
+    },
+    {
+      "id": "requestId:66655a23-95be-40dc-9bd6-c2da099ec91e",
+      "lines": [
+        2025,
+        2026
+      ]
+    },
+    {
+      "id": "requestId:675f4b80-0bb5-4f39-b7d5-aa88af9daf24",
+      "lines": [
+        1842,
+        1843
+      ]
+    },
+    {
+      "id": "requestId:67681904-3920-49bf-9670-463808ea33dc",
+      "lines": [
+        1800,
+        1801
+      ]
+    },
+    {
+      "id": "requestId:6880ac4a-7aef-4e28-8271-2a3299b21500",
+      "lines": [
+        1692,
+        1693
+      ]
+    },
+    {
+      "id": "requestId:6992b9da-4417-4505-aab1-6146c2f43577",
+      "lines": [
+        2167,
+        2168
+      ]
+    },
+    {
+      "id": "requestId:69da85e9-af72-465b-bc62-06f8a2a4955f",
+      "lines": [
+        998,
+        999
+      ]
+    },
+    {
+      "id": "requestId:6b5a77da-8885-4bb5-aa57-3010d787be22",
+      "lines": [
+        1458,
+        1459
+      ]
+    },
+    {
+      "id": "requestId:6cc558d0-10ce-40bd-b0db-ec15c7df99e4",
+      "lines": [
+        1107,
+        1108
+      ]
+    },
+    {
+      "id": "requestId:6e3c2b4e-5b43-4df4-bd48-d694f7d428f6",
+      "lines": [
+        1859,
+        1860
+      ]
+    },
+    {
+      "id": "requestId:6f214da2-8d08-4792-a0ca-72b4c52c3e02",
+      "lines": [
+        1400,
+        1401
+      ]
+    },
+    {
+      "id": "requestId:6f79b4c2-6c86-4a6d-902b-0515c5ccc6ce",
+      "lines": [
+        868,
+        869
+      ]
+    },
+    {
+      "id": "requestId:7225818b-40c8-4ecb-ab33-3c52101e688e",
+      "lines": [
+        1777,
+        1778
+      ]
+    },
+    {
+      "id": "requestId:742355fb-6c3f-4e95-9500-8077f5f0553d",
+      "lines": [
+        583,
+        584
+      ]
+    },
+    {
+      "id": "requestId:76128651-8f41-4d64-9bbd-dcd111025d79",
+      "lines": [
+        1285,
+        1286
+      ]
+    },
+    {
+      "id": "requestId:7851bc3b-7cea-4c9c-a7ec-1ba081ee1d98",
+      "lines": [
+        1552,
+        1553
+      ]
+    },
+    {
+      "id": "requestId:79f918b7-dd3f-4bce-858a-e80454d7b734",
+      "lines": [
+        2366,
+        2367
+      ]
+    },
+    {
+      "id": "requestId:7b3889af-efce-4d0d-89cd-a3cc904143cb",
+      "lines": [
+        886,
+        887
+      ]
+    },
+    {
+      "id": "requestId:7ffebb2a-e34a-44b2-babb-d894d1b60fbb",
+      "lines": [
+        2432,
+        2433
+      ]
+    },
+    {
+      "id": "requestId:8031a8ba-f975-4e42-ba79-cbb1337d4b83",
+      "lines": [
+        603,
+        604
+      ]
+    },
+    {
+      "id": "requestId:80904221-ab67-4477-b695-3d47cdfff9f9",
+      "lines": [
+        1057,
+        1058
+      ]
+    },
+    {
+      "id": "requestId:80c1dbb1-c625-476c-97c8-979d784d9cfe",
+      "lines": [
+        726,
+        727
+      ]
+    },
+    {
+      "id": "requestId:81e0feb4-0b93-4958-8c0d-b5d203bf7287",
+      "lines": [
+        1221,
+        1222
+      ]
+    },
+    {
+      "id": "requestId:856e0aa9-e52e-40e4-b548-65923ffab49d",
+      "lines": [
+        1986,
+        1987
+      ]
+    },
+    {
+      "id": "requestId:88cea2f0-9070-4019-93ab-2363931c1d56",
+      "lines": [
+        1383,
+        1384
+      ]
+    },
+    {
+      "id": "requestId:894bcacb-7d42-4ee8-9ce6-f1efbcbbbfe7",
+      "lines": [
+        1345,
+        1346
+      ]
+    },
+    {
+      "id": "requestId:8caabe28-7e7e-48b9-b66e-86e6d4a32e89",
+      "lines": [
+        2065,
+        2066
+      ]
+    },
+    {
+      "id": "requestId:8fba3d6c-3b27-4a90-a0c8-b5633a7c4ba0",
+      "lines": [
+        1943,
+        1944
+      ]
+    },
+    {
+      "id": "requestId:9b2c26fa-401b-4b4d-9b0e-57ddec05e2cb",
+      "lines": [
+        1625,
+        1626
+      ]
+    },
+    {
+      "id": "requestId:9e084e1b-0ec6-48e4-aa65-7cbf2485288f",
+      "lines": [
+        2414,
+        2415
+      ]
+    },
+    {
+      "id": "requestId:a35a2290-4d68-4c06-94b0-51b57e9bfb37",
+      "lines": [
+        1318,
+        1319
+      ]
+    },
+    {
+      "id": "requestId:a53b53d6-0338-4ea2-9bf9-5f2549766d8b",
+      "lines": [
+        796,
+        797
+      ]
+    },
+    {
+      "id": "requestId:a5f010ea-f723-4408-af04-f526d72fe354",
+      "lines": [
+        2204,
+        2205
+      ]
+    },
+    {
+      "id": "requestId:a7b4a09a-a2fb-4c66-aaa2-4c3095ca7657",
+      "lines": [
+        2081,
+        2082
+      ]
+    },
+    {
+      "id": "requestId:a7c5dde8-ae3f-4749-84ab-9a5b8c683f70",
+      "lines": [
+        1308,
+        1309
+      ]
+    },
+    {
+      "id": "requestId:a9158600-5d6c-4019-829a-4cb919e3b760",
+      "lines": [
+        2496,
+        2497
+      ]
+    },
+    {
+      "id": "requestId:a9d47de4-3f22-43d1-8d23-4a8fd64aaf7d",
+      "lines": [
+        2451,
+        2452
+      ]
+    },
+    {
+      "id": "requestId:b6dacbf4-dfe9-447f-8e5a-dcf9ba4b271b",
+      "lines": [
+        1879,
+        1880
+      ]
+    },
+    {
+      "id": "requestId:ba06a906-898d-4fa4-86b2-589767b7158b",
+      "lines": [
+        2045,
+        2046
+      ]
+    },
+    {
+      "id": "requestId:bb9d6a15-1c76-46a3-ab78-4cce4a80ab16",
+      "lines": [
+        759,
+        760
+      ]
+    },
+    {
+      "id": "requestId:bbd90d84-2e5c-4a59-9365-843feba61628",
+      "lines": [
+        2551,
+        2552
+      ]
+    },
+    {
+      "id": "requestId:bd352796-896b-455b-9911-38eb43ba3fa4",
+      "lines": [
+        1163,
+        1164
+      ]
+    },
+    {
+      "id": "requestId:bd5a37a7-b2be-449e-8018-0adfd410c31b",
+      "lines": [
+        1608,
+        1609
+      ]
+    },
+    {
+      "id": "requestId:be86e897-4b31-404f-84b4-2cf0b89fd54e",
+      "lines": [
+        1925,
+        1926
+      ]
+    },
+    {
+      "id": "requestId:bfd1a538-5fc7-4226-8b78-23b5fc3fc155",
+      "lines": [
+        1293,
+        1294
+      ]
+    },
+    {
+      "id": "requestId:c14536f9-604f-4b34-8423-5f8a8c80647f",
+      "lines": [
+        1824,
+        1825
+      ]
+    },
+    {
+      "id": "requestId:c3eaa3f4-bdff-4c01-a96c-4b54aa789c0f",
+      "lines": [
+        1243,
+        1244
+      ]
+    },
+    {
+      "id": "requestId:c54abff4-760e-4d98-947e-2c8675c9e086",
+      "lines": [
+        1716,
+        1717
+      ]
+    },
+    {
+      "id": "requestId:cf996933-5ae1-41fb-a94a-1ae10df461c3",
+      "lines": [
+        705,
+        706
+      ]
+    },
+    {
+      "id": "requestId:cffb5710-55c0-481f-b169-2496d96ef7ee",
+      "lines": [
+        2309,
+        2310
+      ]
+    },
+    {
+      "id": "requestId:d3cf72ac-1f17-4fe7-998e-c667d00b7d0d",
+      "lines": [
+        2278,
+        2279
+      ]
+    },
+    {
+      "id": "requestId:d6e27b90-529a-4275-a68b-439f318542d4",
+      "lines": [
+        1049,
+        1050
+      ]
+    },
+    {
+      "id": "requestId:d9e70f00-ca4a-4b0a-819f-08c192930bb3",
+      "lines": [
+        1528,
+        1529
+      ]
+    },
+    {
+      "id": "requestId:d9fb4926-09aa-42c1-8b94-7d858c855d8e",
+      "lines": [
+        741,
+        742
+      ]
+    },
+    {
+      "id": "requestId:da47e901-b457-4de1-a211-759b3fc5fe80",
+      "lines": [
+        2248,
+        2249
+      ]
+    },
+    {
+      "id": "requestId:dff37571-52fe-4672-9228-366114121814",
+      "lines": [
+        2098,
+        2099
+      ]
+    },
+    {
+      "id": "requestId:e0f9c093-d72f-4541-89cb-5061a4898fb8",
+      "lines": [
+        2227,
+        2228
+      ]
+    },
+    {
+      "id": "requestId:e19a47f0-30ff-4888-88cb-84b71e6e171f",
+      "lines": [
+        2117,
+        2118
+      ]
+    },
+    {
+      "id": "requestId:e3022aa9-cd69-419a-b0ac-cf3002cdbead",
+      "lines": [
+        2467,
+        2468
+      ]
+    },
+    {
+      "id": "requestId:e3ea7114-30fc-4f3e-9340-0c5bd4aceca6",
+      "lines": [
+        1952,
+        1953
+      ]
+    },
+    {
+      "id": "requestId:e4e11d97-730e-45f1-930c-06bc193a64cc",
+      "lines": [
+        1253,
+        1254
+      ]
+    },
+    {
+      "id": "requestId:e8482649-95db-44c2-a015-cca7e5603cd5",
+      "lines": [
+        933,
+        934
+      ]
+    },
+    {
+      "id": "requestId:e98c91e1-11ba-4673-8782-8914eb5ee8a4",
+      "lines": [
+        1918,
+        1919
+      ]
+    },
+    {
+      "id": "requestId:ebdae8ab-cf7d-4cca-8c82-9b7f6b0a480c",
+      "lines": [
+        1750,
+        1751
+      ]
+    },
+    {
+      "id": "requestId:ee0de317-e1a3-400a-a844-b693a71f7100",
+      "lines": [
+        835,
+        836
+      ]
+    },
+    {
+      "id": "requestId:f3bc49a4-b616-407a-8f10-0da4eeb42c64",
+      "lines": [
+        904,
+        905
+      ]
+    },
+    {
+      "id": "requestId:f7efe422-6849-4cda-a639-63a6b43dd9d0",
+      "lines": [
+        2184,
+        2185
+      ]
+    },
+    {
+      "id": "requestId:f92f0c78-8c63-404b-8113-0152c883bf5b",
+      "lines": [
+        2512,
+        2513
+      ]
+    },
+    {
+      "id": "requestId:fa6d73b4-b9e5-4a17-98b0-a729024c1555",
+      "lines": [
+        1902,
+        1903
+      ]
+    },
+    {
+      "id": "requestId:fac66c23-e85c-47c6-aa49-3b6db37eeb95",
+      "lines": [
+        2327,
+        2328
+      ]
+    },
+    {
+      "id": "requestId:faf04454-5b02-4e6c-bd18-97660637da9e",
+      "lines": [
+        1331,
+        1332
+      ]
+    },
+    {
+      "id": "requestId:ff352907-d6a5-4260-b268-381a076b2ac4",
+      "lines": [
+        1491,
+        1492
+      ]
+    },
+    {
+      "id": "requestId:ff3761fa-b054-4942-b7f1-f897cf321aae",
+      "lines": [
+        685,
+        686
+      ]
+    },
+    {
+      "id": "snapshotId:0f9bb462-e886-46e6-b402-f9d41bbe7bc8",
+      "lines": [
+        1352,
+        1370,
+        1387
+      ]
+    },
+    {
+      "id": "snapshotId:22ff1133-72ae-4dba-bc6c-cdb20d57346f",
+      "lines": [
+        3424,
+        3440,
+        3447
+      ]
+    },
+    {
+      "id": "snapshotId:2cd828b3-9c5d-4389-a5c7-fbf0c6f83e50",
+      "lines": [
+        3650,
+        3660
+      ]
+    },
+    {
+      "id": "snapshotId:53d6c16f-5783-4dad-b2bc-c7a89f6580c3",
+      "lines": [
+        2924,
+        2937
+      ]
+    },
+    {
+      "id": "snapshotId:7d7638d8-e7a4-449e-9ef1-4c9ae9f3ee7a",
+      "lines": [
+        2741,
+        2772
+      ]
+    },
+    {
+      "id": "snapshotId:82354139-1f8a-476a-b53b-c8f6c3e67cd1",
+      "lines": [
+        490,
+        501,
+        519
+      ]
+    },
+    {
+      "id": "snapshotId:91fc3232-fdbe-4ef6-a2fe-a37e6fe42cc5",
+      "lines": [
+        1076
+      ]
+    },
+    {
+      "id": "snapshotId:9f247b79-267e-4365-91dd-8adf4a9395b6",
+      "lines": [
+        2011,
+        2030,
+        2031
+      ]
+    },
+    {
+      "id": "snapshotId:c735cd2c-18cb-4b1c-871f-d0a1ff6ec1ed",
+      "lines": [
+        3039,
+        3048,
+        3063,
+        3078
+      ]
+    },
+    {
+      "id": "snapshotId:c7cfcf1e-cc70-4a39-8e37-2ae18529be6b",
+      "lines": [
+        1755,
+        1786
+      ]
+    },
+    {
+      "id": "snapshotId:e168b0ba-0bbc-4080-ab26-68d0876085de",
+      "lines": [
+        140,
+        150,
+        158,
+        168
+      ]
+    }
+  ],
+  "unmatchedProviderStarts": {
+    "newsapi": [],
+    "gnews": [],
+    "rss": []
+  },
+  "limits": [
+    "HTTP records are completions, not start events. Missing completions cannot be inferred for every operation.",
+    "Log gaps do not prove process downtime.",
+    "Repeated code log records can describe one incident; HTTP denominators count completed requests only.",
+    "No job state chronology without durable rows or IDs in the original logs."
+  ]
+}

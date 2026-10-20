@@ -1,3 +1,4 @@
+import {eventIndexView,eventIndexStatus,writeEventImpacts} from "./eventIndex.js";
 import {PayloadCache,physicalPages} from "./sqlitePayloadPages.js";
 import { randomBytes } from "node:crypto";
 import { EventLedger } from "../services/research/eventLedger.js";
@@ -68,8 +69,9 @@ export class SqlResearchStore {
     if (collection === "events") {
       this.db.prepare("INSERT INTO events VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(event_id) DO UPDATE SET identity_version=excluded.identity_version,revision=excluded.revision,published_at=excluded.published_at,observed_at=excluded.observed_at,status=excluded.status,payload_json=excluded.payload_json").run(id,null,row.identityVersion || "legacy",row.revision || 1,row.publishedAt || null,row.updatedAt || row.receivedAt || new Date().toISOString(),row.claimStatus || "unknown",JSON.stringify(row));
       this.db.prepare("INSERT OR IGNORE INTO event_revisions VALUES(?,?,?,?)").run(id,row.revision || 1,row.updatedAt || new Date().toISOString(),JSON.stringify(row));
-      this.db.prepare("DELETE FROM event_instruments WHERE event_id=?").run(id);
-      for(const impact of new EventLedger({store:this}).impact(row,listVerifiedInstruments())){instrumentRow(this.db,impact.instrumentId);this.db.prepare("INSERT INTO event_instruments VALUES(?,?,?)").run(id,impact.instrumentId,JSON.stringify(impact));}
+      const impacts=new EventLedger({store:this}).impact(row,listVerifiedInstruments());
+      for(const impact of impacts)instrumentRow(this.db,impact.instrumentId);
+      writeEventImpacts(this.db,row,impacts);
       for (const e of row.evidence || []) {
         const sid = e.sourceId || "unknown"; sourceRow(this.db,sid,e);
         this.db.prepare("INSERT INTO evidence VALUES(?,?,?,?,?,?) ON CONFLICT(evidence_id) DO UPDATE SET payload_json=excluded.payload_json,available_at=excluded.available_at").run(e.id,id,null,sid,e.receivedAt || new Date().toISOString(),JSON.stringify(e));
@@ -179,27 +181,37 @@ export class SqlAlertStore extends MaterialAlertStore {
 
 export class SqlEventLedger extends EventLedger {
   constructor(options) { super(options); }
-  search({instrumentIds=[],eventIds=[],from,to,limit=20,includeTotal=true}={}) {
+  search(input={}) {
+    // References, payloads, impacts and counts must share the same read view
+    // while acquisition may commit revisions on the business writer.
+    return this.store.db.transaction(()=>this.searchSnapshot(input)).deferred();
+  }
+  searchSnapshot({instrumentIds=[],eventIds=[],from,to,limit=20,includeTotal=true}={}) {
     const db=this.store.db;
     if(instrumentIds.some(id=>!listVerifiedInstruments().some(i=>i.instrumentId===id)))throw new AppError("Instrumento no resuelto.",400,"UNRESOLVED_INSTRUMENT");
+    const view=eventIndexView(db),indexState=eventIndexStatus(db);
     const predicates=[],args=[];
-    for(const [values,column]of [[eventIds,"event_id"],[instrumentIds,"instrument_id"]])if(values.length){predicates.push(column==="event_id"?`event_id IN (${values.map(()=>"?").join(",")})`:`EXISTS (SELECT 1 FROM event_instruments ei WHERE ei.event_id=events.event_id AND ei.instrument_id IN (${values.map(()=>"?").join(",")}))`);args.push(...values);}
+    for(const [values,column]of [[eventIds,"event_id"],[instrumentIds,"instrument_id"]])if(values.length){predicates.push(column==="event_id"?`event_id IN (${values.map(()=>"?").join(",")})`:`EXISTS (SELECT 1 FROM ${view.table} ei WHERE ${view.generation?"ei.generation=? AND ":""}ei.event_id=events.event_id AND ei.instrument_id IN (${values.map(()=>"?").join(",")}))`);if(column==="instrument_id"&&view.generation)args.push(view.generation);args.push(...values);}
     if(from){predicates.push("observed_at>=?");args.push(from);}if(to){predicates.push("observed_at<=?");args.push(to);}
     const where=predicates.length?`WHERE ${predicates.join(" AND ")}`:"";
     // Narrow dates first, then probe membership by event ID. Building the
     // complete instrument membership set defeats small incremental windows.
     const index=instrumentIds.length && !eventIds.length && (from || to)?" INDEXED BY events_by_time":"";
     const total=includeTotal?db.prepare(`SELECT count(*) AS n FROM events${index} ${where}`).get(...args).n:null;
-    const rows=db.prepare(`SELECT payload_json FROM events${index} ${where} ORDER BY observed_at DESC,event_id LIMIT ?`).all(...args,includeTotal?limit:limit+1);
+    // Resolve eligibility using the covering time index before touching large
+    // payload pages. The previous SELECT forced a table seek for every rejected
+    // candidate, including events belonging to unrelated instruments.
+    const references=db.prepare(`SELECT rowid,event_id FROM events${index} ${where} ORDER BY observed_at DESC,event_id LIMIT ?`).all(...args,includeTotal?limit:limit+1);
+    const rows=[...physicalPages(db,'events',references)];
     const more=includeTotal?total>limit:rows.length>limit;if(!includeTotal && more)rows.pop();
     const events=rows.map(row=>{
       const e=JSON.parse(row.payload_json),verified=e.identityVersion==="source-publication-v2"&&e.quality?.identityVerified!==false;
-      let impacts=db.prepare("SELECT instrument_id,impact_json FROM event_instruments WHERE event_id=? ORDER BY instrument_id").all(e.eventId).filter(r=>!instrumentIds.length||instrumentIds.includes(r.instrument_id)).map(r=>JSON.parse(r.impact_json));
+      let impacts=db.prepare(`SELECT instrument_id,impact_json FROM ${view.table} WHERE ${view.generation?"generation=? AND ":""}event_id=? ORDER BY instrument_id`).all(...(view.generation?[view.generation]:[]),e.eventId).filter(r=>!instrumentIds.length||instrumentIds.includes(r.instrument_id)).map(r=>JSON.parse(r.impact_json));
       // Preserve registry order for impact consumers.
       const order=listVerifiedInstruments().map(i=>i.instrumentId);impacts.sort((a,b)=>order.indexOf(a.instrumentId)-order.indexOf(b.instrumentId));
       return {...e,quality:{...e.quality,identityVerified:verified,...(!verified?{identityReason:e.identityVersion!=="source-publication-v2"?"legacy_identity_requires_replay":"publication_identity_insufficient"}:{})},impacts};
     });
     const coverage=includeTotal?db.prepare("SELECT count(*) AS storedEvents,sum(identity_version!='source-publication-v2') AS legacyRequiresReplay FROM events INDEXED BY events_by_identity").get():{totalsNotRequested:true};
-    return {events,total,hasMore:more,asOf:new Date(this.now()).toISOString(),snapshotId:`events-${this.store.state.revision}`,methodVersion:"event-ledger-v2",coverage:{...coverage,legacyRequiresReplay:coverage.legacyRequiresReplay || 0,continuity:"not-guaranteed",revisionHistoryLimit:20,evidenceLimit:50},warnings:["Legacy URL-based event IDs require replay from original sources; excluded from impacts, preserved for audit.","Republished wires are one origin; unknown provenance cannot establish corroboration.","A topic or named company does not establish benefit, contract award or price causality."]};
+    return {events,total,index:indexState,hasMore:more,asOf:new Date(this.now()).toISOString(),snapshotId:`events-${this.store.state.revision}`,methodVersion:"event-ledger-v2",coverage:{...coverage,legacyRequiresReplay:coverage.legacyRequiresReplay || 0,continuity:"not-guaranteed",revisionHistoryLimit:20,evidenceLimit:50},warnings:["Legacy URL-based event IDs require replay from original sources; excluded from impacts, preserved for audit.","Republished wires are one origin; unknown provenance cannot establish corroboration.","A topic or named company does not establish benefit, contract award or price causality."]};
   }
 }

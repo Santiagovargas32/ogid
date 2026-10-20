@@ -135,8 +135,8 @@
                   </div>
                   <div class="col-12 col-xl-6 col-xxl-3">
                     <section class="diagnostic-card h-100">
-                      <header class="diagnostic-card-header">IA heredada · Enrichment</header>
-                      <div id="ai-diagnostics-body" class="diagnostic-list"></div>
+                      <header class="diagnostic-card-header">Proceso del agente</header>
+                      <div id="agent-process-body" class="diagnostic-list"></div>
                     </section>
                   </div>
                   <div class="col-12 col-xl-6 col-xxl-3">
@@ -171,15 +171,11 @@
             <div class="col-12">
               <section class="panel panel-vertical h-100">
                 <header class="panel-header d-flex justify-content-between align-items-center">
-                  <h2 class="panel-title mb-0">AI Enrichments · IA heredada</h2>
-                  <span id="ai-enrichments-updated" class="small text-light-emphasis">--</span>
+                  <h2 class="panel-title mb-0">Trabajos y publicaciones del agente</h2>
+                  <span id="agent-activity-updated" class="small text-light-emphasis">--</span>
                 </header>
-                <div class="table-responsive px-2 py-2">
-                  <table class="table table-sm table-dark align-middle mb-0 market-table">
-                    <thead><tr><th>Updated</th><th>Kind</th><th>Subject</th><th>Status</th><th>Model</th><th>Versions</th><th>Accepted output</th></tr></thead>
-                    <tbody id="ai-enrichments-body"></tbody>
-                  </table>
-                </div>
+                <div id="agent-activity-body" class="diagnostic-list p-3"></div>
+                <div id="agent-publications-body" class="diagnostic-list p-3"></div>
               </section>
             </div>
           </div>

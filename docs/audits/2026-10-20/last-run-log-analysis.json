@@ -1,0 +1,3391 @@
+{
+  "file": "shadow-backend-20261020-152234.log",
+  "sha256": "61de87d769adb271160e1b492a5c163af8ba13631adb13b2472530c89f386b90",
+  "bytes": 765613,
+  "lines": 1627,
+  "jsonRows": 1623,
+  "nonJsonLines": 4,
+  "firstAt": "2026-10-20T13:22:35.695Z",
+  "lastAt": "2026-10-20T13:31:45.864Z",
+  "observedSeconds": 550.169,
+  "head": "not-recorded",
+  "configuration": "not-fully-recorded",
+  "phases": {
+    "startup": 18,
+    "running": 1583,
+    "shutdown": 22
+  },
+  "levels": {
+    "info": 1590,
+    "warn": 13,
+    "error": 20
+  },
+  "lifecycle": [
+    {
+      "line": 23,
+      "timestamp": "2026-10-20T13:23:42.207Z",
+      "level": "info",
+      "scope": "backend/server",
+      "message": "server_started"
+    },
+    {
+      "line": 24,
+      "timestamp": "2026-10-20T13:23:42.809Z",
+      "level": "info",
+      "scope": "backend/server",
+      "message": "agent_component_started",
+      "component": "broker"
+    },
+    {
+      "line": 27,
+      "timestamp": "2026-10-20T13:23:45.269Z",
+      "level": "info",
+      "scope": "backend/server",
+      "message": "agent_component_started",
+      "component": "opencode"
+    },
+    {
+      "line": 34,
+      "timestamp": "2026-10-20T13:23:49.292Z",
+      "level": "info",
+      "scope": "backend/server",
+      "message": "agent_component_started",
+      "component": "worker"
+    },
+    {
+      "line": 1606,
+      "timestamp": "2026-10-20T13:31:43.075Z",
+      "level": "error",
+      "scope": "backend/server",
+      "message": "storage_worker_failed",
+      "code": "STORAGE_OUTCOME_UNKNOWN",
+      "command": {
+        "operation": "domain.registry",
+        "service": null,
+        "method": null,
+        "kind": null,
+        "phase": "executing",
+        "timeoutMs": 30000,
+        "executionMs": 30000,
+        "elapsedMs": 30010,
+        "queuedAt": "2026-10-20T13:31:13.064Z"
+      }
+    },
+    {
+      "line": 1607,
+      "timestamp": "2026-10-20T13:31:43.075Z",
+      "level": "info",
+      "scope": "backend/server",
+      "message": "shutdown_signal_received",
+      "signal": "storage-worker-failed"
+    },
+    {
+      "line": 1626,
+      "timestamp": "2026-10-20T13:31:45.863Z",
+      "level": "info",
+      "scope": "backend/server",
+      "message": "server_stopped",
+      "cleanupErrors": 2
+    },
+    {
+      "line": 1627,
+      "timestamp": "2026-10-20T13:31:45.864Z",
+      "level": "error",
+      "scope": "backend/server",
+      "message": "shutdown_failed"
+    }
+  ],
+  "websocket": [
+    {
+      "line": 264,
+      "timestamp": "2026-10-20T13:26:12.658Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_connected",
+      "connectionId": "2ee930d7-9bb0-4a4d-8ee0-a11b821adafe",
+      "endpoint": "/ws"
+    },
+    {
+      "line": 642,
+      "timestamp": "2026-10-20T13:26:57.687Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_disconnected",
+      "durationMs": 45029.59167099997,
+      "connectionId": "2ee930d7-9bb0-4a4d-8ee0-a11b821adafe",
+      "closeCode": 1005,
+      "endpoint": "/ws"
+    },
+    {
+      "line": 953,
+      "timestamp": "2026-10-20T13:29:05.206Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_connected",
+      "connectionId": "2c6f203c-026b-431c-9d7c-076ad77c5bfd",
+      "endpoint": "/ws"
+    },
+    {
+      "line": 1625,
+      "timestamp": "2026-10-20T13:31:43.751Z",
+      "level": "info",
+      "scope": "backend/websocket/socketServer",
+      "message": "ws_client_disconnected",
+      "durationMs": 158545.74960599997,
+      "connectionId": "2c6f203c-026b-431c-9d7c-076ad77c5bfd",
+      "closeCode": 1001,
+      "endpoint": "/ws"
+    }
+  ],
+  "gapsOver30Seconds": [],
+  "signatures": [
+    {
+      "signature": [
+        "backend/utils/error",
+        "request_failed",
+        "STORAGE_NOT_READY",
+        "None",
+        "None",
+        "POST",
+        "None"
+      ],
+      "count": 3,
+      "first": {
+        "line": 1616,
+        "timestamp": "2026-10-20T13:31:43.083Z",
+        "level": "error",
+        "scope": "backend/utils/error",
+        "message": "request_failed",
+        "code": "STORAGE_NOT_READY",
+        "causeCode": "STORAGE_OUTCOME_UNKNOWN",
+        "requestId": "7048d510-c657-4c15-af07-13449c84847c",
+        "method": "POST",
+        "statusCode": 503,
+        "endpoint": "/api/agent/v1/internal/run",
+        "command": {
+          "worker": "writer"
+        }
+      },
+      "lastLine": 1623,
+      "context": [
+        {
+          "line": 1614,
+          "timestamp": "2026-10-20T13:31:43.082Z",
+          "level": "error",
+          "scope": "backend/utils/error",
+          "message": "request_failed",
+          "code": "STORAGE_OUTCOME_UNKNOWN",
+          "causeCode": "STORAGE_EXECUTION_TIMEOUT",
+          "requestId": "3bfc57ef-bb19-4d60-be63-2e623ab7096b",
+          "method": "POST",
+          "statusCode": 503,
+          "endpoint": "/api/agent/v1/internal/consume",
+          "command": {
+            "operation": "domain.registry",
+            "service": null,
+            "method": null,
+            "kind": null,
+            "phase": "executing",
+            "timeoutMs": 30000,
+            "executionMs": 30000,
+            "elapsedMs": 30010,
+            "queuedAt": "2026-10-20T13:31:13.064Z"
+          }
+        },
+        {
+          "line": 1615,
+          "timestamp": "2026-10-20T13:31:43.082Z",
+          "level": "error",
+          "scope": "backend/utils/error",
+          "message": "request_failed",
+          "code": "STORAGE_OUTCOME_UNKNOWN",
+          "causeCode": "STORAGE_EXECUTION_TIMEOUT",
+          "requestId": "af228341-92f7-4677-aa37-0230ff67e264",
+          "method": "POST",
+          "statusCode": 503,
+          "endpoint": "/api/agent/v1/internal/heartbeat",
+          "command": {
+            "operation": "domain.registry",
+            "service": null,
+            "method": null,
+            "kind": null,
+            "phase": "executing",
+            "timeoutMs": 30000,
+            "executionMs": 30000,
+            "elapsedMs": 30010,
+            "queuedAt": "2026-10-20T13:31:13.064Z"
+          }
+        },
+        {
+          "line": 1616,
+          "timestamp": "2026-10-20T13:31:43.083Z",
+          "level": "error",
+          "scope": "backend/utils/error",
+          "message": "request_failed",
+          "code": "STORAGE_NOT_READY",
+          "causeCode": "STORAGE_OUTCOME_UNKNOWN",
+          "requestId": "7048d510-c657-4c15-af07-13449c84847c",
+          "method": "POST",
+          "statusCode": 503,
+          "endpoint": "/api/agent/v1/internal/run",
+          "command": {
+            "worker": "writer"
+          }
+        },
+        {
+          "line": 1617,
+          "timestamp": "2026-10-20T13:31:43.083Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "7048d510-c657-4c15-af07-13449c84847c",
+          "method": "POST",
+          "statusCode": 503,
+          "durationMs": 2.05,
+          "endpoint": "/api/agent/v1/internal/run"
+        },
+        {
+          "line": 1618,
+          "timestamp": "2026-10-20T13:31:43.085Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "7f50782c-064b-44da-a3f3-49202097217c",
+          "method": "GET",
+          "statusCode": 409,
+          "durationMs": 0.57,
+          "endpoint": "/api/intel/sync"
+        }
+      ],
+      "phases": {
+        "shutdown": 3
+      }
+    },
+    {
+      "signature": [
+        "backend/storage/worker",
+        "storage_slow_sql",
+        "None",
+        "None",
+        "None",
+        "None",
+        "1787300fd67c1a5a0712487ca59e01e1edd54e7a9171261cb6ee1859742b940e"
+      ],
+      "count": 2,
+      "first": {
+        "line": 20,
+        "timestamp": "2026-10-20T13:23:10.860Z",
+        "level": "warn",
+        "scope": "backend/storage/worker",
+        "message": "storage_slow_sql",
+        "threadId": 3,
+        "durationMs": 10578,
+        "sqlSignatureSha256": "1787300fd67c1a5a0712487ca59e01e1edd54e7a9171261cb6ee1859742b940e"
+      },
+      "lastLine": 1259,
+      "context": [
+        {
+          "line": 18,
+          "timestamp": "2026-10-20T13:22:58.634Z",
+          "level": "info",
+          "scope": "backend/server",
+          "message": "storage_initializing"
+        },
+        {
+          "line": 19,
+          "timestamp": "2026-10-20T13:23:06.183Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 1,
+          "durationMs": 1507,
+          "sqlSignatureSha256": "06c5168155b1be5987ea75cc1c24edd5c9255dac51b11c7f99a94efde5b47a85"
+        },
+        {
+          "line": 20,
+          "timestamp": "2026-10-20T13:23:10.860Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 3,
+          "durationMs": 10578,
+          "sqlSignatureSha256": "1787300fd67c1a5a0712487ca59e01e1edd54e7a9171261cb6ee1859742b940e"
+        },
+        {
+          "line": 21,
+          "timestamp": "2026-10-20T13:23:13.756Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 1,
+          "durationMs": 1509,
+          "sqlSignatureSha256": "0b7e7d277f4f535880569c64424096f9914bbf56cfdecb562893e08863490e73"
+        },
+        {
+          "line": 22,
+          "timestamp": "2026-10-20T13:23:42.128Z",
+          "level": "info",
+          "scope": "backend/server",
+          "message": "api_config_status"
+        }
+      ],
+      "phases": {
+        "startup": 1,
+        "running": 1
+      }
+    },
+    {
+      "signature": [
+        "backend/storage/worker",
+        "storage_slow_sql",
+        "None",
+        "None",
+        "None",
+        "None",
+        "b91f464b0c1cc16ea37aac3002fed204c6ca56f55e036d923b224b2d5f23ed33"
+      ],
+      "count": 2,
+      "first": {
+        "line": 98,
+        "timestamp": "2026-10-20T13:24:39.776Z",
+        "level": "warn",
+        "scope": "backend/storage/worker",
+        "message": "storage_slow_sql",
+        "threadId": 2,
+        "durationMs": 2723,
+        "sqlSignatureSha256": "b91f464b0c1cc16ea37aac3002fed204c6ca56f55e036d923b224b2d5f23ed33"
+      },
+      "lastLine": 1453,
+      "context": [
+        {
+          "line": 96,
+          "timestamp": "2026-10-20T13:24:39.284Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "34d3388e-5f7d-4c6a-ad85-148bf23fe3d6",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 392.3,
+          "endpoint": "/api/agent/v1/internal/consume"
+        },
+        {
+          "line": 97,
+          "timestamp": "2026-10-20T13:24:39.767Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "dbb9fc28-3fa0-486d-94f5-86d162cdb703",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 481.94,
+          "endpoint": "/api/agent/v1/internal/pendingCancellations"
+        },
+        {
+          "line": 98,
+          "timestamp": "2026-10-20T13:24:39.776Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 2,
+          "durationMs": 2723,
+          "sqlSignatureSha256": "b91f464b0c1cc16ea37aac3002fed204c6ca56f55e036d923b224b2d5f23ed33"
+        },
+        {
+          "line": 99,
+          "timestamp": "2026-10-20T13:24:40.923Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "a6f841a5-ae40-46c6-9120-20db80299b17",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 1153.89,
+          "endpoint": "/api/agent/v1/internal/claim"
+        },
+        {
+          "line": 100,
+          "timestamp": "2026-10-20T13:24:41.028Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 2,
+          "durationMs": 1127,
+          "sqlSignatureSha256": "2a6bc9aa93081ab48862afb849dfc07ddd7988d6af3e8f70af9b860efb53ce04"
+        }
+      ],
+      "phases": {
+        "running": 2
+      }
+    },
+    {
+      "signature": [
+        "backend/utils/error",
+        "request_failed",
+        "AGENT_DEVICE_REQUIRED",
+        "None",
+        "None",
+        "GET",
+        "None"
+      ],
+      "count": 2,
+      "first": {
+        "line": 606,
+        "timestamp": "2026-10-20T13:26:46.601Z",
+        "level": "error",
+        "scope": "backend/utils/error",
+        "message": "request_failed",
+        "code": "AGENT_DEVICE_REQUIRED",
+        "causeCode": null,
+        "requestId": "345f9cbc-ab0c-4c30-9f65-90d9e8611d63",
+        "method": "GET",
+        "statusCode": 401,
+        "endpoint": "/api/agent/v1/access"
+      },
+      "lastLine": 1293,
+      "context": [
+        {
+          "line": 604,
+          "timestamp": "2026-10-20T13:26:46.277Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "8eaf1a6d-7da6-410a-bc87-462e46b99ea5",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 1114.86,
+          "endpoint": "/api/agent/v1/internal/consume"
+        },
+        {
+          "line": 605,
+          "timestamp": "2026-10-20T13:26:46.601Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "a28ab31c-e63d-459c-bae6-f37ccddf1af1",
+          "method": "GET",
+          "statusCode": 200,
+          "durationMs": 4148.26,
+          "endpoint": "/api/intel/news"
+        },
+        {
+          "line": 606,
+          "timestamp": "2026-10-20T13:26:46.601Z",
+          "level": "error",
+          "scope": "backend/utils/error",
+          "message": "request_failed",
+          "code": "AGENT_DEVICE_REQUIRED",
+          "causeCode": null,
+          "requestId": "345f9cbc-ab0c-4c30-9f65-90d9e8611d63",
+          "method": "GET",
+          "statusCode": 401,
+          "endpoint": "/api/agent/v1/access"
+        },
+        {
+          "line": 607,
+          "timestamp": "2026-10-20T13:26:46.602Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "345f9cbc-ab0c-4c30-9f65-90d9e8611d63",
+          "method": "GET",
+          "statusCode": 401,
+          "durationMs": 32505.95,
+          "endpoint": "/api/agent/v1/access"
+        },
+        {
+          "line": 608,
+          "timestamp": "2026-10-20T13:26:46.602Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "77da6141-cb4c-4744-bb83-8559343e3e63",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 19545.77,
+          "endpoint": "/api/agent/v1/internal/memory"
+        }
+      ],
+      "phases": {
+        "running": 2
+      }
+    },
+    {
+      "signature": [
+        "backend/storage/worker",
+        "storage_command_failed",
+        "AGENT_STALE_EVIDENCE",
+        "agent.call",
+        "None",
+        "publish",
+        "None"
+      ],
+      "count": 2,
+      "first": {
+        "line": 880,
+        "timestamp": "2026-10-20T13:28:46.976Z",
+        "level": "error",
+        "scope": "backend/storage/worker",
+        "message": "storage_command_failed",
+        "code": "AGENT_STALE_EVIDENCE",
+        "operation": "agent.call",
+        "method": "publish"
+      },
+      "lastLine": 1361,
+      "context": [
+        {
+          "line": 878,
+          "timestamp": "2026-10-20T13:28:46.938Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "cdec7311-23ee-441e-879c-a1e12b1d08d3",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 35.23,
+          "endpoint": "/api/agent/v1/internal/pendingCancellations"
+        },
+        {
+          "line": 879,
+          "timestamp": "2026-10-20T13:28:46.942Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "d913e653-7282-4021-866d-e38bd434fe7b",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 0.98,
+          "endpoint": "/api/agent/v1/internal/claim"
+        },
+        {
+          "line": 880,
+          "timestamp": "2026-10-20T13:28:46.976Z",
+          "level": "error",
+          "scope": "backend/storage/worker",
+          "message": "storage_command_failed",
+          "code": "AGENT_STALE_EVIDENCE",
+          "operation": "agent.call",
+          "method": "publish"
+        },
+        {
+          "line": 881,
+          "timestamp": "2026-10-20T13:28:46.977Z",
+          "level": "error",
+          "scope": "backend/utils/error",
+          "message": "request_failed",
+          "code": "AGENT_STALE_EVIDENCE",
+          "causeCode": null,
+          "requestId": "ea51c34d-594b-4339-a992-b654cea40cb7",
+          "method": "POST",
+          "statusCode": 400,
+          "endpoint": "/api/agent/v1/internal/publish"
+        },
+        {
+          "line": 882,
+          "timestamp": "2026-10-20T13:28:46.977Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "ea51c34d-594b-4339-a992-b654cea40cb7",
+          "method": "POST",
+          "statusCode": 400,
+          "durationMs": 37.32,
+          "endpoint": "/api/agent/v1/internal/publish"
+        }
+      ],
+      "phases": {
+        "running": 2
+      }
+    },
+    {
+      "signature": [
+        "backend/utils/error",
+        "request_failed",
+        "AGENT_STALE_EVIDENCE",
+        "None",
+        "None",
+        "POST",
+        "None"
+      ],
+      "count": 2,
+      "first": {
+        "line": 881,
+        "timestamp": "2026-10-20T13:28:46.977Z",
+        "level": "error",
+        "scope": "backend/utils/error",
+        "message": "request_failed",
+        "code": "AGENT_STALE_EVIDENCE",
+        "causeCode": null,
+        "requestId": "ea51c34d-594b-4339-a992-b654cea40cb7",
+        "method": "POST",
+        "statusCode": 400,
+        "endpoint": "/api/agent/v1/internal/publish"
+      },
+      "lastLine": 1362,
+      "context": [
+        {
+          "line": 879,
+          "timestamp": "2026-10-20T13:28:46.942Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "d913e653-7282-4021-866d-e38bd434fe7b",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 0.98,
+          "endpoint": "/api/agent/v1/internal/claim"
+        },
+        {
+          "line": 880,
+          "timestamp": "2026-10-20T13:28:46.976Z",
+          "level": "error",
+          "scope": "backend/storage/worker",
+          "message": "storage_command_failed",
+          "code": "AGENT_STALE_EVIDENCE",
+          "operation": "agent.call",
+          "method": "publish"
+        },
+        {
+          "line": 881,
+          "timestamp": "2026-10-20T13:28:46.977Z",
+          "level": "error",
+          "scope": "backend/utils/error",
+          "message": "request_failed",
+          "code": "AGENT_STALE_EVIDENCE",
+          "causeCode": null,
+          "requestId": "ea51c34d-594b-4339-a992-b654cea40cb7",
+          "method": "POST",
+          "statusCode": 400,
+          "endpoint": "/api/agent/v1/internal/publish"
+        },
+        {
+          "line": 882,
+          "timestamp": "2026-10-20T13:28:46.977Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "ea51c34d-594b-4339-a992-b654cea40cb7",
+          "method": "POST",
+          "statusCode": 400,
+          "durationMs": 37.32,
+          "endpoint": "/api/agent/v1/internal/publish"
+        },
+        {
+          "line": 883,
+          "timestamp": "2026-10-20T13:28:47.043Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "c3c71b6e-6213-4709-bf96-4375c6109f87",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 0.98,
+          "endpoint": "/api/agent/v1/internal/run"
+        }
+      ],
+      "phases": {
+        "running": 2
+      }
+    },
+    {
+      "signature": [
+        "backend/utils/error",
+        "request_failed",
+        "STORAGE_OUTCOME_UNKNOWN",
+        "domain.registry",
+        "None",
+        "GET",
+        "None"
+      ],
+      "count": 2,
+      "first": {
+        "line": 1610,
+        "timestamp": "2026-10-20T13:31:43.079Z",
+        "level": "error",
+        "scope": "backend/utils/error",
+        "message": "request_failed",
+        "code": "STORAGE_OUTCOME_UNKNOWN",
+        "causeCode": "STORAGE_EXECUTION_TIMEOUT",
+        "requestId": "afb9cfcf-9ee9-4e03-965e-5ac889ceb314",
+        "method": "GET",
+        "statusCode": 503,
+        "endpoint": "/api/intel/advanced-snapshot",
+        "command": {
+          "operation": "domain.registry",
+          "service": null,
+          "method": null,
+          "kind": null,
+          "phase": "executing",
+          "timeoutMs": 30000,
+          "executionMs": 30000,
+          "elapsedMs": 30010,
+          "queuedAt": "2026-10-20T13:31:13.064Z"
+        }
+      },
+      "lastLine": 1611,
+      "context": [
+        {
+          "line": 1608,
+          "timestamp": "2026-10-20T13:31:43.076Z",
+          "level": "warn",
+          "scope": "backend/server",
+          "message": "rss_supplemental_failed",
+          "code": "STORAGE_OUTCOME_UNKNOWN"
+        },
+        {
+          "line": 1609,
+          "timestamp": "2026-10-20T13:31:43.077Z",
+          "level": "error",
+          "scope": "backend/services/refreshOrchestratorService",
+          "message": "news_cycle_failed"
+        },
+        {
+          "line": 1610,
+          "timestamp": "2026-10-20T13:31:43.079Z",
+          "level": "error",
+          "scope": "backend/utils/error",
+          "message": "request_failed",
+          "code": "STORAGE_OUTCOME_UNKNOWN",
+          "causeCode": "STORAGE_EXECUTION_TIMEOUT",
+          "requestId": "afb9cfcf-9ee9-4e03-965e-5ac889ceb314",
+          "method": "GET",
+          "statusCode": 503,
+          "endpoint": "/api/intel/advanced-snapshot",
+          "command": {
+            "operation": "domain.registry",
+            "service": null,
+            "method": null,
+            "kind": null,
+            "phase": "executing",
+            "timeoutMs": 30000,
+            "executionMs": 30000,
+            "elapsedMs": 30010,
+            "queuedAt": "2026-10-20T13:31:13.064Z"
+          }
+        },
+        {
+          "line": 1611,
+          "timestamp": "2026-10-20T13:31:43.079Z",
+          "level": "error",
+          "scope": "backend/utils/error",
+          "message": "request_failed",
+          "code": "STORAGE_OUTCOME_UNKNOWN",
+          "causeCode": "STORAGE_EXECUTION_TIMEOUT",
+          "requestId": "d0a78b43-3dd8-473d-ad8a-5e8112af94e0",
+          "method": "GET",
+          "statusCode": 503,
+          "endpoint": "/api/intel/advanced-snapshot",
+          "command": {
+            "operation": "domain.registry",
+            "service": null,
+            "method": null,
+            "kind": null,
+            "phase": "executing",
+            "timeoutMs": 30000,
+            "executionMs": 30000,
+            "elapsedMs": 30010,
+            "queuedAt": "2026-10-20T13:31:13.064Z"
+          }
+        },
+        {
+          "line": 1612,
+          "timestamp": "2026-10-20T13:31:43.080Z",
+          "level": "error",
+          "scope": "backend/storage/pipelinePersistence",
+          "message": "pipeline_persistence_failed",
+          "code": "STORAGE_NOT_READY",
+          "causeCode": "STORAGE_OUTCOME_UNKNOWN",
+          "command": {
+            "worker": "writer"
+          }
+        }
+      ],
+      "phases": {
+        "shutdown": 2
+      }
+    },
+    {
+      "signature": [
+        "backend/storage/pipelinePersistence",
+        "pipeline_persistence_failed",
+        "STORAGE_NOT_READY",
+        "None",
+        "None",
+        "None",
+        "None"
+      ],
+      "count": 2,
+      "first": {
+        "line": 1612,
+        "timestamp": "2026-10-20T13:31:43.080Z",
+        "level": "error",
+        "scope": "backend/storage/pipelinePersistence",
+        "message": "pipeline_persistence_failed",
+        "code": "STORAGE_NOT_READY",
+        "causeCode": "STORAGE_OUTCOME_UNKNOWN",
+        "command": {
+          "worker": "writer"
+        }
+      },
+      "lastLine": 1613,
+      "context": [
+        {
+          "line": 1610,
+          "timestamp": "2026-10-20T13:31:43.079Z",
+          "level": "error",
+          "scope": "backend/utils/error",
+          "message": "request_failed",
+          "code": "STORAGE_OUTCOME_UNKNOWN",
+          "causeCode": "STORAGE_EXECUTION_TIMEOUT",
+          "requestId": "afb9cfcf-9ee9-4e03-965e-5ac889ceb314",
+          "method": "GET",
+          "statusCode": 503,
+          "endpoint": "/api/intel/advanced-snapshot",
+          "command": {
+            "operation": "domain.registry",
+            "service": null,
+            "method": null,
+            "kind": null,
+            "phase": "executing",
+            "timeoutMs": 30000,
+            "executionMs": 30000,
+            "elapsedMs": 30010,
+            "queuedAt": "2026-10-20T13:31:13.064Z"
+          }
+        },
+        {
+          "line": 1611,
+          "timestamp": "2026-10-20T13:31:43.079Z",
+          "level": "error",
+          "scope": "backend/utils/error",
+          "message": "request_failed",
+          "code": "STORAGE_OUTCOME_UNKNOWN",
+          "causeCode": "STORAGE_EXECUTION_TIMEOUT",
+          "requestId": "d0a78b43-3dd8-473d-ad8a-5e8112af94e0",
+          "method": "GET",
+          "statusCode": 503,
+          "endpoint": "/api/intel/advanced-snapshot",
+          "command": {
+            "operation": "domain.registry",
+            "service": null,
+            "method": null,
+            "kind": null,
+            "phase": "executing",
+            "timeoutMs": 30000,
+            "executionMs": 30000,
+            "elapsedMs": 30010,
+            "queuedAt": "2026-10-20T13:31:13.064Z"
+          }
+        },
+        {
+          "line": 1612,
+          "timestamp": "2026-10-20T13:31:43.080Z",
+          "level": "error",
+          "scope": "backend/storage/pipelinePersistence",
+          "message": "pipeline_persistence_failed",
+          "code": "STORAGE_NOT_READY",
+          "causeCode": "STORAGE_OUTCOME_UNKNOWN",
+          "command": {
+            "worker": "writer"
+          }
+        },
+        {
+          "line": 1613,
+          "timestamp": "2026-10-20T13:31:43.080Z",
+          "level": "error",
+          "scope": "backend/storage/pipelinePersistence",
+          "message": "pipeline_persistence_failed",
+          "code": "STORAGE_NOT_READY",
+          "causeCode": "STORAGE_OUTCOME_UNKNOWN",
+          "command": {
+            "worker": "writer"
+          }
+        },
+        {
+          "line": 1614,
+          "timestamp": "2026-10-20T13:31:43.082Z",
+          "level": "error",
+          "scope": "backend/utils/error",
+          "message": "request_failed",
+          "code": "STORAGE_OUTCOME_UNKNOWN",
+          "causeCode": "STORAGE_EXECUTION_TIMEOUT",
+          "requestId": "3bfc57ef-bb19-4d60-be63-2e623ab7096b",
+          "method": "POST",
+          "statusCode": 503,
+          "endpoint": "/api/agent/v1/internal/consume",
+          "command": {
+            "operation": "domain.registry",
+            "service": null,
+            "method": null,
+            "kind": null,
+            "phase": "executing",
+            "timeoutMs": 30000,
+            "executionMs": 30000,
+            "elapsedMs": 30010,
+            "queuedAt": "2026-10-20T13:31:13.064Z"
+          }
+        }
+      ],
+      "phases": {
+        "shutdown": 2
+      }
+    },
+    {
+      "signature": [
+        "backend/utils/error",
+        "request_failed",
+        "STORAGE_OUTCOME_UNKNOWN",
+        "domain.registry",
+        "None",
+        "POST",
+        "None"
+      ],
+      "count": 2,
+      "first": {
+        "line": 1614,
+        "timestamp": "2026-10-20T13:31:43.082Z",
+        "level": "error",
+        "scope": "backend/utils/error",
+        "message": "request_failed",
+        "code": "STORAGE_OUTCOME_UNKNOWN",
+        "causeCode": "STORAGE_EXECUTION_TIMEOUT",
+        "requestId": "3bfc57ef-bb19-4d60-be63-2e623ab7096b",
+        "method": "POST",
+        "statusCode": 503,
+        "endpoint": "/api/agent/v1/internal/consume",
+        "command": {
+          "operation": "domain.registry",
+          "service": null,
+          "method": null,
+          "kind": null,
+          "phase": "executing",
+          "timeoutMs": 30000,
+          "executionMs": 30000,
+          "elapsedMs": 30010,
+          "queuedAt": "2026-10-20T13:31:13.064Z"
+        }
+      },
+      "lastLine": 1615,
+      "context": [
+        {
+          "line": 1612,
+          "timestamp": "2026-10-20T13:31:43.080Z",
+          "level": "error",
+          "scope": "backend/storage/pipelinePersistence",
+          "message": "pipeline_persistence_failed",
+          "code": "STORAGE_NOT_READY",
+          "causeCode": "STORAGE_OUTCOME_UNKNOWN",
+          "command": {
+            "worker": "writer"
+          }
+        },
+        {
+          "line": 1613,
+          "timestamp": "2026-10-20T13:31:43.080Z",
+          "level": "error",
+          "scope": "backend/storage/pipelinePersistence",
+          "message": "pipeline_persistence_failed",
+          "code": "STORAGE_NOT_READY",
+          "causeCode": "STORAGE_OUTCOME_UNKNOWN",
+          "command": {
+            "worker": "writer"
+          }
+        },
+        {
+          "line": 1614,
+          "timestamp": "2026-10-20T13:31:43.082Z",
+          "level": "error",
+          "scope": "backend/utils/error",
+          "message": "request_failed",
+          "code": "STORAGE_OUTCOME_UNKNOWN",
+          "causeCode": "STORAGE_EXECUTION_TIMEOUT",
+          "requestId": "3bfc57ef-bb19-4d60-be63-2e623ab7096b",
+          "method": "POST",
+          "statusCode": 503,
+          "endpoint": "/api/agent/v1/internal/consume",
+          "command": {
+            "operation": "domain.registry",
+            "service": null,
+            "method": null,
+            "kind": null,
+            "phase": "executing",
+            "timeoutMs": 30000,
+            "executionMs": 30000,
+            "elapsedMs": 30010,
+            "queuedAt": "2026-10-20T13:31:13.064Z"
+          }
+        },
+        {
+          "line": 1615,
+          "timestamp": "2026-10-20T13:31:43.082Z",
+          "level": "error",
+          "scope": "backend/utils/error",
+          "message": "request_failed",
+          "code": "STORAGE_OUTCOME_UNKNOWN",
+          "causeCode": "STORAGE_EXECUTION_TIMEOUT",
+          "requestId": "af228341-92f7-4677-aa37-0230ff67e264",
+          "method": "POST",
+          "statusCode": 503,
+          "endpoint": "/api/agent/v1/internal/heartbeat",
+          "command": {
+            "operation": "domain.registry",
+            "service": null,
+            "method": null,
+            "kind": null,
+            "phase": "executing",
+            "timeoutMs": 30000,
+            "executionMs": 30000,
+            "elapsedMs": 30010,
+            "queuedAt": "2026-10-20T13:31:13.064Z"
+          }
+        },
+        {
+          "line": 1616,
+          "timestamp": "2026-10-20T13:31:43.083Z",
+          "level": "error",
+          "scope": "backend/utils/error",
+          "message": "request_failed",
+          "code": "STORAGE_NOT_READY",
+          "causeCode": "STORAGE_OUTCOME_UNKNOWN",
+          "requestId": "7048d510-c657-4c15-af07-13449c84847c",
+          "method": "POST",
+          "statusCode": 503,
+          "endpoint": "/api/agent/v1/internal/run",
+          "command": {
+            "worker": "writer"
+          }
+        }
+      ],
+      "phases": {
+        "shutdown": 2
+      }
+    },
+    {
+      "signature": [
+        "backend/storage/worker",
+        "storage_slow_sql",
+        "None",
+        "None",
+        "None",
+        "None",
+        "b16b0910bf24fb0720cbcc59d10fae0ae84ccac41f4d1e4af5602f6b2dea8890"
+      ],
+      "count": 1,
+      "first": {
+        "line": 12,
+        "timestamp": "2026-10-20T13:22:49.934Z",
+        "level": "warn",
+        "scope": "backend/storage/worker",
+        "message": "storage_slow_sql",
+        "threadId": 1,
+        "durationMs": 11488,
+        "sqlSignatureSha256": "b16b0910bf24fb0720cbcc59d10fae0ae84ccac41f4d1e4af5602f6b2dea8890"
+      },
+      "lastLine": 12,
+      "context": [
+        {
+          "line": 10,
+          "timestamp": "2026-10-20T13:22:49.437Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "8a64ba2d-972e-4aca-94fc-f6f47e38cd9a",
+          "method": "GET",
+          "statusCode": 200,
+          "durationMs": 8.64,
+          "endpoint": "/api/health"
+        },
+        {
+          "line": 11,
+          "timestamp": "2026-10-20T13:22:49.439Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "a83c2730-af22-487d-bff0-ced2ccfc440f",
+          "method": "GET",
+          "statusCode": 503,
+          "durationMs": 7.46,
+          "endpoint": "/api/health/ready"
+        },
+        {
+          "line": 12,
+          "timestamp": "2026-10-20T13:22:49.934Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 1,
+          "durationMs": 11488,
+          "sqlSignatureSha256": "b16b0910bf24fb0720cbcc59d10fae0ae84ccac41f4d1e4af5602f6b2dea8890"
+        },
+        {
+          "line": 13,
+          "timestamp": "2026-10-20T13:22:58.158Z",
+          "level": "info",
+          "scope": "backend/server",
+          "message": "storage_initializing"
+        },
+        {
+          "line": 14,
+          "timestamp": "2026-10-20T13:22:58.158Z",
+          "level": "info",
+          "scope": "backend/server",
+          "message": "storage_initializing"
+        }
+      ],
+      "phases": {
+        "startup": 1
+      }
+    },
+    {
+      "signature": [
+        "backend/storage/worker",
+        "storage_slow_sql",
+        "None",
+        "None",
+        "None",
+        "None",
+        "06c5168155b1be5987ea75cc1c24edd5c9255dac51b11c7f99a94efde5b47a85"
+      ],
+      "count": 1,
+      "first": {
+        "line": 19,
+        "timestamp": "2026-10-20T13:23:06.183Z",
+        "level": "warn",
+        "scope": "backend/storage/worker",
+        "message": "storage_slow_sql",
+        "threadId": 1,
+        "durationMs": 1507,
+        "sqlSignatureSha256": "06c5168155b1be5987ea75cc1c24edd5c9255dac51b11c7f99a94efde5b47a85"
+      },
+      "lastLine": 19,
+      "context": [
+        {
+          "line": 17,
+          "timestamp": "2026-10-20T13:22:58.634Z",
+          "level": "info",
+          "scope": "backend/server",
+          "message": "storage_initializing"
+        },
+        {
+          "line": 18,
+          "timestamp": "2026-10-20T13:22:58.634Z",
+          "level": "info",
+          "scope": "backend/server",
+          "message": "storage_initializing"
+        },
+        {
+          "line": 19,
+          "timestamp": "2026-10-20T13:23:06.183Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 1,
+          "durationMs": 1507,
+          "sqlSignatureSha256": "06c5168155b1be5987ea75cc1c24edd5c9255dac51b11c7f99a94efde5b47a85"
+        },
+        {
+          "line": 20,
+          "timestamp": "2026-10-20T13:23:10.860Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 3,
+          "durationMs": 10578,
+          "sqlSignatureSha256": "1787300fd67c1a5a0712487ca59e01e1edd54e7a9171261cb6ee1859742b940e"
+        },
+        {
+          "line": 21,
+          "timestamp": "2026-10-20T13:23:13.756Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 1,
+          "durationMs": 1509,
+          "sqlSignatureSha256": "0b7e7d277f4f535880569c64424096f9914bbf56cfdecb562893e08863490e73"
+        }
+      ],
+      "phases": {
+        "startup": 1
+      }
+    },
+    {
+      "signature": [
+        "backend/storage/worker",
+        "storage_slow_sql",
+        "None",
+        "None",
+        "None",
+        "None",
+        "0b7e7d277f4f535880569c64424096f9914bbf56cfdecb562893e08863490e73"
+      ],
+      "count": 1,
+      "first": {
+        "line": 21,
+        "timestamp": "2026-10-20T13:23:13.756Z",
+        "level": "warn",
+        "scope": "backend/storage/worker",
+        "message": "storage_slow_sql",
+        "threadId": 1,
+        "durationMs": 1509,
+        "sqlSignatureSha256": "0b7e7d277f4f535880569c64424096f9914bbf56cfdecb562893e08863490e73"
+      },
+      "lastLine": 21,
+      "context": [
+        {
+          "line": 19,
+          "timestamp": "2026-10-20T13:23:06.183Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 1,
+          "durationMs": 1507,
+          "sqlSignatureSha256": "06c5168155b1be5987ea75cc1c24edd5c9255dac51b11c7f99a94efde5b47a85"
+        },
+        {
+          "line": 20,
+          "timestamp": "2026-10-20T13:23:10.860Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 3,
+          "durationMs": 10578,
+          "sqlSignatureSha256": "1787300fd67c1a5a0712487ca59e01e1edd54e7a9171261cb6ee1859742b940e"
+        },
+        {
+          "line": 21,
+          "timestamp": "2026-10-20T13:23:13.756Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 1,
+          "durationMs": 1509,
+          "sqlSignatureSha256": "0b7e7d277f4f535880569c64424096f9914bbf56cfdecb562893e08863490e73"
+        },
+        {
+          "line": 22,
+          "timestamp": "2026-10-20T13:23:42.128Z",
+          "level": "info",
+          "scope": "backend/server",
+          "message": "api_config_status"
+        },
+        {
+          "line": 23,
+          "timestamp": "2026-10-20T13:23:42.207Z",
+          "level": "info",
+          "scope": "backend/server",
+          "message": "server_started"
+        }
+      ],
+      "phases": {
+        "startup": 1
+      }
+    },
+    {
+      "signature": [
+        "backend/storage/worker",
+        "storage_slow_sql",
+        "None",
+        "None",
+        "None",
+        "None",
+        "2a6bc9aa93081ab48862afb849dfc07ddd7988d6af3e8f70af9b860efb53ce04"
+      ],
+      "count": 1,
+      "first": {
+        "line": 100,
+        "timestamp": "2026-10-20T13:24:41.028Z",
+        "level": "warn",
+        "scope": "backend/storage/worker",
+        "message": "storage_slow_sql",
+        "threadId": 2,
+        "durationMs": 1127,
+        "sqlSignatureSha256": "2a6bc9aa93081ab48862afb849dfc07ddd7988d6af3e8f70af9b860efb53ce04"
+      },
+      "lastLine": 100,
+      "context": [
+        {
+          "line": 98,
+          "timestamp": "2026-10-20T13:24:39.776Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 2,
+          "durationMs": 2723,
+          "sqlSignatureSha256": "b91f464b0c1cc16ea37aac3002fed204c6ca56f55e036d923b224b2d5f23ed33"
+        },
+        {
+          "line": 99,
+          "timestamp": "2026-10-20T13:24:40.923Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "a6f841a5-ae40-46c6-9120-20db80299b17",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 1153.89,
+          "endpoint": "/api/agent/v1/internal/claim"
+        },
+        {
+          "line": 100,
+          "timestamp": "2026-10-20T13:24:41.028Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 2,
+          "durationMs": 1127,
+          "sqlSignatureSha256": "2a6bc9aa93081ab48862afb849dfc07ddd7988d6af3e8f70af9b860efb53ce04"
+        },
+        {
+          "line": 101,
+          "timestamp": "2026-10-20T13:24:43.686Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "1cf00138-87ae-4a64-b4c1-9f4542e2bb31",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 761.12,
+          "endpoint": "/api/agent/v1/internal/consume"
+        },
+        {
+          "line": 102,
+          "timestamp": "2026-10-20T13:24:44.237Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "96f2a3d9-e807-4d29-98da-b4d4a8c54647",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 549.98,
+          "endpoint": "/api/agent/v1/internal/pendingCancellations"
+        }
+      ],
+      "phases": {
+        "running": 1
+      }
+    },
+    {
+      "signature": [
+        "backend/storage/worker",
+        "storage_slow_sql",
+        "None",
+        "None",
+        "None",
+        "None",
+        "c6c6080a0fc7be4f94f9ed6128880d38f9275daadde861f0355848c1c819af2e"
+      ],
+      "count": 1,
+      "first": {
+        "line": 220,
+        "timestamp": "2026-10-20T13:26:03.952Z",
+        "level": "warn",
+        "scope": "backend/storage/worker",
+        "message": "storage_slow_sql",
+        "threadId": 1,
+        "durationMs": 1154,
+        "sqlSignatureSha256": "c6c6080a0fc7be4f94f9ed6128880d38f9275daadde861f0355848c1c819af2e"
+      },
+      "lastLine": 220,
+      "context": [
+        {
+          "line": 218,
+          "timestamp": "2026-10-20T13:26:01.349Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "b13f35d4-0653-4547-ae36-c4e76a9fa932",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 1.02,
+          "endpoint": "/api/agent/v1/internal/run"
+        },
+        {
+          "line": 219,
+          "timestamp": "2026-10-20T13:26:03.359Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "8a2b8420-0b6f-4c78-b34c-6a60ff9eed97",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 1.17,
+          "endpoint": "/api/agent/v1/internal/run"
+        },
+        {
+          "line": 220,
+          "timestamp": "2026-10-20T13:26:03.952Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 1,
+          "durationMs": 1154,
+          "sqlSignatureSha256": "c6c6080a0fc7be4f94f9ed6128880d38f9275daadde861f0355848c1c819af2e"
+        },
+        {
+          "line": 221,
+          "timestamp": "2026-10-20T13:26:04.198Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "c96be41d-6a7c-42b5-85e0-81af07b5f277",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 2582.06,
+          "endpoint": "/api/agent/v1/internal/consume"
+        },
+        {
+          "line": 222,
+          "timestamp": "2026-10-20T13:26:04.285Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "2195e62e-263b-4b74-a06d-db9a4b36c687",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 917.48,
+          "endpoint": "/api/agent/v1/internal/state"
+        }
+      ],
+      "phases": {
+        "running": 1
+      }
+    },
+    {
+      "signature": [
+        "backend/utils/error",
+        "request_failed",
+        "AGENT_TASK_MISMATCH",
+        "None",
+        "None",
+        "POST",
+        "None"
+      ],
+      "count": 1,
+      "first": {
+        "line": 225,
+        "timestamp": "2026-10-20T13:26:06.561Z",
+        "level": "error",
+        "scope": "backend/utils/error",
+        "message": "request_failed",
+        "code": "AGENT_TASK_MISMATCH",
+        "causeCode": null,
+        "requestId": "f0d2dd31-28b3-4454-80af-c2da6fb9292d",
+        "method": "POST",
+        "statusCode": 400,
+        "endpoint": "/api/agent/v1/internal/publish"
+      },
+      "lastLine": 225,
+      "context": [
+        {
+          "line": 223,
+          "timestamp": "2026-10-20T13:26:04.447Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "7e0070c3-f681-4299-88b1-d23b16cdb403",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 247.35,
+          "endpoint": "/api/agent/v1/internal/pendingCancellations"
+        },
+        {
+          "line": 224,
+          "timestamp": "2026-10-20T13:26:04.698Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "bce6decf-09f9-41b3-8cc7-2558ee08a7ef",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 249.6,
+          "endpoint": "/api/agent/v1/internal/claim"
+        },
+        {
+          "line": 225,
+          "timestamp": "2026-10-20T13:26:06.561Z",
+          "level": "error",
+          "scope": "backend/utils/error",
+          "message": "request_failed",
+          "code": "AGENT_TASK_MISMATCH",
+          "causeCode": null,
+          "requestId": "f0d2dd31-28b3-4454-80af-c2da6fb9292d",
+          "method": "POST",
+          "statusCode": 400,
+          "endpoint": "/api/agent/v1/internal/publish"
+        },
+        {
+          "line": 226,
+          "timestamp": "2026-10-20T13:26:06.561Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "f0d2dd31-28b3-4454-80af-c2da6fb9292d",
+          "method": "POST",
+          "statusCode": 400,
+          "durationMs": 2272.62,
+          "endpoint": "/api/agent/v1/internal/publish"
+        },
+        {
+          "line": 227,
+          "timestamp": "2026-10-20T13:26:06.549Z",
+          "level": "error",
+          "scope": "backend/storage/worker",
+          "message": "storage_command_failed",
+          "code": "AGENT_TASK_MISMATCH",
+          "operation": "agent.call",
+          "method": "publish"
+        }
+      ],
+      "phases": {
+        "running": 1
+      }
+    },
+    {
+      "signature": [
+        "backend/storage/worker",
+        "storage_command_failed",
+        "AGENT_TASK_MISMATCH",
+        "agent.call",
+        "None",
+        "publish",
+        "None"
+      ],
+      "count": 1,
+      "first": {
+        "line": 227,
+        "timestamp": "2026-10-20T13:26:06.549Z",
+        "level": "error",
+        "scope": "backend/storage/worker",
+        "message": "storage_command_failed",
+        "code": "AGENT_TASK_MISMATCH",
+        "operation": "agent.call",
+        "method": "publish"
+      },
+      "lastLine": 227,
+      "context": [
+        {
+          "line": 225,
+          "timestamp": "2026-10-20T13:26:06.561Z",
+          "level": "error",
+          "scope": "backend/utils/error",
+          "message": "request_failed",
+          "code": "AGENT_TASK_MISMATCH",
+          "causeCode": null,
+          "requestId": "f0d2dd31-28b3-4454-80af-c2da6fb9292d",
+          "method": "POST",
+          "statusCode": 400,
+          "endpoint": "/api/agent/v1/internal/publish"
+        },
+        {
+          "line": 226,
+          "timestamp": "2026-10-20T13:26:06.561Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "f0d2dd31-28b3-4454-80af-c2da6fb9292d",
+          "method": "POST",
+          "statusCode": 400,
+          "durationMs": 2272.62,
+          "endpoint": "/api/agent/v1/internal/publish"
+        },
+        {
+          "line": 227,
+          "timestamp": "2026-10-20T13:26:06.549Z",
+          "level": "error",
+          "scope": "backend/storage/worker",
+          "message": "storage_command_failed",
+          "code": "AGENT_TASK_MISMATCH",
+          "operation": "agent.call",
+          "method": "publish"
+        },
+        {
+          "line": 228,
+          "timestamp": "2026-10-20T13:26:06.564Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "87a01cf2-647c-4906-8aa8-2fe25500434e",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 0.98,
+          "endpoint": "/api/agent/v1/internal/run"
+        },
+        {
+          "line": 229,
+          "timestamp": "2026-10-20T13:26:07.905Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "c729812c-02fd-4bb8-88e7-97210db7ab3d",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 1339.72,
+          "endpoint": "/api/agent/v1/internal/interruptClaim"
+        }
+      ],
+      "phases": {
+        "running": 1
+      }
+    },
+    {
+      "signature": [
+        "backend/storage/worker",
+        "storage_slow_sql",
+        "None",
+        "None",
+        "None",
+        "None",
+        "2d46988e435a2efd14675f2f101ccce529d4aae94075589a7bb2339e2d8adfe4"
+      ],
+      "count": 1,
+      "first": {
+        "line": 590,
+        "timestamp": "2026-10-20T13:26:35.311Z",
+        "level": "warn",
+        "scope": "backend/storage/worker",
+        "message": "storage_slow_sql",
+        "threadId": 1,
+        "durationMs": 6036,
+        "sqlSignatureSha256": "2d46988e435a2efd14675f2f101ccce529d4aae94075589a7bb2339e2d8adfe4"
+      },
+      "lastLine": 590,
+      "context": [
+        {
+          "line": 588,
+          "timestamp": "2026-10-20T13:26:28.997Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "27f8a42c-77c7-4319-a4f4-0b2b5fc85957",
+          "method": "GET",
+          "statusCode": 200,
+          "durationMs": 6.03,
+          "endpoint": "/api/market/provider-status"
+        },
+        {
+          "line": 589,
+          "timestamp": "2026-10-20T13:26:29.266Z",
+          "level": "info",
+          "scope": "backend/services/news/rssAggregator",
+          "message": "rss_aggregate_refreshed"
+        },
+        {
+          "line": 590,
+          "timestamp": "2026-10-20T13:26:35.311Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 1,
+          "durationMs": 6036,
+          "sqlSignatureSha256": "2d46988e435a2efd14675f2f101ccce529d4aae94075589a7bb2339e2d8adfe4"
+        },
+        {
+          "line": 591,
+          "timestamp": "2026-10-20T13:26:37.305Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "b488ca9e-1272-4293-8b82-ae4f86ff64d9",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 6620.47,
+          "endpoint": "/api/agent/v1/internal/consume"
+        },
+        {
+          "line": 592,
+          "timestamp": "2026-10-20T13:26:37.410Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "8d0bc37c-e71b-423f-bb88-ac28cb1f0b5e",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 2871.62,
+          "endpoint": "/api/agent/v1/internal/heartbeat"
+        }
+      ],
+      "phases": {
+        "running": 1
+      }
+    },
+    {
+      "signature": [
+        "backend/storage/worker",
+        "storage_slow_sql",
+        "None",
+        "None",
+        "None",
+        "None",
+        "3da702ded72de7cc27f3a00a9b6592e62cdf49e54b0efe21fbb0b873baa17503"
+      ],
+      "count": 1,
+      "first": {
+        "line": 1301,
+        "timestamp": "2026-10-20T13:29:27.078Z",
+        "level": "warn",
+        "scope": "backend/storage/worker",
+        "message": "storage_slow_sql",
+        "threadId": 1,
+        "durationMs": 1215,
+        "sqlSignatureSha256": "3da702ded72de7cc27f3a00a9b6592e62cdf49e54b0efe21fbb0b873baa17503"
+      },
+      "lastLine": 1301,
+      "context": [
+        {
+          "line": 1299,
+          "timestamp": "2026-10-20T13:29:25.863Z",
+          "level": "info",
+          "scope": "backend/services/news/newsAggregatorService",
+          "message": "news_provider_request_start"
+        },
+        {
+          "line": 1300,
+          "timestamp": "2026-10-20T13:29:25.865Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "95439db3-11ad-4a50-b5eb-fe19093a4284",
+          "method": "GET",
+          "statusCode": 200,
+          "durationMs": 1.75,
+          "endpoint": "/api/intel/sync"
+        },
+        {
+          "line": 1301,
+          "timestamp": "2026-10-20T13:29:27.078Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 1,
+          "durationMs": 1215,
+          "sqlSignatureSha256": "3da702ded72de7cc27f3a00a9b6592e62cdf49e54b0efe21fbb0b873baa17503"
+        },
+        {
+          "line": 1302,
+          "timestamp": "2026-10-20T13:29:27.219Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "cabb7013-08f4-4693-bc0f-843ee8a15804",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 1242.29,
+          "endpoint": "/api/agent/v1/internal/consume"
+        },
+        {
+          "line": 1303,
+          "timestamp": "2026-10-20T13:29:27.224Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "66504628-1478-417b-aa91-09b536058c7a",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 1.21,
+          "endpoint": "/api/agent/v1/internal/pendingCancellations"
+        }
+      ],
+      "phases": {
+        "running": 1
+      }
+    },
+    {
+      "signature": [
+        "backend/storage/worker",
+        "storage_slow_sql",
+        "None",
+        "None",
+        "None",
+        "None",
+        "cf006f7438497264a599d6c45454ff2c77c8f5977fa89c0231249914f36033aa"
+      ],
+      "count": 1,
+      "first": {
+        "line": 1584,
+        "timestamp": "2026-10-20T13:31:17.080Z",
+        "level": "warn",
+        "scope": "backend/storage/worker",
+        "message": "storage_slow_sql",
+        "threadId": 1,
+        "durationMs": 1284,
+        "sqlSignatureSha256": "cf006f7438497264a599d6c45454ff2c77c8f5977fa89c0231249914f36033aa"
+      },
+      "lastLine": 1584,
+      "context": [
+        {
+          "line": 1582,
+          "timestamp": "2026-10-20T13:31:14.217Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "c61de3a2-c1a7-4301-be54-65e1e6487aef",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 1.79,
+          "endpoint": "/api/agent/v1/internal/run"
+        },
+        {
+          "line": 1583,
+          "timestamp": "2026-10-20T13:31:16.229Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "fa5dfe69-4b13-4902-a410-232f101cc738",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 1.19,
+          "endpoint": "/api/agent/v1/internal/run"
+        },
+        {
+          "line": 1584,
+          "timestamp": "2026-10-20T13:31:17.080Z",
+          "level": "warn",
+          "scope": "backend/storage/worker",
+          "message": "storage_slow_sql",
+          "threadId": 1,
+          "durationMs": 1284,
+          "sqlSignatureSha256": "cf006f7438497264a599d6c45454ff2c77c8f5977fa89c0231249914f36033aa"
+        },
+        {
+          "line": 1585,
+          "timestamp": "2026-10-20T13:31:17.349Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "e6e33784-1b4d-4eef-8def-6fc753445d83",
+          "method": "GET",
+          "statusCode": 200,
+          "durationMs": 2.24,
+          "endpoint": "/api/agent/v1/evidence",
+          "snapshotId": "e76187fb-c461-401c-ba89-9d9978b78702"
+        },
+        {
+          "line": 1586,
+          "timestamp": "2026-10-20T13:31:18.239Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "dab66a05-3e8a-4051-99ad-80d43437337a",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 0.94,
+          "endpoint": "/api/agent/v1/internal/run"
+        }
+      ],
+      "phases": {
+        "running": 1
+      }
+    },
+    {
+      "signature": [
+        "backend/server",
+        "storage_worker_failed",
+        "STORAGE_OUTCOME_UNKNOWN",
+        "domain.registry",
+        "None",
+        "None",
+        "None"
+      ],
+      "count": 1,
+      "first": {
+        "line": 1606,
+        "timestamp": "2026-10-20T13:31:43.075Z",
+        "level": "error",
+        "scope": "backend/server",
+        "message": "storage_worker_failed",
+        "code": "STORAGE_OUTCOME_UNKNOWN",
+        "command": {
+          "operation": "domain.registry",
+          "service": null,
+          "method": null,
+          "kind": null,
+          "phase": "executing",
+          "timeoutMs": 30000,
+          "executionMs": 30000,
+          "elapsedMs": 30010,
+          "queuedAt": "2026-10-20T13:31:13.064Z"
+        }
+      },
+      "lastLine": 1606,
+      "context": [
+        {
+          "line": 1604,
+          "timestamp": "2026-10-20T13:31:40.355Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "65ba05d0-1033-4f7d-97c7-2b65b9d6bebe",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 1.02,
+          "endpoint": "/api/agent/v1/internal/run"
+        },
+        {
+          "line": 1605,
+          "timestamp": "2026-10-20T13:31:42.366Z",
+          "level": "info",
+          "scope": "backend/utils/logger#request",
+          "message": "http_request",
+          "requestId": "b6a65d43-1b7e-4f26-9252-eb6fd9791e0e",
+          "method": "POST",
+          "statusCode": 200,
+          "durationMs": 1.04,
+          "endpoint": "/api/agent/v1/internal/run"
+        },
+        {
+          "line": 1606,
+          "timestamp": "2026-10-20T13:31:43.075Z",
+          "level": "error",
+          "scope": "backend/server",
+          "message": "storage_worker_failed",
+          "code": "STORAGE_OUTCOME_UNKNOWN",
+          "command": {
+            "operation": "domain.registry",
+            "service": null,
+            "method": null,
+            "kind": null,
+            "phase": "executing",
+            "timeoutMs": 30000,
+            "executionMs": 30000,
+            "elapsedMs": 30010,
+            "queuedAt": "2026-10-20T13:31:13.064Z"
+          }
+        },
+        {
+          "line": 1607,
+          "timestamp": "2026-10-20T13:31:43.075Z",
+          "level": "info",
+          "scope": "backend/server",
+          "message": "shutdown_signal_received",
+          "signal": "storage-worker-failed"
+        },
+        {
+          "line": 1608,
+          "timestamp": "2026-10-20T13:31:43.076Z",
+          "level": "warn",
+          "scope": "backend/server",
+          "message": "rss_supplemental_failed",
+          "code": "STORAGE_OUTCOME_UNKNOWN"
+        }
+      ],
+      "phases": {
+        "shutdown": 1
+      }
+    },
+    {
+      "signature": [
+        "backend/server",
+        "rss_supplemental_failed",
+        "STORAGE_OUTCOME_UNKNOWN",
+        "None",
+        "None",
+        "None",
+        "None"
+      ],
+      "count": 1,
+      "first": {
+        "line": 1608,
+        "timestamp": "2026-10-20T13:31:43.076Z",
+        "level": "warn",
+        "scope": "backend/server",
+        "message": "rss_supplemental_failed",
+        "code": "STORAGE_OUTCOME_UNKNOWN"
+      },
+      "lastLine": 1608,
+      "context": [
+        {
+          "line": 1606,
+          "timestamp": "2026-10-20T13:31:43.075Z",
+          "level": "error",
+          "scope": "backend/server",
+          "message": "storage_worker_failed",
+          "code": "STORAGE_OUTCOME_UNKNOWN",
+          "command": {
+            "operation": "domain.registry",
+            "service": null,
+            "method": null,
+            "kind": null,
+            "phase": "executing",
+            "timeoutMs": 30000,
+            "executionMs": 30000,
+            "elapsedMs": 30010,
+            "queuedAt": "2026-10-20T13:31:13.064Z"
+          }
+        },
+        {
+          "line": 1607,
+          "timestamp": "2026-10-20T13:31:43.075Z",
+          "level": "info",
+          "scope": "backend/server",
+          "message": "shutdown_signal_received",
+          "signal": "storage-worker-failed"
+        },
+        {
+          "line": 1608,
+          "timestamp": "2026-10-20T13:31:43.076Z",
+          "level": "warn",
+          "scope": "backend/server",
+          "message": "rss_supplemental_failed",
+          "code": "STORAGE_OUTCOME_UNKNOWN"
+        },
+        {
+          "line": 1609,
+          "timestamp": "2026-10-20T13:31:43.077Z",
+          "level": "error",
+          "scope": "backend/services/refreshOrchestratorService",
+          "message": "news_cycle_failed"
+        },
+        {
+          "line": 1610,
+          "timestamp": "2026-10-20T13:31:43.079Z",
+          "level": "error",
+          "scope": "backend/utils/error",
+          "message": "request_failed",
+          "code": "STORAGE_OUTCOME_UNKNOWN",
+          "causeCode": "STORAGE_EXECUTION_TIMEOUT",
+          "requestId": "afb9cfcf-9ee9-4e03-965e-5ac889ceb314",
+          "method": "GET",
+          "statusCode": 503,
+          "endpoint": "/api/intel/advanced-snapshot",
+          "command": {
+            "operation": "domain.registry",
+            "service": null,
+            "method": null,
+            "kind": null,
+            "phase": "executing",
+            "timeoutMs": 30000,
+            "executionMs": 30000,
+            "elapsedMs": 30010,
+            "queuedAt": "2026-10-20T13:31:13.064Z"
+          }
+        }
+      ],
+      "phases": {
+        "shutdown": 1
+      }
+    },
+    {
+      "signature": [
+        "backend/services/refreshOrchestratorService",
+        "news_cycle_failed",
+        "None",
+        "None",
+        "None",
+        "None",
+        "None"
+      ],
+      "count": 1,
+      "first": {
+        "line": 1609,
+        "timestamp": "2026-10-20T13:31:43.077Z",
+        "level": "error",
+        "scope": "backend/services/refreshOrchestratorService",
+        "message": "news_cycle_failed"
+      },
+      "lastLine": 1609,
+      "context": [
+        {
+          "line": 1607,
+          "timestamp": "2026-10-20T13:31:43.075Z",
+          "level": "info",
+          "scope": "backend/server",
+          "message": "shutdown_signal_received",
+          "signal": "storage-worker-failed"
+        },
+        {
+          "line": 1608,
+          "timestamp": "2026-10-20T13:31:43.076Z",
+          "level": "warn",
+          "scope": "backend/server",
+          "message": "rss_supplemental_failed",
+          "code": "STORAGE_OUTCOME_UNKNOWN"
+        },
+        {
+          "line": 1609,
+          "timestamp": "2026-10-20T13:31:43.077Z",
+          "level": "error",
+          "scope": "backend/services/refreshOrchestratorService",
+          "message": "news_cycle_failed"
+        },
+        {
+          "line": 1610,
+          "timestamp": "2026-10-20T13:31:43.079Z",
+          "level": "error",
+          "scope": "backend/utils/error",
+          "message": "request_failed",
+          "code": "STORAGE_OUTCOME_UNKNOWN",
+          "causeCode": "STORAGE_EXECUTION_TIMEOUT",
+          "requestId": "afb9cfcf-9ee9-4e03-965e-5ac889ceb314",
+          "method": "GET",
+          "statusCode": 503,
+          "endpoint": "/api/intel/advanced-snapshot",
+          "command": {
+            "operation": "domain.registry",
+            "service": null,
+            "method": null,
+            "kind": null,
+            "phase": "executing",
+            "timeoutMs": 30000,
+            "executionMs": 30000,
+            "elapsedMs": 30010,
+            "queuedAt": "2026-10-20T13:31:13.064Z"
+          }
+        },
+        {
+          "line": 1611,
+          "timestamp": "2026-10-20T13:31:43.079Z",
+          "level": "error",
+          "scope": "backend/utils/error",
+          "message": "request_failed",
+          "code": "STORAGE_OUTCOME_UNKNOWN",
+          "causeCode": "STORAGE_EXECUTION_TIMEOUT",
+          "requestId": "d0a78b43-3dd8-473d-ad8a-5e8112af94e0",
+          "method": "GET",
+          "statusCode": 503,
+          "endpoint": "/api/intel/advanced-snapshot",
+          "command": {
+            "operation": "domain.registry",
+            "service": null,
+            "method": null,
+            "kind": null,
+            "phase": "executing",
+            "timeoutMs": 30000,
+            "executionMs": 30000,
+            "elapsedMs": 30010,
+            "queuedAt": "2026-10-20T13:31:13.064Z"
+          }
+        }
+      ],
+      "phases": {
+        "shutdown": 1
+      }
+    },
+    {
+      "signature": [
+        "backend/server",
+        "shutdown_failed",
+        "None",
+        "None",
+        "None",
+        "None",
+        "None"
+      ],
+      "count": 1,
+      "first": {
+        "line": 1627,
+        "timestamp": "2026-10-20T13:31:45.864Z",
+        "level": "error",
+        "scope": "backend/server",
+        "message": "shutdown_failed"
+      },
+      "lastLine": 1627,
+      "context": [
+        {
+          "line": 1625,
+          "timestamp": "2026-10-20T13:31:43.751Z",
+          "level": "info",
+          "scope": "backend/websocket/socketServer",
+          "message": "ws_client_disconnected",
+          "durationMs": 158545.74960599997,
+          "connectionId": "2c6f203c-026b-431c-9d7c-076ad77c5bfd",
+          "closeCode": 1001,
+          "endpoint": "/ws"
+        },
+        {
+          "line": 1626,
+          "timestamp": "2026-10-20T13:31:45.863Z",
+          "level": "info",
+          "scope": "backend/server",
+          "message": "server_stopped",
+          "cleanupErrors": 2
+        },
+        {
+          "line": 1627,
+          "timestamp": "2026-10-20T13:31:45.864Z",
+          "level": "error",
+          "scope": "backend/server",
+          "message": "shutdown_failed"
+        }
+      ],
+      "phases": {
+        "shutdown": 1
+      }
+    }
+  ],
+  "http": [
+    {
+      "endpoint": "GET /",
+      "requests": 2,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 2
+      },
+      "latencySamples": 2,
+      "p50Ms": 2.08,
+      "p95Ms": 2.53,
+      "p99Ms": 2.53,
+      "firstLine": 236
+    },
+    {
+      "endpoint": "GET /admin",
+      "requests": 1,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 1
+      },
+      "latencySamples": 1,
+      "p50Ms": 1.38,
+      "p95Ms": 1.38,
+      "p99Ms": 1.38,
+      "firstLine": 643
+    },
+    {
+      "endpoint": "GET /api/admin/agent",
+      "requests": 14,
+      "serverErrors": 1,
+      "serverErrorRate": 0.07142857142857142,
+      "statuses": {
+        "503": 1,
+        "200": 13
+      },
+      "latencySamples": 14,
+      "p50Ms": 5.96,
+      "p95Ms": 535.25,
+      "p99Ms": 535.25,
+      "firstLine": 9
+    },
+    {
+      "endpoint": "GET /api/admin/api-limits",
+      "requests": 3,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 3
+      },
+      "latencySamples": 3,
+      "p50Ms": 3.73,
+      "p95Ms": 3.78,
+      "p99Ms": 3.78,
+      "firstLine": 655
+    },
+    {
+      "endpoint": "GET /api/admin/news-raw",
+      "requests": 4,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 4
+      },
+      "latencySamples": 4,
+      "p50Ms": 3545.85,
+      "p95Ms": 5071.28,
+      "p99Ms": 5071.28,
+      "firstLine": 666
+    },
+    {
+      "endpoint": "GET /api/admin/pipeline-status",
+      "requests": 3,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 3
+      },
+      "latencySamples": 3,
+      "p50Ms": 37.39,
+      "p95Ms": 42.48,
+      "p99Ms": 42.48,
+      "firstLine": 658
+    },
+    {
+      "endpoint": "GET /api/admin/runtime",
+      "requests": 26,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 26
+      },
+      "latencySamples": 26,
+      "p50Ms": 2.33,
+      "p95Ms": 2.91,
+      "p99Ms": 36.11,
+      "firstLine": 656
+    },
+    {
+      "endpoint": "GET /api/agent/v1/access",
+      "requests": 2,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "401": 2
+      },
+      "latencySamples": 2,
+      "p50Ms": 18000.27,
+      "p95Ms": 32505.95,
+      "p99Ms": 32505.95,
+      "firstLine": 607
+    },
+    {
+      "endpoint": "GET /api/agent/v1/brief",
+      "requests": 9,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "304": 9
+      },
+      "latencySamples": 9,
+      "p50Ms": 1.53,
+      "p95Ms": 3979.37,
+      "p99Ms": 3979.37,
+      "firstLine": 609
+    },
+    {
+      "endpoint": "GET /api/agent/v1/capabilities",
+      "requests": 2,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 2
+      },
+      "latencySamples": 2,
+      "p50Ms": 1253.76,
+      "p95Ms": 2391.8,
+      "p99Ms": 2391.8,
+      "firstLine": 558
+    },
+    {
+      "endpoint": "GET /api/agent/v1/evidence",
+      "requests": 15,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 15
+      },
+      "latencySamples": 15,
+      "p50Ms": 37.21,
+      "p95Ms": 1047.65,
+      "p99Ms": 1047.65,
+      "firstLine": 127
+    },
+    {
+      "endpoint": "GET /api/agent/v1/geopolitical",
+      "requests": 9,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "304": 9
+      },
+      "latencySamples": 9,
+      "p50Ms": 1.33,
+      "p95Ms": 3979.23,
+      "p99Ms": 3979.23,
+      "firstLine": 611
+    },
+    {
+      "endpoint": "GET /api/agent/v1/models",
+      "requests": 3,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "304": 3
+      },
+      "latencySamples": 3,
+      "p50Ms": 6.29,
+      "p95Ms": 53.37,
+      "p99Ms": 53.37,
+      "firstLine": 564
+    },
+    {
+      "endpoint": "GET /api/agent/v1/outlooks",
+      "requests": 9,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "304": 8,
+        "200": 1
+      },
+      "latencySamples": 9,
+      "p50Ms": 1.36,
+      "p95Ms": 3979.02,
+      "p99Ms": 3979.02,
+      "firstLine": 610
+    },
+    {
+      "endpoint": "GET /api/capabilities",
+      "requests": 2,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 2
+      },
+      "latencySamples": 2,
+      "p50Ms": 1.6,
+      "p95Ms": 2.04,
+      "p99Ms": 2.04,
+      "firstLine": 145
+    },
+    {
+      "endpoint": "GET /api/health",
+      "requests": 12,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 12
+      },
+      "latencySamples": 12,
+      "p50Ms": 2.99,
+      "p95Ms": 33.76,
+      "p99Ms": 33.76,
+      "firstLine": 10
+    },
+    {
+      "endpoint": "GET /api/health/ready",
+      "requests": 9,
+      "serverErrors": 1,
+      "serverErrorRate": 0.1111111111111111,
+      "statuses": {
+        "503": 1,
+        "200": 8
+      },
+      "latencySamples": 9,
+      "p50Ms": 3.83,
+      "p95Ms": 7.46,
+      "p99Ms": 7.46,
+      "firstLine": 11
+    },
+    {
+      "endpoint": "GET /api/intel/advanced-snapshot",
+      "requests": 12,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 12
+      },
+      "latencySamples": 12,
+      "p50Ms": 355.13,
+      "p95Ms": 2340.34,
+      "p99Ms": 2340.34,
+      "firstLine": 549
+    },
+    {
+      "endpoint": "GET /api/intel/awareness-snapshot",
+      "requests": 1,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 1
+      },
+      "latencySamples": 1,
+      "p50Ms": 231.95,
+      "p95Ms": 231.95,
+      "p99Ms": 231.95,
+      "firstLine": 1487
+    },
+    {
+      "endpoint": "GET /api/intel/news",
+      "requests": 5,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 5
+      },
+      "latencySamples": 5,
+      "p50Ms": 3309.71,
+      "p95Ms": 4148.26,
+      "p99Ms": 4148.26,
+      "firstLine": 605
+    },
+    {
+      "endpoint": "GET /api/intel/sync",
+      "requests": 692,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 683,
+        "409": 9
+      },
+      "latencySamples": 692,
+      "p50Ms": 0.69,
+      "p95Ms": 2.05,
+      "p99Ms": 3.05,
+      "firstLine": 263
+    },
+    {
+      "endpoint": "GET /api/market/candles",
+      "requests": 2,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 2
+      },
+      "latencySamples": 2,
+      "p50Ms": 169.42,
+      "p95Ms": 254.81,
+      "p99Ms": 254.81,
+      "firstLine": 1527
+    },
+    {
+      "endpoint": "GET /api/market/conditions",
+      "requests": 4,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 4
+      },
+      "latencySamples": 4,
+      "p50Ms": 4401.18,
+      "p95Ms": 4853.22,
+      "p99Ms": 4853.22,
+      "firstLine": 569
+    },
+    {
+      "endpoint": "GET /api/market/instruments/search",
+      "requests": 3,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 3
+      },
+      "latencySamples": 3,
+      "p50Ms": 202.62,
+      "p95Ms": 219.39,
+      "p99Ms": 219.39,
+      "firstLine": 1541
+    },
+    {
+      "endpoint": "GET /api/market/provider-status",
+      "requests": 13,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 13
+      },
+      "latencySamples": 13,
+      "p50Ms": 5.74,
+      "p95Ms": 26.93,
+      "p99Ms": 26.93,
+      "firstLine": 559
+    },
+    {
+      "endpoint": "GET /api/market/quotes",
+      "requests": 2,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 2
+      },
+      "latencySamples": 2,
+      "p50Ms": 4.97,
+      "p95Ms": 5.38,
+      "p99Ms": 5.38,
+      "firstLine": 561
+    },
+    {
+      "endpoint": "GET /api/market/watchlist",
+      "requests": 4,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "304": 4
+      },
+      "latencySamples": 4,
+      "p50Ms": 0.93,
+      "p95Ms": 1.17,
+      "p99Ms": 1.17,
+      "firstLine": 262
+    },
+    {
+      "endpoint": "GET /api/news/aggregate",
+      "requests": 2,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 2
+      },
+      "latencySamples": 2,
+      "p50Ms": 1726.76,
+      "p95Ms": 3406.88,
+      "p99Ms": 3406.88,
+      "firstLine": 661
+    },
+    {
+      "endpoint": "GET /assets/news-placeholder.svg",
+      "requests": 2,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "304": 2
+      },
+      "latencySamples": 2,
+      "p50Ms": 0.46,
+      "p95Ms": 0.49,
+      "p99Ms": 0.49,
+      "firstLine": 560
+    },
+    {
+      "endpoint": "GET /assets/ogid-logo.svg",
+      "requests": 3,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "304": 3
+      },
+      "latencySamples": 3,
+      "p50Ms": 0.45,
+      "p95Ms": 0.64,
+      "p99Ms": 0.64,
+      "firstLine": 239
+    },
+    {
+      "endpoint": "GET /css/agentIntelligence.css",
+      "requests": 2,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "304": 2
+      },
+      "latencySamples": 2,
+      "p50Ms": 0.37,
+      "p95Ms": 0.56,
+      "p99Ms": 0.56,
+      "firstLine": 237
+    },
+    {
+      "endpoint": "GET /css/styles.css",
+      "requests": 3,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 1,
+        "304": 2
+      },
+      "latencySamples": 3,
+      "p50Ms": 0.45,
+      "p95Ms": 2.31,
+      "p99Ms": 2.31,
+      "firstLine": 238
+    },
+    {
+      "endpoint": "GET /js/admin.js",
+      "requests": 1,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 1
+      },
+      "latencySamples": 1,
+      "p50Ms": 0.71,
+      "p95Ms": 0.71,
+      "p99Ms": 0.71,
+      "firstLine": 646
+    },
+    {
+      "endpoint": "GET /js/adminRefresh.js",
+      "requests": 1,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "304": 1
+      },
+      "latencySamples": 1,
+      "p50Ms": 0.8,
+      "p95Ms": 0.8,
+      "p99Ms": 0.8,
+      "firstLine": 648
+    },
+    {
+      "endpoint": "GET /js/agentAdmin.js",
+      "requests": 1,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 1
+      },
+      "latencySamples": 1,
+      "p50Ms": 1.71,
+      "p95Ms": 1.71,
+      "p99Ms": 1.71,
+      "firstLine": 649
+    },
+    {
+      "endpoint": "GET /js/agentIntelligence.js",
+      "requests": 2,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "304": 2
+      },
+      "latencySamples": 2,
+      "p50Ms": 0.85,
+      "p95Ms": 0.88,
+      "p99Ms": 0.88,
+      "firstLine": 249
+    },
+    {
+      "endpoint": "GET /js/agentModels.js",
+      "requests": 3,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "304": 3
+      },
+      "latencySamples": 3,
+      "p50Ms": 0.62,
+      "p95Ms": 0.72,
+      "p99Ms": 0.72,
+      "firstLine": 255
+    },
+    {
+      "endpoint": "GET /js/agentOperationsView.js",
+      "requests": 1,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 1
+      },
+      "latencySamples": 1,
+      "p50Ms": 1.1,
+      "p95Ms": 1.1,
+      "p99Ms": 1.1,
+      "firstLine": 653
+    },
+    {
+      "endpoint": "GET /js/api.js",
+      "requests": 3,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 1,
+        "304": 2
+      },
+      "latencySamples": 3,
+      "p50Ms": 0.67,
+      "p95Ms": 0.81,
+      "p99Ms": 0.81,
+      "firstLine": 241
+    },
+    {
+      "endpoint": "GET /js/awareness.js",
+      "requests": 2,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "304": 2
+      },
+      "latencySamples": 2,
+      "p50Ms": 1.09,
+      "p95Ms": 1.11,
+      "p99Ms": 1.11,
+      "firstLine": 251
+    },
+    {
+      "endpoint": "GET /js/awarenessModel.js",
+      "requests": 2,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "304": 2
+      },
+      "latencySamples": 2,
+      "p50Ms": 0.61,
+      "p95Ms": 0.71,
+      "p99Ms": 0.71,
+      "firstLine": 261
+    },
+    {
+      "endpoint": "GET /js/dashboard.js",
+      "requests": 2,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 1,
+        "304": 1
+      },
+      "latencySamples": 2,
+      "p50Ms": 0.72,
+      "p95Ms": 2.13,
+      "p99Ms": 2.13,
+      "firstLine": 240
+    },
+    {
+      "endpoint": "GET /js/intelligence/advancedIntelligence.js",
+      "requests": 2,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "304": 2
+      },
+      "latencySamples": 2,
+      "p50Ms": 0.97,
+      "p95Ms": 0.99,
+      "p99Ms": 0.99,
+      "firstLine": 250
+    },
+    {
+      "endpoint": "GET /js/intelligence/riskEngine.js",
+      "requests": 2,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "304": 2
+      },
+      "latencySamples": 2,
+      "p50Ms": 0.86,
+      "p95Ms": 1.03,
+      "p99Ms": 1.03,
+      "firstLine": 256
+    },
+    {
+      "endpoint": "GET /js/intelligence/signalAnomalies.js",
+      "requests": 2,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "304": 2
+      },
+      "latencySamples": 2,
+      "p50Ms": 0.77,
+      "p95Ms": 1.13,
+      "p99Ms": 1.13,
+      "firstLine": 257
+    },
+    {
+      "endpoint": "GET /js/intelligence/threatClassifier.js",
+      "requests": 2,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "304": 2
+      },
+      "latencySamples": 2,
+      "p50Ms": 0.87,
+      "p95Ms": 1.28,
+      "p99Ms": 1.28,
+      "firstLine": 258
+    },
+    {
+      "endpoint": "GET /js/intelligence/trendDetector.js",
+      "requests": 2,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "304": 2
+      },
+      "latencySamples": 2,
+      "p50Ms": 1.1,
+      "p95Ms": 1.54,
+      "p99Ms": 1.54,
+      "firstLine": 259
+    },
+    {
+      "endpoint": "GET /js/intelligence/worldBrief.js",
+      "requests": 2,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "304": 2
+      },
+      "latencySamples": 2,
+      "p50Ms": 0.69,
+      "p95Ms": 1.62,
+      "p99Ms": 1.62,
+      "firstLine": 260
+    },
+    {
+      "endpoint": "GET /js/levelColors.js",
+      "requests": 2,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "304": 2
+      },
+      "latencySamples": 2,
+      "p50Ms": 0.4,
+      "p95Ms": 0.6,
+      "p99Ms": 0.6,
+      "firstLine": 247
+    },
+    {
+      "endpoint": "GET /js/marketConditionsModel.js",
+      "requests": 2,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "304": 2
+      },
+      "latencySamples": 2,
+      "p50Ms": 0.35,
+      "p95Ms": 0.46,
+      "p99Ms": 0.46,
+      "firstLine": 252
+    },
+    {
+      "endpoint": "GET /js/marketOhlcvModel.js",
+      "requests": 2,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "304": 2
+      },
+      "latencySamples": 2,
+      "p50Ms": 0.29,
+      "p95Ms": 1.43,
+      "p99Ms": 1.43,
+      "firstLine": 254
+    },
+    {
+      "endpoint": "GET /js/marketPolling.js",
+      "requests": 2,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "304": 2
+      },
+      "latencySamples": 2,
+      "p50Ms": 0.38,
+      "p95Ms": 0.49,
+      "p99Ms": 0.49,
+      "firstLine": 246
+    },
+    {
+      "endpoint": "GET /js/marketWatchlistModel.js",
+      "requests": 2,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "304": 2
+      },
+      "latencySamples": 2,
+      "p50Ms": 0.4,
+      "p95Ms": 1.26,
+      "p99Ms": 1.26,
+      "firstLine": 253
+    },
+    {
+      "endpoint": "GET /js/newsFeedModel.js",
+      "requests": 2,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "304": 2
+      },
+      "latencySamples": 2,
+      "p50Ms": 0.65,
+      "p95Ms": 0.74,
+      "p99Ms": 0.74,
+      "firstLine": 248
+    },
+    {
+      "endpoint": "GET /js/smartPollLoop.js",
+      "requests": 3,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "304": 3
+      },
+      "latencySamples": 3,
+      "p50Ms": 0.37,
+      "p95Ms": 0.45,
+      "p99Ms": 0.45,
+      "firstLine": 245
+    },
+    {
+      "endpoint": "GET /js/state.js",
+      "requests": 2,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "304": 2
+      },
+      "latencySamples": 2,
+      "p50Ms": 0.45,
+      "p95Ms": 0.67,
+      "p99Ms": 0.67,
+      "firstLine": 242
+    },
+    {
+      "endpoint": "GET /js/stateSync.js",
+      "requests": 2,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "304": 2
+      },
+      "latencySamples": 2,
+      "p50Ms": 0.31,
+      "p95Ms": 0.78,
+      "p99Ms": 0.78,
+      "firstLine": 243
+    },
+    {
+      "endpoint": "GET /js/websocket.js",
+      "requests": 2,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "304": 2
+      },
+      "latencySamples": 2,
+      "p50Ms": 0.46,
+      "p95Ms": 0.47,
+      "p99Ms": 0.47,
+      "firstLine": 244
+    },
+    {
+      "endpoint": "GET /js/workerOperations.js",
+      "requests": 1,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "304": 1
+      },
+      "latencySamples": 1,
+      "p50Ms": 0.28,
+      "p95Ms": 0.28,
+      "p99Ms": 0.28,
+      "firstLine": 651
+    },
+    {
+      "endpoint": "POST /api/agent/v1/internal/cancelAcknowledged",
+      "requests": 3,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 3
+      },
+      "latencySamples": 3,
+      "p50Ms": 432.26,
+      "p95Ms": 1245.94,
+      "p99Ms": 1245.94,
+      "firstLine": 90
+    },
+    {
+      "endpoint": "POST /api/agent/v1/internal/claim",
+      "requests": 123,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 123
+      },
+      "latencySamples": 123,
+      "p50Ms": 191.61,
+      "p95Ms": 1599.94,
+      "p99Ms": 4831.88,
+      "firstLine": 32
+    },
+    {
+      "endpoint": "POST /api/agent/v1/internal/consume",
+      "requests": 123,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 123
+      },
+      "latencySamples": 123,
+      "p50Ms": 392.3,
+      "p95Ms": 2464.57,
+      "p99Ms": 4095.95,
+      "firstLine": 30
+    },
+    {
+      "endpoint": "POST /api/agent/v1/internal/evidence",
+      "requests": 4,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 4
+      },
+      "latencySamples": 4,
+      "p50Ms": 8.23,
+      "p95Ms": 15.65,
+      "p99Ms": 15.65,
+      "firstLine": 79
+    },
+    {
+      "endpoint": "POST /api/agent/v1/internal/heartbeat",
+      "requests": 19,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 19
+      },
+      "latencySamples": 19,
+      "p50Ms": 641.93,
+      "p95Ms": 4238.26,
+      "p99Ms": 4238.26,
+      "firstLine": 61
+    },
+    {
+      "endpoint": "POST /api/agent/v1/internal/interruptClaim",
+      "requests": 3,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 3
+      },
+      "latencySamples": 3,
+      "p50Ms": 1186.41,
+      "p95Ms": 1339.72,
+      "p99Ms": 1339.72,
+      "firstLine": 88
+    },
+    {
+      "endpoint": "POST /api/agent/v1/internal/link",
+      "requests": 4,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 4
+      },
+      "latencySamples": 4,
+      "p50Ms": 843.03,
+      "p95Ms": 3665.99,
+      "p99Ms": 3665.99,
+      "firstLine": 82
+    },
+    {
+      "endpoint": "POST /api/agent/v1/internal/memory",
+      "requests": 4,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 4
+      },
+      "latencySamples": 4,
+      "p50Ms": 1.18,
+      "p95Ms": 19545.77,
+      "p99Ms": 19545.77,
+      "firstLine": 78
+    },
+    {
+      "endpoint": "POST /api/agent/v1/internal/pendingCancellations",
+      "requests": 123,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 123
+      },
+      "latencySamples": 123,
+      "p50Ms": 175.37,
+      "p95Ms": 925.46,
+      "p99Ms": 3921.85,
+      "firstLine": 31
+    },
+    {
+      "endpoint": "POST /api/agent/v1/internal/publish",
+      "requests": 3,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "400": 3
+      },
+      "latencySamples": 3,
+      "p50Ms": 667.38,
+      "p95Ms": 2272.62,
+      "p99Ms": 2272.62,
+      "firstLine": 226
+    },
+    {
+      "endpoint": "POST /api/agent/v1/internal/reconcileCandidates",
+      "requests": 8,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 8
+      },
+      "latencySamples": 8,
+      "p50Ms": 514.64,
+      "p95Ms": 1052.38,
+      "p99Ms": 1052.38,
+      "firstLine": 28
+    },
+    {
+      "endpoint": "POST /api/agent/v1/internal/resume",
+      "requests": 1,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 1
+      },
+      "latencySamples": 1,
+      "p50Ms": 465.76,
+      "p95Ms": 465.76,
+      "p99Ms": 465.76,
+      "firstLine": 29
+    },
+    {
+      "endpoint": "POST /api/agent/v1/internal/run",
+      "requests": 163,
+      "serverErrors": 2,
+      "serverErrorRate": 0.012269938650306749,
+      "statuses": {
+        "200": 161,
+        "503": 2
+      },
+      "latencySamples": 163,
+      "p50Ms": 1.06,
+      "p95Ms": 274.44,
+      "p99Ms": 3332.79,
+      "firstLine": 84
+    },
+    {
+      "endpoint": "POST /api/agent/v1/internal/snapshot",
+      "requests": 4,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 4
+      },
+      "latencySamples": 4,
+      "p50Ms": 14293.55,
+      "p95Ms": 40000.72,
+      "p99Ms": 40000.72,
+      "firstLine": 77
+    },
+    {
+      "endpoint": "POST /api/agent/v1/internal/state",
+      "requests": 13,
+      "serverErrors": 1,
+      "serverErrorRate": 0.07692307692307693,
+      "statuses": {
+        "200": 12,
+        "503": 1
+      },
+      "latencySamples": 13,
+      "p50Ms": 422.89,
+      "p95Ms": 2925.79,
+      "p99Ms": 2925.79,
+      "firstLine": 83
+    },
+    {
+      "endpoint": "POST /api/agent/v1/internal/workerReport",
+      "requests": 14,
+      "serverErrors": 0,
+      "serverErrorRate": 0.0,
+      "statuses": {
+        "200": 14
+      },
+      "latencySamples": 14,
+      "p50Ms": 495.74,
+      "p95Ms": 1537.7,
+      "p99Ms": 1537.7,
+      "firstLine": 33
+    }
+  ],
+  "correlations": [
+    {
+      "id": "connectionId:2c6f203c-026b-431c-9d7c-076ad77c5bfd",
+      "lines": [
+        953,
+        1625
+      ]
+    },
+    {
+      "id": "connectionId:2ee930d7-9bb0-4a4d-8ee0-a11b821adafe",
+      "lines": [
+        264,
+        642
+      ]
+    },
+    {
+      "id": "requestId:1f147d8a-3e48-4019-a647-e2ed97944f97",
+      "lines": [
+        1362,
+        1363
+      ]
+    },
+    {
+      "id": "requestId:345f9cbc-ab0c-4c30-9f65-90d9e8611d63",
+      "lines": [
+        606,
+        607
+      ]
+    },
+    {
+      "id": "requestId:47496caa-3cf2-4f25-ae82-86c26afb524c",
+      "lines": [
+        1293,
+        1294
+      ]
+    },
+    {
+      "id": "requestId:7048d510-c657-4c15-af07-13449c84847c",
+      "lines": [
+        1616,
+        1617
+      ]
+    },
+    {
+      "id": "requestId:80492447-74a0-4e96-b507-0bbaaed599aa",
+      "lines": [
+        1623,
+        1624
+      ]
+    },
+    {
+      "id": "requestId:8c798542-d031-41d3-9d2d-f5a36da79bae",
+      "lines": [
+        1621,
+        1622
+      ]
+    },
+    {
+      "id": "requestId:ea51c34d-594b-4339-a992-b654cea40cb7",
+      "lines": [
+        881,
+        882
+      ]
+    },
+    {
+      "id": "requestId:f0d2dd31-28b3-4454-80af-c2da6fb9292d",
+      "lines": [
+        225,
+        226
+      ]
+    },
+    {
+      "id": "snapshotId:2b449c1e-e2ea-4480-b763-922a1fa87674",
+      "lines": [
+        127
+      ]
+    },
+    {
+      "id": "snapshotId:e76187fb-c461-401c-ba89-9d9978b78702",
+      "lines": [
+        1494,
+        1512,
+        1532,
+        1585,
+        1591,
+        1596
+      ]
+    },
+    {
+      "id": "snapshotId:f702690c-5470-4d12-8687-61f735058fd2",
+      "lines": [
+        634,
+        670,
+        690,
+        698,
+        711,
+        720,
+        728,
+        740
+      ]
+    }
+  ],
+  "unmatchedProviderStarts": {
+    "newsapi": [],
+    "gnews": [],
+    "rss": [
+      1510
+    ]
+  },
+  "limits": [
+    "HTTP records are completions, not start events. Missing completions cannot be inferred for every operation.",
+    "Log gaps do not prove process downtime.",
+    "Repeated code log records can describe one incident; HTTP denominators count completed requests only.",
+    "No job state chronology without durable rows or IDs in the original logs."
+  ]
+}

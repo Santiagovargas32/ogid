@@ -1,3 +1,4 @@
+import {beginEventIndex,eventIndexPage,eventIndexStatus,cleanEventIndex} from "./eventIndex.js";
 import { AdvancedSnapshots } from "./advancedSnapshots.js";
 import { calculateMarketProjection } from "../services/market/marketProjection.js";
 import { randomUUID } from "node:crypto";
@@ -48,22 +49,11 @@ export class BusinessRuntime {
   registry(instruments){
     registerInstruments(instruments || []);
     if(this.analysisOnly)return {registered:listVerifiedInstruments().length};
-    for(const i of listVerifiedInstruments())instrumentRow(this.db,i.instrumentId);
-    const universe=listVerifiedInstruments(),fingerprint=stableHash(universe.map(i=>[i.instrumentId,i.canonicalSymbol,i.aliases,i.companyId]));
-    if(readMeta(this.db,"events.index",null)!==fingerprint){
-      this.db.transaction(()=>{
-        this.db.prepare("DELETE FROM event_instruments").run();
-        const ledger=new EventLedger({store:{}});
-        const first=this.db.prepare("SELECT event_id,payload_json FROM events ORDER BY event_id LIMIT 256");
-        const next=this.db.prepare("SELECT event_id,payload_json FROM events WHERE event_id>? ORDER BY event_id LIMIT 256");
-        const insert=this.db.prepare("INSERT INTO event_instruments VALUES(?,?,?)");
-        let cursor=null;
-        for(;;){const page=cursor===null?first.all():next.all(cursor);if(!page.length)break;for(const row of page){const event=JSON.parse(row.payload_json);for(const impact of ledger.impact(event,universe))insert.run(event.eventId,impact.instrumentId,JSON.stringify(impact));}cursor=page.at(-1).event_id;}
-        writeMeta(this.db,"events.index",fingerprint);
-      }).immediate();
-    }
-    return {registered:universe.length};
+    this.db.transaction(()=>{for(const i of listVerifiedInstruments())instrumentRow(this.db,i.instrumentId);}).immediate();
+    this.registryDiagnostics=beginEventIndex(this.db);
+    return {registered:listVerifiedInstruments().length,index:this.registryDiagnostics};
   }
+  indexPage(input){const started=performance.now();this.registryDiagnostics=eventIndexPage(this.db,input);if(this.registryDiagnostics.state==='ready')this.registryDiagnostics.cleanupPending=cleanEventIndex(this.db);this.registryDiagnostics.durationMs=performance.now()-started;return this.registryDiagnostics;}
   close(){this.newsCorpus?.close();this.services?.news.close();}
   restoreQuotas(){for(const [provider,saved]of Object.entries(this.load("provider-quota")?.providers || {})){apiQuotaTracker.ensureProvider(provider);Object.assign(apiQuotaTracker.providers[provider],saved);}}
   configure(input={}){

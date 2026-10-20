@@ -30,6 +30,16 @@ import { getOperation } from "../contracts/ogidOperations.js";
 import { createHash, randomUUID } from "node:crypto";
 import { AWARENESS_SOURCES } from "../services/awareness/awarenessCatalog.js";
 import { assertPublication, normalizePublicationEvidence, PROMPT_VERSION } from "../services/agent/contracts.js";
+test('admin observations separate historical runs and persist only bounded fenced progress',()=>{
+ const f=fixture();try{
+  const auth={...job(f),owner:'owner'};f.advance(2000);const since=new Date(f.clock()).toISOString();
+  f.repo.heartbeat({...auth,progress:{phase:'inference',toolsCompleted:3,lastProgressAt:since,outputCharacters:200,privateText:'PRIVATE',prompt:'PRIVATE'}});
+  const s=f.repo.status({since});assert.equal(s.sinceCounts.length,0);assert.equal(s.publicationCount,0);assert.equal(s.recentJobs[0].jobId,auth.jobId);
+  assert.equal(s.runs[0].metadata.toolsCompleted,3);assert.equal(JSON.stringify(s).includes('PRIVATE'),false);
+  assert.throws(()=>f.repo.heartbeat({...auth,fence:auth.fence-1,progress:{toolsCompleted:99}}),{code:'AGENT_LEASE_LOST'});
+  assert.equal(f.repo.status({since}).runs[0].metadata.toolsCompleted,3);
+ }finally{f.close();}
+});
 test('each job output schema pins the task and exact instrument identity without changing the shared contract',()=>{
  const ajv=new Ajv({strict:false}),instrument=ajv.compile(publicationSchemaForJob({task:'instrument_outlook',scope:'yahoo-msft-fixture'}));
  const p={...proposal(['coverage:fixture']),task:'instrument_outlook',instrumentId:'yahoo-msft-fixture',drivers:[],scenarios:[],alternatives:[],missingEvidence:['No prices'],target:'absolute-return-direction; first available daily close after 24h',methods:{sentiment:'qualitative-evidence-synthesis-v1',stability:'qualitative-watchlist-v1'},intradayScenarios:[{horizonMinutes:60,interval:'1h',direction:'unavailable',summary:'No candles',evidenceIds:[],invalidation:[],evaluation:'unavailable'}]};
@@ -634,6 +644,24 @@ test("publication rejects invented references and probability, commits atomicall
     f.close();
   }
 });
+test('a lease that expires during publication validation cannot commit or update memory',()=>{
+ const f=fixture();try{
+  const j=job(f),snapshot=f.repo.snapshot(j),id=f.repo.evidence({snapshotId:snapshot.snapshotId}).items[0].evidenceId;
+  const item=f.repo.item.bind(f.repo);
+  f.repo.item=row=>{const value=item(row);f.advance(90001);return value;};
+  assert.throws(()=>f.repo.publish({...j,proposal:proposal([id]),mode:'shadow'}),{code:'AGENT_LEASE_LOST'});
+  assert.equal(f.db.prepare('SELECT count(*) AS n FROM agent_publications').get().n,0);
+  assert.equal(f.db.prepare('SELECT count(*) AS n FROM agent_memory').get().n,0);
+ }finally{f.close();}
+});
+test('ephemeral progress requires ownership and an unexpired fence while terminal notices cannot change text',()=>{
+ const f=fixture();try{
+  const j=job(f);assert.equal(f.repo.progress(j).sessionId,null);
+  assert.throws(()=>f.repo.progress({...j,owner:'other'}),{code:'AGENT_LEASE_LOST'});
+  f.advance(90001);assert.throws(()=>f.repo.progress(j),{code:'AGENT_LEASE_LOST'});
+ }finally{f.close();}
+});
+
 test("device ownership, revocation and send idempotency do not grant admin or disclose another chat", () => {
   const f = fixture();
   try {
@@ -1071,6 +1099,26 @@ test("chat repairs unknown citations from frozen coverage once and never stores 
    assert.equal(f.repo.run({jobId:sent.jobId,internal:true}).status,repairSucceeds?'completed':'failed');
    const answers=f.repo.messages({deviceId:device.deviceId,sessionId:session.sessionId}).items.filter(m=>m.role==='assistant');
    assert.equal(answers.length,repairSucceeds?1:0);assert.doesNotMatch(JSON.stringify(answers),/invented/);
+  }finally{f.close();}
+ }
+});
+
+test('a chat with no evidence tool call uses at most one contract repair and still requires frozen evidence',async()=>{
+ for(const repairsEvidence of [true,false]){
+  const f=fixture();try{
+   const d=f.repo.deviceCreate({label:'tool repair'}),s=f.repo.sessionCreate({deviceId:d.deviceId,model:manifest.defaultModel});
+   const sent=f.repo.send({deviceId:d.deviceId,sessionId:s.sessionId,key:'one',text:'Describe la cobertura.'});
+   const j=f.repo.claim({owner:'owner'});let prompts=0;
+   const worker=new IntelligenceWorker({model:manifest.defaultModel,call:async(m,a)=>f.repo.call(m,a),opencode:{
+    session:async id=>({id}),messages:async()=>({data:[]}),cancel:async()=>{},
+    prompt:async(_s,input)=>{prompts++;if(prompts===2){assert.match(input.text,/agent.evidence/);assert.match(input.text,/snapshotId/);}},
+    progress:async(_s,_signal,id)=>{
+     const row=f.repo.run({jobId:j.jobId,internal:true}),coverage=f.repo.evidence({snapshotId:row.snapshotId,domain:'coverage'}).items[0];
+     return {idle:true,messageId:'answer',finish:'stop',outcome:'succeeded',text:`Cobertura parcial [evidence:${coverage.evidenceId}]`,tools:id.startsWith('msg_repair_')&&repairsEvidence?[{name:'ogid_query',status:'completed',operationId:'agent.evidence',snapshotId:row.snapshotId}]:[],usage:[]};
+    }
+   },policy:{pollMs:1,runDeadlineMs:10000}});worker.owner='owner';await worker.execute(j);
+   assert.equal(prompts,2);assert.equal(f.repo.run({jobId:sent.jobId,internal:true}).status,repairsEvidence?'completed':'failed');
+   const answers=f.repo.messages({deviceId:d.deviceId,sessionId:s.sessionId}).items.filter(m=>m.role==='assistant');assert.equal(answers.length,repairsEvidence?1:0);
   }finally{f.close();}
  }
 });

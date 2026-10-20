@@ -27,6 +27,15 @@ async function boundedBody(response,maxBytes,signal) {
   try{return (await readBoundedBody(response,{maxBytes,signal})).toString("utf8");}
   catch(error){if(error.message === "response-too-large")throw new AppError("Fuente excede presupuesto.",413,"SOURCE_TOO_LARGE");throw error;}
 }
+export function sourceFailureCode(error,{cancelled=false,timedOut=false}={}) {
+  if(cancelled)return 'SOURCE_CANCELLED';
+  if(timedOut)return 'SOURCE_TIMEOUT';
+  if(error.status)return `HTTP_${error.status}`;
+  if(error instanceof SyntaxError)return 'SOURCE_JSON_INVALID';
+  if(error instanceof TypeError || /^(ECONN|ENOTFOUND|EAI_|UND_ERR_|CERT_)/.test(error.cause?.code||error.code||''))return 'SOURCE_TRANSPORT_ERROR';
+  if(['cik-mismatch','invalid-sec-submissions','invalid-dated-issuer-holdings','invalid-holding','invalid-holdings-total'].includes(error.message))return 'SOURCE_CONTRACT_INVALID';
+  return error.code || 'SOURCE_UNCLASSIFIED_ERROR';
+}
 export class OfficialSourceService {
   constructor({store,eventLedger,sources=[],fetchImpl=fetch,now=Date.now,userAgent=null,timeoutMs=RUNTIME_POLICY.research.sec.timeoutMs}={}){Object.assign(this,{store,eventLedger,sources,fetchImpl,now,userAgent,timeoutMs});this.inFlight=null;}
   status(){return {sources:this.sources.map(s=>({sourceId:s.sourceId,name:s.name,adapter:s.adapter,enabled:s.enabled,companyId:s.companyId||null,instrumentId:s.instrumentId||null,symbols:s.symbols || [],url:s.url || null,admission:s.verifiedAt?"configured-with-evidence":"pending-verification",runtime:this.store.state.sourceStates[s.sourceId]||{status:"not-validated",lastSuccessAt:null}})),asOf:new Date(this.now()).toISOString(),warnings:["Configured adapters are not operational coverage until successful source reads; no paid provider activated."]};}
@@ -54,7 +63,7 @@ export class OfficialSourceService {
           this.store.transact(state=>state.companyFacts[company.companyId]={companyId:company.companyId,cik:company.cik,fetchedAt:at,sourceUrl:url,metrics,coverage:"configured-concepts-and-last-100-observations-per-unit",methodVersion:"sec-companyfacts-context-v1"});accepted=metrics.length;}
         if(source.adapter==="issuer-holdings-json") {accepted=this.ingestHoldings(source,parsed,at);}
         this.store.transact(state=>state.sourceStates[id]={...state.sourceStates[id],status:"healthy",failureCode:null,lastSuccessAt:at,accepted,validation:"source-response-read; not external attestation"});results.push({sourceId:id,status:"healthy",accepted});
-      }catch(error){this.store.transact(state=>state.sourceStates[id]={...state.sourceStates[id],status:signal.aborted?"cancelled":error.status===403?"blocked":error.status===429?"rate-limited":"error",failureCode:signal.aborted?"SOURCE_CANCELLED":requestSignal.aborted?"SOURCE_TIMEOUT":error.code || (error.status?`HTTP_${error.status}`:"SOURCE_CONTRACT_OR_TRANSPORT_ERROR"),nextEligibleAt:new Date(this.now()+Math.max(error.retryAfterMs || 0,error.status===403?86400000:error.status===429?3600000:300000)).toISOString()});results.push({sourceId:id,...this.store.state.sourceStates[id]});if(error.status===403 || error.status===429)break;}
+      }catch(error){this.store.transact(state=>state.sourceStates[id]={...state.sourceStates[id],status:signal.aborted?"cancelled":error.status===403?"blocked":error.status===429?"rate-limited":"error",failureCode:sourceFailureCode(error,{cancelled:signal.aborted,timedOut:requestSignal.aborted}),nextEligibleAt:new Date(this.now()+Math.max(error.retryAfterMs || 0,error.status===403?86400000:error.status===429?3600000:300000)).toISOString()});results.push({sourceId:id,...this.store.state.sourceStates[id]});if(error.status===403 || error.status===429)break;}
     }return {results,asOf:new Date(this.now()).toISOString()};}
   ingestHoldings(source,data,at) {
     const instrument=getInstrumentById(source.instrumentId);if(instrument?.assetType!=="etf"||!instrument.isin||data.isin!==instrument.isin||data.instrumentId!==instrument.instrumentId||!iso(data.asOf)||Date.parse(data.asOf)>this.now()||!Array.isArray(data.holdings)||data.holdings.length>10000)throw new Error("invalid-dated-issuer-holdings");

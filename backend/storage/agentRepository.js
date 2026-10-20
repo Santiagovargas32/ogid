@@ -13,6 +13,7 @@ import {
 import { AWARENESS_SOURCES } from "../services/awareness/awarenessCatalog.js";
 import {
   assertPublication,
+  evidencePublicationCode,
   normalizePublicationEvidence,
   agentError,
   TASKS,
@@ -40,8 +41,11 @@ const safeId = (v) =>
   typeof v === "string" && /^[A-Za-z0-9._:-]{1,160}$/.test(v);
 const admitted = (id) =>
   AWARENESS_SOURCES.find((s) => s.sourceId === id)?.admissionState === "active";
-export const AGENT_READER_METHODS = new Set(["evidence","evidenceChunk","clusters","memory"]);
+export const AGENT_READER_METHODS = new Set(["evidence","evidenceChunk","clusters","memory",
+  "messages","deviceAuth","run","status","publications","sessions","workerHealth","sessionAccess"]);
 export const AGENT_METHODS = [
+  "sessionAccess",
+  "progress",
   "status",
   "deviceCreate",
   "deviceAuth",
@@ -107,8 +111,16 @@ export class AgentRepository {
       return {...next,...(backgroundModel===undefined?{}:{requeued})};
     }).immediate();
   }
-  status() {
+  status({since=null}={}) {
+    const validSince=typeof since==='string' && Number.isFinite(Date.parse(since)) ? since : stamp(this.now());
     return {
+      sampledAt:stamp(this.now()),
+      since:validSince,
+      sinceCounts:this.db.prepare('SELECT status,count(*) AS count FROM agent_runs WHERE started_at>=? GROUP BY status').all(validSince),
+      queueAge:this.db.prepare("SELECT min(created_at) AS oldestQueuedAt FROM agent_jobs WHERE status='queued'").get(),
+      recentJobs:this.db.prepare("SELECT job_id AS jobId,task,scope,model,status,error_code AS errorCode,created_at AS createdAt,updated_at AS updatedAt,lease_until AS leaseUntil,fence,attempts,snapshot_id AS snapshotId FROM agent_jobs ORDER BY CASE WHEN status IN ('running','waiting-model','validating') THEN 0 ELSE 1 END,updated_at DESC LIMIT 50").all(),
+      publicationCount:this.db.prepare('SELECT count(*) AS count FROM agent_publications').get().count,
+      recentPublications:this.db.prepare('SELECT mode,payload_json FROM agent_publications ORDER BY published_at DESC,rowid DESC LIMIT 5').all().map(({mode,payload_json})=>({mode,...parse(payload_json)})),
       workerHealth: this.workerHealth(),
       runs: this.db
         .prepare(
@@ -213,6 +225,10 @@ export class AgentRepository {
       .get(sessionId, deviceId, deviceId);
     if (!r) throw agentError("AGENT_SESSION_NOT_FOUND", 404);
     return r;
+  }
+  sessionAccess({sessionId,deviceId}) {
+    this.owned(sessionId,deviceId);
+    return {authorized:true};
   }
   sessions({ deviceId, cursor = 0, limit = 20 }) {
     const rows = this.db
@@ -688,11 +704,26 @@ export class AgentRepository {
     return { resumed: true };
   }
   heartbeat(input) {
-    this.fenced(input);
-    this.db
-      .prepare("UPDATE agent_jobs SET lease_until=? WHERE job_id=?")
-      .run(this.now() + 90000, input.jobId);
+    this.db.transaction(()=>{
+      this.fenced(input);
+      this.db.prepare("UPDATE agent_jobs SET lease_until=? WHERE job_id=?").run(this.now() + 90000, input.jobId);
+      if(input.progress && typeof input.progress==='object'){
+        const p=input.progress,clean={};
+        for(const key of ['elapsedMs','firstProgressMs','toolsCompleted','outputCharacters'])if(Number.isFinite(p[key])&&p[key]>=0)clean[key]=p[key];
+        if(['snapshot','inference','validating','repair'].includes(p.phase))clean.phase=p.phase;
+        if(typeof p.lastProgressAt==='string' && Number.isFinite(Date.parse(p.lastProgressAt)))clean.lastProgressAt=p.lastProgressAt;
+        this.db.prepare("UPDATE agent_runs SET metadata_json=json_patch(metadata_json,?) WHERE job_id=? AND fence=?").run(json(clean),input.jobId,input.fence);
+      }
+    }).immediate();
     return { renewed: true };
+  }
+  progress(input) {
+    const job=this.job(input.jobId);
+    if(job.lease_owner!==input.owner || job.fence!==input.fence)throw agentError('AGENT_LEASE_LOST',409);
+    // A terminal notification only requests durable reconciliation. Text/tool
+    // updates still require the active, unexpired lease.
+    if(!(input.done===true && ['completed','failed','incomplete','cancelled','superseded'].includes(job.status)))this.fenced(input);
+    return {sessionId:job.session_id};
   }
   link(input) {
     const r = this.fenced(input);
@@ -754,6 +785,7 @@ export class AgentRepository {
             );
           if(unknownEvidenceId)
             throw agentError("AGENT_UNKNOWN_EVIDENCE",400,{evidenceId:unknownEvidenceId,reason:'not-in-snapshot'});
+          this.fenced(input);
           this.db
             .prepare(
               "INSERT OR IGNORE INTO agent_messages VALUES(?,?,?,?,?,NULL)",
@@ -771,6 +803,7 @@ export class AgentRepository {
               }),
             );
         }
+        this.fenced(input);
         this.db
           .prepare(
             "UPDATE agent_jobs SET status=?,error_code=?,updated_at=? WHERE job_id=?",
@@ -825,6 +858,7 @@ export class AgentRepository {
         const statements={evidence:"INSERT INTO agent_evidence(snapshot_id,evidence_id,domain,available_at,article_id,article_revision,payload_json) VALUES(?,?,?,?,?,?,?)",clusters:"INSERT INTO agent_clusters VALUES(?,?,?,?)",members:"INSERT INTO agent_cluster_members VALUES(?,?,?)"};
         if(!statements[input.table] || !Array.isArray(input.rows) || input.rows.length>100)throw agentError("AGENT_INVALID_SNAPSHOT");
         const insert=this.db.prepare(statements[input.table]);for(const values of input.rows)insert.run(input.snapshotId,...values);
+        this.fenced(input);
         build.page++;
         this.db.prepare("UPDATE agent_snapshots SET manifest_json=? WHERE snapshot_id=?").run(json(manifest),input.snapshotId);
         return {persisted:true,page:build.page};
@@ -833,6 +867,7 @@ export class AgentRepository {
       for(const [table,sqlTable]of Object.entries({evidence:"agent_evidence",clusters:"agent_clusters",members:"agent_cluster_members"})){
         if(this.db.prepare(`SELECT count(*) AS n FROM ${sqlTable} WHERE snapshot_id=?`).get(input.snapshotId).n!==build.counts[table])throw agentError("AGENT_SNAPSHOT_BUILD_INCOMPLETE",409);
       }
+      this.fenced(input);
       delete manifest.building;manifest.sealed=true;
       this.db.prepare("UPDATE agent_snapshots SET manifest_json=? WHERE snapshot_id=?").run(json(manifest),input.snapshotId);
       this.db.prepare("UPDATE agent_jobs SET snapshot_id=? WHERE job_id=?").run(input.snapshotId,job.job_id);
@@ -1134,13 +1169,7 @@ export class AgentRepository {
         if (saved) data.excerptSha256 = saved.sha256;
       }
     }
-    return {
-      evidenceId: row.evidence_id,
-      domain: row.domain,
-      ...(row.domain==='news-reference'?{contextRole:'historical-alert-source'}:{}),
-      revision: row.article_revision || raw.revision || null,
-      availableAt: row.available_at,
-      quality: {
+    const quality = {
         synthetic: Boolean(
           raw.synthetic ||
           raw.quality?.synthetic ||
@@ -1151,7 +1180,15 @@ export class AgentRepository {
           raw.stale || raw.quality?.stale || raw.provenance?.stale,
         ),
         dataMode: raw.dataMode || null,
-      },
+      };
+    return {
+      evidenceId: row.evidence_id,
+      domain: row.domain,
+      ...(row.domain==='news-reference'?{contextRole:'historical-alert-source'}:{}),
+      revision: row.article_revision || raw.revision || null,
+      availableAt: row.available_at,
+      quality,
+      publicationEligibility:{eligible:evidencePublicationCode({quality})===null,reason:evidencePublicationCode({quality})},
       data,
     };
   }
@@ -1316,6 +1353,9 @@ export class AgentRepository {
     });
     return this.db
       .transaction(() => {
+        // Validation can take longer than the lease on a cold database. Check
+        // again at the commit boundary; serialized JS does not stop wall time.
+        this.fenced(input);
         const at = stamp(this.now()),
           publicationId = randomUUID(),
           validUntil = stamp(this.now() + 86400000);
@@ -1448,6 +1488,7 @@ export class AgentRepository {
             .prepare("INSERT INTO geopolitical_alert_revisions VALUES(?,?,?)")
             .run(alert.alert_id, revision, json(payload));
         }
+        this.fenced(input);
         this.db
           .prepare(
             "UPDATE agent_jobs SET status='completed',updated_at=? WHERE job_id=?",

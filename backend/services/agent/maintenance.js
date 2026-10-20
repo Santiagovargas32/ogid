@@ -43,6 +43,7 @@ export class AgentMaintenance {
         ]),
       ),
     ];
+    const previousDomains = this.status.domains || {};
     const domains = {};
     this.status={...this.status,state:"running",errorCode:null,startedAt:new Date().toISOString()};
     for (const [domain, execute] of operations) {
@@ -58,7 +59,7 @@ export class AgentMaintenance {
         domains[domain] = {
           state: "degraded",
           errorCode: e.code || "AGENT_PREREQUISITE_UNAVAILABLE",
-          lastSuccessAt: this.status.domains?.[domain]?.lastSuccessAt || null,
+          lastSuccessAt: previousDomains[domain]?.lastSuccessAt || null,
         };
       }
       this.status={...this.status,domains:{...domains}};
@@ -66,17 +67,17 @@ export class AgentMaintenance {
     const failure = Object.values(domains).find((d) => d.state === "degraded");
     this.status = {
       ...this.status,
-      state: failure ? "degraded" : "ready",
+      state: this.stopping ? 'stopped' : failure ? "degraded" : "ready",
       currentDomain:null,
       domains,
       errorCode: failure?.errorCode || null,
-      lastSuccessAt: failure
+      lastSuccessAt: failure || this.stopping
         ? this.status.lastSuccessAt
         : new Date().toISOString(),
     };
   }
   start() {
-    if (!this.enabled) return;
+    if (!this.enabled || this.timer) return;
     this.stopping = false;
     void this.tick();
     this.timer = setInterval(() => void this.tick(), 60000);
@@ -85,6 +86,7 @@ export class AgentMaintenance {
   async stop() {
     this.stopping = true;
     clearInterval(this.timer);
+    this.timer = null;
     await this.task;
   }
 }

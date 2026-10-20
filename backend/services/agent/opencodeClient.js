@@ -38,22 +38,27 @@ export class OpenCodeClient {
       },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
-    if (!r.ok) throw agentError(`OPENCODE_HTTP_${r.status}`, 502);
+    if (!r.ok) {
+      await r.body?.cancel();
+      throw agentError(`OPENCODE_HTTP_${r.status}`, 502);
+    }
     if (r.status === 204) return null;
     const reader = r.body.getReader(),
       parts = [];
     let bytes = 0;
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      bytes += value.byteLength;
-      if (bytes > 2097152) {
-        await reader.cancel();
-        throw agentError("OPENCODE_RESPONSE_TOO_LARGE", 502);
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        bytes += value.byteLength;
+        if (bytes > 2097152) throw agentError("OPENCODE_RESPONSE_TOO_LARGE", 502);
+        parts.push(value);
       }
-      parts.push(value);
+      try { return JSON.parse(Buffer.concat(parts).toString()); }
+      catch { throw agentError('OPENCODE_INVALID_RESPONSE', 502); }
+    } finally {
+      await reader.cancel().catch(()=>{});reader.releaseLock();
     }
-    return JSON.parse(Buffer.concat(parts).toString());
   }
   async verify(signal) {
     const info = await this.request("/api/info", { signal });

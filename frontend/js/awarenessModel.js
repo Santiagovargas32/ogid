@@ -194,6 +194,8 @@ export function normalizeAwarenessPayload(rawPayload = {}) {
     .sort(compareRecent);
   return {
     schemaVersion: AWARENESS_SCHEMA_VERSION,
+    ...(Number.isSafeInteger(payload.hydrationRevision)?{hydrationRevision:payload.hydrationRevision}:{}),
+    hydrated:payload.hydrated===true || (payload.hydrated!==false && Array.isArray(payload.upcoming) && Array.isArray(payload.recent)),
     revision: nonNegativeInteger(payload.revision),
     generatedAt: timestampOrNull(payload.generatedAt),
     mode: AWARENESS_MODES.has(mode) ? mode : "off",
@@ -237,7 +239,11 @@ export function mergeAwarenessPayload(currentPayload = {}, rawIncoming = {}, { d
   const current = normalizeAwarenessPayload(currentPayload);
   if (!delta || isFullAwarenessPayload(incomingPayload)) {
     const replacement = normalizeAwarenessPayload(incomingPayload);
-    return replacement.revision < current.revision ? current : replacement;
+    if(replacement.revision<current.revision){
+      if(current.hydrated)return current;
+      return {...current,upcoming:replacement.upcoming,recent:replacement.recent,hydrated:true,hydrationRevision:replacement.revision};
+    }
+    return replacement;
   }
 
   const incomingRevision = nonNegativeInteger(incomingPayload.revision);

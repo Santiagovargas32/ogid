@@ -1,5 +1,5 @@
 // Read-only, bounded telemetry. A completed interval is not automatic acceptance.
-import { mkdirSync, openSync, closeSync, writeSync, writeFileSync, renameSync, readFileSync, existsSync } from "node:fs";
+import { mkdirSync, openSync, closeSync, writeSync, writeFileSync, renameSync, readFileSync, existsSync,statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { performance } from "node:perf_hooks";
@@ -7,6 +7,21 @@ import { setTimeout as wait } from "node:timers/promises";
 import dotenv from "dotenv";
 
 const numeric = o => Object.fromEntries(Object.entries(o || {}).filter(([,v]) => typeof v === "number" && Number.isFinite(v)));
+// Linux process metadata only; no argv, environments or private child output.
+function managedMemory(runtime) {
+  const seen=new Set(),processes=[];
+  const visit=(pid,component)=>{
+    if(!Number.isSafeInteger(pid)||pid<=0||seen.has(pid)||seen.size>=32)return;
+    seen.add(pid);
+    try{
+      const status=readFileSync(`/proc/${pid}/status`,'utf8'),rss=status.match(/^VmRSS:\s+(\d+)\s+kB/m);
+      processes.push({pid,component,rssBytes:rss?Number(rss[1])*1024:null});
+      for(const child of readFileSync(`/proc/${pid}/task/${pid}/children`,'utf8').trim().split(/\s+/).filter(Boolean))visit(Number(child),component);
+    }catch{processes.push({pid,component,rssBytes:null});}
+  };
+  for(const [component,state]of Object.entries(runtime?.components||{}))visit(state.pid,component);
+  return {processes,complete:processes.length>0&&processes.every(p=>p.rssBytes!==null),rssBytes:processes.length?processes.reduce((sum,p)=>sum+(p.rssBytes||0),0):null};
+}
 const workerSample = storage => {
   const heartbeatAt=storage?.worker?.heartbeatAt || null;
   const age=heartbeatAt ? Date.now()-Date.parse(heartbeatAt) : NaN;
@@ -32,10 +47,10 @@ export async function shadowSample({ base = "http://127.0.0.1:3000", token = "",
     storage: { state: h.storage?.state || null, queue: numeric(h.storage?.queue), analysisState: h.storage?.analysis?.state || null,queriesState:h.storage?.queries?.state || null,
       queryRecovery:{recovering:h.storage?.queryRecovery?.recovering===true,recoveries:h.storage?.queryRecovery?.recoveries ?? 0},
       analysisRecovery:{recovering:h.storage?.analysisRecovery?.recovering === true,recoveries:h.storage?.analysisRecovery?.recoveries ?? 0},
-      writer:workerSample(h.storage),analysis:workerSample(h.storage?.analysis),queries:workerSample(h.storage?.queries) },
+      eventIndex:h.storage?.worker?.eventIndex || null,writer:workerSample(h.storage),analysis:workerSample(h.storage?.analysis),queries:workerSample(h.storage?.queries) },
     websocket: { clients: h.websocketClients ?? null, metrics: numeric(h.websocket?.metrics) },
     pipelines: Object.fromEntries(Object.entries(h.pipeline || {}).map(([k,v]) => [k,{ status: v.status || null }])),
-    agent: { mode: a.mode || null, runtime: a.runtime || null, paused: a.paused ?? null, workerState: a.workerHealth?.state || null, workerError: a.workerHealth?.errorCode || null, jobs: (a.jobs || []).map(j=>({ status: j.status, count: j.count })), latestPublicationAt: a.latest?.publishedAt || null, recentRuns: (a.runs || []).slice(0,20).map(r=>({ status: r.status, startedAt: r.startedAt, finishedAt: r.finishedAt })) },
+    agent: { mode: a.mode || null,taskModes:a.taskModes || null, runtime: a.runtime || null, paused: a.paused ?? null, workerState: a.workerHealth?.state || null, workerError: a.workerHealth?.errorCode || null, jobs: (a.jobs || []).map(j=>({ status: j.status, count: j.count })),sinceCounts:a.sinceCounts || [],oldestQueuedAt:a.queueAge?.oldestQueuedAt || null,publicationCount:a.publicationCount??null, latestPublicationAt: a.latest?.publishedAt || null, recentRuns: (a.runs || []).slice(0,20).map(r=>({jobId:r.jobId, status: r.status, startedAt: r.startedAt, finishedAt: r.finishedAt,progress:{phase:r.metadata?.phase,toolsCompleted:r.metadata?.toolsCompleted,lastProgressAt:r.metadata?.lastProgressAt,firstProgressMs:r.metadata?.firstProgressMs} })) },
   };
 }
 
@@ -57,9 +72,14 @@ async function main() {
     while (!controller.signal.aborted) {
       const now = performance.now(); if(previous !== null)summary.maxGapMs=Math.max(summary.maxGapMs,Math.round(now-previous));previous=now;
       const sample = await shadowSample({ base: `http://127.0.0.1:${env.PORT || "3000"}`, token: env.ADMIN_API_TOKEN || "" });
+      sample.managedMemory=managedMemory(sample.agent.runtime);
+      try{sample.walBytes=statSync(`${env.STORAGE_DB_PATH}-wal`).size;}catch{sample.walBytes=null;}
+      if(sample.managedMemory.complete)summary.maxManagedRss=Math.max(summary.maxManagedRss||0,sample.managedMemory.rssBytes);
+      if(sample.walBytes!==null)summary.maxWalBytes=Math.max(summary.maxWalBytes||0,sample.walBytes);
       writeSync(file, JSON.stringify(sample)+"\n"); summary.samples++;
       if (Object.values(sample.http).some(status=>status !== 200)) summary.unavailableSamples++;
-      if (sample.agent.mode !== "shadow") summary.notShadowSamples++;
+      if (!sample.agent.mode)summary.unknownModeSamples=(summary.unknownModeSamples||0)+1;
+      else if (sample.agent.mode !== "shadow" || Object.values(sample.agent.taskModes||{}).includes('visible')) summary.notShadowSamples++;
       if (sample.agent.workerState !== "connected") summary.workerDisconnectedSamples++;
       if ([sample.storage.writer,sample.storage.analysis,sample.storage.queries].some(w=>w.heartbeatAgeMs>15000))summary.storageHeartbeatDelayedSamples++;
       summary.maxQueryRecoveries=Math.max(summary.maxQueryRecoveries,sample.storage.queryRecovery.recoveries);

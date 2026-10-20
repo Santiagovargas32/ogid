@@ -28,8 +28,8 @@ export class ProviderRuntime {
   recordCache(provider, hit = true) { if (hit) this.metric(provider).cacheHits += 1; }
   reset() { this.providerSemaphores.clear(); this.hostSemaphores.clear(); this.inFlight.clear(); this.circuits.clear(); this.metrics.clear(); }
   circuit(provider) { if (!this.circuits.has(provider)) this.circuits.set(provider, { state: "closed", failures: 0, openedAt: null }); return this.circuits.get(provider); }
-  assertCircuit(provider) {
-    const circuit = this.circuit(provider);
+  assertCircuit(key, provider=key) {
+    const circuit = this.circuit(key);
     if (circuit.state === "open" && this.now() - circuit.openedAt < this.recoveryMs) throw new ProviderError(ProviderErrorCode.CIRCUIT_OPEN, `${provider}-circuit-open`, { provider });
     if (circuit.state === "open") circuit.state = "half-open";
   }
@@ -44,7 +44,7 @@ export class ProviderRuntime {
     try { return await promise; } finally { if (key) this.inFlight.delete(key); }
   }
   async #execute(provider, url, options) {
-    const circuitKey = options.circuitKey || provider; this.assertCircuit(circuitKey); const metric = this.metric(provider); metric.calls += 1; const started = this.now();
+    const circuitKey = options.circuitKey || provider; this.assertCircuit(circuitKey,provider); const metric = this.metric(provider); metric.calls += 1; const started = this.now();
     const quotaSnapshot = (options.quotaTracker || apiQuotaTracker).getProviderSnapshot(provider, this.now());
     if (quotaSnapshot.exhausted) { metric.quotaRejected += 1; throw new ProviderError(ProviderErrorCode.QUOTA_EXHAUSTED, `${provider}-quota-exhausted`, { provider }); }
     const host = new URL(url).host; const providerSem = this.semaphore(this.providerSemaphores, provider, options.providerConcurrency || this.providerConcurrency);

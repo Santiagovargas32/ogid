@@ -134,7 +134,7 @@ function markInvalidFeed(url) {
 }
 
 async function fetchWithTimeout(url, options, timeoutMs, retries) {
-  return providerRuntime.fetch("rss", url, { ...options, timeoutMs, retries });
+  return providerRuntime.fetch("rss", url, { ...options, circuitKey:`rss:${new URL(url).host}`, timeoutMs, retries });
 }
 
 export async function fetchRss({
@@ -295,11 +295,15 @@ export async function fetchRss({
         ...responseMeta
       });
     } catch (error) {
+      const circuit=providerRuntime.getCircuitSnapshot(`rss:${new URL(urlValue).host}`);
+      const cooldownUntil=circuit.state==='open'?new Date(circuit.openedAt+providerRuntime.recoveryMs).toISOString():null;
       feedStatus.push({
         label,
         url: urlValue,
         status: "error",
         count: 0,
+        cooldownUntil,
+        nextEligibleAt:cooldownUntil,
         error: error?.name === "AbortError" ? "rss-timeout" : error?.message || "rss-fetch-failed"
       });
     }

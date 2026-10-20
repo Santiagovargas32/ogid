@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { agentError, TASKS } from "./contracts.js";
 export const AGENT_POLICY = Object.freeze({
   leaseMs: 90000,
+  heartbeatMs: 20000,
   pollMs: 2000,
   reconcileMs: 60000,
   runDeadlineMs: 1800000,

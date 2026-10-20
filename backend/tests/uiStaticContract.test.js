@@ -99,29 +99,18 @@ test("admin keeps limits near pipeline without redundant fallback diagnostics", 
     frontendFile("js/admin.js")
   ]);
   assert.ok(admin.indexOf("API Limits Monitor") > admin.indexOf("Pipeline Status"));
-  assert.ok(admin.indexOf("API Limits Monitor") < admin.indexOf("AI Enrichments"));
+  assert.ok(admin.indexOf("API Limits Monitor") < admin.indexOf("Trabajos y publicaciones del agente"));
   assert.doesNotMatch(admin, /Fallback Market Provider|market-fallback-diagnostics-body/);
   assert.doesNotMatch(adminScript, /No response preview available/);
 });
 
-test("AI enrichment surfaces remain explicitly separated from deterministic content", async () => {
-  const [dashboard, admin, script, adminScript] = await Promise.all([
-    frontendFile("index.html"),
-    frontendFile("admin.html"),
-    frontendFile("js/dashboard.js"),
-    frontendFile("js/admin.js")
-  ]);
-  assert.match(dashboard, /id="news-drawer-ai"/);
-  assert.match(dashboard, /id="ai-country-shell"/);
-  assert.match(dashboard, /id="ai-market-shell"/);
-  assert.match(admin, /id="ai-diagnostics-body"/);
-  assert.match(admin, /id="ai-enrichments-body"/);
-  assert.match(script, /renderAiEvidence/);
-  assert.match(script, /ai\.enabled === true && ai\.mode === "visible"/);
-  assert.match(script, /\["none", "off", "disabled"\]\.includes\(provider\)/);
-  assert.doesNotMatch(`${dashboard}\n${script}`, /AI:\s*live/i);
-  assert.match(adminScript, /const storedCounts = ai\.store\?\.counts \|\| \{\}/);
-  assert.match(adminScript, /stored ready:/);
+test("legacy AI surfaces are retired and agent operations preserve deterministic panels", async () => {
+  const [dashboard,admin,script,adminScript,agentView]=await Promise.all([frontendFile("index.html"),frontendFile("admin.html"),frontendFile("js/dashboard.js"),frontendFile("js/admin.js"),frontendFile("js/agentOperationsView.js")]);
+  assert.doesNotMatch(`${dashboard}\n${admin}`,/ai-enrichments-body|ai-diagnostics-body|ai-country-shell|ai-market-shell|news-drawer-ai|IA heredada/);
+  assert.doesNotMatch(`${script}\n${adminScript}`,/renderAiEvidence|getAdminAiEnrichments|articleAiEntry/);
+  for(const id of ['agent-process-body','agent-activity-body','agent-publications-body'])assert.ok(admin.includes(`id="${id}"`));
+  assert.match(agentView,/textContent/);assert.doesNotMatch(agentView,/innerHTML/);
+  assert.match(admin,/RSS Feed Status/);assert.match(admin,/News Provider Flow/);
 });
 
 test("Admin removes daily history and replay controls while keeping diagnostics", async () => {

@@ -52,9 +52,6 @@ function cacheElements() {
   elements.rssFeedStatusBody = byId("rss-feed-status-body");
   elements.awarenessSourceStatusBody = byId("awareness-source-status-body");
   elements.recentCycleErrorsBody = byId("recent-cycle-errors-body");
-  elements.aiDiagnosticsBody = byId("ai-diagnostics-body");
-  elements.aiEnrichmentsUpdated = byId("ai-enrichments-updated");
-  elements.aiEnrichmentsBody = byId("ai-enrichments-body");
   elements.apiLimitsUpdated = byId("api-limits-updated");
   elements.apiLimitsBody = byId("api-limits-body");
   elements.intelNewsCount = byId("intel-news-count");
@@ -373,6 +370,7 @@ function renderStorageDiagnostics(storage={},health={}) {
     card("Server",[`PID ${health.server?.pid || "--"} | ${health.server?.nodeVersion || "--"} | uptime ${health.uptimeSeconds || 0}s`,`Process RSS ${mib(health.server?.memory?.rss)} | HTTP heap ${mib(health.server?.memory?.heapUsed)} | worker heap ${mib(worker.memory?.heapUsed)}`]),
     card("SQLite",[`${storage.databasePath || "--"} | SQLite ${storage.sqliteVersion || "--"} | ${storage.businessStorage || "--"}`,`DB ${mib(storage.databaseBytes)} | WAL ${mib(storage.walBytes)} | migrations ${(storage.migrations || []).length}`,`Row counts sampled ${formatDate(db.sampledAt)} (cache, up to 30s): ${Object.entries(db.counts || {}).map(([table,n])=>`${table}: ${n}`).join(" | ") || "waiting for worker"}`]),
     card("Worker & queue",[`State ${storage.state || "--"} | thread ${worker.threadId || "--"} | heartbeat ${heartbeatAge===null?"--":formatDurationMs(heartbeatAge)} ago${heartbeatAge>15000?" (delayed; worker may be busy)":""}`,`Queued ${queue.pending || 0} | active ${queue.inFlight || 0} | CPU ${queue.cpuInFlight || 0} / ${queue.maxCpuInFlight || "--"} | capacity ${queue.maxItems || 0} | bytes ${mib(queue.bytes)} / ${mib(queue.maxBytes)}`,`Completed ${storage.completed || 0} | failed ${storage.failed || 0} | rejected ${storage.rejected || 0} | historical error ${storage.lastErrorCode || "--"} at ${formatDate(storage.lastErrorAt)} (${storage.lastErrorCategory || "--"}) | last success ${formatDate(storage.lastSuccessAt)}`,...(commands.length?commands:["No active commands"]),...(expired?[`Last timeout: ${[expired.operation,expired.service,expired.method,expired.kind].filter(Boolean).join(" / ")} | ${expired.phase} | ${formatDurationMs(expired.elapsedMs)}`]:[])]),
+    card("Event index",[`State ${(storage.eventIndex||worker.eventIndex)?.state||"--"} | processed ${(storage.eventIndex||worker.eventIndex)?.processed??"--"} | page ${formatDurationMs((storage.eventIndex||worker.eventIndex)?.durationMs)} | cleanup ${(storage.eventIndex||worker.eventIndex)?.cleanupPending?"pending":"idle"}`]),
     card("Confirmed pipeline writes",(db.checkpoints || []).map(row=>`${row.pipelineId} | ${row.kind || "--"} | committed ${formatDate(row.updatedAt)} | revision ${row.revision || "--"}`)),
     card("SQL news corpus",worker.news?.corpus ? [`As of ${formatDate(worker.news.corpus.asOf)} | last ingest ${formatDate(worker.news.corpus.lastIngestAt)} | revision ${worker.news.corpus.revision}`,`Scanned ${worker.news.corpus.scannedCount} | valid ${worker.news.corpus.eligibleCount} | daily candidates ${worker.news.corpus.dailyCandidateCount} | sources ${worker.news.corpus.sourceCount}`,`Displayed ${worker.news.corpus.displayCount} | analysis ${worker.news.corpus.analysisCount} | market analysis ${worker.news.corpus.marketAnalysisCount} | analysis capped: ${worker.news.corpus.analysisTruncated ? "yes" : "no"} | risk uses all daily candidates`, `Window ${worker.news.corpus.windowHours}h | day ${worker.news.corpus.dayTimeZone} | read/rank ${worker.news.corpus.durationMs}ms`, `Collector ${worker.news.collection?.stage || "idle"} | completed ${formatDate(worker.news.collection?.completedAt)}`] : ["Waiting for SQL corpus evaluation"]),
     card("SQL pipeline runs",(db.pipelines || []).map(row=>`${row.pipelineId}: ${row.status || (row.lastPersistedAt?"persisted (checkpoint)":"no recorded run")} | start ${formatDate(row.startedAt)} | end ${formatDate(row.completedAt)} | last commit ${formatDate(row.lastPersistedAt)} | ${row.errorCode || "--"}`))
@@ -421,7 +419,6 @@ function renderMediaSummary(media = {}, health = {}) {
 function renderPipelineStatus(payload = {}) {
   const market = payload.market || {};
   const news = payload.news || {};
-  const ai = payload.ai || {};
   const awareness = payload.awareness || {};
   const awarenessSources = awareness.sourceStatus || [];
   const awarenessEnabled = awarenessSources.filter((source) => ["active", "shadow"].includes(source.admissionState));
@@ -462,17 +459,6 @@ function renderPipelineStatus(payload = {}) {
       lastError: news.lastError || (news.attempts || []).filter((item) => item.status === "error").map((item) => item.provider).join(", ") || "--"
     },
     {
-      pipeline: "ai",
-      band: ai.budget?.exhausted ? "EXHAUSTED" : ai.enabled ? "ACTIVE" : "OFF",
-      nextRun: ai.budget?.nextResetAt ? `reset ${formatShortTime(ai.budget.nextResetAt)}` : "--",
-      lastRun: formatShortTime(ai.updatedAt),
-      duration: "async",
-      status: ai.mode || "off",
-      mode: `queue:${Number(ai.queue?.depth || 0)}`,
-      provider: ai.activeProvider || ai.configuredProvider || "none",
-      lastError: ai.lastError?.code || "--"
-    },
-    {
       pipeline: "awareness",
       band: String(awareness.mode || "off").toUpperCase(),
       nextRun: Number.isFinite(awarenessNext) ? formatShortTime(new Date(awarenessNext).toISOString()) : "--",
@@ -505,7 +491,6 @@ function renderPipelineStatus(payload = {}) {
 
   renderPipelineDiagnostics(news, market);
   renderAwarenessDiagnostics(awareness);
-  renderAiDiagnostics(ai);
   renderRecentCycleErrors(payload.recentCycleErrors || []);
 }
 
@@ -537,36 +522,6 @@ function renderAwarenessDiagnostics(awareness = {}) {
     return `<article class="diagnostic-item"><div class="diagnostic-item-header"><strong>${escapeHtml(source.name || source.sourceId || "official source")}</strong><span class="diagnostic-pill ${statusClass}">${escapeHtml(admissionState)}</span></div><div class="diagnostic-item-meta">health: ${escapeHtml(rawStatus)} | catalog: ${escapeHtml(source.catalogAdmissionState || admissionState)}${source.runtimeBlocked ? " | runtime blocked" : ""}</div><div class="diagnostic-item-meta">attempt: ${escapeHtml(formatDate(source.lastAttemptAt))} | success: ${escapeHtml(formatDate(source.lastSuccessAt))}</div><div class="diagnostic-item-meta">cumulative polls: ${attempts} | successful: ${successes} | rate: ${cumulativeRate}</div><div class="diagnostic-item-meta">7d polls: ${Number(window7d.attempts || 0)} | successful: ${Number(window7d.successes || 0)} | rate: ${rollingRate} | 403: ${Number(window7d.forbidden || 0)}</div><div class="diagnostic-item-meta">last poll: ${escapeHtml(source.lastPoll?.outcome || "--")} | HTTP: ${escapeHtml(String(source.httpStatus ?? "--"))} | latency: ${escapeHtml(formatDurationMs(source.latencyMs))} | lag: ${escapeHtml(formatDurationMs(source.lagMs))}</div><div class="diagnostic-item-meta">parsed: ${Number(source.parsed || 0)} | dedup: ${Number(source.deduplicated || 0)} | rejected: ${Number(source.rejected || 0)} | unlocated: ${Number(source.unlocated || 0)}</div><div class="diagnostic-item-meta">ETag: ${source.etag ? "yes" : "no"} | Last-Modified: ${source.lastModified ? "yes" : "no"} | stale: ${source.stale ? "yes" : "no"}</div>${diagnosticLine}<div class="diagnostic-item-meta">${escapeHtml(source.error || source.blockedReason || source.disabledReason || "--")}</div></article>`;
   });
   elements.awarenessSourceStatusBody.innerHTML = [summary, ...cards].join("");
-}
-
-function renderAiDiagnostics(ai = {}) {
-  if (!elements.aiDiagnosticsBody) return;
-  const budget = ai.budget || {};
-  const metrics = ai.metrics || {};
-  const storedCounts = ai.store?.counts || {};
-  const transport = ai.transport || {};
-  const circuit = transport.circuit || {};
-  elements.aiDiagnosticsBody.innerHTML = [
-    `<article class="diagnostic-item"><div class="diagnostic-item-header"><strong>${escapeHtml(ai.activeProvider || "none")}</strong><span class="diagnostic-pill ${ai.enabled ? "ok" : "idle"}">${escapeHtml(ai.mode || "off")}</span></div><div class="diagnostic-item-meta">features: ${escapeHtml(formatInlineList(ai.features || []))}</div><div class="diagnostic-item-meta">models: ${escapeHtml(ai.models?.summary || "--")} | ${escapeHtml(ai.models?.reasoning || "--")}</div><div class="diagnostic-item-meta">structured output: ${escapeHtml(ai.structuredOutputMode || "--")}</div><div class="diagnostic-item-meta">configured: ${escapeHtml(ai.configuredProvider || "none")} | JSON mode: ${escapeHtml(ai.jsonMode || "--")}</div><div class="diagnostic-item-meta">endpoint: ${escapeHtml(ai.endpoint || "--")} | API key configured: ${ai.apiKeyConfigured ? "yes" : "no"}</div><div class="diagnostic-item-meta">queue: ${Number(ai.queue?.depth || 0)} | active: ${Number(ai.queue?.active || 0)} | concurrency: ${Number(ai.queue?.concurrency || 0)}</div></article>`,
-    `<article class="diagnostic-item"><div class="diagnostic-item-header"><strong>Budget UTC</strong><span class="diagnostic-pill ${budget.exhausted ? "error" : "ok"}">${budget.exhausted ? "exhausted" : "available"}</span></div><div class="diagnostic-item-meta">requests: ${Number(budget.requestsUsed || 0)}/${Number(budget.requestBudget || 0)} | tokens: ${Number(budget.tokensUsed || 0)}/${Number(budget.tokenBudget || 0)}</div><div class="diagnostic-item-meta">reset: ${escapeHtml(formatDate(budget.nextResetAt))}</div></article>`,
-    `<article class="diagnostic-item"><div class="diagnostic-item-header"><strong>Validation</strong><span class="diagnostic-item-meta">stored ${Number(ai.store?.total || 0)}</span></div><div class="diagnostic-item-meta">stored ready: ${Number(storedCounts.ready || 0)} | rejected: ${Number(storedCounts.rejected || 0)} | failed: ${Number(storedCounts.failed || 0)} | runtime cache hits: ${Number(metrics.cacheHits || 0)}</div><div class="diagnostic-item-meta">last error: ${escapeHtml(ai.lastError?.code || "--")}</div></article>`,
-    `<article class="diagnostic-item"><div class="diagnostic-item-header"><strong>Circuit breaker</strong><span class="diagnostic-pill ${circuit.state === "open" ? "error" : "ok"}">${escapeHtml(circuit.state || "inactive")}</span></div><div class="diagnostic-item-meta">failures: ${Number(circuit.failures || 0)} | 429: ${Number(transport.results?.[429] || 0)} | retries: ${Number(transport.retries || 0)}</div><div class="diagnostic-item-meta">opened: ${escapeHtml(formatDate(circuit.openedAt))}</div></article>`
-  ].join("");
-}
-
-function renderAiEnrichments(payload = {}) {
-  if (!elements.aiEnrichmentsBody || !elements.aiEnrichmentsUpdated) return;
-  elements.aiEnrichmentsUpdated.textContent = `Updated: ${formatDate(payload.generatedAt)}`;
-  const items = payload.items || [];
-  if (!items.length) {
-    elements.aiEnrichmentsBody.innerHTML = renderEmptyRow(7, "No AI enrichments stored.");
-    return;
-  }
-  elements.aiEnrichmentsBody.innerHTML = items.map((item) => {
-    const preview = item.output?.summary || item.output?.overview || item.output?.narrative || "--";
-    const versions = `${item.promptVersion || "--"} / ${item.schemaVersion || "--"}`;
-    return `<tr><td>${escapeHtml(formatDate(item.updatedAt))}</td><td>${escapeHtml(item.kind || "--")}</td><td>${escapeHtml(item.subjectId || "--")}</td><td>${escapeHtml(item.status || "--")}</td><td>${escapeHtml(item.model || "--")}</td><td>${escapeHtml(versions)}</td><td>${escapeHtml(String(preview).slice(0, 240))}</td></tr>`;
-  }).join("");
 }
 
 function buildNewsProviderDiagnostics(news = {}) {
@@ -847,7 +802,7 @@ function renderPipelineDiagnostics(news = {}, market = {}) {
   }
   const ingestion = news.rssIngestion || {};
   const metrics = ingestion.metrics || {};
-  elements.rssFeedStatusBody.innerHTML = `<div class="diagnostic-item-meta">${escapeHtml(ingestion.availability || "unknown")} · Coverage ${Number(ingestion.coverage?.checked || 0)}/${Number(ingestion.coverage?.enabled || 0)} · Queue ${Number(metrics.queued || 0)} / in flight ${Number(metrics.inFlight || 0)} · Deferred ${Number(metrics.deferred || 0)} · Hosts limited ${Number(metrics.hostsLimited || 0)} · 304 ${Number(metrics.notModified || 0)} · Errors ${Number(metrics.errors || 0)} · New ${Number(metrics.newArticles || 0)} · Cycle ${Number(metrics.lastDurationMs || 0)}ms</div>` + feedStatus
+  elements.rssFeedStatusBody.innerHTML = `<div class="diagnostic-item-meta">${escapeHtml(ingestion.availability || "unknown")} · Coverage ${(ingestion.coverage?.checked ?? "--")}/${(ingestion.coverage?.enabled ?? "--")} · Queue ${(metrics.queued ?? "--")} / in flight ${(metrics.inFlight ?? "--")} · Deferred ${(metrics.deferred ?? "--")} · Hosts limited ${(metrics.hostsLimited ?? "--")} · 304 ${(metrics.notModified ?? "--")} · Errors ${(metrics.errors ?? "--")} · Nuevos ${(metrics.newArticles ?? "--")} · Cycle ${(metrics.lastDurationMs ?? "--")}ms</div>` + feedStatus
     .map((feed) => {
       const status = String(feed.status || "empty").toLowerCase();
       const safeStatus = ["ok", "error", "empty", "invalid-feed", "skipped"].includes(status) ? status : "empty";
@@ -1073,7 +1028,6 @@ async function refreshAll({ forceMedia = false } = {}) {
     {key:"aggregate-news-body", load: signal => api.getAggregateNews({limit:40,stored:1},{signal}), render: v => renderNewsTable(v.items || [],elements.aggregateNewsBody,elements.aggregateNewsCount)},
     {key:"intel-news-raw-body", load: signal => api.getAdminNewsRaw({dataset:"intel",page:rawPaginationState.intel,pageSize:RAW_PAGE_SIZE,stored:1},{signal}), render:v=>applyRawNewsPayload("intel",v)},
     {key:"aggregate-news-raw-body", load: signal => api.getAdminNewsRaw({dataset:"rss-aggregate",page:rawPaginationState.rssAggregate,pageSize:RAW_PAGE_SIZE,stored:1},{signal}), render:v=>applyRawNewsPayload("rssAggregate",v)},
-    {key:"ai-enrichments-body", load: signal => api.getAdminAiEnrichments({page:1,pageSize:50},{signal}), render:renderAiEnrichments}
   ];
   const results = await sections.refresh(definitions);
   pollFailures = results?.some(v => !v?.ok) ? Math.min(5, pollFailures + 1) : 0;

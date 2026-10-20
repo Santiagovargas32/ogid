@@ -364,8 +364,9 @@ export function mountAwarenessCenter({
     }
     if (roots.meta) {
       const quality = snapshot.quality || {};
+      const hydrationNote=snapshot.hydrationRevision<snapshot.revision?` · eventos de rev ${snapshot.hydrationRevision}, actualizando`:!snapshot.hydrated?" · cargando eventos":"";
       const persistenceNote = preferences.storageAvailable ? "" : " · preferencias sólo en esta sesión";
-      roots.meta.textContent = `Modo ${snapshot.mode} · rev ${snapshot.revision} · ${Number(quality.total || 0)} eventos · ${sourceStatusSummary(snapshot.sourceStatus)} · generado ${generatedAtLabel(snapshot.generatedAt)}${persistenceNote}`;
+      roots.meta.textContent = `Modo ${snapshot.mode} · rev ${snapshot.revision} · ${Number(quality.total || 0)} eventos · ${sourceStatusSummary(snapshot.sourceStatus)} · generado ${generatedAtLabel(snapshot.generatedAt)}${hydrationNote}${persistenceNote}`;
     }
   }
 

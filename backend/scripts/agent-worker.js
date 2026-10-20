@@ -37,9 +37,12 @@ const worker = new IntelligenceWorker({
   }),
   model: config.backgroundModel,
   mode: config.mode,
-  onProgress: (sessionId, progress) => {
+  onHealth: health => {
+    if (process.connected) process.send({ type: 'agent-worker-health', ...health });
+  },
+  onProgress: (sessionId, progress, options) => {
     if (sessionId)
-      return call("progress", { sessionId, ...progress }).catch(() => {});
+      return call("progress", { sessionId, ...progress }, options);
   },
 });
 process.once("SIGTERM", () => worker.stop());

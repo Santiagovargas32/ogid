@@ -1,3 +1,4 @@
+import {writeFileSync,renameSync} from "node:fs";
 import "./config/loadEnvironment.js";
 import { RUNTIME_POLICY as POLICY } from "./config/runtimePolicy.js";
 import { randomUUID } from "node:crypto";
@@ -514,6 +515,7 @@ export function readConfig(overrides = {}) {
 }
 
 export function createAppServer(overrides = {}) {
+  const agentObservationSince=new Date().toISOString();
   const config = readConfig(overrides);
   let agentConfig;
   try{agentConfig=prepareManagedAgentConfig(loadAgentConfig(process.env,overrides.agent || {}));}catch{
@@ -834,6 +836,7 @@ export function createAppServer(overrides = {}) {
   app.locals.manualRefreshService = manualRefreshService;
   app.locals.config = config;
   app.locals.rssAggregator = rssAggregator;
+  app.locals.agentObservationSince=agentObservationSince;
   app.locals.signalCorrelator = signalCorrelator;
   app.locals.advancedIntelligenceService = advancedIntelligenceService;
   app.locals.mapLayerService = mapLayerService;
@@ -852,7 +855,11 @@ export function createAppServer(overrides = {}) {
     if(storageManager.state === 'disabled' && method === 'publications')return Promise.resolve({items:[],hasMore:false,nextCursor:null,status:'unavailable'});
     return storageManager.request("agent.call",{method,args});
   };
-  app.locals.agentModels=new AgentModelSelection({config:agentConfig,call:app.locals.agentCall,opencode:new OpenCodeClient({baseUrl:agentConfig.opencodeUrl,password:agentConfig.opencodePassword})});
+  const brokerRequest=async(path,{body,signal}={})=>{
+    const r=await fetch(agentConfig.brokerUrl+path,{method:body?'POST':'GET',redirect:'error',signal:AbortSignal.any([...(signal?[signal]:[]),AbortSignal.timeout(body?2400000:10000)]),headers:{Authorization:`Bearer ${agentConfig.brokerToken}`,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
+    const value=await r.json();if(!r.ok)throw Object.assign(Error('Model broker unavailable'),{code:value.error?.code||value.error||'AGENT_MODEL_ACTIVATION_FAILED'});return value;
+  };
+  app.locals.agentModels=new AgentModelSelection({config:agentConfig,call:app.locals.agentCall,opencode:new OpenCodeClient({baseUrl:agentConfig.opencodeUrl,password:agentConfig.opencodePassword}),...(agentConfig.managed.broker?{onVerified:manifest=>{if(!process.env.AGENT_MODEL_MANIFEST)return;const file=path.resolve(__dirname,process.env.AGENT_MODEL_MANIFEST),temporary=file+'.next';writeFileSync(temporary,JSON.stringify(manifest,null,2)+'\n',{mode:0o600});renameSync(temporary,file);},brokerInventory:async()=>(await brokerRequest('/v1/models')).data,activate:async(model,signal)=>(await brokerRequest('/v1/models/activate',{body:{model:model.replace(/^llamacpp\//,'')},signal})).model}:{})});
   app.locals.agentMaintenance = new AgentMaintenance({call:app.locals.agentCall,business,
     instruments:()=>marketWatchlistService.selectedInstrumentIds,
     enabled:Boolean(business && app.locals.agentConfig.mode !== "off")});
@@ -892,6 +899,7 @@ export function createAppServer(overrides = {}) {
       startTask = (async () => {
       const startupAt = performance.now();
       app.locals.initializing=true;
+      pipelinePersistence?.deferStageWrites();
       await new Promise((resolve,reject)=>{server.once("error",reject);server.listen(config.port,config.host,()=>{server.removeListener("error",reject);resolve();});});
       log.info("http_listening",{port:server.address().port,ready:false});
       await storageManager.start();
@@ -906,7 +914,8 @@ export function createAppServer(overrides = {}) {
         // Providers import the versioned catalog locally; retain feed overrides,
         // but avoid transferring the complete catalog with each configuration.
         delete workerNews.sourceCatalog;
-        await storageManager.request("domain.configure", { requireImport:POLICY.storage.requireImport,instruments:listVerifiedInstruments(),apiLimits:config.apiLimits,news:JSON.parse(JSON.stringify(workerNews)),researchSources,rootDir:config.market.historyDir,candlesEnabled:dailyCandleStore.enabled,intradayEnabled:config.market.intradayCandles.enabled,awarenessMode:config.awareness.mode,signalPolicy:overrides.signalPolicy || loadSignalPolicy(process.env.RESEARCH_SIGNAL_POLICY_FILE),rss:{rssFeeds:config.news.rssFeeds,news:{rssAggregateIntervalMs:config.news.rssAggregateIntervalMs,rssAggregateFeedsPerRun:config.news.rssAggregateFeedsPerRun,rssAggregateMaxItems:config.news.rssAggregateMaxItems},timeoutMs:config.news.timeoutMs,pipelineMode:config.news.rssPipelineMode},newsRetentionDays:config.news.retentionDays});
+        try {await storageManager.request("domain.configure", { requireImport:POLICY.storage.requireImport,instruments:listVerifiedInstruments(),apiLimits:config.apiLimits,news:JSON.parse(JSON.stringify(workerNews)),researchSources,rootDir:config.market.historyDir,candlesEnabled:dailyCandleStore.enabled,intradayEnabled:config.market.intradayCandles.enabled,awarenessMode:config.awareness.mode,signalPolicy:overrides.signalPolicy || loadSignalPolicy(process.env.RESEARCH_SIGNAL_POLICY_FILE),rss:{rssFeeds:config.news.rssFeeds,news:{rssAggregateIntervalMs:config.news.rssAggregateIntervalMs,rssAggregateFeedsPerRun:config.news.rssAggregateFeedsPerRun,rssAggregateMaxItems:config.news.rssAggregateMaxItems},timeoutMs:config.news.timeoutMs,pipelineMode:config.news.rssPipelineMode},newsRetentionDays:config.news.retentionDays});}
+        finally {pipelinePersistence.resumeStageWrites();}
         await newsArchive.coverage();
         await pipelinePersistence.hydrate({awarenessStore,aiStore,aiBudget,marketHistoryStore,quotaTracker:apiQuotaTracker});
         aiCoordinator.syncProjection();
@@ -995,8 +1004,15 @@ export function createAppServer(overrides = {}) {
       const drain=async work=>{try{await work();}catch(error){failures.push(error);}};
       try {
       runtimeMetrics.stop();
+      pipelinePersistence?.resumeStageWrites();
+      // Close admission immediately. Waiting for an accepted analysis must not
+      // leave acquisition timers running and submitting more work during drain.
+      const maintenanceStopped=drain(()=>app.locals.agentMaintenance.stop());
+      const cyclesStopped=drain(()=>orchestrator.stop());
+      const rssStopped=drain(()=>rssAggregator.stop?.());
+      const sourcesStopped=Promise.all([drain(()=>awarenessService.stop()),drain(()=>secSourceAgent.stop())]);
+      await drain(()=>app.locals.agentModels.stop());
       await drain(()=>app.locals.agentRuntime.stop());
-      await drain(()=>app.locals.agentMaintenance.stop());
       // Stop accepting HTTP/upgrade work before draining owners of background jobs.
       const httpStopped = new Promise((resolve,reject) => {
         if (!server.listening) return resolve();
@@ -1006,11 +1022,12 @@ export function createAppServer(overrides = {}) {
       // Attach rejection handlers immediately and drain every owner even when
       // one persistence operation fails. Storage must always release its handles.
       const backgroundStopped = Promise.all([
-        drain(()=>socketServer.close()), drain(()=>awarenessService.stop()),drain(()=>secSourceAgent.stop()),
+        drain(()=>socketServer.close()),
         drain(()=>mediaStreamService.stop()), drain(()=>marketDataService.close?.())
       ]);
-      const cyclesStopped=drain(()=>orchestrator.stop());
-      await drain(()=>rssAggregator.stop?.());
+      await maintenanceStopped;
+      await sourcesStopped;
+      await rssStopped;
       await cyclesStopped;
       await drain(()=>newsArchive.flush?.());
       await backgroundStopped;
@@ -1058,6 +1075,7 @@ export async function run(overrides = {}) {
     }
     if (runtime.server.listening) void shutdown("storage-worker-failed", 1);
   });
+  runtime.storageManager.on("index-failed",event=>log.warn("event_index_build_failed",event));
   runtime.storageManager.on("analysis-recovered",event=>log.info("analysis_worker_recovered",event));
 
   process.on("SIGINT", () => shutdown("SIGINT"));

@@ -142,15 +142,16 @@ export function toolDefinitions(config, read) {
       name: "ogid_health", description: "Comprueba conectividad de lectura con OGID, modo Awareness y calidad. Separa el checkout de la identidad capturada al cargar backend/adaptador; hash local no es atestación. No revela configuración privada.",
       schema: z.strictObject({}),
       async run() {
-        const [health, awareness] = await Promise.all([read("/api/health"), read("/api/intel/awareness-snapshot", { limit: 1 })]);
-        validateAwareness(awareness);
+        const frozen = config.researchScope === 'agent-evidence';
+        const [health, awareness] = await Promise.all([read("/api/health"), frozen ? null : read("/api/intel/awareness-snapshot", { limit: 1 })]);
+        if(!frozen)validateAwareness(awareness);
         return { data: {
           adapterVersion: VERSION, adapterBuild: ADAPTER_BUILD, backendBuild: health.build || null, ogidCheckoutCommit: config.commit, runningCommitVerified: false,
           ...pick(health, ["status", "timestamp", "uptimeSeconds", "lastRefreshAt", "sourceMode"]),
           dataQuality: Object.fromEntries(Object.entries(health.dataQuality || {}).map(([key,value]) => [key, pick(value, ["mode", "provider", "reason", "synthetic", "inputMode"])])),
           market: pick(health.market, ["availability", "quoteCount", "selectedInstrumentCount", "configuredProvider", "effectiveProvider"]),
           storage: publicStorageStatus(health.storage),
-          awarenessMode: awareness.mode
+          awarenessMode: awareness?.mode ?? null
         }, warnings: ["Un proceso sano no garantiza datos reales ni recientes; consultar calidad por dominio.",
           ...(health.market?.availability === "empty" ? ["Mercado sin cotizaciones disponibles; la etiqueta fallback/synthetic no acredita la existencia de precios de respaldo."] : [])] };
       }

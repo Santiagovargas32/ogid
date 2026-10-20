@@ -1,8 +1,28 @@
+import {LlamaModels,catalogModel} from "./modelCatalog.js";
 import { createServer } from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import { once } from "node:events";
 import { readyModel, localUrl } from "./config.js";
 import { agentError } from "./contracts.js";
+// Transport budgets, not token/output limits. Queue wait does not consume the
+// inference budget; priority applies only before admission (no preemption).
+export const BROKER_POLICY = Object.freeze({
+  queueMs: 1800000, headersMs: 90000, idleMs: 90000, totalMs: 1800000,
+  backpressureMs: 10000, maxChunkBytes: 33554432, maxJsonBytes: 33554432,
+});
+function validateInput(body, path) {
+  if (!body || typeof body !== 'object' || Array.isArray(body) || typeof body.model !== 'string')
+    throw agentError('BROKER_INVALID_INPUT', 400);
+  if(path==='/v1/models/activate')return;
+  if (path === '/v1/chat/completions' || path === '/apply-template') {
+    if (!Array.isArray(body.messages) || !body.messages.length || body.messages.some(m =>
+      !m || typeof m !== 'object' || !['system','developer','user','assistant','tool','function'].includes(m.role)) ||
+      (body.stream !== undefined && typeof body.stream !== 'boolean') ||
+      (body.tools !== undefined && (!Array.isArray(body.tools) || body.tools.some(t =>
+        !t || t.type !== 'function' || typeof t.function?.name !== 'string'))))
+      throw agentError('BROKER_INVALID_INPUT', 400);
+  } else if (typeof body.content !== 'string') throw agentError('BROKER_INVALID_INPUT', 400);
+}
 export function tokenMatches(a, b) {
   if (typeof a !== "string" || typeof b !== "string") return false;
   const x = Buffer.from(a),
@@ -34,6 +54,7 @@ export class InferenceQueue {
         const i = this.pending.indexOf(entry);
         if (i >= 0) {
           this.pending.splice(i, 1);
+          signal?.removeEventListener('abort', entry.abort);
           reject(signal.reason);
         }
       };
@@ -157,15 +178,29 @@ export function createInferenceBroker({
   fetchImpl = fetch,
   queue = new InferenceQueue(),
   contextInspector = inspectServerContext,
+  policy = {},
+  managedModels = false,
 } = {}) {
+  const limits = { ...BROKER_POLICY, ...policy };
+  if (Object.values(limits).some(n => !Number.isSafeInteger(n) || n <= 0))
+    throw agentError('BROKER_INVALID_POLICY');
   const base = localUrl(upstream).origin;
   if (!token || !apiKey) throw agentError("BROKER_CREDENTIALS_REQUIRED");
+  const gateway=managedModels?new LlamaModels({upstream,apiKey,manifest,fetchImpl}):null;
   return createServer(async (req, res) => {
     const abort = new AbortController();
-    res.on("close", () => {
+    let phaseTimer, totalTimer;
+    const phase = (ms, code) => {
+      clearTimeout(phaseTimer);
+      phaseTimer = setTimeout(() => abort.abort(agentError(code, 504)), ms);
+      phaseTimer.unref();
+    };
+    const onClose = () => {
       if (!res.writableEnded) abort.abort();
-    });
-    req.on("aborted", () => abort.abort());
+    };
+    const onAborted = () => abort.abort();
+    res.on('close', onClose);
+    req.on('aborted', onAborted);
     try {
       if (
         !tokenMatches(
@@ -186,18 +221,19 @@ export function createInferenceBroker({
         );
       }
       if (req.method === "GET" && req.url === "/v1/models") {
+        if(gateway)await gateway.discover(abort.signal);
         res.setHeader("Content-Type", "application/json");
         return res.end(
           JSON.stringify({
             data: manifest.models
-              .filter(readyModel)
-              .map((m) => ({ id: m.alias, object: "model" })),
+              .filter(catalogModel)
+              .map((m) => ({id:m.alias,object:"model",context:m.context,slots:m.slots,verified:readyModel(m),resident:m.resident===true,loadState:m.loadState||"unknown",probe:m.probe,lastProbe:m.lastProbe})),
           }),
         );
       }
       if (
         req.method !== "POST" ||
-        !["/v1/chat/completions", "/tokenize", "/apply-template"].includes(
+        !["/v1/chat/completions", "/tokenize", "/apply-template", "/v1/models/activate"].includes(
           req.url,
         )
       )
@@ -209,9 +245,18 @@ export function createInferenceBroker({
         if (n > 8388608) throw agentError("BROKER_BODY_TOO_LARGE", 413);
         chunks.push(b);
       }
-      const body = JSON.parse(Buffer.concat(chunks)),
-        model = manifest.models.find((m) => m.alias === body.model);
-      if (!readyModel(model)) throw agentError("BROKER_MODEL_UNVERIFIED", 409);
+      let body;
+      try { body = JSON.parse(Buffer.concat(chunks)); }
+      catch { throw agentError('BROKER_INVALID_JSON', 400); }
+      validateInput(body, req.url);
+      const model = manifest.models.find((m) => m.alias === body.model);
+      if (!catalogModel(model)) throw agentError("BROKER_MODEL_UNVERIFIED", 409);
+      if(req.url==='/v1/models/activate'){
+        if(!gateway)throw agentError('AGENT_MODEL_ACTIVATION_UNAVAILABLE',503);
+        phase(limits.queueMs,'BROKER_QUEUE_TIMEOUT');
+        const verified=await queue.run(async()=>{phase(540000,'AGENT_MODEL_ACTIVATION_TIMEOUT');return gateway.validate(body.model,abort.signal);},{signal:abort.signal,model:body.model,priority:10});
+        res.setHeader('Content-Type','application/json');return res.end(JSON.stringify({model:verified}));
+      }
       if (req.url === "/v1/chat/completions") {
         delete body.max_tokens;
         delete body.max_completion_tokens;
@@ -219,6 +264,11 @@ export function createInferenceBroker({
         delete body.max_output_tokens;
       }
       const work = async () => {
+        clearTimeout(phaseTimer);
+        totalTimer = setTimeout(() => abort.abort(agentError('BROKER_TOTAL_TIMEOUT', 504)), limits.totalMs);
+        totalTimer.unref();
+        if(gateway){phase(540000,'AGENT_MODEL_ACTIVATION_TIMEOUT');if(readyModel(model))await gateway.load(body.model,abort.signal);else await gateway.validate(body.model,abort.signal);}
+        phase(limits.headersMs, 'BROKER_HEADERS_TIMEOUT');
         const upstreamHeaders = {
           Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
@@ -239,25 +289,44 @@ export function createInferenceBroker({
           headers: upstreamHeaders,
           body: JSON.stringify(body),
         });
-        res.writeHead(r.status, {
-          "Content-Type": r.headers.get("content-type") || "application/json",
-          "Cache-Control": "no-store",
-        });
-        let pending = 0;
-        for await (const b of r.body) {
-          pending += b.length;
-          if (pending > 33554432)
-            throw agentError("BROKER_STREAM_TOO_LARGE", 502);
-          if (!res.write(b)) {
-            const deadline = AbortSignal.timeout(10000);
-            await once(res, "drain", {
-              signal: AbortSignal.any([abort.signal, deadline]),
-            });
-          }
-          pending = 0;
+        const contentType = r.headers.get('content-type') || '';
+        const streaming = body.stream === true && r.ok;
+        if (!r.body || !(streaming ? contentType.includes('text/event-stream') : contentType.includes('application/json'))) {
+          await r.body?.cancel();
+          throw agentError('BROKER_INVALID_UPSTREAM', 502);
         }
-        res.end();
+        const responseHeaders = {
+          "Content-Type": contentType,
+          "Cache-Control": "no-store",
+        };
+        if (streaming) res.writeHead(r.status, responseHeaders);
+        const parts = []; let jsonBytes = 0;
+        phase(limits.idleMs, 'BROKER_IDLE_TIMEOUT');
+        for await (const b of r.body) {
+          if (b.length > limits.maxChunkBytes)
+            throw agentError('BROKER_CHUNK_TOO_LARGE', 502);
+          phase(limits.idleMs, 'BROKER_IDLE_TIMEOUT');
+          if (!streaming) {
+            jsonBytes += b.length;
+            if (jsonBytes > limits.maxJsonBytes) throw agentError('BROKER_JSON_TOO_LARGE', 502);
+            parts.push(b); continue;
+          }
+          if (!res.write(b)) {
+            phase(limits.backpressureMs, 'BROKER_BACKPRESSURE_TIMEOUT');
+            await once(res, "drain", {
+              signal: abort.signal,
+            });
+            phase(limits.idleMs, 'BROKER_IDLE_TIMEOUT');
+          }
+        }
+        if (!streaming) {
+          const bytes = Buffer.concat(parts);
+          try { const value = JSON.parse(bytes); if (!value || typeof value !== 'object' || Array.isArray(value)) throw Error(); }
+          catch { throw agentError('BROKER_INVALID_UPSTREAM', 502); }
+          res.writeHead(r.status, responseHeaders); res.end(bytes);
+        } else res.end();
       };
+      phase(limits.queueMs, 'BROKER_QUEUE_TIMEOUT');
       await queue.run(work, {
         signal: abort.signal,
         model: body.model,
@@ -268,7 +337,11 @@ export function createInferenceBroker({
               ? 10
               : 50,
       });
-    } catch (e) {
+    } catch (error) {
+      const e = abort.signal.reason?.code?.startsWith?.('BROKER_') ? abort.signal.reason : error;
+      // Also cancel upstream on validation/backpressure failures, not just when
+      // the client disconnects. Never leave an unread response owning a slot.
+      abort.abort(e);
       if (res.headersSent) {
         res.destroy();
         return;
@@ -278,6 +351,9 @@ export function createInferenceBroker({
       res.end(
         JSON.stringify({ error: { code: e.code || "BROKER_UPSTREAM_ERROR" } }),
       );
+    } finally {
+      clearTimeout(phaseTimer); clearTimeout(totalTimer);
+      res.removeListener('close', onClose); req.removeListener('aborted', onAborted);
     }
   });
 }

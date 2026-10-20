@@ -1,0 +1,968 @@
+{
+  "head": "5ac40d7cd126320443b9ce41ac0855f979f1db7b",
+  "base": "b6edb69ca322153912278c13a4831065df6540df",
+  "workingTree": "local corrections; not committed or deployed",
+  "build": {
+    "component": "backend",
+    "version": "1.0.0",
+    "contractVersion": "1.5.0",
+    "capturedAt": "2026-10-20T10:52:46.619Z",
+    "checkoutCommitAtStart": "5ac40d7cd126320443b9ce41ac0855f979f1db7b",
+    "buildCommit": null,
+    "buildTime": null,
+    "dirty": true,
+    "artifactHash": "266cac9ebe0f17d5bddec6e35d2b7254a016610280e03fd4e4aba2ab0beb0070",
+    "hashAlgorithm": "sha256",
+    "verification": "startup-files-hashed",
+    "declaredCommitMatchesCheckout": null,
+    "runningCommitVerified": false,
+    "attestation": "local-startup-observation; declared build metadata is not cryptographic attestation"
+  },
+  "tests": {
+    "baseline": {
+      "file": "baseline-tmp-complete.log",
+      "tests": 867,
+      "pass": 867,
+      "fail": 0,
+      "durationMs": 80839.478307
+    },
+    "backend": {
+      "file": "final-all-tests.log",
+      "tests": 889,
+      "pass": 889,
+      "fail": 0,
+      "durationMs": 85506.423633
+    },
+    "mcp": {
+      "file": "final-mcp-tests.log",
+      "tests": 29,
+      "pass": 29,
+      "fail": 0,
+      "durationMs": 3181.876801
+    },
+    "lastDiagnosticAdjustment": {
+      "file": "runtime-diagnostic-final.log",
+      "tests": 33,
+      "pass": 33,
+      "fail": 0,
+      "durationMs": 11046.805989
+    }
+  },
+  "productionDependencyAudit": {
+    "result": "0 vulnerabilities",
+    "file": "audit-backend.log"
+  },
+  "preflight": {
+    "ready": false,
+    "node": "v22.23.3",
+    "personalOpenCode": "2.0.32",
+    "validatedOpenCode": "2.0.31",
+    "binarySha256": "2df936a20cf74af5706020342164628f9a31978c50c2b0ad306b42b614fe245d",
+    "resident": [
+      {
+        "alias": "qwen3-coder",
+        "state": "context-unverified",
+        "resident": true,
+        "context": 65536,
+        "slots": 1,
+        "serverBuild": "b10741-9d817213a",
+        "defaultOutput": -1
+      }
+    ]
+  },
+  "migration": {
+    "status": "passed",
+    "before": {
+      "articles": 105772,
+      "article_revisions": 221740,
+      "events": 109599,
+      "candles": 33884,
+      "analysis_runs": 10728
+    },
+    "after": {
+      "articles": 105772,
+      "article_revisions": 221740,
+      "events": 109599,
+      "candles": 33884,
+      "analysis_runs": 10728
+    },
+    "integrity": "ok",
+    "foreignKeys": [],
+    "synthetic009To017": {
+      "status": "passed",
+      "fixture": {
+        "originalSchema": 9,
+        "writerConnectionOpenDuringBackup": true,
+        "walBytes": 791072,
+        "syntheticFixture": true
+      },
+      "reopenedTwice": true
+    }
+  },
+  "snapshot": {
+    "status": "passed",
+    "asOf": "2026-10-19T12:30:00.000Z",
+    "snapshotMs": 416.268118,
+    "evidenceCount": 1667,
+    "sealed": true,
+    "hash": "1636d7799a540bdd4313c4390a0c248a68e6124219f4bfd1290916c8112c13e9",
+    "reopened": true,
+    "firstPage": {
+      "items": 18,
+      "hasMore": true,
+      "bytes": 24314
+    },
+    "limitations": [
+      "warm filesystem cache; simulated historical clock",
+      "not a full historical reconstruction of every domain"
+    ]
+  },
+  "terminalSmoke": {
+    "status": "passed",
+    "startedAt": "2026-10-20T10:38:50.385Z",
+    "finishedAt": "2026-10-20T10:39:29.673Z",
+    "elapsedMs": 39288,
+    "checks": [
+      "Backend starts broker, isolated OpenCode and worker without systemd; authenticated MCP ready",
+      "Real background brief validated and persisted in shadow; hidden from public API",
+      "Enabled chat: device/CSRF, HTTP send, SSE, model response and cited history persisted",
+      "Chat cancellation authorized through HTTP",
+      "Shutdown leaves no managed child processes"
+    ],
+    "chat": {
+      "status": "completed",
+      "messages": 2,
+      "citationsValidated": true,
+      "sseBytes": 815
+    },
+    "jobs": [
+      {
+        "task": "global_intelligence_brief",
+        "status": "completed",
+        "errorCode": null,
+        "attempts": 1
+      },
+      {
+        "task": "contextual_chat",
+        "status": "completed",
+        "errorCode": null,
+        "attempts": 1
+      },
+      {
+        "task": "contextual_chat",
+        "status": "cancelled",
+        "errorCode": null,
+        "attempts": 0
+      }
+    ],
+    "runs": [
+      {
+        "status": "completed",
+        "elapsedMs": 20247,
+        "queueMs": 1693,
+        "firstProgressMs": 4150,
+        "usage": [
+          {
+            "messageId": "msg_158e4b1fc001gdfOgBeu8Vm7ww",
+            "inputCount": 1491,
+            "outputCount": 507,
+            "reasoningCount": 0,
+            "cacheReads": 8857,
+            "cacheWrites": 0,
+            "time": {
+              "created": 1792492745225,
+              "streamed": 1792492756315,
+              "completed": 1792492756317
+            }
+          },
+          {
+            "messageId": "msg_158e4acca001Usm0B6RpAIhCPX",
+            "inputCount": 1557,
+            "outputCount": 18,
+            "reasoningCount": 0,
+            "cacheReads": 7283,
+            "cacheWrites": 0,
+            "time": {
+              "created": 1792492743892,
+              "streamed": 1792492745185,
+              "completed": 1792492745201
+            }
+          },
+          {
+            "messageId": "msg_158e4aa36001hbkDc7nUA5hEJp",
+            "inputCount": 176,
+            "outputCount": 19,
+            "reasoningCount": 0,
+            "cacheReads": 7089,
+            "cacheWrites": 0,
+            "time": {
+              "created": 1792492743232,
+              "streamed": 1792492743859,
+              "completed": 1792492743874
+            }
+          },
+          {
+            "messageId": "msg_158e49dae001RfjvA5R7XF5Npy",
+            "inputCount": 1895,
+            "outputCount": 125,
+            "reasoningCount": 0,
+            "cacheReads": 5162,
+            "cacheWrites": 0,
+            "time": {
+              "created": 1792492740029,
+              "streamed": 1792492743205,
+              "completed": 1792492743214
+            }
+          },
+          {
+            "messageId": "msg_158e490be001cJZqlIQIxSYN9B",
+            "inputCount": 3683,
+            "outputCount": 76,
+            "reasoningCount": 0,
+            "cacheReads": 1448,
+            "cacheWrites": 0,
+            "time": {
+              "created": 1792492736716,
+              "streamed": 1792492739911,
+              "completed": 1792492739999
+            }
+          }
+        ]
+      },
+      {
+        "status": "completed",
+        "elapsedMs": 10191,
+        "queueMs": 1861,
+        "firstProgressMs": 4116,
+        "usage": [
+          {
+            "messageId": "msg_158e4e780001zXSiKvQXWkoCqj",
+            "inputCount": 903,
+            "outputCount": 166,
+            "reasoningCount": 0,
+            "cacheReads": 3483,
+            "cacheWrites": 0,
+            "time": {
+              "created": 1792492758923,
+              "streamed": 1792492762684,
+              "completed": 1792492762685
+            }
+          },
+          {
+            "messageId": "msg_158e4fd52001zuuOND7189hD6E",
+            "inputCount": 780,
+            "outputCount": 132,
+            "reasoningCount": 0,
+            "cacheReads": 4757,
+            "cacheWrites": 0,
+            "time": {
+              "created": 1792492764508,
+              "streamed": 1792492767143,
+              "completed": 1792492767144
+            }
+          },
+          {
+            "messageId": "msg_158e4f76d001VMZ5uazNH65gr3",
+            "inputCount": 175,
+            "outputCount": 77,
+            "reasoningCount": 0,
+            "cacheReads": 4551,
+            "cacheWrites": 0,
+            "time": {
+              "created": 1792492762999,
+              "streamed": 1792492764478,
+              "completed": 1792492764491
+            }
+          }
+        ]
+      }
+    ],
+    "processCleanup": [
+      {
+        "component": "broker",
+        "pid": 37237,
+        "processGone": true,
+        "groupGone": true
+      },
+      {
+        "component": "opencode",
+        "pid": 37249,
+        "processGone": true,
+        "groupGone": true
+      },
+      {
+        "component": "worker",
+        "pid": 37315,
+        "processGone": true,
+        "groupGone": true
+      }
+    ],
+    "http": [
+      {
+        "endpoint": "POST /api/agent/v1/internal/reconcileCandidates",
+        "statuses": {
+          "200": 1
+        },
+        "requests": 1,
+        "p50Ms": 4.79,
+        "p95Ms": 4.79,
+        "p99Ms": 4.79
+      },
+      {
+        "endpoint": "POST /api/agent/v1/internal/consume",
+        "statuses": {
+          "200": 18
+        },
+        "requests": 18,
+        "p50Ms": 21.12,
+        "p95Ms": 24.43,
+        "p99Ms": 24.43
+      },
+      {
+        "endpoint": "POST /api/agent/v1/internal/pendingCancellations",
+        "statuses": {
+          "200": 18
+        },
+        "requests": 18,
+        "p50Ms": 0.89,
+        "p95Ms": 1.4,
+        "p99Ms": 1.4
+      },
+      {
+        "endpoint": "POST /api/agent/v1/internal/claim",
+        "statuses": {
+          "200": 18
+        },
+        "requests": 18,
+        "p50Ms": 0.97,
+        "p95Ms": 6.87,
+        "p99Ms": 6.87
+      },
+      {
+        "endpoint": "POST /api/agent/v1/internal/workerReport",
+        "statuses": {
+          "200": 2
+        },
+        "requests": 2,
+        "p50Ms": 4.18,
+        "p95Ms": 5.06,
+        "p99Ms": 5.06
+      },
+      {
+        "endpoint": "GET /api/admin/agent",
+        "statuses": {
+          "200": 1
+        },
+        "requests": 1,
+        "p50Ms": 3.13,
+        "p95Ms": 3.13,
+        "p99Ms": 3.13
+      },
+      {
+        "endpoint": "POST /api/agent/v1/internal/snapshot",
+        "statuses": {
+          "200": 2
+        },
+        "requests": 2,
+        "p50Ms": 16.72,
+        "p95Ms": 22.91,
+        "p99Ms": 22.91
+      },
+      {
+        "endpoint": "POST /api/agent/v1/internal/memory",
+        "statuses": {
+          "200": 1
+        },
+        "requests": 1,
+        "p50Ms": 1.17,
+        "p95Ms": 1.17,
+        "p99Ms": 1.17
+      },
+      {
+        "endpoint": "POST /api/agent/v1/internal/evidence",
+        "statuses": {
+          "200": 3
+        },
+        "requests": 3,
+        "p50Ms": 1.74,
+        "p95Ms": 3.1,
+        "p99Ms": 3.1
+      },
+      {
+        "endpoint": "POST /api/agent/v1/internal/link",
+        "statuses": {
+          "200": 2
+        },
+        "requests": 2,
+        "p50Ms": 4.66,
+        "p95Ms": 7.18,
+        "p99Ms": 7.18
+      },
+      {
+        "endpoint": "POST /api/agent/v1/internal/state",
+        "statuses": {
+          "200": 7
+        },
+        "requests": 7,
+        "p50Ms": 4.99,
+        "p95Ms": 5.45,
+        "p99Ms": 5.45
+      },
+      {
+        "endpoint": "POST /api/agent/v1/internal/run",
+        "statuses": {
+          "200": 18
+        },
+        "requests": 18,
+        "p50Ms": 1.04,
+        "p95Ms": 1.37,
+        "p99Ms": 1.37
+      },
+      {
+        "endpoint": "GET /api/agent/v1/evidence",
+        "statuses": {
+          "200": 2
+        },
+        "requests": 2,
+        "p50Ms": 1.42,
+        "p95Ms": 2.2,
+        "p99Ms": 2.2
+      },
+      {
+        "endpoint": "GET /api/capabilities",
+        "statuses": {
+          "200": 1
+        },
+        "requests": 1,
+        "p50Ms": 2.92,
+        "p95Ms": 2.92,
+        "p99Ms": 2.92
+      },
+      {
+        "endpoint": "GET /api/health",
+        "statuses": {
+          "200": 1
+        },
+        "requests": 1,
+        "p50Ms": 2.02,
+        "p95Ms": 2.02,
+        "p99Ms": 2.02
+      },
+      {
+        "endpoint": "POST /api/agent/v1/internal/heartbeat",
+        "statuses": {
+          "200": 1
+        },
+        "requests": 1,
+        "p50Ms": 4.36,
+        "p95Ms": 4.36,
+        "p99Ms": 4.36
+      },
+      {
+        "endpoint": "POST /api/agent/v1/internal/publish",
+        "statuses": {
+          "200": 1
+        },
+        "requests": 1,
+        "p50Ms": 8.72,
+        "p95Ms": 8.72,
+        "p99Ms": 8.72
+      },
+      {
+        "endpoint": "GET /api/agent/v1/brief",
+        "statuses": {
+          "200": 1
+        },
+        "requests": 1,
+        "p50Ms": 1.22,
+        "p95Ms": 1.22,
+        "p99Ms": 1.22
+      },
+      {
+        "endpoint": "POST /api/agent/v1/access/device",
+        "statuses": {
+          "200": 1
+        },
+        "requests": 1,
+        "p50Ms": 5.26,
+        "p95Ms": 5.26,
+        "p99Ms": 5.26
+      },
+      {
+        "endpoint": "POST /api/agent/v1/chat/sessions",
+        "statuses": {
+          "201": 1
+        },
+        "requests": 1,
+        "p50Ms": 5.47,
+        "p95Ms": 5.47,
+        "p99Ms": 5.47
+      },
+      {
+        "endpoint": "POST /api/agent/v1/chat/sessions/:id/messages",
+        "statuses": {
+          "202": 2
+        },
+        "requests": 2,
+        "p50Ms": 5.72,
+        "p95Ms": 6.17,
+        "p99Ms": 6.17
+      },
+      {
+        "endpoint": "POST /api/agent/v1/internal/progress",
+        "statuses": {
+          "200": 4
+        },
+        "requests": 4,
+        "p50Ms": 0.94,
+        "p95Ms": 1.29,
+        "p99Ms": 1.29
+      },
+      {
+        "endpoint": "GET /api/agent/v1/chat/sessions/:id/messages",
+        "statuses": {
+          "200": 1
+        },
+        "requests": 1,
+        "p50Ms": 2.02,
+        "p95Ms": 2.02,
+        "p99Ms": 2.02
+      },
+      {
+        "endpoint": "POST /api/agent/v1/runs/:id/cancel",
+        "statuses": {
+          "200": 1
+        },
+        "requests": 1,
+        "p50Ms": 5.18,
+        "p95Ms": 5.18,
+        "p99Ms": 5.18
+      }
+    ],
+    "previousChatFailure": "AGENT_TOOL_EVIDENCE_REQUIRED; no evidence tool call; corrected by the same single repair budget"
+  },
+  "soak": {
+    "kind": "agent off; complete RSS catalog redirected to loopback fixtures; deterministic cycles and 10 WS clients",
+    "durationMs": 1800000,
+    "elapsedMs": 1803413.446216,
+    "cycles": 397,
+    "configuredFeeds": 66,
+    "canonicalFeeds": 501,
+    "baseline": {
+      "durationMs": 30000,
+      "httpMs": {
+        "samples": 100,
+        "p50": 36.3472610000008,
+        "p95": 62.90215199999989,
+        "p99": 100.85043999999834
+      },
+      "eventLoopDelayMs": {
+        "p50": 10.182655,
+        "p95": 11.165695,
+        "p99": 11.755519,
+        "max": 18.776063
+      }
+    },
+    "gatesDeclaredBeforeTest": {
+      "httpP95Ms": 188.71,
+      "httpP99Ms": 302.56,
+      "eventLoopP95Ms": 33.5,
+      "unexpectedWebsocketCloses": 0,
+      "rssErrors": 0,
+      "storageRecoveries": 0
+    },
+    "measured": {
+      "httpP95Ms": 88.91756299999543,
+      "httpP99Ms": 262.64288999995915,
+      "eventLoopP95Ms": 10.739711,
+      "unexpectedWebsocketCloses": 0,
+      "rssErrors": 0,
+      "storageRecoveries": 0
+    },
+    "gatesPassed": {
+      "httpP95Ms": true,
+      "httpP99Ms": true,
+      "eventLoopP95Ms": true,
+      "unexpectedWebsocketCloses": true,
+      "rssErrors": true,
+      "storageRecoveries": true
+    },
+    "acceptanceOfMeasuredGates": true,
+    "httpMs": {
+      "samples": 3970,
+      "p50": 27.78260599996429,
+      "p95": 88.91756299999543,
+      "p99": 262.64288999995915
+    },
+    "eventLoopDelayMs": {
+      "p50": 10.182655,
+      "p95": 10.739711,
+      "p99": 11.575295,
+      "max": 30.244863
+    },
+    "unexpectedCloses": 0,
+    "websocket": {
+      "upgradeRejected": 0,
+      "envelopes": 107040,
+      "bytes": 35529560,
+      "dropped": 0,
+      "maxBufferedBytes": 0,
+      "heartbeatTimeouts": 0,
+      "closeCodes": {},
+      "byEvent": {
+        "ws:ready:v2": {
+          "messages": 10,
+          "bytes": 4310,
+          "maxPayloadBytes": 431,
+          "serializationMs": 0.20513200000141296
+        },
+        "state:revision:v2": {
+          "messages": 89010,
+          "bytes": 33723250,
+          "maxPayloadBytes": 391,
+          "serializationMs": 281.3629109806984
+        },
+        "heartbeat": {
+          "messages": 18020,
+          "bytes": 1802000,
+          "maxPayloadBytes": 100,
+          "serializationMs": 80.30474400129742
+        }
+      },
+      "temporarily-slow": 19850,
+      "coalesced": 11910
+    },
+    "memorySamples": [
+      {
+        "elapsedMs": 3134.97861,
+        "rss": 393728000,
+        "heapUsed": 38696752,
+        "walBytes": 4948152,
+        "databaseBytes": 13000704,
+        "rssRequests": 18,
+        "rssErrors": 0,
+        "analysisRecoveries": 0,
+        "queryRecoveries": 0
+      },
+      {
+        "elapsedMs": 66313.83400399999,
+        "rss": 676392960,
+        "heapUsed": 32987072,
+        "walBytes": 5891632,
+        "databaseBytes": 138641408,
+        "rssRequests": 324,
+        "rssErrors": 0,
+        "analysisRecoveries": 0,
+        "queryRecoveries": 0
+      },
+      {
+        "elapsedMs": 129738.592389,
+        "rss": 823668736,
+        "heapUsed": 37216368,
+        "walBytes": 6863952,
+        "databaseBytes": 211316736,
+        "rssRequests": 501,
+        "rssErrors": 0,
+        "analysisRecoveries": 0,
+        "queryRecoveries": 0
+      },
+      {
+        "elapsedMs": 190010.09862099998,
+        "rss": 808648704,
+        "heapUsed": 37970080,
+        "walBytes": 6971072,
+        "databaseBytes": 212045824,
+        "rssRequests": 501,
+        "rssErrors": 0,
+        "analysisRecoveries": 0,
+        "queryRecoveries": 0
+      },
+      {
+        "elapsedMs": 253870.957104,
+        "rss": 811999232,
+        "heapUsed": 39145216,
+        "walBytes": 6987552,
+        "databaseBytes": 212774912,
+        "rssRequests": 501,
+        "rssErrors": 0,
+        "analysisRecoveries": 0,
+        "queryRecoveries": 0
+      },
+      {
+        "elapsedMs": 317670.017986,
+        "rss": 807190528,
+        "heapUsed": 42567896,
+        "walBytes": 7111152,
+        "databaseBytes": 213516288,
+        "rssRequests": 501,
+        "rssErrors": 0,
+        "analysisRecoveries": 0,
+        "queryRecoveries": 0
+      },
+      {
+        "elapsedMs": 377679.658806,
+        "rss": 816197632,
+        "heapUsed": 35431328,
+        "walBytes": 7111152,
+        "databaseBytes": 214208512,
+        "rssRequests": 501,
+        "rssErrors": 0,
+        "analysisRecoveries": 0,
+        "queryRecoveries": 0
+      },
+      {
+        "elapsedMs": 441887.47198699997,
+        "rss": 827760640,
+        "heapUsed": 37293016,
+        "walBytes": 7259472,
+        "databaseBytes": 214941696,
+        "rssRequests": 501,
+        "rssErrors": 0,
+        "analysisRecoveries": 0,
+        "queryRecoveries": 0
+      },
+      {
+        "elapsedMs": 505760.76915,
+        "rss": 828952576,
+        "heapUsed": 38903976,
+        "walBytes": 7259472,
+        "databaseBytes": 215691264,
+        "rssRequests": 501,
+        "rssErrors": 0,
+        "analysisRecoveries": 0,
+        "queryRecoveries": 0
+      },
+      {
+        "elapsedMs": 569788.5874930001,
+        "rss": 828981248,
+        "heapUsed": 35957056,
+        "walBytes": 7259472,
+        "databaseBytes": 216449024,
+        "rssRequests": 501,
+        "rssErrors": 0,
+        "analysisRecoveries": 0,
+        "queryRecoveries": 0
+      },
+      {
+        "elapsedMs": 634181.763274,
+        "rss": 818339840,
+        "heapUsed": 39293200,
+        "walBytes": 7259472,
+        "databaseBytes": 217214976,
+        "rssRequests": 501,
+        "rssErrors": 0,
+        "analysisRecoveries": 0,
+        "queryRecoveries": 0
+      },
+      {
+        "elapsedMs": 698021.0774320001,
+        "rss": 827473920,
+        "heapUsed": 40274488,
+        "walBytes": 7259472,
+        "databaseBytes": 217956352,
+        "rssRequests": 501,
+        "rssErrors": 0,
+        "analysisRecoveries": 0,
+        "queryRecoveries": 0
+      },
+      {
+        "elapsedMs": 759043.523483,
+        "rss": 833839104,
+        "heapUsed": 36418256,
+        "walBytes": 7259472,
+        "databaseBytes": 218648576,
+        "rssRequests": 501,
+        "rssErrors": 0,
+        "analysisRecoveries": 0,
+        "queryRecoveries": 0
+      },
+      {
+        "elapsedMs": 819824.3149580001,
+        "rss": 835543040,
+        "heapUsed": 39625184,
+        "walBytes": 7259472,
+        "databaseBytes": 219361280,
+        "rssRequests": 501,
+        "rssErrors": 0,
+        "analysisRecoveries": 0,
+        "queryRecoveries": 0
+      },
+      {
+        "elapsedMs": 884613.0769610001,
+        "rss": 838041600,
+        "heapUsed": 37487064,
+        "walBytes": 7259472,
+        "databaseBytes": 220200960,
+        "rssRequests": 525,
+        "rssErrors": 0,
+        "analysisRecoveries": 0,
+        "queryRecoveries": 0
+      },
+      {
+        "elapsedMs": 945046.1288460001,
+        "rss": 853983232,
+        "heapUsed": 37219440,
+        "walBytes": 7259472,
+        "databaseBytes": 221171712,
+        "rssRequests": 562,
+        "rssErrors": 0,
+        "analysisRecoveries": 0,
+        "queryRecoveries": 0
+      },
+      {
+        "elapsedMs": 1005850.90193,
+        "rss": 840658944,
+        "heapUsed": 37703040,
+        "walBytes": 7420152,
+        "databaseBytes": 221884416,
+        "rssRequests": 567,
+        "rssErrors": 0,
+        "analysisRecoveries": 0,
+        "queryRecoveries": 0
+      },
+      {
+        "elapsedMs": 1069541.2410000002,
+        "rss": 844132352,
+        "heapUsed": 37064072,
+        "walBytes": 7420152,
+        "databaseBytes": 222617600,
+        "rssRequests": 567,
+        "rssErrors": 0,
+        "analysisRecoveries": 0,
+        "queryRecoveries": 0
+      },
+      {
+        "elapsedMs": 1133593.345812,
+        "rss": 842588160,
+        "heapUsed": 44438080,
+        "walBytes": 7420152,
+        "databaseBytes": 223338496,
+        "rssRequests": 567,
+        "rssErrors": 0,
+        "analysisRecoveries": 0,
+        "queryRecoveries": 0
+      },
+      {
+        "elapsedMs": 1197431.056092,
+        "rss": 840204288,
+        "heapUsed": 44316392,
+        "walBytes": 7420152,
+        "databaseBytes": 224129024,
+        "rssRequests": 567,
+        "rssErrors": 0,
+        "analysisRecoveries": 0,
+        "queryRecoveries": 0
+      },
+      {
+        "elapsedMs": 1261369.938143,
+        "rss": 849637376,
+        "heapUsed": 37405480,
+        "walBytes": 7453112,
+        "databaseBytes": 224870400,
+        "rssRequests": 567,
+        "rssErrors": 0,
+        "analysisRecoveries": 0,
+        "queryRecoveries": 0
+      },
+      {
+        "elapsedMs": 1325351.37559,
+        "rss": 851935232,
+        "heapUsed": 37537032,
+        "walBytes": 7519032,
+        "databaseBytes": 225587200,
+        "rssRequests": 567,
+        "rssErrors": 0,
+        "analysisRecoveries": 0,
+        "queryRecoveries": 0
+      },
+      {
+        "elapsedMs": 1388953.1678580001,
+        "rss": 857305088,
+        "heapUsed": 37851680,
+        "walBytes": 7675592,
+        "databaseBytes": 226406400,
+        "rssRequests": 567,
+        "rssErrors": 0,
+        "analysisRecoveries": 0,
+        "queryRecoveries": 0
+      },
+      {
+        "elapsedMs": 1452851.356474,
+        "rss": 858402816,
+        "heapUsed": 45145872,
+        "walBytes": 7675592,
+        "databaseBytes": 227143680,
+        "rssRequests": 567,
+        "rssErrors": 0,
+        "analysisRecoveries": 0,
+        "queryRecoveries": 0
+      },
+      {
+        "elapsedMs": 1516453.8628170001,
+        "rss": 829042688,
+        "heapUsed": 38113296,
+        "walBytes": 7675592,
+        "databaseBytes": 227880960,
+        "rssRequests": 567,
+        "rssErrors": 0,
+        "analysisRecoveries": 0,
+        "queryRecoveries": 0
+      },
+      {
+        "elapsedMs": 1580292.790849,
+        "rss": 843956224,
+        "heapUsed": 44664360,
+        "walBytes": 7675592,
+        "databaseBytes": 228630528,
+        "rssRequests": 567,
+        "rssErrors": 0,
+        "analysisRecoveries": 0,
+        "queryRecoveries": 0
+      },
+      {
+        "elapsedMs": 1643995.209371,
+        "rss": 847458304,
+        "heapUsed": 44479040,
+        "walBytes": 7683832,
+        "databaseBytes": 229330944,
+        "rssRequests": 567,
+        "rssErrors": 0,
+        "analysisRecoveries": 0,
+        "queryRecoveries": 0
+      },
+      {
+        "elapsedMs": 1708049.9333310002,
+        "rss": 846512128,
+        "heapUsed": 41735512,
+        "walBytes": 7683832,
+        "databaseBytes": 230141952,
+        "rssRequests": 567,
+        "rssErrors": 0,
+        "analysisRecoveries": 0,
+        "queryRecoveries": 0
+      },
+      {
+        "elapsedMs": 1771608.7125280001,
+        "rss": 848158720,
+        "heapUsed": 41652224,
+        "walBytes": 7683832,
+        "databaseBytes": 230858752,
+        "rssRequests": 577,
+        "rssErrors": 0,
+        "analysisRecoveries": 0,
+        "queryRecoveries": 0
+      }
+    ],
+    "maxRss": 858402816,
+    "maxWalBytes": 7683832,
+    "limitations": [
+      "no model in this soak",
+      "no real provider availability",
+      "latency aggregate covers health and snapshot; per-endpoint latency above belongs to short real smoke",
+      "child RSS was not measured",
+      "no 24-hour evidence",
+      "no memory acceptance gate declared; descriptive values only"
+    ]
+  },
+  "decision": "remain shadow; no production stability claim; see audit.md for blockers"
+}

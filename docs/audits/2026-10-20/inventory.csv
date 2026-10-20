@@ -1,0 +1,449 @@
+path,kind,lines,sha256,review,static_signals
+.github/workflows/ci.yml,application/tool/config,35,596a8032385cc34d87fbff56ec7003e2bdee94f742ed5910ec930697fed47571,revisión funcional focalizada; no línea a línea,
+backend/config/deploymentEnv.js,application/tool/config,81,1449760b0e2023d9ed9b472543efb84e79a15fe3d1181a500ccaf390476a199b,revisión funcional focalizada; no línea a línea,
+backend/config/liveStreams.js,application/tool/config,270,322d5cbfc88c41ed36ab2e834ea89a79583dfed8862730cb8af256517b97530c,inventario y barrido estático; revisión semántica pendiente,
+backend/config/loadEnvironment.js,application/tool/config,13,92cc0686960ef86e8439640bd442370de8e403732307b38d71b6781c971f1d0b,revisión funcional focalizada; no línea a línea,
+backend/config/runtimePolicy.js,application/tool/config,221,fdaac3c23e7f0678a93e8a98f59b5d745aed176b88ee443641df7ed0526bbef6,revisión funcional focalizada; no línea a línea,
+backend/config/secCompanies.json,application/tool/config,137,6bcffa53a4a8ea3f1873d7036ce959bc572059e2980fad1bfd833145c90dd990,inventario y barrido estático; revisión semántica pendiente,
+backend/contracts/ogidOperations.js,application/tool/config,158,45100afd1f89d20524c0eec49ae6a82e94aa63048148a9d53b0639e7736ae296,lectura parcial/contextual,
+backend/controllers/adminController.js,application/tool/config,550,667d0f74f76e977ada5a42052c54371a52dce27cdc532d8fe104708c149ab065,inventario y barrido estático; revisión semántica pendiente,
+backend/controllers/healthController.js,application/tool/config,59,b42a4290d4ba60c6317aaf0b2312dc6ce6f277158eabf08e7d04684d6d6c47a2,revisión funcional focalizada; no línea a línea,
+backend/controllers/historyAdminController.js,application/tool/config,24,12342252869e1158ae867fdce7d3e944f192358ca4994c12acd4fa503e7b0ed3,inventario y barrido estático; revisión semántica pendiente,
+backend/controllers/intelAdvancedController.js,application/tool/config,106,1ec422b78c8de0b3ad06a95c17a7c6ea89ba4b1f94678d786fe20cca848c13d6,inventario y barrido estático; revisión semántica pendiente,
+backend/controllers/intelController.js,application/tool/config,328,9056f0f4deb4f67dec704e7ffc08c18d6c9a20f34dcbd8680ea293c0296f23ee,inventario y barrido estático; revisión semántica pendiente,
+backend/controllers/mapController.js,application/tool/config,61,ab4cbf0a84d8b42642a281a36644f78c4c170e21a455abbb05a197289e12affc,inventario y barrido estático; revisión semántica pendiente,
+backend/controllers/marketController.js,application/tool/config,569,fdfb292de05222727353f31eb0353c46c292ca03cb909a63ccaf69fe4054bbf4,inventario y barrido estático; revisión semántica pendiente,
+backend/controllers/mediaController.js,application/tool/config,95,e0e3000539b1fd61a9688a9626fdab875c1b78dac63ff08cf25e4f741e088920,inventario y barrido estático; revisión semántica pendiente,
+backend/controllers/newsController.js,application/tool/config,24,bdb4cd1b69fef3fcf51d3fc7069148e923ea6737c395f4ced122f281469e4279,inventario y barrido estático; revisión semántica pendiente,
+backend/controllers/researchController.js,application/tool/config,60,d0b97d6198abb3bc35087b8c9c9932f1d1b35e0ec43280f4a42b067aa1f61e24,inventario y barrido estático; revisión semántica pendiente,
+backend/deploy/agent/research-tools.json,application/tool/config,5,eed0cb63f718cf256ce91cf96f20193916ced75b2c60252990e4cc3d17782d78,inventario y barrido estático; revisión semántica pendiente,
+backend/middleware/mcpOperatorAuth.js,application/tool/config,43,678d61040d0d31eb4a2f0a4d740c81bd811f4fa9a0ff416f3ebf338f6c5debd1,inventario y barrido estático; revisión semántica pendiente,
+backend/middleware/sensitiveRouteAuth.js,application/tool/config,51,bb5b37ee242926f0a6248db938cacf3dd92b259de1ca4fe2367bf899b84c7de0,revisión funcional focalizada; no línea a línea,
+backend/package.json,application/tool/config,43,4ed131dd6d5a92dcf72708b064346d0bab63818395560cdcffa22020258ddf1a,inventario y barrido estático; revisión semántica pendiente,
+backend/reports/awareness-admission-2026-07-29-probing.json,application/tool/config,220,de0c66ae5af541a6568a2d703234ace07f3c88ec1ba6e498cea06bb3a3ce6686,inventario y barrido estático; revisión semántica pendiente,
+backend/reports/awareness-admission-2026-07-29-shadow.json,application/tool/config,230,ddb08713b8bc359c193b9504ea953a137eca28b84798458170cd5b5b7f6375c2,inventario y barrido estático; revisión semántica pendiente,
+backend/reports/rss-catalog-audit-2026-07-19-baseline.json,application/tool/config,4171,d9d20359b192e99d038d52582bf56ace1d9fbe9cde5683394652bd1191e9879b,inventario y barrido estático; revisión semántica pendiente,
+backend/reports/rss-catalog-audit-2026-07-19-final.json,application/tool/config,4415,c1685d7838d7302a9fdcb559fe9113e0e2f505ed4b8ad7bc0cd0e581c0abe8d1,inventario y barrido estático; revisión semántica pendiente,
+backend/routes/adminRoutes.js,application/tool/config,26,e7a5ccb0df5db355e737be0a684f71fe84c2aa0cc2c43a2f56556b642c2c0c73,inventario y barrido estático; revisión semántica pendiente,
+backend/routes/agentRoutes.js,application/tool/config,473,595fb44cc1f6dd1e630cb98947bf264e821a3c48983b12e5687a2bc710d960cf,revisión funcional focalizada; no línea a línea,timers;events
+backend/routes/healthRoutes.js,application/tool/config,15,9dad0c0d44844b2d1995d60ae0d0d48ffed131aa4018821d53642dcd1bf91b51,inventario y barrido estático; revisión semántica pendiente,
+backend/routes/index.js,application/tool/config,24,9f056086d1b1b0989a12d3beb32129f26fba1ce4fd41f66609d032b5724b406c,inventario y barrido estático; revisión semántica pendiente,
+backend/routes/intelRoutes.js,application/tool/config,27,34a15fb9b6a6652105ee690c51cf66197e5f8df4f004e42782667b439b4f7bbb,inventario y barrido estático; revisión semántica pendiente,
+backend/routes/mapRoutes.js,application/tool/config,11,817e76f0e06e33a245a583cef44fe22bce1a6f49fa0ffa7d4b4b3a5b354c2ff5,inventario y barrido estático; revisión semántica pendiente,
+backend/routes/marketRoutes.js,application/tool/config,27,373f7a766a2cf78818001f02144ebfa54eb0c88de816e87bc8311b586e3baddc,inventario y barrido estático; revisión semántica pendiente,
+backend/routes/mediaRoutes.js,application/tool/config,8,f28a66a80a6b5dd95704b00f4254a02a73bd774dfdab5a26308c4c4189a6957b,inventario y barrido estático; revisión semántica pendiente,
+backend/routes/newsRoutes.js,application/tool/config,11,a0e8e70fb40455fa02c0161ea1376865086fdffb81e088124239510ff78bbb88,inventario y barrido estático; revisión semántica pendiente,
+backend/routes/researchRoutes.js,application/tool/config,23,655e5e58b4cfce672d3d14acefd5214eaf400c947d8bc10d946000f97ce36ead,inventario y barrido estático; revisión semántica pendiente,
+backend/scripts/agent-broker.js,application/tool/config,20,a9395ac4621e7d8f02c467a4861752f68c9c4269f27409442ed01476871a5b1c,revisión funcional focalizada; no línea a línea,timers
+backend/scripts/agent-browser.js,application/tool/config,267,30dd0ee674e70148b4b57ef4e376eecf03408406a7daf1801744662712360b0f,revisión funcional focalizada; no línea a línea,
+backend/scripts/agent-config.js,application/tool/config,20,fd6e7e9ddf78e84857877a834043bd2e2f0ffd4b87fb51a5bf248d0b7c7ba6ca,revisión funcional focalizada; no línea a línea,
+backend/scripts/agent-log-audit.py,application/tool/config,188,944e8ef8eb759b96c35da29c809b3acf6f5da82ca6922db9caa3aaf83dd65310,revisión funcional focalizada; no línea a línea,
+backend/scripts/agent-migration-check.js,application/tool/config,72,981b3fe3f450e70bb922a5f4996bb0f9670e8ea223bb12109c29ee0c54538dcf,revisión funcional focalizada; no línea a línea,SQLite
+backend/scripts/agent-opencode.js,application/tool/config,15,6d9c85fcebba398f4f1f4d9186877bf527630ec1679dbf70619c75cc84976bf1,revisión funcional focalizada; no línea a línea,timers;process
+backend/scripts/agent-package.js,application/tool/config,93,f7b3f4259ecfa07a09bac85f11c8e64c6bc7fb8fde35d0efc27b9552f50f1a9f,revisión funcional focalizada; no línea a línea,
+backend/scripts/agent-preflight.js,application/tool/config,185,5eb8c54497ea259af41e9ab7cb297375bca1ea447a932b4137070f0912b78702,revisión funcional focalizada; no línea a línea,SQLite;network
+backend/scripts/agent-real-smoke.js,application/tool/config,388,eb1b0a9d6a8114ab8dbce559e5a7e979efac37fe8efde8376da35e9a4b1f0c3b,revisión funcional focalizada; no línea a línea,network;timers;process
+backend/scripts/agent-shadow-model.js,application/tool/config,12,2759e8c360f0b1e61f08f262e03e83f2b90e4f61a424069e6530e5ac07dd0887,revisión funcional focalizada; no línea a línea,
+backend/scripts/agent-shadow-observe.js,application/tool/config,79,0e9f4a446bb6ba0789bbbd40a9f1ded548fac7b6a71bff7c90182faa5ed2fd57,revisión funcional focalizada; no línea a línea,network;timers
+backend/scripts/agent-snapshot-check.js,application/tool/config,115,c7cddb35ee09d5f927e7705f6884642e3d3d7b8c7114d96985509d6ced549b4a,revisión funcional focalizada; no línea a línea,SQLite
+backend/scripts/agent-terminal-smoke.js,application/tool/config,73,24417eb542af06b03fd7c06a4dc377e3ea2d1a7937058f3e0e6c5e4ca39ac2d1,revisión funcional focalizada; no línea a línea,network;timers
+backend/scripts/agent-worker.js,application/tool/config,52,e5aea7f1127334b7210ab87c6ade6bf7857c27ebf157391f3a29e2429b1782f8,revisión funcional focalizada; no línea a línea,
+backend/scripts/audit-research-ledger.js,application/tool/config,9,eac70279690977f59a6c917f6eda85d0b601da5fef2cf3e8074f862ebb7d1b66,inventario y barrido estático; revisión semántica pendiente,
+backend/scripts/audit-rss-catalog.js,application/tool/config,367,e09e3ace0943e52c00bb0de3f77381b21f176d272e1f266a673b354e3c225900,inventario y barrido estático; revisión semántica pendiente,network;timers
+backend/scripts/awareness-admission-lab.js,application/tool/config,632,6c87c0461008f46a6b68fb482224feec0ee1a202f7fdd3e21af662d3cac3eb66,inventario y barrido estático; revisión semántica pendiente,network;timers
+backend/scripts/benchmark-event-ledger.js,application/tool/config,14,7174be1a12add0a76cb60aa52edcc934db8d03eb11139ab3385cd7f8f35f6cb9,inventario y barrido estático; revisión semántica pendiente,
+backend/scripts/benchmark-news-first.js,application/tool/config,40,de75ae5a247070126c5c089f57d38362b886037037f3f812ba9ad0b092a26520,inventario y barrido estático; revisión semántica pendiente,timers
+backend/scripts/benchmark-news-persistence.js,application/tool/config,10,8f79914c2396032095e4ecdc872b9cb5a4101b7b095d37df558cc4adf379a6eb,inventario y barrido estático; revisión semántica pendiente,
+backend/scripts/benchmark-persistence.js,application/tool/config,52,e85d1a46024d3493fc6e1977eff8034672dcdc3eaac3f726f5be8c4ac0d51eb9,inventario y barrido estático; revisión semántica pendiente,SQLite;timers
+backend/scripts/check-source.js,application/tool/config,25,7f4bbd28cec9370477bacea1cf8c61cd1641937d5fb1290522e5989554bae5d8,inventario y barrido estático; revisión semántica pendiente,
+backend/scripts/inspect-market-watchlist.js,application/tool/config,55,dacce7d4620ac6609c97ccf236e219c73589cf77d09d7a1b2a72273ff83ec980,inventario y barrido estático; revisión semántica pendiente,
+backend/scripts/probe-rss.js,application/tool/config,178,8ac5c0749fe6d16841b2c20d8c76cf09d97c0e499bcec0e43f28a4cf2e297206,inventario y barrido estático; revisión semántica pendiente,network
+backend/scripts/rss-lab-server.js,application/tool/config,3,e55ad8906232aafdadabc6e8cb10e35d840a5afd13029e8e7b21c90ae1292e7b,inventario y barrido estático; revisión semántica pendiente,
+backend/scripts/rss-lab-setup.js,application/tool/config,42,97f983605223a5d4648ff930cba976fb4249c7f66457bc803cbde7dbfefb530e,inventario y barrido estático; revisión semántica pendiente,network
+backend/scripts/rss-lab.js,application/tool/config,153,3f04a120b2a48ebd5de5b05a3712d9dad43827c01e300c575caa4c509485a248,inventario y barrido estático; revisión semántica pendiente,network
+backend/scripts/smoke-llamacpp.js,application/tool/config,55,a2171429fe5fc898a60c405d0a8a120b125ede0d5ffb36970af9a5ac79450bee,inventario y barrido estático; revisión semántica pendiente,network
+backend/scripts/smoke-npm-runtime.js,application/tool/config,43,9acefd2a7f75ab300e2b6b07a42fa73fa02e37c25e11a89becc9cdd6847217d7,inventario y barrido estático; revisión semántica pendiente,network;timers;process;events
+backend/scripts/smoke-upstreams.js,application/tool/config,91,98ec7c92d20eacbda4756b5e77553cc1eadf95a40ea0c2eeb76f2b52c06433e2,inventario y barrido estático; revisión semántica pendiente,network
+backend/scripts/soak-network-guard.cjs,application/tool/config,11,b9f576adaf5601a97f3845ab274ba64be744000fb6a09e2d342604dcb72007c2,revisión funcional focalizada; no línea a línea,
+backend/scripts/soak-news-first.js,application/tool/config,15,1fd2ad0b62c2d7f83b2d2bf5223fc88d7d25d970a23ab4f9e2a44bc718fe32a5,inventario y barrido estático; revisión semántica pendiente,network;timers
+backend/scripts/soak-p0-recovery.js,application/tool/config,101,f6ef60d09c9ede2a44c5fc6d4e67315c3f75f20a2b1cf7a96af37adfe16e2c2e,inventario y barrido estático; revisión semántica pendiente,SQLite;network;timers;events
+backend/scripts/soak-runtime-stability.js,application/tool/config,313,24221cb1f365c1f0ce83241aba978b95eb05d158683096f519b15d9e84499092,inventario y barrido estático; revisión semántica pendiente,timers;events
+backend/scripts/storage-backup.js,application/tool/config,8,c15d234774d9a744dc9884e5c3aaf13ee98e9f2a860c54180327eef6a96a77d8,inventario y barrido estático; revisión semántica pendiente,
+backend/scripts/storage-inspect.js,application/tool/config,15,eebb14b3641b5c24d07fc3f959dba86774087001f5c02d0ff2280f39ca7c6d52,inventario y barrido estático; revisión semántica pendiente,SQLite;timers
+backend/scripts/storage-migrate.js,application/tool/config,43,8a1164bbf899cff4116c111865f39d5ab4d419eccd6fffe10834d928faa43721,inventario y barrido estático; revisión semántica pendiente,
+backend/scripts/storage-options.js,application/tool/config,11,9b2972afc3096624ec955b8be4c6800fa764e1ec7cbc1c9ce0834d87128764fa,inventario y barrido estático; revisión semántica pendiente,
+backend/scripts/storage-repair-009.js,application/tool/config,14,07f710236372497a34f10c1a6038127d4381159c1ee21b646fc8b61926642e84,inventario y barrido estático; revisión semántica pendiente,
+backend/scripts/storage-status.js,application/tool/config,22,cd20c2d752bd6b34bfadc2b53703c889e04205564b8ca123c28d672eaaddaf55,inventario y barrido estático; revisión semántica pendiente,SQLite
+backend/scripts/storage-volume-check.js,application/tool/config,44,cfcb6db742a5938580f835f9405d5f87e470d8b97468e2f0be76fa19f9f2f5cc,inventario y barrido estático; revisión semántica pendiente,SQLite;timers;process
+backend/scripts/verify-news-first-ui.js,application/tool/config,64,30e6ce1330967459b7dacfcb2fe996eee2db9d140c0b884f4638e3e089aee2a1,inventario y barrido estático; revisión semántica pendiente,events
+backend/scripts/verify-p0-browser.js,application/tool/config,74,8c6640f0564bb01df4f36f3c33eaff2c9c726df09a6ee28d27262b5d4b3bcb2b,inventario y barrido estático; revisión semántica pendiente,SQLite;timers
+backend/scripts/verify-p0-process-recovery.js,application/tool/config,77,4780399c4f7ce66f4c50b57d0f246e3caa163eda98ef30d38d395c878e7151d0,inventario y barrido estático; revisión semántica pendiente,SQLite;network;timers;process
+backend/scripts/verify-runtime-dashboard.js,application/tool/config,83,f6a591fb7ed4791fa7951986758bc5bcf2632721e7efee8ad55afae34c539b81,inventario y barrido estático; revisión semántica pendiente,events
+backend/server.js,application/tool/config,1085,54fd59d36d87941786c9c4cfa90903e7ca001e7a84b86acb2bb3b1ef934f7693,revisión funcional focalizada; no línea a línea,timers
+backend/services/admin/apiQuotaTrackerService.js,application/tool/config,467,3c45783c1c52b856a7631176d5a3b78c0f67dd13dd6391f6d1b4609e357758b7,inventario y barrido estático; revisión semántica pendiente,
+backend/services/agent/broker.js,application/tool/config,347,8eca2f8df3a53d916d56a6ed3b843701c0944f224852233e7db2c087b0ad2998,revisión funcional focalizada; no línea a línea,network;timers;events
+backend/services/agent/compat/opencode-2.0.31.openapi.json,application/tool/config,10136,da178e3f00b6c356b58964ee2f6e6bf82cc2c95efe95a9651e5a0bc72518bbc6,schema usado por tests; sin lectura integral,events
+backend/services/agent/config.js,application/tool/config,158,42cbc3b72855059ae5a24fc4ae35bf096e375ebc28149c1e0729bd8a9807820e,revisión funcional focalizada; no línea a línea,
+backend/services/agent/contracts.js,application/tool/config,364,8103d7f2b800976dee5d6bd1b81179f3dfd22df54b7b8d7b642037375d579cf1,revisión funcional focalizada; no línea a línea,
+backend/services/agent/internalClient.js,application/tool/config,55,aeffa5ca5daebb73daf9c11605bf378bbb56539ea60bb2a48656c150b9d98127,revisión funcional focalizada; no línea a línea,network;timers
+backend/services/agent/maintenance.js,application/tool/config,92,0bf4896ad7f01718b5509df696750e6dafe6bbbba77064ddda2a397accab3768,revisión funcional focalizada; no línea a línea,timers
+backend/services/agent/managedRuntime.js,application/tool/config,164,c7e9a5f2da206f101f4bb215cf19bc388645a5310cf41fc861f81cad1bd2a4f3,revisión funcional focalizada; no línea a línea,network;timers
+backend/services/agent/modelSelection.js,application/tool/config,49,ffb776f794651b82e43158a5d2ad88025ccde13159783c8b489430f9e87caae6,revisión funcional focalizada; no línea a línea,
+backend/services/agent/opencodeClient.js,application/tool/config,197,3c1b51f2c6ed7c3190560988256ed1d2f6a38d4d8b3620aca241b9b89cfccf56,revisión funcional focalizada; no línea a línea,network
+backend/services/agent/opencodeConfig.js,application/tool/config,133,287d576aacefcd1ac3980d67f010bf56b87ac7549c087f62209a61b0dbc64925,revisión funcional focalizada; no línea a línea,
+backend/services/agent/retiredMedia.js,application/tool/config,20,5adbb2ae0250849b00be38373b46c40f97e287ed7a7b369ead35d543e6651d33,revisión funcional focalizada; no línea a línea,
+backend/services/agent/shadowModel.js,application/tool/config,60,14d31d66db6d3ee58d9c0698f5f872f04b9953717e19f4606d09fec76db5c68a,revisión funcional focalizada; no línea a línea,network;timers
+backend/services/agent/worker.js,application/tool/config,432,d9db3096d42bb19d1275ca47b30bd06b6cc48f08ec510e3417c91b7e6504243a,revisión funcional focalizada; no línea a línea,timers
+backend/services/ai/aiBudgetService.js,application/tool/config,126,89e86dc855afc59e6852f2a24e6bb45f1a7e84657617476abc8ffa7304d382d2,inventario y barrido estático; revisión semántica pendiente,
+backend/services/ai/aiEnrichmentCoordinator.js,application/tool/config,502,c36385a8733b791fe029c0ee026c9a5fe837eeb4b6b3964e3c497ab0b0fa760d,inventario y barrido estático; revisión semántica pendiente,timers
+backend/services/ai/aiEnrichmentStore.js,application/tool/config,134,35638f0a56071166fbbcfc0bcc4b972377809007790e17ed99a280b731dedc09,inventario y barrido estático; revisión semántica pendiente,
+backend/services/ai/aiInputBuilder.js,application/tool/config,259,60f0ee4804a9363386e9edbe1702e09ebe26bb3c015cd210ce1b2e8ece62417d,inventario y barrido estático; revisión semántica pendiente,
+backend/services/ai/aiProviderUtils.js,application/tool/config,153,f17473349d0a037b30906171e8011909ed129032baedcc77df52f0e2b8b41fca,inventario y barrido estático; revisión semántica pendiente,
+backend/services/ai/aiProviders.js,application/tool/config,248,e1b2f659b0d115dd4f78f898a0069db87072a3aacbc673a56096b7bd20a3aa9e,inventario y barrido estático; revisión semántica pendiente,network;timers
+backend/services/ai/aiSchemas.js,application/tool/config,193,f5854221be9c833e26aa1ecca28a4666edad1436c9deee8568dade25f5f5e7f8,inventario y barrido estático; revisión semántica pendiente,
+backend/services/ai/canonicalArticleService.js,application/tool/config,164,b54e61b22fc03e6cddccf4f09e7787578a6a57ace7e28c7a8e12e846968f4ef8,inventario y barrido estático; revisión semántica pendiente,
+backend/services/ai/llamaCppProvider.js,application/tool/config,177,c9b5890a4e96f791edf5b25ed30877b488a1dc4fbcac761df39e24453be312ab,inventario y barrido estático; revisión semántica pendiente,network;timers
+backend/services/awareness/awarenessCatalog.js,application/tool/config,312,9a1ac10427e23234f936201f3ecb621de8bd54420494178bb8b71d8daab58234,inventario y barrido estático; revisión semántica pendiente,
+backend/services/awareness/awarenessClassification.js,application/tool/config,9,0954920949a8250bbcc3ee5e8aa48cae7d6e2c761d55fe283b8e130fbb03e1c4,inventario y barrido estático; revisión semántica pendiente,
+backend/services/awareness/awarenessEventTime.js,application/tool/config,27,f5bce236adcf4072530b88f6da04074caf35f1719bb8bf71a87bb2aec7048c36,inventario y barrido estático; revisión semántica pendiente,
+backend/services/awareness/awarenessParsers.js,application/tool/config,605,d15be53e796da5e24c04c62a3669301203f9b0bb95fe6070270657882b6c0539,inventario y barrido estático; revisión semántica pendiente,
+backend/services/awareness/awarenessService.js,application/tool/config,642,761c091e7fe9a1ff9693a2d83eb7319791e31eb3ad7807e8007559f6f86875ad,inventario y barrido estático; revisión semántica pendiente,network;timers
+backend/services/awareness/awarenessStore.js,application/tool/config,570,fd7596ef8317b14c71a6903a8a3b9bea91a150be31e5338e34d1d86ee06a88dc,inventario y barrido estático; revisión semántica pendiente,
+backend/services/awareness/marketArticles.js,application/tool/config,42,99461c4128e1a871b1d91c6f2319d4cb68c47c4972d1a07af134c971c819d091,inventario y barrido estático; revisión semántica pendiente,
+backend/services/insightService.js,application/tool/config,101,b5b6016af41dbe95cc21862013e3d43b25fddd85d039c838106b5d904de4bfcb,inventario y barrido estático; revisión semántica pendiente,
+backend/services/intel/advancedIntelligenceService.js,application/tool/config,595,b082eabab61368d7d1790771a874098f451a6801948f3b0d347e0894da11e6d6,inventario y barrido estático; revisión semántica pendiente,
+backend/services/intel/countryInstabilityService.js,application/tool/config,120,a651eb4c27e8fefca78d4ac9deeb736d5f6803be92c724b063ca9778e617b0be,inventario y barrido estático; revisión semántica pendiente,
+backend/services/intel/geoEventIndex.js,application/tool/config,134,3bd6f5caf1986538ef4646e8a0c394a77c0b31c878cecd08abc852ca252e8874,inventario y barrido estático; revisión semántica pendiente,
+backend/services/intel/hotspotEscalationService.js,application/tool/config,137,84a7987394a60bd946caa5e857d42fac95c97b9a6ba80e954c163bdc37b68b9e,inventario y barrido estático; revisión semántica pendiente,
+backend/services/intel/osintFusion.js,application/tool/config,195,13a301d7d761f6941e757e5ea725828c39737734a58fd0f7fc6e8169d36535fa,inventario y barrido estático; revisión semántica pendiente,
+backend/services/intel/signalCorrelator.js,application/tool/config,344,0abf52c8314f40053d0f25a73206f06623e21bc83a71ecacf52cdb6c274ef121,inventario y barrido estático; revisión semántica pendiente,
+backend/services/manualRefreshService.js,application/tool/config,136,213e42916a99f62ee98c533bd7eb0de80df4db095ed952912664bdc1c7f77d53,inventario y barrido estático; revisión semántica pendiente,
+backend/services/map/mapLayerRegistry.js,application/tool/config,169,d584af604d093b7b7bb6196a5b6cf81dc27f1421acb95b07b2993db6f1e875c1,inventario y barrido estático; revisión semántica pendiente,
+backend/services/map/mapLayerService.js,application/tool/config,1726,22cbe384eef39baa651cb43dbfca648c687d98ae8b812436898baf2de69c3943,inventario y barrido estático; revisión semántica pendiente,
+backend/services/map/mapThemeService.js,application/tool/config,83,c2aa710ca7811d46fb86fe3f94a30f2bf095a3884591736982ae672b7dcf57aa,inventario y barrido estático; revisión semántica pendiente,
+backend/services/market/candleAggregationService.js,application/tool/config,202,ca0f063da03302f57b6c4e86671ff0b33f2f944d08b12b19135d280a91dabafd,inventario y barrido estático; revisión semántica pendiente,
+backend/services/market/canonicalCandle.js,application/tool/config,73,60ceae228e69ac8bb5e9bc45a866ca957c1d837ba0dba24a70f9ec927b18aaaa,inventario y barrido estático; revisión semántica pendiente,
+backend/services/market/dailyCandleService.js,application/tool/config,46,19f8c7cf40009247df563636b82ce264d1436496928dd5d90388d8cc8c669626,inventario y barrido estático; revisión semántica pendiente,
+backend/services/market/dailyCandleStore.js,application/tool/config,121,a4eae9a72da234390f120bf5b5ef3731ad75ce01c4bf1bff6d9c14832498ad35,inventario y barrido estático; revisión semántica pendiente,
+backend/services/market/exchangeCalendar.js,application/tool/config,91,06daec7a42305621020859f0e0d695fcbf3f4c48d3a8a8d3dff081f09c7eb8bf,inventario y barrido estático; revisión semántica pendiente,
+backend/services/market/historicalAcquisitionService.js,application/tool/config,46,b19284964c6bd236e1fa4e91d9a37db275a0b442b3fd029f918a65e03c572c72,inventario y barrido estático; revisión semántica pendiente,
+backend/services/market/historicalImportService.js,application/tool/config,95,cca8e3a3f9af100d68633486de9e941d86fa4081ffb3398da02beb33dbd93325,inventario y barrido estático; revisión semántica pendiente,
+backend/services/market/impactEngineService.js,application/tool/config,334,aae0c141a751f624468d55cf8e7c1661725469afa348944592c086b12db7be46,inventario y barrido estático; revisión semántica pendiente,
+backend/services/market/instrumentRegistry.js,application/tool/config,183,2abd0f120f858f581f33a428a4ff94308c11960ac3718464e2b7a627f5069790,inventario y barrido estático; revisión semántica pendiente,
+backend/services/market/intradayCandleService.js,application/tool/config,299,f349eb2d900acc518c6067ba01012415cfec81838ea56f1fe7445f045cf88071,inventario y barrido estático; revisión semántica pendiente,
+backend/services/market/marketConditionsAvailability.js,application/tool/config,168,39685cad71d8800475fe4f9c12fe876c423e8009b1cf716688f76ebf9cde8136,inventario y barrido estático; revisión semántica pendiente,
+backend/services/market/marketConditionsService.js,application/tool/config,753,4ef822bf5eb6a67c416f37f6e3978dce6be9b289b5e11a001ea1006cc3c526bf,inventario y barrido estático; revisión semántica pendiente,
+backend/services/market/marketCreditScheduler.js,application/tool/config,133,fd93989ff5bab302f0dd836faee51847092a35b6b4a07e2c94463a925edff098,inventario y barrido estático; revisión semántica pendiente,timers
+backend/services/market/marketHistoryStore.js,application/tool/config,434,41833f87edaa8b61da373ba5bc703bc35933c9499c8288a87e9437d178866491,inventario y barrido estático; revisión semántica pendiente,
+backend/services/market/marketProjection.js,application/tool/config,9,25ae60d3b589eac0d0a5017c69652a03f06c9d5f704c88c252629504133c2b0d,inventario y barrido estático; revisión semántica pendiente,
+backend/services/market/marketProviderRouter.js,application/tool/config,950,dc69c10a5cbe96e4ed57ebabf678c8f0c6eef725b6f6e47b127554559db14696,inventario y barrido estático; revisión semántica pendiente,
+backend/services/market/marketSessionService.js,application/tool/config,43,0adad3a98c92f01e7967ba91e17e68e936db51fc89982905cd3ecaa6014b7d46,inventario y barrido estático; revisión semántica pendiente,
+backend/services/market/marketSnapshotMigration.js,application/tool/config,45,ca86097affeb2410cbcf235d76dea3a5cb9c6a39f98d8a241708a47168cfb586,inventario y barrido estático; revisión semántica pendiente,
+backend/services/market/marketStateService.js,application/tool/config,226,8e222d06353e50a35ab2fa5694662fe8a94d6f3ae6df34f650cd330893cc7ea2,inventario y barrido estático; revisión semántica pendiente,
+backend/services/market/marketWatchlistService.js,application/tool/config,188,6c44f3ca49afe5d62d8953bad147a3b20f62e5d238495c616bb3511b053484be,inventario y barrido estático; revisión semántica pendiente,
+backend/services/market/newsPriceCoupling.js,application/tool/config,42,eb4eb72fc947b720f39cdc4112034278eb605928e56bb01d7c90c6a73e16ab25,inventario y barrido estático; revisión semántica pendiente,
+backend/services/market/newsPriceCouplingService.js,application/tool/config,10,34c49019cbbe8784c47fa29fda1a896805b4d8b385e61c1dde1416853f8a394d,inventario y barrido estático; revisión semántica pendiente,
+backend/services/market/predictionEngineService.js,application/tool/config,260,0b7ad4cfa15a80a92a04c61a230ae46d254fd8d33386274561c0ece54e27939b,inventario y barrido estático; revisión semántica pendiente,
+backend/services/market/providerDiagnostics.js,application/tool/config,37,307d509b205f00270045de1fae2aea61ace528a08cad40442ac5a6840df79e35,inventario y barrido estático; revisión semántica pendiente,
+backend/services/market/providers/providerUtils.js,application/tool/config,179,2734e3347512884034bead411fd795561b8a037c4ee1864a91105c9216980175,inventario y barrido estático; revisión semántica pendiente,network
+backend/services/market/providers/quoteFallback.js,application/tool/config,29,3c8ebfc693f0545f3c2b7c493c3b9f3e653fd48b56d36150dcc511df31357136,inventario y barrido estático; revisión semántica pendiente,
+backend/services/market/providers/twelveProvider.js,application/tool/config,400,ef276c8d4efcad970fd03c6f4ab9f8e42148c1a488f0d19e7e79e8ccc7e9f7fe,inventario y barrido estático; revisión semántica pendiente,
+backend/services/market/providers/yahooProvider.js,application/tool/config,321,27123d7069954dc9fdc8d0103eccc860d6875d14006f538aec8bbf77d5324456,inventario y barrido estático; revisión semántica pendiente,
+backend/services/market/quoteMetadata.js,application/tool/config,40,9933b89e1614cf884011a1d234bb86f7ad8fc0f8f89535f1b4ad79e364fdc54c,inventario y barrido estático; revisión semántica pendiente,
+backend/services/market/sessionPolicyResolver.js,application/tool/config,437,c86af2f636c194f8315cf643a5a64dbfa8eefba3df8b7ee022ea6b0f223e0114,inventario y barrido estático; revisión semántica pendiente,
+backend/services/market/technicalContextService.js,application/tool/config,85,e98bba9c1ae22316228803b32e1ad2d362d94276bb93b0723505acaea8e105ef,inventario y barrido estático; revisión semántica pendiente,
+backend/services/market/technicalIndicatorService.js,application/tool/config,19,4c8197516d532d31c335d4f6f56e8a148f346e57e77bbda6d786bc99aed18a9a,inventario y barrido estático; revisión semántica pendiente,
+backend/services/market/technicalIndicators.js,application/tool/config,50,9649f1f34cc8a7c0a49a83010f6386c3fd07560eb1effdb40bd5d99072453a8f,inventario y barrido estático; revisión semántica pendiente,
+backend/services/marketData/index.js,application/tool/config,5,bf8522261838a09cd3222443a863cf567c8aa47c6f68d4215ed821af826a07e9,inventario y barrido estático; revisión semántica pendiente,
+backend/services/marketData/marketDataService.js,application/tool/config,443,800cd6c8e181ed7a91859e59e59f691c12a1ba4492c205adae6999c7620c1f0c,inventario y barrido estático; revisión semántica pendiente,
+backend/services/marketData/marketDataStore.js,application/tool/config,235,71e78e46d8a815b203f96999d0b413e6d6ab71e09fb984db290ee3c4ae5b7213,inventario y barrido estático; revisión semántica pendiente,
+backend/services/marketData/normalizer.js,application/tool/config,260,8c7650fec6ee29c77a587ae50aeadb9ee847a1ee2b64a3f117e0d797b8bc3237,inventario y barrido estático; revisión semántica pendiente,
+backend/services/marketData/rateLimit.js,application/tool/config,415,451146b56edc2158976b4005dcb82b86bd2c979f73231c49f79279fa0aa0dccf,inventario y barrido estático; revisión semántica pendiente,timers
+backend/services/marketData/yahooClient.js,application/tool/config,176,5e16c44e0f0312a71c3b4333d338d742c97ef6f39583d1330e8baa33f629702d,inventario y barrido estático; revisión semántica pendiente,network
+backend/services/media/mediaCatalog.js,application/tool/config,119,e2592c85a899d63d37e9eee0e92561068289982120ca910b3f7b475bcafc0307,inventario y barrido estático; revisión semántica pendiente,
+backend/services/media/mediaStreamService.js,application/tool/config,455,b2bd9c380d7cd75781e7f4de99e2a0a2fb9452c0ffe29c746a72fceec666976c,inventario y barrido estático; revisión semántica pendiente,network;timers
+backend/services/media/youtubeLiveCache.js,application/tool/config,164,42b27e69eda666e88714a719f9e695e3760b5023ad18940906befad4945827a3,inventario y barrido estático; revisión semántica pendiente,
+backend/services/media/youtubeLiveResolver.js,application/tool/config,888,67d2e358dee76ce102932233b8c8addbff7b32a85d60200e01c8a66b480408ed,inventario y barrido estático; revisión semántica pendiente,network;timers
+backend/services/media/youtubeQuotaGuard.js,application/tool/config,194,b3abe7ef61dbd2c7eb6f6dd1d4633974538c35bb23a1ae38f4f6eab79f5cad39,inventario y barrido estático; revisión semántica pendiente,
+backend/services/news/articleIdentity.js,application/tool/config,17,055fbd98dc8a5df2da653bf61002bb6f9adeb3edb0721a808625eeb61c4e80b7,inventario y barrido estático; revisión semántica pendiente,
+backend/services/news/financialNewsService.js,application/tool/config,563,778036ffb570949827e47a25a775a888c5e78671be64430701ee7bad6f1fa24c,inventario y barrido estático; revisión semántica pendiente,
+backend/services/news/newsAggregatorService.js,application/tool/config,776,80d3bd36d61869fb2dc068fd416fcefb7e793ce5bfc9248bc7eb825dd7060985,inventario y barrido estático; revisión semántica pendiente,
+backend/services/news/newsContentSanitizer.js,application/tool/config,136,3289dd16e1541597401a64d69a846dbb2b51518958edab3782d35977c7e7f6f4,inventario y barrido estático; revisión semántica pendiente,
+backend/services/news/newsQueryPackService.js,application/tool/config,299,353463a327df83432fe71c5bb64d79d0e50a5f19b682caf4ea3613e764c8704c,inventario y barrido estático; revisión semántica pendiente,
+backend/services/news/newsSelectionService.js,application/tool/config,306,b6346eebcbe6223b96c416217d67705204953c4f4e9417fae5d36f7bd1866baa,inventario y barrido estático; revisión semántica pendiente,
+backend/services/news/newsSourceCatalog.js,application/tool/config,309,f3a50b6e10ef3a60df2666b4a6776b0ad581bcf7ba89478a1213ab248b9018a6,inventario y barrido estático; revisión semántica pendiente,
+backend/services/news/providers/gdeltProvider.js,application/tool/config,175,6d1231a696f3a8932f20ff8dc1d5383913ce36f216f7d407cb7576a798e4b53c,inventario y barrido estático; revisión semántica pendiente,network;timers
+backend/services/news/providers/gnewsProvider.js,application/tool/config,86,8d444f10256aca72a578a8135ccc572a9708d290efb533388c8aa97fa54d0534,inventario y barrido estático; revisión semántica pendiente,network
+backend/services/news/providers/mediastackProvider.js,application/tool/config,115,c4fd4f3590a3181f94e6dc416acfeab6cca5c612e461a12923843f92aa08db4d,inventario y barrido estático; revisión semántica pendiente,network
+backend/services/news/providers/newsApiProvider.js,application/tool/config,102,0bf577891d1485980f979706796ffbae25632191cf47925cc697ad84c0e56bae,inventario y barrido estático; revisión semántica pendiente,network
+backend/services/news/providers/rssProvider.js,application/tool/config,326,82ff9b11b13ba631d8dc9d4e0ef3709c6d6d731f28e976c07007b4357a47433b,inventario y barrido estático; revisión semántica pendiente,network
+backend/services/news/rssAggregator.js,application/tool/config,273,9efffbbdbe8736fb7ed2a42df22b927a2e4ea4abdc431e8c4f47f499cf28eb14,revisión funcional focalizada; no línea a línea,network;timers
+backend/services/news/rssCanonicalCatalog.js,application/tool/config,76,05b481fd844289111fa0aeb9f66f3e2ff1587cc0f7c56dad95a1b3575e4e2c40,inventario y barrido estático; revisión semántica pendiente,
+backend/services/news/rssCanonicalPipeline.js,application/tool/config,114,287a8f748ebc18e9e20b0c9283056337a168828e3175dddaab3465aa6b5129bf,revisión funcional focalizada; no línea a línea,network;timers
+backend/services/news/rssClassifier.js,application/tool/config,191,7753052a49e8b8d365fc02c80896b5a2c2a0634c9a995afd5e3b62faf52ecc5f,inventario y barrido estático; revisión semántica pendiente,
+backend/services/news/rssDeduplicator.js,application/tool/config,59,f941877470542cbd2de98fd2e8c709b9fd66708167fcf2a72d137af4fb4dfc04,inventario y barrido estático; revisión semántica pendiente,
+backend/services/newsService.js,application/tool/config,59,4f149d020ae9cd2a6e2fea3fdba7cef36265a0d217b83244cda19cc1e96f4d40,inventario y barrido estático; revisión semántica pendiente,
+backend/services/normalizeService.js,application/tool/config,130,a1197ee7e1c0a547c5f47133386ff0b8ae62a9896278a37e7f3ff51449ad31f2,inventario y barrido estático; revisión semántica pendiente,
+backend/services/pipelineMonitor.js,application/tool/config,34,1584ddb25753af6e2cea74f274c1e90f2d46139d0da59f3277bd8800c36ae983,inventario y barrido estático; revisión semántica pendiente,
+backend/services/providers/providerErrors.js,application/tool/config,33,c727a26de313ec80170f9f33cd7111bcebce430d56c263d38b0db7b001aa6b8f,inventario y barrido estático; revisión semántica pendiente,
+backend/services/providers/providerPolicies.js,application/tool/config,46,de64e742b197049769c98ed0f27dfefd361643e5605d86f89b400ff767a88d9b,inventario y barrido estático; revisión semántica pendiente,
+backend/services/providers/providerRuntime.js,application/tool/config,95,9c1d0c4f1635c26cb5ed93a9cbb6249a3ba828b58a019b7aae8bec33e7344c9c,inventario y barrido estático; revisión semántica pendiente,network;timers
+backend/services/refreshOrchestratorService.js,application/tool/config,977,f44b61bdbc804fdb1075d15c99bd1eb3304153ac05baacb4d28d9d9f985dac2d,inventario y barrido estático; revisión semántica pendiente,timers
+backend/services/refreshPolicyService.js,application/tool/config,109,a24f0a63990dc4a8b245569b8ae7fd58fa6af024584055f5b53541246d9367a0,inventario y barrido estático; revisión semántica pendiente,
+backend/services/research/companyIdentity.js,application/tool/config,10,1136de6248f1e6b35a98c10d218661fd7b18698b44ed006f7b86615427f9361d,inventario y barrido estático; revisión semántica pendiente,
+backend/services/research/eventLedger.js,application/tool/config,87,43f91b880d2902003bfcf6fb1bf193f406880e2ff6c96ed2e7c15ed06ca3d061,inventario y barrido estático; revisión semántica pendiente,
+backend/services/research/forecastEvaluationService.js,application/tool/config,61,dc5aace0bbbdc208afa28be2365175d97aec1b2a9d4eb4c93d651add4d5681d6,inventario y barrido estático; revisión semántica pendiente,
+backend/services/research/instrumentIdentity.js,application/tool/config,59,f36672a66e5affb00caf6fcb34d6629dca982df939397f0dd53de1dccee16334,inventario y barrido estático; revisión semántica pendiente,
+backend/services/research/materialAlertStore.js,application/tool/config,146,61bba3cc3440948ce8ff1fd6a810086266cb7e2441d93be201c7d17881225ded,inventario y barrido estático; revisión semántica pendiente,
+backend/services/research/newsArchive.js,application/tool/config,209,a4d02da7d3d162ba86d5f054cd64644a60e98f1aa8556ae7554510c903a59cb6,lectura parcial/contextual,
+backend/services/research/officialSources.js,application/tool/config,72,d3580b9019adce3d4c411f311f68f593c3563852d04c550acc883a3beefdaee0,inventario y barrido estático; revisión semántica pendiente,network;timers
+backend/services/research/portfolioContext.js,application/tool/config,70,cb1ee53d113a356a7df3cec0ac50928e605ab27b15c16110b88d1b4f7972365c,revisión funcional focalizada; no línea a línea,
+backend/services/research/researchStore.js,application/tool/config,30,99ddf53e0b2028f0b602a2451bea505d5f10138658e1dc75d928d84883808127,inventario y barrido estático; revisión semántica pendiente,
+backend/services/research/scenarioService.js,application/tool/config,78,1ccaf917e51a14dbbf97e0b2dd40627b2337cf990135d7dcd4c4dcff37e38538,lectura parcial/contextual,
+backend/services/research/secSourceAgent.js,application/tool/config,64,47d5133047ba82132604da85e2ca9b8c5752d2127f34bca60175f3d0c40a712e,inventario y barrido estático; revisión semántica pendiente,timers
+backend/services/research/secSourceCatalog.js,application/tool/config,27,f9d0c5e0c3062e61d3ddc4686c493d1ee312f54d6d34ca615ae693c67c2be978,inventario y barrido estático; revisión semántica pendiente,
+backend/services/research/sourceCatalogView.js,application/tool/config,10,0230332726afbf66b391fd2ae3449295c60f887522bb2e20661b8952b6dbf3fc,inventario y barrido estático; revisión semántica pendiente,
+backend/services/riskEngineService.js,application/tool/config,125,8693ccf67024d8e5ea8c7a83194711a537b29d95e837e4aef5ad6c5cd28ab161,inventario y barrido estático; revisión semántica pendiente,
+backend/services/runtimeMetrics.js,application/tool/config,51,185d84454a7d18a4c73288f33129c4ed9a2ae9e60a3e363d675d37b3a42179ff,inventario y barrido estático; revisión semántica pendiente,timers
+backend/services/shared/atomicJsonWriter.js,application/tool/config,18,d449d799630e4576ce222f565415dca477e1b5961f38295c974595d05a6e54bd,inventario y barrido estático; revisión semántica pendiente,timers
+backend/services/shared/boundedCache.js,application/tool/config,63,51a0939b535bf9c9c0d248f4fbc6f1e569b59eb29f7dd7ce5293630aab4bbd43,inventario y barrido estático; revisión semántica pendiente,
+backend/services/shared/boundedResponse.js,application/tool/config,13,8f40a67c8527c058d47e5340f7622bc4a655660a79d78dc09527b0a42b719db5,inventario y barrido estático; revisión semántica pendiente,
+backend/services/shared/cancellableSemaphore.js,application/tool/config,14,1748a74adc38a4098e414543d4a83f6746c0a83bcf977d2fbd77ff627876a559,inventario y barrido estático; revisión semántica pendiente,
+backend/services/shared/operationContext.js,application/tool/config,21,46c5609ee48295cc41ada6b569cb3ece6c0bf0bbc2a307c4b288b7108c13d59d,lectura parcial/contextual,
+backend/state/stateManager.js,application/tool/config,620,48a355643d82a3ebda1a989c6025f6511601b1cac2fcc03391bb7d113dabb1d9,inventario y barrido estático; revisión semántica pendiente,
+backend/storage/StorageManager.js,application/tool/config,353,5e8f1646a3740ee3c9823ddd228dec8b2e9b053c032c7ab59ea096560eaa87c6,revisión funcional focalizada; no línea a línea,timers
+backend/storage/advancedSnapshots.js,application/tool/config,116,c38d15b3b4290575c3fd0f1a66026aa48aeeed1a6f2bfc5ea552708253ca208e,lectura parcial/contextual,SQLite
+backend/storage/agentRepository.js,application/tool/config,1825,14b15612d6e2a7a6874eb0ca6e6b972d874c4a29082c3bf33b6aeb2c02650a39,revisión funcional focalizada; no línea a línea,SQLite
+backend/storage/backup.js,application/tool/config,25,0427b77243859eb7c68af82f81af785a768b414df5300664c73777639c83b40a,revisión funcional focalizada; no línea a línea,SQLite
+backend/storage/businessAdapters.js,application/tool/config,38,72608944be99d403a378cb61b87e4332f90b653401b248b97047c2f678151052,lectura parcial/contextual,
+backend/storage/businessRuntime.js,application/tool/config,378,5d164d2172518511380800d03813cdb6e1b85e7f547e2e36068f861a65332994,revisión funcional focalizada; no línea a línea,SQLite
+backend/storage/config.js,application/tool/config,53,4a9135bd4cf019d1aba693813375ca6b9f02bc172f2da70d37da401ad490e204,revisión funcional focalizada; no línea a línea,
+backend/storage/diagnostics.js,application/tool/config,16,dafb02b1f78d457002402d0eb8b3e93a01edd73e0527ad31542efaa01874b3f7,revisión funcional focalizada; no línea a línea,SQLite
+backend/storage/importLegacy.js,application/tool/config,67,8737cc9f9c9eb2eb848a947e1ed165772edff617ee3e1defa9bb78f7a2e282dd,inventario y barrido estático; revisión semántica pendiente,SQLite
+backend/storage/legacyBackup.js,application/tool/config,34,de0b6101854a88654b00016e0005aa1e91a6eeb1ada00bca36ff04c487946627,inventario y barrido estático; revisión semántica pendiente,
+backend/storage/migrate.js,application/tool/config,26,0d2a2d4d86195158009d7f31ae1e7abf8835dbac4ac9b518fb9386aba172c95a,revisión funcional focalizada; no línea a línea,SQLite
+backend/storage/migrations/001_core.sql,application/tool/config,69,75ca0875120d0a8ef4a7982b78695a2376ae5d1de5367c9e49dbb6206247cf56,inventario y barrido estático; revisión semántica pendiente,
+backend/storage/migrations/002_news_events.sql,application/tool/config,70,4f6d96c915d427d8c5a3aa81dadb4ec74513c9b672c63a49ba9b5bbd1cc96764,inventario y barrido estático; revisión semántica pendiente,
+backend/storage/migrations/003_market_analysis.sql,application/tool/config,52,b729150beb6094f5ce109a01cb5467c879037aa0d8a2f1c10c7f333f88eab227,inventario y barrido estático; revisión semántica pendiente,
+backend/storage/migrations/004_runtime_repositories.sql,application/tool/config,27,53661427d11c0e80d8ecd60b3cf347193fdd1ad86d1e6727dca0b1907774e526,inventario y barrido estático; revisión semántica pendiente,
+backend/storage/migrations/005_pipeline_state.sql,application/tool/config,14,3f2f7c8d652f6a3218425fa082e17a71fda7ddb7839f8a1dcbdfcc95f2fc8873,inventario y barrido estático; revisión semántica pendiente,
+backend/storage/migrations/006_event_links.sql,application/tool/config,7,e4b10b0a91e58ded1a581440fcf0cb1fbdcfb9e029b9826aa60b08105a581432,inventario y barrido estático; revisión semántica pendiente,
+backend/storage/migrations/007_relation_indexes.sql,application/tool/config,4,d7257a0ada7d186be19fb6b659dbfa4cc8efad161809249ea40f698d45141289,inventario y barrido estático; revisión semántica pendiente,
+backend/storage/migrations/008_pipeline_stages.sql,application/tool/config,7,de4008537af398bd3bc9285d2a14a9a03866fe24b1c377dbdc87280aa8b3d194,inventario y barrido estático; revisión semántica pendiente,
+backend/storage/migrations/009_durable_analysis.sql,application/tool/config,39,4551490865d0c8ef40df65cc9c7057d5ed3b30a40e6c2f3dede4ba556398d778,inventario y barrido estático; revisión semántica pendiente,
+backend/storage/migrations/010_agent_intelligence.sql,application/tool/config,121,3751631851c37d3587b901c126f08e26c4d2b82f9574dff0c6321469fab76f3f,lectura parcial/contextual,
+backend/storage/migrations/011_event_coverage_index.sql,application/tool/config,3,56a6d901145ca75e0490d0138b99c32a99973e6b823969d9f2a76c6811261c3f,lectura parcial/contextual,
+backend/storage/migrations/012_analysis_lookup_indexes.sql,application/tool/config,15,ad5bac02b31a40fc5ee904d51a2c13730c824825250c632d900169cf1025ca67,lectura parcial/contextual,
+backend/storage/migrations/013_awareness_startup_indexes.sql,application/tool/config,8,3cf52a43e1f4d85b1b86214c85b60b9983d5703ba83ce4b23686be23861febe7,lectura parcial/contextual,
+backend/storage/migrations/014_transactional_diagnostic_counts.sql,application/tool/config,52,e16ddde2c3ca7c18fbcbe7a00e47232eead2a099b0289978d7fae10db64a9cbf,lectura parcial/contextual,
+backend/storage/migrations/015_archive_query_windows.sql,application/tool/config,17,9d783cd93fe52290f4973f9bb50a2e1c96f0a22d4cbbedba4efa15bef86c356b,lectura parcial/contextual,
+backend/storage/migrations/016_news_projection_window.sql,application/tool/config,5,2e9d517461ad57b72d427dc5a0d8af5359f036a397aae72cdff599db19972755,lectura parcial/contextual,
+backend/storage/migrations/017_candle_payload_window.sql,application/tool/config,2,f0e7659abf7c5b619a53071e64b5538c5b44e627023f4236ab4502dea7fd28f2,lectura parcial/contextual,
+backend/storage/newsIngestion.js,application/tool/config,14,a417852c2e37a02f00f03a62825c5e7cedb48dc0ef75d59d631b4ff0f04e9b3b,inventario y barrido estático; revisión semántica pendiente,
+backend/storage/pipelinePersistence.js,application/tool/config,62,0abed55949d66e6623895b06b43d48786e1a721cca904e30cee5a1bdf6b38cfd,revisión funcional focalizada; no línea a línea,
+backend/storage/repair009.js,application/tool/config,63,7b53452c614e1493f62a7015636b400226f1a979be920cc886a852eb3b19df2b,inventario y barrido estático; revisión semántica pendiente,SQLite
+backend/storage/rssCanonicalState.js,application/tool/config,20,00303636bfc37ef41faed5a577800767c94a75f9b78ec9f775272438ef414458,inventario y barrido estático; revisión semántica pendiente,
+backend/storage/sqlAwarenessStore.js,application/tool/config,104,58610dd64d3f088f848a3c9d4f67efebe06d3798b5fd6bdedb23c86529c8bea1,revisión funcional focalizada; no línea a línea,SQLite
+backend/storage/sqlNewsArchive.js,application/tool/config,191,e4b41c1adf763ab966c2377de90ff4629ec12faef0675dc32813a202a2200658,revisión funcional focalizada; no línea a línea,SQLite
+backend/storage/sqlNewsCorpus.js,application/tool/config,259,3d620f3ade609989d210cbefbbe4874906e65ae04804fc5d385e3c3e0492c611,lectura parcial/contextual,SQLite
+backend/storage/sqlNewsPipeline.js,application/tool/config,125,9dd3a9cfe021d245efb75b1a8ad9435b60ee1ed90d8f9eca33fbf13de98716ed,revisión funcional focalizada; no línea a línea,
+backend/storage/sqlRepositories.js,application/tool/config,205,75cd2a8c0df4725a488b933ca0221f23dbf7076fc86658283c49dc83795841d4,revisión funcional focalizada; no línea a línea,SQLite
+backend/storage/sqlitePayloadPages.js,application/tool/config,42,6e85539d1e8115b7bc3e2c21db2674e1054f79290684d50267397782f0437ebb,revisión funcional focalizada; no línea a línea,
+backend/storage/statementCache.js,application/tool/config,24,3b426a20c0ed715db527047800b74cee77b8137407365cbeba4cbdcdefd3eeed,inventario y barrido estático; revisión semántica pendiente,
+backend/storage/storageWorker.js,application/tool/config,198,1b6d7374cdcd6aafd600ff87ffaec811288ab2ee48bd3b631801dfe25382a0ef,revisión funcional focalizada; no línea a línea,SQLite;timers
+backend/storage/writerOwnership.js,application/tool/config,17,97074e0eeda2c436ffbd4635303194ae07dcffb34749f91e4f10a1023e112a5c,revisión funcional focalizada; no línea a línea,SQLite
+backend/tests/adminRefresh.test.js,test,24,ac639dc54d62c8258a72d1d4bec5cca711815f5a0ede69c76258bbfb29df368c,prueba ejecutada en suite,timers
+backend/tests/advancedIntelligenceService.test.js,test,192,dc7ea91b64f9a5e5853099386756e30c0d3657bfd12e6455efe16169366a8e15,prueba ejecutada en suite,
+backend/tests/advancedIntelligenceUi.test.js,test,60,5a2f1ac3e9223998fa6bac798b98ffa63a767f69a544a12bcfc0f855d15e1689,prueba ejecutada en suite,
+backend/tests/advancedIntelligenceUiStatic.test.js,test,50,2d43b5b5e2cb48aaab169cc2173734d86f9dbe6696e27bb4f2e835771b537119,prueba ejecutada en suite,
+backend/tests/advancedLifecycleUi.test.js,test,20,f7540313770ca64ad002275226b4e45c37b00c1f813ade20019908d8e67596c6,prueba ejecutada en suite,renderHTML
+backend/tests/advancedRoutes.integration.test.js,test,136,b02f0d9ab176900d041ce6375cf6350998a6e1495af90e70add45c511497f15b,prueba ejecutada en suite,network
+backend/tests/agentIntelligence.test.js,test,1715,e31b1b3ee0368a817d8b1112d646acb12d0aeaaed3fbe12dbaf857da5373b43a,prueba ejecutada en suite,SQLite;network;timers;events
+backend/tests/agentManagedRuntime.test.js,test,228,f1a3ef7a3d284aceed9c5eb20e8cf6f2fc96f6064d90510d4aff198177ea4146,prueba ejecutada en suite,SQLite;network;timers;process
+backend/tests/agentModelSelection.test.js,test,91,07254608b86398df8aa0f6b7b560c2ac3df296cb1183549fbc125a4900250b98,prueba ejecutada en suite,network
+backend/tests/agentReliability.test.js,test,220,a8c1fc9e79a2971858628890863f18f93f6fc44a4f0d06e40a6af2f6f7d2d9ee,prueba ejecutada en suite,network;timers;events
+backend/tests/agentShadowOperations.test.js,test,91,cef53494c1ffe97a49b3bc2a3f03d44b0fc3eef17d7b8e049b9cacdf04cd8108,prueba ejecutada en suite,network
+backend/tests/agentSnapshotCli.test.js,test,26,c152e4c9274881b001e916668078201a9423a373a3943fdd9fc842bdef6a1bcd,prueba ejecutada en suite,SQLite
+backend/tests/aiCanonicalArticle.test.js,test,155,4e2c436d7ca3f5f208ef4f17d26fb34d3cf500318ca136ccce3f7f1612a85be2,prueba ejecutada en suite,
+backend/tests/aiCoordinator.test.js,test,159,42af84fc7d68e8373742b91eb44978fb55239a7fb8118be8cfa41102a25f29df,prueba ejecutada en suite,timers
+backend/tests/aiIntegration.test.js,test,98,befdfd4804db195c2cbbf8b90c330a3d5a7279dbcb0ff767bab3fac6da9be180,prueba ejecutada en suite,network;timers;events
+backend/tests/aiMarketHistory.test.js,test,290,2ac9c1c80e7290b911cdab8d45f67a002e3b51a6fe42484a1adb453a7f1b6ac9,prueba ejecutada en suite,timers
+backend/tests/aiPersistence.test.js,test,45,520b411f77dd5d36f97c222796c54e997f34ebb8bff502ef77171cf07c018183,prueba ejecutada en suite,
+backend/tests/aiProvider.test.js,test,299,b67cee67bcc2e62abb3baae80a26d42cc0bfc1ce6f31fd07bcd801deb4e9e293,prueba ejecutada en suite,network
+backend/tests/aiValidation.test.js,test,65,d89d5ae3e53027f9a5742222b5bef1c40219a97e2288649542000f3d051a7d7d,prueba ejecutada en suite,
+backend/tests/api.integration.test.js,test,839,6769183f5b1c6191dbe574e52d093f3a43378595a79613ece9d103acf78dc456,prueba ejecutada en suite,network;timers
+backend/tests/apiQuotaTracker.test.js,test,96,1344be1075c87f67ac212db0024d6794c434320b1886daac9f9837218e425c43,prueba ejecutada en suite,
+backend/tests/awarenessAdmissionLab.test.js,test,347,c2354ecd80d3f31aebcfc17ba20ec31c9d0e620d98aed30e3ece316dd87f2074,prueba ejecutada en suite,network;timers
+backend/tests/awarenessCatalog.test.js,test,42,5e6e1d232f2e6c6bb0ec180fe8d5057a06f4bd24d3fc488d07a1a16553559f59,prueba ejecutada en suite,
+backend/tests/awarenessParsers.test.js,test,268,7a0b9050633452c85e58670caf3d7d74e6e0e291a906d118d43f026cfcf2a4bc,prueba ejecutada en suite,
+backend/tests/awarenessRiskIsolation.integration.test.js,test,66,a69a5d1a5784e77277d336d45e4c80389118d107bc1ee7d52ffb8ff70686d61a,prueba ejecutada en suite,
+backend/tests/awarenessRoutes.integration.test.js,test,43,56aaca2d101a07d876710d63a050b1d74f4d4d3a247a7784cdd6016feb4152f8,prueba ejecutada en suite,network
+backend/tests/awarenessService.test.js,test,480,4a33467c52ba6aa576deb7ea21b9c92503d0e74e952cedefa1fbe65cd5f6f3fa,prueba ejecutada en suite,network;timers
+backend/tests/awarenessShadowIsolation.integration.test.js,test,72,289a19bb8a5e02147520aed0b32d8ba89703655032352a23b8b1616a3acd9630,prueba ejecutada en suite,
+backend/tests/awarenessStore.test.js,test,321,85f21f9755821fae1a4ee8f4b7ed60892cbb4da81d886d628a4e84106f40c95b,prueba ejecutada en suite,
+backend/tests/awarenessUi.test.js,test,227,673304e443ae246c554310b81710fcdf4413aaac1a5bca54a3addea715c3929a,prueba ejecutada en suite,
+backend/tests/candleAggregationService.test.js,test,146,13ae98e232f20d1b176a96ec954476c9b786a39c39fdd90f5de1d8b3789e02aa,prueba ejecutada en suite,
+backend/tests/clientIp.test.js,test,27,068135bfbec9649caff53c35b5a87eeba36ed55f488ce86d5842aaa07355217f,prueba ejecutada en suite,
+backend/tests/conflictTags.test.js,test,13,76fe8c7c6069993501f91bf0e83b9c564137c33870bf426555ea2b6129c4568c,prueba ejecutada en suite,
+backend/tests/countryCatalog.test.js,test,43,b42d9d422ecf0588f1d29861ba656ad99ded7d6937393d676fa2868f2ed5be7e,prueba ejecutada en suite,
+backend/tests/countryInstabilityService.test.js,test,72,64eef1dc8c11c884e0f6e76ff09c90046fb0203b11fd82c04cc3288b4bd01eaa,prueba ejecutada en suite,
+backend/tests/dailyCandleSession.test.js,test,95,9093f4fa6aac1033f913860a70797069f36792222e4e4d5822b745f225934b50,prueba ejecutada en suite,
+backend/tests/dailyCandles.test.js,test,97,85c0518fdeb7a22b7f3ea87a6274d02257b85f38cb49be64307fbb1a1d4be06c,prueba ejecutada en suite,
+backend/tests/durablePersistence.test.js,test,295,023aaaec063081df98300fe0eefde1695716215fe93fec21d86f30e7cd685cd7,prueba ejecutada en suite,SQLite;timers
+backend/tests/filters.test.js,test,61,07fa32b2a88276f944afe753c1d86285112454deda66823035c05a37839afee1,prueba ejecutada en suite,
+backend/tests/financialNewsService.test.js,test,185,11527c75576b54b2a27752af31cb6526ec1253ee9ba6658e78eeb82c930fb5c7,prueba ejecutada en suite,
+backend/tests/gdeltProvider.test.js,test,122,8e046ed598d419d2d50b03ea3c796f4b47fa3ad1872b84e6c62b1659ff1299e1,prueba ejecutada en suite,
+backend/tests/impactEngine.test.js,test,48,06b614528e4bd37b812e2117cb63ec773bd6f9a4f91202fef567d7485428ebdc,prueba ejecutada en suite,
+backend/tests/instrumentRegistry.test.js,test,121,9a17eb67da9d2b0c7deec191308e0cb7ae3a1678863116871050a22155c67970,prueba ejecutada en suite,
+backend/tests/intradayCandles.test.js,test,127,48dc418704dfb4ec91f5af1d3e8550a59b0ea2ca5e86f422f45b70c801b30780,prueba ejecutada en suite,
+backend/tests/intradayYahooIngestion.test.js,test,199,b2a2f1a7e1400c5b3f29ca767ff5f973491e776f3eb04b97b0fd60a81cf63d56,prueba ejecutada en suite,
+backend/tests/lifecycleRuntime.test.js,test,99,e2f0188dd22640ce71835285060bdb6e962f4845ee2901d3b91575fd7c78323b,prueba ejecutada en suite,network;timers
+backend/tests/liveNewsFeed.test.js,test,60,e1735891db5f882638d5401c0137135f49c571afb8b3d3076da9e084987f626e,prueba ejecutada en suite,
+backend/tests/llamaCppIntegration.test.js,test,213,fd7e52f4ae24737ecb0c62f29541c9a8bb4c27e7ca06eed0630724af4305c5ca,prueba ejecutada en suite,network;timers;events
+backend/tests/llamaCppProvider.test.js,test,251,0b98d27dcf3647f359980d214fa7378ab1025970d993d571dac0b41dd3000184,prueba ejecutada en suite,network
+backend/tests/llamaCppSmoke.test.js,test,86,049f913a7cd52b455e591ad7836d4df81babde7b205bd0e44f5e245678717405,prueba ejecutada en suite,
+backend/tests/logger.test.js,test,39,6bf0314480f81e2f8b7db9160c1f4376b0ad6c551f31c11d1ff9af0593a23a8a,prueba ejecutada en suite,
+backend/tests/manualRefreshService.test.js,test,113,99bfc19991c6a5ea23ba8fa949aec049529fb91d4a7d1b02e9121a575004d924,prueba ejecutada en suite,timers
+backend/tests/mapLayerService.test.js,test,394,88e2d89a325b705c1724fb9ed25acf1832869de9d5a113560bf026d307acaad8,prueba ejecutada en suite,
+backend/tests/marketCandleController.test.js,test,107,d59f53d44561527ce46b032ff18329f8ffb80a3764df715e7e5196c490db0d69,prueba ejecutada en suite,
+backend/tests/marketConditionsAvailability.test.js,test,272,dca1305beb4fcedf5ada48e3baad3d7b550bcf0e6651d91ccab3e7d19f9605af,prueba ejecutada en suite,
+backend/tests/marketConditionsRoutes.integration.test.js,test,58,66d3d5fe986d411350ad57b8bc797943336d431c7cff1273b444efa8533c322e,prueba ejecutada en suite,network
+backend/tests/marketConditionsService.test.js,test,487,282b4d1bb0975e38bffac0103b39721e9e4b27b54cf95d4efd2ec4d2fa332080,prueba ejecutada en suite,
+backend/tests/marketConditionsUiModel.test.js,test,310,362af1a4eb6224c0e3196ebfdf450f5f0b78d563ea3f956a8521244fbbc5fc7e,prueba ejecutada en suite,
+backend/tests/marketCreditScheduler.test.js,test,128,396493944bfd39353d4e65e2426da573184939c370f37adbc0ee05308b174a51,prueba ejecutada en suite,
+backend/tests/marketDataNormalizer.test.js,test,95,d41a921de92c5a5cdf47b24079ae8411da22070f36d0317e31bdc9220719953b,prueba ejecutada en suite,
+backend/tests/marketDataRateLimit.test.js,test,190,08a02b7e019fe11201938b78f05835a683244fc10c3eb573b218df742830edb1,prueba ejecutada en suite,
+backend/tests/marketDataService.test.js,test,348,08fcd06b28382dc9b1aa2b09615fa61039548378f0c78cb63d86e8a0efa8a304,prueba ejecutada en suite,
+backend/tests/marketDynamic.integration.test.js,test,114,282f9d9db75f34680a1af12fedd0559b45b2d89d79918f342002811ac738318b,prueba ejecutada en suite,network
+backend/tests/marketHistoryStore.test.js,test,319,54e024c6a2d44fcdb4a53e768039c1e72c29642188a8f59c8b00d0be5dd1362d,prueba ejecutada en suite,
+backend/tests/marketOhlcvModel.test.js,test,38,97781db4c7a9b78160f3d75d73aea9a2372d4dbd7c96caf6ba02e3f4cf9062f8,prueba ejecutada en suite,
+backend/tests/marketPolling.test.js,test,41,4d6319a88058754199f14675bcb60cfa356cad18c40ec7df072caaeae394e148,prueba ejecutada en suite,
+backend/tests/marketProjectionQueue.test.js,test,59,787a2fa7a875556cca836fe2df0b1e2fb09c52d64d4fa8b7591d4ccb3b22fb6f,prueba ejecutada en suite,network;timers
+backend/tests/marketProviderRouter.test.js,test,458,370508cd16e36d0671932d47cd2e1e56b33cb03395f90f2572a9f6d5bbb527d1,prueba ejecutada en suite,
+backend/tests/marketRecovery.test.js,test,43,15c2a34ccbe23f7f72090f8d70099d06805ecdce07fdd42c374b6a2c4bff0c7b,prueba ejecutada en suite,network
+backend/tests/marketSearchController.test.js,test,67,d5007596111d06ecb71a4021d845d9b24e879e7139b49241bf1d092d6b854af0,prueba ejecutada en suite,
+backend/tests/marketSessionService.test.js,test,53,913b645d1633b7ab94858a1c9a35a45eaf02b48c0d903a4e34acecea78780392,prueba ejecutada en suite,
+backend/tests/marketStoredProjection.test.js,test,77,1ac10b716044d07fd5b282a210984836b4a20c57a4fcf800a254c44d8286bde1,prueba ejecutada en suite,network
+backend/tests/marketWatchlistModel.test.js,test,44,8c8991baa29cbd7c20ab3fe6829762eaee2c7b3b9dcd0c6b1a68ec7395de922a,prueba ejecutada en suite,
+backend/tests/marketWatchlistService.test.js,test,61,d806855b804698accfb56d9bc1c3c1f150078bda49e493c816c02ca50f6c84f3,prueba ejecutada en suite,
+backend/tests/mediaPlaybackPolicy.test.js,test,71,2acc40cbc1de1b047670ea3b1b2ca1d3e1f74e14567aa7da713cd265eedfc8a1,prueba ejecutada en suite,
+backend/tests/mediaStreamService.test.js,test,324,b669c9e9fa8228888e3fb533c177b9d56dbf15c72da233c59fa06da90175a48b,prueba ejecutada en suite,network
+backend/tests/newsAggregator.test.js,test,426,a00ad164e8119889bb1a463b07215ff20f110066c6e2f3d570c21dfc48bc60d2,prueba ejecutada en suite,
+backend/tests/newsApiProvider.test.js,test,31,100a4d68c02600a1bd85b97ae0bddd6850b6b12528703cef6dba767a18ae9a6a,prueba ejecutada en suite,
+backend/tests/newsFirst.test.js,test,104,d5571064108c1b43e592f295de3746d70ea87d007edb2ca43a4497e5d8ca4156,prueba ejecutada en suite,network;timers;events
+backend/tests/newsPriceCoupling.test.js,test,29,b672fb61d7ae93303b6a27b4c94c59ce39df29dce64eeb653ba91760106d1176,prueba ejecutada en suite,
+backend/tests/newsQueryPackService.test.js,test,59,14c46aa72cbb0c7bcdd30b03223b6891fed8f70e9df5758842333b525cfc255d,prueba ejecutada en suite,
+backend/tests/newsSelectionService.test.js,test,85,b670b2485f35e6ae68218186dea6ddd7fab7f2bb817e8558cc1b98e1340398a2,prueba ejecutada en suite,
+backend/tests/newsSourceCatalog.test.js,test,185,dfc8a6a8f22665661b6205f87714308305e4873f485a6853aceba7c5ef739479,prueba ejecutada en suite,
+backend/tests/normalizeService.test.js,test,65,d63c47bfd8756c5a06cd400808f42fd437888e4a4768266be38e175d463c2c06,prueba ejecutada en suite,
+backend/tests/osintFusion.test.js,test,107,0c46894a9e2da8e62c08cb100cbe64859faef6172802eb3181965323f0603703,prueba ejecutada en suite,
+backend/tests/pipelineMonitor.test.js,test,24,f9742cc581f8df99230d381ca1dc08d495afc886ded289f7675b7cf24afbbca7,prueba ejecutada en suite,
+backend/tests/pipelinePersistence.test.js,test,121,7345b890db2557c1eb9d27c866090a82666d276f839cc9e62ef7c3429ce50adf,prueba ejecutada en suite,
+backend/tests/predictionEngine.test.js,test,61,63bcb9a00aead0b7ed0b79d40c755021bc3e51c4e172b9bb6b8bb9ad8a6daf66,prueba ejecutada en suite,
+backend/tests/providerRuntime.test.js,test,104,ca337e4ec100ecd34101267165957308f32793136b29221533796ae25f893d70,prueba ejecutada en suite,network
+backend/tests/realtimeRecovery.test.js,test,69,debeefc00e722f3f2a014249e46e6b823c16f06767a1dabbd07eb177610d95ab,prueba ejecutada en suite,timers;events
+backend/tests/refreshPolicyService.test.js,test,99,2350cf0b0bd6308f9b19c220112ae07deaa1f2486990dd11de4e8461b3dcd0a7,prueba ejecutada en suite,
+backend/tests/refreshScheduling.test.js,test,32,84b4b43c63f69a4d36a2a518fd57057bf94d2b65d79bd7ce9e3a22d13877ca20,prueba ejecutada en suite,timers
+backend/tests/researchArchive.test.js,test,133,0eadacd3fef8fc38466cb4526748aa1eed07f947b04f3d3a7e9a2430da16782f,prueba ejecutada en suite,
+backend/tests/researchDataContext.test.js,test,66,038f6ccaf18397a6abb3da11840decf01847f003b937a10fe43efed0698871fd,prueba ejecutada en suite,network
+backend/tests/researchForecastEvaluation.test.js,test,37,563c8fa0cfbffc4d3d1ea9e6520b92bb230d4a8739f5fb6b5af7f11b9ac65d59,prueba ejecutada en suite,
+backend/tests/researchHistoryImport.test.js,test,101,8a10bbc819b60176e92d5092fd5665f29d8029accf04b5b329c498fcda851b26,prueba ejecutada en suite,network
+backend/tests/researchReliability.test.js,test,85,d3571f2d3caa276f43d1c7e4f90d83458d500535f2bb6d7293220015c99d59e9,prueba ejecutada en suite,
+backend/tests/researchRoutes.integration.test.js,test,88,f15dd645caedfe8c24b82f6db7907a830d058bb917965155c36281e445c12bce,prueba ejecutada en suite,network
+backend/tests/researchScenarios.test.js,test,52,7a7dbff6af444f46c1b2ba50e8c5a4cca2b894843aae624becde477b0e75a97c,prueba ejecutada en suite,
+backend/tests/researchSqlRecovery.test.js,test,60,cb0bef91384001a62410d982bd3fb274a6a43ea277f428c99e8e7aca39fd7cf4,prueba ejecutada en suite,SQLite
+backend/tests/riskEngine.test.js,test,51,603b5c749b671fd134fc20dedfb2b5a434708ab0856c1942fd298454e0c8257e,prueba ejecutada en suite,
+backend/tests/rssCanonicalPipeline.test.js,test,99,6f44f267ea43a982aef5241bf9144622fa44574c83d96833bc954c98a6587de8,prueba ejecutada en suite,network
+backend/tests/rssCatalogAudit.test.js,test,95,c1d730b784ac49952af1bc105f9d9aed66763f352ef8113c81ab6c9b03aa92e1,prueba ejecutada en suite,network
+backend/tests/rssIntelligence.test.js,test,48,0aaa56459741c900990d5a308e18be1699f5aa268ecd1dab5e8324c7aa99c9bb,prueba ejecutada en suite,
+backend/tests/rssLab.test.js,test,166,34f7b832bd2548b6457c01c6e3c313c29a40391d9201cd6d25d5a3ba7b575fcd,prueba ejecutada en suite,network
+backend/tests/rssProvider.test.js,test,235,0ad7600e5553023c257c651440fdc9f99dd8ba0575204b8de3713fff3611fab0,prueba ejecutada en suite,
+backend/tests/runtimeStability.test.js,test,62,f49da1473fc93a92d692ed7ee9c9d56051344e13908befd13c980c932bea6e89,prueba ejecutada en suite,events
+backend/tests/secSourceAgent.test.js,test,117,bd5f16b799fb1692a6969be8ec00700ddbf0eef396a8e6ee021a043fe813806a,prueba ejecutada en suite,SQLite;network;timers
+backend/tests/securityBaseline.test.js,test,102,e9331eb28d9eeb4cf7f29799d9d88eb9b3214abe539762fe51d053e122c4aaeb,prueba ejecutada en suite,network
+backend/tests/sentiment.test.js,test,15,df01f799b20d89391c839531250453d091634d2978d621610952a49fc53bcf55,prueba ejecutada en suite,
+backend/tests/serverConfig.test.js,test,241,9dfa8b5f08a5b5352b36e74e189f392946ca57568bc1f45bff80b774ebdc3bb4,prueba ejecutada en suite,events
+backend/tests/sessionPolicyResolver.test.js,test,42,fde584ee95fea82aedef09f5f82fa5d6debcf23b31b26499ae898cc7a6f8c1fc,prueba ejecutada en suite,
+backend/tests/signalCorrelator.test.js,test,140,01fb28ffba46fb18f83a0f04ccdff0b24a2a0754ef811f7d08f21977b01eb2f5,prueba ejecutada en suite,
+backend/tests/sqlBusiness.test.js,test,505,5eb714c68fb0d3c21f9aa623ab1777d501d7a7b93e7b5b7cde55fc6bd1764374,prueba ejecutada en suite,SQLite;network;timers
+backend/tests/sqlNewsCorpus.test.js,test,243,87906f53907cc0bdd96756ea0f37077dc84e5b120ad4cde5ddfe0198632e8473,prueba ejecutada en suite,SQLite;network
+backend/tests/stateSync.test.js,test,85,c7fe319b0fd5adf1cd1fc60592190a36e9f13fa85ba220b65b9f3ab6468d3c37,prueba ejecutada en suite,timers;events
+backend/tests/storageBackup.test.js,test,20,df26f056b779ef50c876ec007c4a530028f5d236fee913d95c7f5998d5631f52,prueba ejecutada en suite,SQLite
+backend/tests/storageDiagnostics.test.js,test,66,d175d3431749f6ee561da5eb18f40f448e277353010f4420da78bc7ebb899d6e,prueba ejecutada en suite,SQLite
+backend/tests/storageMaintenance.test.js,test,36,b4c7e69dde2b997bc01ddeac817aef37fec1555c40033db7392a13341f7fe8d3,prueba ejecutada en suite,SQLite
+backend/tests/storageRepair009.test.js,test,107,a7da3305f33c0ff02b6f67ef5d51338a87de935dbf8f4ce3a6676fc74419ea13,prueba ejecutada en suite,SQLite
+backend/tests/storageWorker.test.js,test,260,244625dba9fc30c7dca50b89d1026760e95b732c2c917bfba5cbf8ea52e35cae,prueba ejecutada en suite,SQLite;network;timers
+backend/tests/technicalIndicators.test.js,test,30,2e73a50844a661ca31a833540679da26d4d3fd31da9ad609fba6120e3d0ada85,prueba ejecutada en suite,
+backend/tests/testSetup.cjs,test,90,980073dd7bbc16036f33680a9e87b17c16d0529c194f658de71ffdd1a26e9107,prueba ejecutada en suite,
+backend/tests/uiStaticContract.test.js,test,132,bd1a1903284861f56c02c53e6bd0a190d2837c68220169d5ace07ca2c3c80c98,prueba ejecutada en suite,timers
+backend/tests/workerOperations.test.js,test,108,9b3d90ba64b61a52761773739d48e77382b72a0f85cf3dc2fc33f12ec507460f,prueba ejecutada en suite,
+backend/tests/ws.integration.test.js,test,224,16e0ae830050c25b9ede430ff9da4668cd00c279fb033ed794cd230be3128576,prueba ejecutada en suite,network;timers;events
+backend/tests/wsRuntime.integration.test.js,test,115,4188b2005780f795f7ba7ac3c294ca0bbbad1e62ae09b9c7afe0fb37929acc7a,prueba ejecutada en suite,timers;events
+backend/tests/yahooProvider.test.js,test,155,4f0d003927339363ebb2961a897307954eefc5e8f9b94f36d61c05202d91aa40,prueba ejecutada en suite,
+backend/tests/yahooSqlIsolation.test.js,test,183,5d0598f8bedf34b543b56ed38ff983508343b09a2a79601756a50cca4ae55944,prueba ejecutada en suite,SQLite;network;timers
+backend/utils/buildIdentity.js,application/tool/config,30,3464e10958fa9a3d05defed7a3e9c423019d92f598f66221923b3971cf6c03ca,lectura parcial/contextual,
+backend/utils/clientIp.js,application/tool/config,42,154ed257788a912fdb8f18bd4f7a0a76d026b726919e6ed710d18fb30af77e92,inventario y barrido estático; revisión semántica pendiente,
+backend/utils/conflictTags.js,application/tool/config,79,9956d2f8cd78b1acb6cda384bd59a9709bc2f17d62448b5db5c8c45495490fcd,inventario y barrido estático; revisión semántica pendiente,
+backend/utils/countryCatalog.js,application/tool/config,364,8cc9d42b5c90259029fb00969f21fbfc39a0882078fc67090276f7d47671e9af,inventario y barrido estático; revisión semántica pendiente,
+backend/utils/dataMode.js,application/tool/config,22,bea168deec19cdd78fd438087cbc915dbad7ebc9cf5aeb8876c8b645551c8e93,inventario y barrido estático; revisión semántica pendiente,
+backend/utils/dateTimeFormat.js,application/tool/config,10,7a258ac13a7e8840fc50ba44eda39f8878f6b117e01c20bd1ff101e0ac6a4730,inventario y barrido estático; revisión semántica pendiente,
+backend/utils/error.js,application/tool/config,45,372c8a294a6f4bee63d1dbbebc171c83e87280228277739b409fe3b8e6324da8,inventario y barrido estático; revisión semántica pendiente,
+backend/utils/filters.js,application/tool/config,168,768c1ef3e50610f8e72b59cf38a029f20572f6bc0b19b331efaddf16f76b8fef,inventario y barrido estático; revisión semántica pendiente,
+backend/utils/logger.js,application/tool/config,124,2294dc06c2c47225275fd55d17486863faef69f3331ea2776af5b68bf8146397,inventario y barrido estático; revisión semántica pendiente,
+backend/utils/newsOrder.js,application/tool/config,6,46d336a3a63918bbe9953eef5649a5694e2c3ec9cf0e24864b650f4344c1d71b,inventario y barrido estático; revisión semántica pendiente,
+backend/utils/queryParamAllowlist.js,application/tool/config,99,36210ebc05309520fb34be3774e56f9eb0c534b25d42e48da4d28e947628c8dc,inventario y barrido estático; revisión semántica pendiente,
+backend/utils/researchProjection.js,application/tool/config,84,6737503508f7a622481dcd42c6ac3da38b5d76d118d4ae7b48bcf4830bc092e2,lectura parcial/contextual,
+backend/utils/sanitize.js,application/tool/config,43,c5882af9b8a0dd3f2a2f3e0d3cc0c688e7ec432369ef9cf02848ecc35a6e00ac,inventario y barrido estático; revisión semántica pendiente,
+backend/utils/sentimentRules.js,application/tool/config,75,26d98bce0a27accbc05231eb147d6e58d0ffa2e607fce3bc597f67a0c6cfa3f3,inventario y barrido estático; revisión semántica pendiente,
+backend/utils/stableHash.js,application/tool/config,19,3f3b64475d3f169eb6c5cc5e402c0beefc1cf5c822c1530fbdf91e5f0f7a772e,inventario y barrido estático; revisión semántica pendiente,
+backend/websocket/boundedTransport.js,application/tool/config,61,28a89493ef6d47d5dd479ebe0a82b35164967e88eee109d7f2a1655b2581570a,inventario y barrido estático; revisión semántica pendiente,timers;events
+backend/websocket/socketServer.js,application/tool/config,386,abb5615d9df29bcdd6affd70176541d7cb60bdc1066a859fb692095f1ee3a723,lectura parcial/contextual,timers;events
+backend/websocket/stateSync.js,application/tool/config,62,0439189f88c395f697669a261a22e1a5a0708a8e2eef605b7ccd160329d53e58,inventario y barrido estático; revisión semántica pendiente,
+frontend/admin.html,application/tool/config,296,835c77e5a5665e650b068ac4e4e7da6d319ac952d2c0a4d202e518d9c6e5ef27,inventario y barrido estático; revisión semántica pendiente,
+frontend/css/agentIntelligence.css,application/tool/config,94,546348c2a8251846dc5eb44ea0d719ce30f5b2929c314a4ee484f4cdcee8961b,inventario y barrido estático; revisión semántica pendiente,
+frontend/css/styles.css,application/tool/config,2578,4f93fe8648ebbd269c673fb36565f53e2c0bb6ba18ff74486e72daba854de8c0,inventario y barrido estático; revisión semántica pendiente,
+frontend/index.html,application/tool/config,360,40751be8f2776a0d6a1a963dab8ec5297ae4469a966099c93ea339b29541e7b2,inventario y barrido estático; revisión semántica pendiente,
+frontend/js/admin.js,application/tool/config,1129,4565e211ec0702afe811a8d655deacb6ea846c02c6c7e03f289d3a8d1d161c5b,inventario y barrido estático; revisión semántica pendiente,renderHTML;events
+frontend/js/adminRefresh.js,application/tool/config,32,1478405ff672e2ac2b5bc766155f58923f891928207bf7eb8f3d8efe2816bdd8,inventario y barrido estático; revisión semántica pendiente,
+frontend/js/agentAdmin.js,application/tool/config,118,536c3cc64d225c1f7f941cf80edd94339ee7aaf1819687d38713965842e10e52,revisión funcional focalizada; no línea a línea,network;timers
+frontend/js/agentIntelligence.js,application/tool/config,643,2fa7241a5cfb4e305bc80e0a09dce8b2bb23d747895445d01b22494c70c5643e,lectura parcial/contextual,network;timers;renderHTML;events
+frontend/js/agentModels.js,application/tool/config,14,0401428fe6d3394301ed66c8557b8947588ec211b3c9263b267b3144e0c6d227,revisión funcional focalizada; no línea a línea,
+frontend/js/aiMarketHistory.js,application/tool/config,54,1ff8056fcf42f1ed4b58828733d07cf0a6c44fde426c25312e2726d9fea7473e,inventario y barrido estático; revisión semántica pendiente,
+frontend/js/api.js,application/tool/config,99,91673e652ff1bb2876c5e813ec9a48e4ac43111872fa53f27e2eca69649b7a2e,inventario y barrido estático; revisión semántica pendiente,network
+frontend/js/awareness.js,application/tool/config,601,c858c98b16dcebddba9cc6351f551341414e992d337aa0031cc042c1765cd5e8,inventario y barrido estático; revisión semántica pendiente,timers;renderHTML
+frontend/js/awarenessModel.js,application/tool/config,353,a0f73fd3667c9c4eb8111e05a969fb7c757d722759353a00db62696a46fc1a5e,inventario y barrido estático; revisión semántica pendiente,
+frontend/js/dashboard.js,application/tool/config,2025,f75f2563ac197dbc14b7f5c02a04c80176cbde0e2e55690a5320fbac7a346ad5,lectura parcial/contextual,timers;renderHTML;events
+frontend/js/intelligence/advancedIntelligence.js,application/tool/config,251,0626719034fd3b3bec0a940ad2c58ab3bce3f519017b9bbf6070960918a7207c,inventario y barrido estático; revisión semántica pendiente,renderHTML
+frontend/js/intelligence/riskEngine.js,application/tool/config,69,924948c24c66c3ca6ebc77d2ca5b901ed28412e9d0623bec13fc31452b25feb8,inventario y barrido estático; revisión semántica pendiente,
+frontend/js/intelligence/signalAnomalies.js,application/tool/config,78,18489e0312dfb9c4b78143063fdc25cbb722602bce6bbc586fa895ee9ffaeac0,inventario y barrido estático; revisión semántica pendiente,
+frontend/js/intelligence/threatClassifier.js,application/tool/config,35,195c825dd3274fc4f5c780031e2d0569e33352f315d4e2bced862d3e5945239e,inventario y barrido estático; revisión semántica pendiente,
+frontend/js/intelligence/trendDetector.js,application/tool/config,59,455df397251b1ea8a46f233794f3499fc3ead8b09355dda78eb67d849ce35b81,inventario y barrido estático; revisión semántica pendiente,
+frontend/js/intelligence/worldBrief.js,application/tool/config,92,5a57c8e60e9ac59cf9db4bab2c8499d2c6feb2bcb92fdb41e6a44aede37eda90,inventario y barrido estático; revisión semántica pendiente,
+frontend/js/levelColors.js,application/tool/config,2,c304df36d334179aa8a75933947bfa204351fbc087520d725c9e94e42a6432ba,inventario y barrido estático; revisión semántica pendiente,
+frontend/js/marketConditionsModel.js,application/tool/config,491,76f2f1250f5d33e4695b1ef1c7ef95e241dfedd34522368a366023067ed53b7f,inventario y barrido estático; revisión semántica pendiente,
+frontend/js/marketOhlcvModel.js,application/tool/config,65,3facec68eb79165560601eaa2d6698ce29cc531d90ba14e3532ff98c82cf1cc5,inventario y barrido estático; revisión semántica pendiente,
+frontend/js/marketPolling.js,application/tool/config,31,681025a282d97d651bdc50f0931269dd38c782d6550733b391f62fc412ac8105,inventario y barrido estático; revisión semántica pendiente,
+frontend/js/marketWatchlistModel.js,application/tool/config,108,6c76530f1036f9e30bc77a82307412a653cff291c358942ed826af183e934dba,inventario y barrido estático; revisión semántica pendiente,
+frontend/js/media/mediaPlaybackPolicy.js,application/tool/config,48,efc4c86da05f4b6194067b40a7875a7d430f2bc314aaaf79b1f45280b3283852,inventario y barrido estático; revisión semántica pendiente,
+frontend/js/media/situationalWorkspace.js,application/tool/config,291,5538e725e1dc99474b77e4d3ab394d2c96a81b2516aa30f99c73ea8ca97ce778,inventario y barrido estático; revisión semántica pendiente,timers;renderHTML
+frontend/js/media/videoStreams.js,application/tool/config,573,b88d2757584dca4ac12d13eab0992a8a59aec65893f52354011e43ce95d9077b,inventario y barrido estático; revisión semántica pendiente,renderHTML
+frontend/js/newsFeedModel.js,application/tool/config,34,1924b1489caff4a8765424fdc770d58149cf9585df50029b150968b17d8eef94,inventario y barrido estático; revisión semántica pendiente,
+frontend/js/smartPollLoop.js,application/tool/config,105,7bfe4d48b985778157667176b17aeaec926267328f4568a0bfd55c2bfb11baa4,inventario y barrido estático; revisión semántica pendiente,timers
+frontend/js/state.js,application/tool/config,205,2a4017ca5ea5688cb22d201561bef72cb7316411b5f32ba944356f5cd69f1678,inventario y barrido estático; revisión semántica pendiente,
+frontend/js/stateSync.js,application/tool/config,78,5644d7f65df85f90048811566d76a8ff2720675f85f80ddfb252feb8c0acb7d2,inventario y barrido estático; revisión semántica pendiente,timers
+frontend/js/websocket.js,application/tool/config,97,7dcef5635b6dcc4e9e0791df9eae4bca8315db633e6cd58a9c852b626cd223d5,inventario y barrido estático; revisión semántica pendiente,timers;events
+frontend/js/workerOperations.js,application/tool/config,56,aa083502096aceb37893d2a9ab07a13d4c3a5869f9a5ab9de8016cb712606c13,inventario y barrido estático; revisión semántica pendiente,
+frontend/package.json,application/tool/config,4,609158e6c5fbc237939fa3ddf7faab80ab690bdc0c8d584414a885130103c4e8,inventario y barrido estático; revisión semántica pendiente,
+integrations/ogid-mcp/package.json,application/tool/config,20,0ef6aea9dcee9d9b4e65a6b4c9631053d8cbe6797fbd6089d2499a949da3ddc2,inventario y barrido estático; revisión semántica pendiente,
+integrations/ogid-mcp/scripts/inventory.js,application/tool/config,25,be977f8a7c3f28dbdff1737d5e5d993b4da78dc1ec90691439c98a42ca896815,inventario y barrido estático; revisión semántica pendiente,events
+integrations/ogid-mcp/scripts/smoke.js,application/tool/config,47,ed7fa6c52edeb326db99694607035448ba584979f40fe0aea002c7f2f48ff0c5,inventario y barrido estático; revisión semántica pendiente,
+integrations/ogid-mcp/src/client.js,application/tool/config,71,71af0693584a71935ff0896a4d8aeb9c33a737972c920f1954421804a54ff193,revisión funcional focalizada; no línea a línea,network;timers
+integrations/ogid-mcp/src/config.js,application/tool/config,70,d08cdeadd1ddc76009786c35e754e959079251c84d5c91ccc286e0d479d0a3d8,revisión funcional focalizada; no línea a línea,
+integrations/ogid-mcp/src/index.js,application/tool/config,12,a6ab7b2c13e2d035d360d932510773f5c8f90f549177758f6447569336e5ddf2,inventario y barrido estático; revisión semántica pendiente,
+integrations/ogid-mcp/src/operations.js,application/tool/config,99,a74d95cd526d4a87d18d3f0f8dac4bf90af5478298098d7fe325d722e2edb9b2,lectura parcial/contextual,
+integrations/ogid-mcp/src/server.js,application/tool/config,18,d890e10df588d35cd089cc80dffa67f71d0aa89a10c6a7289a1983351f4e4bec,inventario y barrido estático; revisión semántica pendiente,
+integrations/ogid-mcp/src/tools.js,application/tool/config,195,f2333912e8ece780295926d99797f2d65f6365d7048e60f6c43a8f52e222d725,revisión funcional focalizada; no línea a línea,
+integrations/ogid-mcp/tests/adapter.test.js,test,224,a5232201583e4cacccde235fb77423e311e9b72deb713d1c86cc840c4e712002,prueba ejecutada en suite,
+integrations/ogid-mcp/tests/e2e.test.js,test,87,6ae33e4a0438e29cd90fdffdbc88ea6ab365fd271527b33146e4ec26ec7f4b61,prueba ejecutada en suite,
+integrations/ogid-mcp/tests/operations.test.js,test,148,eb5000e1a36142a3f658930e0c1215930fa4da1bcfa2b4adc5d7c7e8ecb61b52,prueba ejecutada en suite,timers
+integrations/ogid-mcp/tests/protocol.test.js,test,58,ddccda8cc5c784ef70f26eb2c228e9926bcfe6e4cad6ab1b798157aa7ca19bcd,prueba ejecutada en suite,

@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 
 createRequire(import.meta.url)("../tests/testSetup.cjs");
 process.env.LOG_LEVEL = "error";
-const { createAppServer } = await import("../server.js");
+const { createAppServer, readConfig } = await import("../server.js");
 const nativeFetch = globalThis.fetch;
 let externalRequests = 0,
   marketRequests = 0;
@@ -31,7 +31,7 @@ globalThis.fetch = async (url, options) => {
 };
 const durationMs = Number(process.env.OGID_SOAK_DURATION_MS || 1_800_000);
 const directory = await mkdtemp(join(tmpdir(), "ogid-runtime-soak-"));
-const guard = fileURLToPath(new URL("../tests/testSetup.cjs", import.meta.url));
+const guard = fileURLToPath(new URL("./soak-network-guard.cjs", import.meta.url));
 if (
   process.env.OGID_SOAK_SQL === "1" &&
   !process.env.NODE_OPTIONS?.includes(guard)
@@ -56,6 +56,8 @@ const fixtureServer = createServer(async (req, res) => {
 fixtureServer.listen(0, "127.0.0.1");
 await once(fixtureServer, "listening");
 const fixtureBase = `http://127.0.0.1:${fixtureServer.address().port}`;
+process.env.OGID_SOAK_FEED_BASE = fixtureBase;
+const configuredFeeds = readConfig().news.rssFeeds;
 const runtime = createAppServer({
   ...(process.env.OGID_SOAK_SQL === "1"
     ? {
@@ -72,10 +74,9 @@ const runtime = createAppServer({
   wsHeartbeatMs: 1_000,
   news: {
     providers: ["rss"],
-    rssFeeds: Array.from({ length: 18 }, (_, i) => ({
-      url: `${fixtureBase}/${i}`,
-      label: `Fixture ${i}`,
-    })),
+    // Keep the complete source catalog, including disabled entries and generated
+    // searches. The worker preload redirects transport without changing IDs.
+    rssFeeds: configuredFeeds,
     rssAggregateIntervalMs: 2_000,
     rssAggregateFeedsPerRun: 18,
     rssAggregateMaxItems: 900,
@@ -136,6 +137,10 @@ const storageSample = () => {
   const writer = runtime.storageManager.getStatus();
   return {
     state: writer.state,
+    walBytes: writer.walBytes,
+    databaseBytes: writer.databaseBytes,
+    analysisRecoveries: writer.analysisRecovery.recoveries,
+    queryRecoveries: writer.queryRecovery.recoveries,
     queue: writer.queue,
     completed: writer.completed,
     failed: writer.failed,
@@ -147,6 +152,7 @@ const storageSample = () => {
       failed: writer.analysis.failed,
       rejected: writer.analysis.rejected,
     },
+    queries: writer.queries && {state:writer.queries.state,queue:writer.queries.queue,failed:writer.queries.failed,rejected:writer.queries.rejected},
   };
 };
 console.log(JSON.stringify({ state: "starting", directory, durationMs }));
@@ -213,6 +219,7 @@ try {
         clients: runtime.socketServer.clientCount(),
         storage: storageSample(),
         rss: runtime.app.locals.rssAggregator.getStatus?.() || null,
+        rssCanonical: (await runtime.storageManager.request('domain.call',{service:'rss',method:'getSnapshot',args:[{stored:true}]})).meta,
       });
       await checkpoint({ state: "running", durationMs, cycles, samples });
     }
@@ -225,7 +232,8 @@ try {
     ];
   result = {
     networkIsolation:
-      "parent fixtures and worker preload guard; loopback fixture feeds",
+      "complete production RSS catalog redirected to loopback fixtures by worker preload; no external providers",
+    configuredFeedCount:configuredFeeds.length,
     node: process.version,
     durationMs,
     elapsedMs: performance.now() - started,
@@ -299,6 +307,7 @@ if (result) {
     result.unexpectedCloses ||
     result.eventLoopDelayMs.p95 >= 100 ||
     result.samples.some((s) => s.pending || s.clients !== 10)
+    || result.samples.some(s=>s.storage.analysisRecoveries || s.storage.queryRecoveries || s.rssCanonical?.canonicalMetrics?.errors)
   )
     process.exitCode = 1;
 }

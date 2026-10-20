@@ -1,0 +1,24 @@
+import test from'node:test';import assert from'node:assert/strict';import{catalogEntry,catalogModel,LlamaModels}from'../services/agent/modelCatalog.js';import{AgentModelSelection}from'../services/agent/modelSelection.js';import{internalDeadline}from'../services/agent/internalClient.js';import{mergeAwarenessPayload,normalizeAwarenessPayload}from'../../frontend/js/awarenessModel.js';
+test('router discovery exports only typed model capabilities, without loading models or copying secrets',async()=>{
+ const paths=[],manifest={models:[]};const service=new LlamaModels({upstream:'http://localhost:8080/v1',apiKey:'secret',manifest,fetchImpl:async url=>{paths.push(new URL(url).pathname);return Response.json({data:[{id:'gpt',status:{value:'unloaded',args:['--ctx-size','131072','--parallel','1','--api-key','private']},settings:{token:'private'}},{id:'../unsafe',status:{args:['--ctx-size','99']}}]});}});
+ await service.discover();assert.deepEqual(paths,['/models']);assert.equal(manifest.models.length,1);assert.equal(manifest.models[0].context,131072);assert.equal(catalogModel(manifest.models[0]),true);assert.equal(manifest.models[0].tools,false);assert.doesNotMatch(JSON.stringify(manifest),/private|settings|token|api-key/);
+});
+test('a busy external model cannot be evicted to load another; no model mutation is retried',async()=>{
+ const paths=[],manifest={models:[{alias:'new',context:8192,slots:1,state:'available'}]};const service=new LlamaModels({upstream:'http://localhost:8080',apiKey:'secret',manifest,fetchImpl:async(url,o)=>{const path=new URL(url).pathname;paths.push(path);return Response.json(path==='/models'?{data:[{id:'new',status:{value:'unloaded'}},{id:'busy',status:{value:'loaded'}}]}:[{is_processing:true}]);}});
+ await assert.rejects(service.load('new'),{code:'AGENT_MODEL_BUSY'});assert.deepEqual(paths,['/models','/slots']);
+});
+test('selection acknowledges loading once, preserves durable selection on probe failure, and does not claim verification',async()=>{
+ let fail,calls=0;const manifest={models:[{alias:'new',context:8192,slots:1,state:'available'}]},config={mode:'shadow',manifest,backgroundModel:'llamacpp/old'};
+ const service=new AgentModelSelection({config,opencode:{models:async()=>({data:[{providerID:'llamacpp',modelID:'new',enabled:true,limit:{context:8192},capabilities:{tools:true}}]})},call:async()=>{calls++;},activate:()=>new Promise((_,reject)=>{fail=reject;})});
+ const models=await service.list();assert.equal(models.models[0].selectable,true);assert.equal(models.models[0].verified,false);assert.equal((await service.select('llamacpp/new')).pending,true);assert.equal((await service.select('llamacpp/new')).pending,true);fail(Object.assign(Error(),{code:'AGENT_MODEL_TOOLS_FAILED'}));await service.activationTask;assert.equal(service.activation.state,'failed');assert.equal(config.backgroundModel,'llamacpp/old');assert.equal(calls,0);
+});
+test('metadata-only Awareness can hydrate once from an older full response, but never resurrect a genuinely empty newer full view',()=>{
+ const compact=mergeAwarenessPayload(normalizeAwarenessPayload(),{revision:8970,mode:'visible',quality:{total:945}},{delta:true});const full={schemaVersion:'awareness-v1',revision:8969,mode:'visible',recent:[{eventId:'fixture',title:'fixture',revision:1,status:'released'}],upcoming:[],sourceStatus:[],quality:{total:945}};
+ const hydrated=mergeAwarenessPayload(compact,full);assert.equal(hydrated.recent.length,1);assert.equal(hydrated.revision,8970);assert.equal(hydrated.hydrationRevision,8969);
+ const empty=mergeAwarenessPayload(compact,{...full,revision:8970,recent:[]});assert.equal(mergeAwarenessPayload(empty,full).recent.length,0);
+});
+test('internal HTTP covers queue plus execution while heartbeat remains bounded within its lease',()=>{assert.equal(internalDeadline('heartbeat'),30000);assert.equal(internalDeadline('publish'),125000);assert.equal(internalDeadline('snapshot'),395000);});
+test('lost model-load response is reconciled without repeating the mutation',async()=>{
+ let inventory=0,loads=0;const manifest={models:[{alias:'new',context:8192,slots:1,state:'available'}]};const service=new LlamaModels({upstream:'http://localhost:8080',apiKey:'secret',manifest,fetchImpl:async(url,o)=>{const p=new URL(url).pathname;if(p==='/models')return Response.json({data:[{id:'new',status:{value:++inventory===1?'unloaded':'loaded'}}]});if(p==='/models/load'){loads++;throw new TypeError('response lost');}if(p==='/props')return Response.json({total_slots:1,default_generation_settings:{n_ctx:8192,params:{n_predict:-1,max_tokens:-1}}});assert.fail(p);}});
+ await service.load('new');assert.equal(loads,1);assert.equal(manifest.models[0].resident,true);
+});

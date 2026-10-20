@@ -53,6 +53,10 @@ const runtime = createAppServer({
     backgroundModel: "llamacpp/fixture-ui",
   },
 });
+// This is a UI fixture, not a connection to the operator's OpenCode instance.
+// Supply only the v2 catalog contract needed by the picker. Actual OpenCode
+// availability/inference are covered separately by terminal-managed smoke.
+runtime.app.locals.agentModels.opencode={models:async()=>({data:['fixture-ui','fixture-ui-2'].map(modelID=>({providerID:'llamacpp',modelID,enabled:true,limit:{context:8192},capabilities:{tools:true}}))})};
 const result = {
   kind: "browser-fixture; not predictive validation",
   screenshots: [],

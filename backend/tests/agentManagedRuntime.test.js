@@ -140,10 +140,11 @@ test("registry rebuild processes all event pages once and retains stable instrum
     const insert=db.prepare("INSERT INTO events(event_id,identity_version,revision,observed_at,status,payload_json) VALUES(?,?,?,?,?,?)");
     for(let n=0;n<530;n++){const id=`page-${String(n).padStart(4,"0")}`;const event={eventId:id,identityVersion:"source-publication-v2",quality:{identityVerified:true,official:false},evidence:[],title:instrument.displayName,symbols:[instrument.canonicalSymbol],instrumentIds:[instrument.instrumentId]};insert.run(id,"source-publication-v2",1,new Date().toISOString(),"observed",JSON.stringify(event));}
     runtime.registry(listVerifiedInstruments());
-    assert.equal(db.prepare("SELECT count(DISTINCT event_id) AS n FROM event_instruments").get().n,530);
-    const before=db.prepare("SELECT * FROM event_instruments ORDER BY event_id,instrument_id").all();
+    while(runtime.indexPage({}).state!=="ready"){}
+    assert.equal(db.prepare("SELECT count(DISTINCT event_id) AS n FROM event_index_links").get().n,530);
+    const before=db.prepare("SELECT * FROM event_index_links ORDER BY event_id,instrument_id").all();
     runtime.registry(listVerifiedInstruments());
-    assert.deepEqual(db.prepare("SELECT * FROM event_instruments ORDER BY event_id,instrument_id").all(),before);
+    assert.deepEqual(db.prepare("SELECT * FROM event_index_links ORDER BY event_id,instrument_id").all(),before);
   }finally{db.close();}
 });
 

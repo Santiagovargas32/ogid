@@ -43,3 +43,12 @@ docs/performance
 # Local agent validation artifacts; keep outside backend's recursive test scan.
 /.agent-validation/
 /backend/data/agent-runtime/
+# Auditoría solicitada: sólo informes redactados, sin bases, logs ni credenciales.
+!/docs/
+/docs/*
+!/docs/audits/
+/docs/audits/*
+!/docs/audits/2026-10-20/
+!/docs/audits/2026-10-20/*.md
+!/docs/audits/2026-10-20/*.json
+!/docs/audits/2026-10-20/*.csv

@@ -15,6 +15,8 @@ function buildPath(path, params = {}) {
   return `${url.pathname}${url.search}`;
 }
 
+export const HTTP_DEADLINES=Object.freeze({default:12000,analysis:275000,storedRead:185000,watchlist:45000});
+function requestDeadline(path){return /\/(advanced-snapshot|conditions|analytics)$/.test(path)?HTTP_DEADLINES.analysis:/\/(candles|awareness-snapshot)$/.test(path)?HTTP_DEADLINES.storedRead:path==='/api/market/watchlist'?HTTP_DEADLINES.watchlist:HTTP_DEADLINES.default;}
 const pageController = new AbortController();
 window.addEventListener("pagehide", () => pageController.abort(), { once: true });
 
@@ -29,7 +31,7 @@ export async function request(path, params = {}, options = {}) {
     headers["Content-Type"] = "application/json";
   }
 
-  const signal = AbortSignal.any([pageController.signal, options.signal || new AbortController().signal, AbortSignal.timeout(options.timeoutMs ?? 12_000)]);
+  const signal = AbortSignal.any([pageController.signal, options.signal || new AbortController().signal, AbortSignal.timeout(options.timeoutMs ?? requestDeadline(path))]);
   try {
   const response = await fetch(buildPath(path, params), {
     method,
@@ -93,7 +95,6 @@ export const api = {
   getPipelineStatus: (options = {}) => request("/api/admin/pipeline-status", {}, options),
   getAdminRuntime: (options = {}) => request("/api/admin/runtime", {}, options),
   getAdminNewsRaw: (params = {}, options = {}) => request("/api/admin/news-raw", params, options),
-  getAdminAiEnrichments: (params = {}, options = {}) => request("/api/admin/ai-enrichments", params, options),
   refreshMediaStreams: (payload = {}) => request("/api/media/streams/refresh", {}, { method: "POST", body: payload }),
   getMediaStreamsHealth: (options = {}) => request("/api/media/streams/health", {}, options)
 };

@@ -11,6 +11,15 @@ import { createReadClient } from "../src/client.js";
 import { toolDefinitions, executeTool } from "../src/tools.js";
 import { zodSchema } from "../src/operations.js";
 const token = "fixture_" + "k".repeat(48);
+test('agent-evidence denies live Awareness facts and health consults operational metadata only',async()=>{
+ const config=loadConfig({OGID_RESEARCH_SCOPE:'agent-evidence'}),paths=[];
+ const read=createReadClient(config,async url=>{paths.push(url.pathname);return Response.json({ok:true,data:{status:'ok'}});});
+ await assert.rejects(read.operation('awareness',{}),{code:'FORBIDDEN_REQUEST'});
+ const tools=toolDefinitions(config,read),query=tools.find(t=>t.name==='ogid_query');
+ assert.throws(()=>query.schema.parse({operationId:'awareness',parameters:{}}));
+ const result=await tools.find(t=>t.name==='ogid_health').run({});
+ assert.deepEqual(paths,['/api/health']);assert.equal(result.data.awarenessMode,null);
+});
 test("el MCP del analista limita schema y ejecución a evidencia congelada sin cambiar research general", async () => {
   const config = loadConfig({ OGID_RESEARCH_SCOPE: "agent-evidence" });
   let requests = 0;

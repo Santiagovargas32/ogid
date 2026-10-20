@@ -5,10 +5,11 @@ export function fillAgentModels(select,catalog,preferred){
   for(const model of catalog.models || []){
     const option=document.createElement("option");option.value=model.id;
     option.textContent=`${model.name || model.alias} · ${model.context || "?"} tokens${model.ready?"":` · ${reasons[model.reason] || "no disponible"}`}`;
+    if(model.resident)option.textContent+=" · cargado";else if(model.selectable)option.textContent+=" · cargar y comprobar";
     if(model.validation?.errorCode)option.title=`Última prueba: ${probeErrors[model.validation.errorCode] || model.validation.errorCode}${model.validation.at?` · ${model.validation.at}`:''}`;
-    option.disabled=!model.ready;select.append(option);
+    option.disabled=!(model.ready||model.selectable);select.append(option);
   }
-  const fallback=(catalog.models || []).find(m=>m.id===catalog.backgroundModel && m.ready) || (catalog.models || []).find(m=>m.ready);
+  const fallback=(catalog.models || []).find(m=>m.id===catalog.backgroundModel && m.ready) || (catalog.models || []).find(m=>m.ready||m.selectable);
   select.value=[...select.options].some(o=>o.value===preferred)?preferred:fallback?.id || "";
-  select.disabled=catalog.state!=="ready" || !(catalog.models || []).some(m=>m.ready);
+  select.disabled=catalog.state!=="ready" || !(catalog.models || []).some(m=>m.ready||m.selectable);
 }

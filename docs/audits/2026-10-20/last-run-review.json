@@ -1,0 +1,205 @@
+{
+  "reviewedAt": "2026-10-20T13:47:03.612020+00:00",
+  "scope": "read-only diagnosis requested; application, env, production DB and services unchanged",
+  "timezone": "Europe/Madrid (CEST, UTC+2)",
+  "log": {
+    "file": "shadow-backend-20261020-152234.log",
+    "sha256": "61de87d769adb271160e1b492a5c163af8ba13631adb13b2472530c89f386b90",
+    "lines": 1627,
+    "firstAt": "2026-10-20T13:22:35.695Z",
+    "lastAt": "2026-10-20T13:31:45.864Z",
+    "observedSeconds": 550.169,
+    "httpCompleted": 1539,
+    "http5xx": 5
+  },
+  "shutdown": {
+    "primaryCode": "STORAGE_OUTCOME_UNKNOWN",
+    "causeCode": "STORAGE_EXECUTION_TIMEOUT",
+    "operation": "domain.registry",
+    "phase": "executing",
+    "timeoutMs": 30000,
+    "queuedAt": "2026-10-20T13:31:13.064Z",
+    "failedAt": "2026-10-20T13:31:43.075Z",
+    "source": "BusinessRuntime.registry rebuilds all event_instruments in one immediate transaction after fingerprint change",
+    "deleteObservedAt": "2026-10-20T13:31:17.080Z",
+    "evidenceLines": [
+      1584,
+      1606,
+      1607,
+      1612,
+      1613,
+      1626,
+      1627
+    ],
+    "cleanupErrors": 2,
+    "secondaryError": "STORAGE_NOT_READY",
+    "triggerAttribution": "post-start production call site is updateWatchlist; no completed PUT log or request-body correlation proves exact browser action"
+  },
+  "models": {
+    "currentResident": [
+      {
+        "alias": "gpt-oss-20b",
+        "state": "context-unverified",
+        "resident": true,
+        "context": 131072,
+        "slots": 1,
+        "serverBuild": "b10741-9d817213a",
+        "defaultOutput": -1
+      }
+    ],
+    "gptLoadOnStartup": true,
+    "llamaRouterStartedAt": "2026-10-20T13:38:27.030Z",
+    "envModifiedAt": "2026-10-20T13:39:50.728Z",
+    "envBackgroundModel": "llamacpp/gpt-oss-20b",
+    "manifestModels": [
+      "qwen3-coder"
+    ],
+    "savedControl": {
+      "paused": false,
+      "backgroundModel": "llamacpp/qwen3-coder"
+    },
+    "failedExecutionRuns": [
+      {
+        "job_id": "c7d1a1c6-fdc4-4720-96e0-6531b878151f",
+        "task": "instrument_outlook",
+        "model": "llamacpp/qwen3-coder",
+        "status": "failed",
+        "error_code": "AGENT_OPENCODE_TURN_FAILED",
+        "fence": 2,
+        "started_at": "2026-10-20T13:23:48.469Z",
+        "finished_at": "2026-10-20T13:24:34.077Z"
+      },
+      {
+        "job_id": "75970cf1-397d-4d62-9ac0-80d34c51e691",
+        "task": "instrument_outlook",
+        "model": "llamacpp/qwen3-coder",
+        "status": "failed",
+        "error_code": "AGENT_TASK_MISMATCH",
+        "fence": 1,
+        "started_at": "2026-10-20T13:24:36.750Z",
+        "finished_at": "2026-10-20T13:26:09.261Z"
+      },
+      {
+        "job_id": "13395878-ac8c-414c-842d-df1015273bc9",
+        "task": "instrument_outlook",
+        "model": "llamacpp/qwen3-coder",
+        "status": "failed",
+        "error_code": "AGENT_STALE_EVIDENCE",
+        "fence": 1,
+        "started_at": "2026-10-20T13:26:14.414Z",
+        "finished_at": "2026-10-20T13:29:56.960Z"
+      },
+      {
+        "job_id": "92e53f18-b084-4323-9a74-be2f11118240",
+        "task": "instrument_outlook",
+        "model": "llamacpp/qwen3-coder",
+        "status": "running",
+        "error_code": null,
+        "fence": 1,
+        "started_at": "2026-10-20T13:29:57.120Z",
+        "finished_at": null
+      }
+    ],
+    "changeOccurredAfterShutdown": true,
+    "gptIntegrationValidated": false
+  },
+  "ui": {
+    "ohlcvCompleted": [
+      {
+        "endpoint": "GET /api/market/candles",
+        "requests": 2,
+        "serverErrors": 0,
+        "serverErrorRate": 0.0,
+        "statuses": {
+          "200": 2
+        },
+        "latencySamples": 2,
+        "p50Ms": 169.42,
+        "p95Ms": 254.81,
+        "p99Ms": 254.81,
+        "firstLine": 1527
+      }
+    ],
+    "awarenessCompleted": [
+      {
+        "endpoint": "GET /api/intel/awareness-snapshot",
+        "requests": 1,
+        "serverErrors": 0,
+        "serverErrorRate": 0.0,
+        "statuses": {
+          "200": 1
+        },
+        "latencySamples": 1,
+        "p50Ms": 231.95,
+        "p95Ms": 231.95,
+        "p99Ms": 231.95,
+        "firstLine": 1487
+      }
+    ],
+    "clientDefaultDeadlineMs": 12000,
+    "awarenessFixture": {
+      "compactRevision": 8970,
+      "total": 945,
+      "cards": 0,
+      "olderFullRevision": 8969,
+      "cardsAfterOlderFull": 0,
+      "cardsAfterSameRevisionFull": 1,
+      "kind": "pure mergeAwarenessPayload fixture, not a replay of operator browser"
+    },
+    "limitations": [
+      "no original browser HAR or console",
+      "aborted HTTP without finish may be absent from logger",
+      "UI visible mode is Awareness mode, independent of agent shadow"
+    ]
+  },
+  "sec": {
+    "sources": 20,
+    "healthy": 16,
+    "failed": [
+      {
+        "sourceId": "sec-aapl-submissions",
+        "failureCode": "SOURCE_TRANSPORT_ERROR",
+        "lastAttemptAt": "2026-10-20T13:24:55.043Z",
+        "lastSuccessAt": "2026-10-20T12:37:16.034Z"
+      },
+      {
+        "sourceId": "sec-alphabet-submissions",
+        "failureCode": "SOURCE_TRANSPORT_ERROR",
+        "lastAttemptAt": "2026-10-20T13:24:43.796Z",
+        "lastSuccessAt": "2026-10-20T12:46:24.621Z"
+      },
+      {
+        "sourceId": "sec-noc-submissions",
+        "failureCode": "SOURCE_TRANSPORT_ERROR",
+        "lastAttemptAt": "2026-10-20T13:24:44.986Z",
+        "lastSuccessAt": "2026-10-20T12:46:25.098Z"
+      },
+      {
+        "sourceId": "sec-orcl-submissions",
+        "failureCode": "SOURCE_TRANSPORT_ERROR",
+        "lastAttemptAt": "2026-10-20T13:25:45.607Z",
+        "lastSuccessAt": "2026-10-20T12:50:18.014Z"
+      }
+    ],
+    "scope": "persisted source state, not all contacts occurred during this run; transport subcause unverified"
+  },
+  "observation": {
+    "samples": 10,
+    "observedMs": 540819,
+    "state": "interrupted",
+    "completedObservation": false,
+    "maxSampledBackendRssBytes": 1093971968,
+    "maxSampledWalBytes": 22437552,
+    "analysisRecoveries": 0,
+    "queryRecoveries": 0
+  },
+  "database": "/srv/bitcoin/ogid/db/ogid.sqlite",
+  "migrations": 17,
+  "publicationModes": [
+    {
+      "mode": "shadow",
+      "count": 5
+    }
+  ],
+  "status": "blocked for 24h acceptance; remain shadow; no runtime restarted"
+}

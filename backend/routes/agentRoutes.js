@@ -1,3 +1,4 @@
+import {catalogModel} from "../services/agent/modelCatalog.js";
 import { Router } from "express";
 import { isAdminAuthorized } from "../middleware/sensitiveRouteAuth.js";
 import {
@@ -211,7 +212,7 @@ router.post("/agent/v1/chat/sessions", device, async (req, res) => {
   const config = req.app.locals.agentConfig;
   if (
     taskMode(config, "contextual_chat") === "off" ||
-    !readyModel(
+    !catalogModel(
       config.manifest.models.find((m) => `llamacpp/${m.alias}` === model),
     )
   )
@@ -248,7 +249,8 @@ router.post(
   },
 );
 router.get("/agent/v1/chat/sessions/:id/events", device, async (req, res) => {
-  await call(req, "messages", { ...ownedArgs(req), limit: 1 });
+  await call(req, "sessionAccess", ownedArgs(req));
+  if(req.destroyed || res.destroyed)return;
   res.set({
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-store",
@@ -258,42 +260,47 @@ router.get("/agent/v1/chat/sessions/:id/events", device, async (req, res) => {
   let busy = false,
     closed = false,
     previousEvent = "";
+  let timer;
+  const metrics = req.app.locals.agentSse ||= {active:0,opened:0,closed:0};
+  metrics.active++;metrics.opened++;
+  const cleanup = () => {
+    if(closed)return;
+    closed=true; clearInterval(timer);metrics.active--;metrics.closed++;
+  };
+  const end = () => { cleanup();res.end(); };
   const send = (value) => {
     if (closed) return;
     const bytes = Buffer.byteLength(JSON.stringify(value));
     if (bytes > 524288 || res.writableLength > 262144) {
-      closed = true;
-      res.end();
+      end();
       return;
     }
     if (!res.write(`event: update\ndata: ${JSON.stringify(value)}\n\n`)) {
-      closed = true;
-      res.end();
+      end();
     }
   };
   const update = async () => {
     if (busy || closed) return;
     busy = true;
     try {
-      await call(req, "messages", { ...ownedArgs(req), limit: 1 });
+      // Revocation/ownership stays live, without reading durable message JSON
+      // for every tab and heartbeat. Concurrent identical reads coalesce.
+      await call(req, "sessionAccess", ownedArgs(req));
+      if(closed)return;
       const progress = req.app.locals.agentProgress?.get(req.params.id);
       if (progress && JSON.stringify(progress) !== previousEvent) {
         previousEvent = JSON.stringify(progress);
         send(progress);
-      } else res.write(": heartbeat\n\n");
+      } else if(res.writableLength>262144 || !res.write(": heartbeat\n\n"))end();
     } catch {
-      closed = true;
-      res.end();
+      end();
     } finally {
       busy = false;
     }
   };
-  const timer = setInterval(update, 1000);
+  timer = setInterval(update, 1000);
   timer.unref();
-  req.on("close", () => {
-    closed = true;
-    clearInterval(timer);
-  });
+  req.once('close',cleanup);res.once('close',cleanup);res.once('error',cleanup);
   send({ reconcile: true });
 });
 router.get("/agent/v1/runs/:id", device, async (req, res) =>
@@ -349,7 +356,7 @@ router.get("/admin/agent", admin, async (req, res) =>
     ...publicCapabilities(req.app.locals.agentConfig),
     runtime: req.app.locals.agentRuntime?.status(),
     paused: Boolean(req.app.locals.agentPaused),
-    ...(await call(req, "status")),
+    ...(await call(req, "status", {since:req.app.locals.agentObservationSince})),
     worker: req.app.locals.agentMaintenance?.status || null,
     modelSelectionWarning:req.app.locals.agentModelWarning || null,
   }),
@@ -359,7 +366,7 @@ router.post("/admin/agent/model",admin,async(req,res)=>{
   if(typeof model!=="string")throw agentError("AGENT_INVALID_ARGUMENTS");
   const selected=await req.app.locals.agentModels.select(model);
   delete req.app.locals.agentModelWarning;
-  res.json(selected);
+  res.status(selected.pending?202:200).json(selected);
 });
 router.post("/admin/agent/pause", admin, async (req, res) => {
   const { paused } = body(req, ["paused"]);
@@ -421,18 +428,17 @@ router.post("/agent/v1/internal/:method", async (req, res) => {
     throw agentError("AGENT_DISABLED", 503);
   const input = { ...(req.body || {}) };
   if (req.params.method === "progress") {
-    const job = await call(req, "run", { jobId: input.jobId, internal: true });
+    const job = await call(req, 'progress', input);
     if (!job.sessionId || job.sessionId !== input.sessionId)
       throw agentError("AGENT_SESSION_MISMATCH");
-    if (input.fence !== job.fence) throw agentError("AGENT_LEASE_LOST", 409);
-    const text = typeof input.text === "string" ? input.text : "";
+    const text = input.done===true ? '' : typeof input.text === "string" ? input.text : "";
     if (Buffer.byteLength(text) > 524288)
       throw agentError("AGENT_EVENT_TOO_LARGE", 413);
     const progress = req.app.locals.agentProgress;
     progress.set(job.sessionId, {
-      jobId: job.jobId,
+      jobId: input.jobId,
       text,
-      tools: Array.isArray(input.tools)
+      tools: input.done!==true && Array.isArray(input.tools)
         ? input.tools.map((t) => ({ name: t.name, status: t.status }))
         : [],
       done: Boolean(input.done),

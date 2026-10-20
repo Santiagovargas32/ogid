@@ -1,3 +1,4 @@
+import {LlamaModels,catalogModel} from "./modelCatalog.js";
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { mkdirSync, readFileSync, writeFileSync, chmodSync, existsSync, createReadStream } from "node:fs";
@@ -33,7 +34,12 @@ export class ManagedAgentRuntime {
     this.controller=new AbortController();this.children=new Map();this.timers=new Set();this.retiring=new Set();this.attempts={};this.stopping=false;
     this.components=Object.fromEntries(["broker","opencode","worker"].map(name=>[name,{enabled:config.mode!=="off" && config.managed?.[name]===true,state:config.mode!=="off" && config.managed?.[name]===true?"pending":"off",pid:null,errorCode:null}]));
   }
-  status(){return {mode:"terminal",components:structuredClone(this.components)};}
+  status(){
+    const components=structuredClone(this.components),worker=components.worker;
+    if(worker.state==='running' && Date.now()-Date.parse(worker.workerHealth?.reportedAt)>90000)
+      Object.assign(worker,{state:'degraded',errorCode:'AGENT_WORKER_HEARTBEAT_STALE'});
+    return {mode:"terminal",components};
+  }
   start(baseUrl){
     if(this.boot)return this.boot;
     this.baseUrl=baseUrl;
@@ -44,8 +50,9 @@ export class ManagedAgentRuntime {
     if(!Object.values(this.components).some(c=>c.enabled))return;
     const directory=this.config.managed.directory;
     for(const dir of ["workspace","home","config","data","state","cache","tmp"])mkdirSync(join(directory,dir),{recursive:true,mode:0o700});
+    if(this.environment.LLAMACPP_BASE_URL)await new LlamaModels({upstream:this.environment.LLAMACPP_BASE_URL || 'http://127.0.0.1:8080/v1',apiKey:this.environment.LLAMACPP_API_KEY,manifest:this.config.manifest}).discover();
     const model=this.config.manifest.models.find(m=>`llamacpp/${m.alias}`===this.config.backgroundModel);
-    if(!readyModel(model)){
+    if(!catalogModel(model)){
       for(const c of Object.values(this.components).filter(c=>c.enabled))Object.assign(c,{state:"degraded",errorCode:"AGENT_MODEL_UNVERIFIED"});
       throw Object.assign(Error(),{code:"AGENT_MODEL_UNVERIFIED"});
     }
@@ -78,27 +85,51 @@ export class ManagedAgentRuntime {
       if(hash.digest("hex")!==binaryHash)throw Object.assign(Error(),{code:"OPENCODE_BINARY_UNVERIFIED"});
       args=[join(backend,"scripts/agent-opencode.js"),executable,"serve","--hostname","127.0.0.1","--port",new URL(c.opencodeUrl).port || "80"];executable=process.execPath;
     }
-    const child=this.spawnImpl(executable,args,{cwd:join(c.managed.directory,"workspace"),env:this.childEnvironment(name),detached:true,stdio:["ignore","ignore","ignore","ipc"]});
+    const child=this.spawnImpl(executable,args,{cwd:join(c.managed.directory,"workspace"),env:this.childEnvironment(name),detached:true,stdio:["ignore","pipe","pipe","ipc"]});
     this.children.set(name,child);state.pid=child.pid || null;
-    child.on("error",()=>this.failed(name,Object.assign(Error(),{code:"AGENT_COMPONENT_SPAWN_FAILED"})));
+    state.spawnedAt=new Date().toISOString();state.workerHealth=null;
+    // Drain child output continuously, retaining only bounded counters and
+    // recognized diagnostic codes. No model text, tool bodies or credentials
+    // cross into the backend log. Rotation remains the existing logger's job.
+    state.diagnostics={stdoutBytes:0,stderrBytes:0,lastCode:null,suppressedCodes:0};
+    let lastDiagnosticAt=0;
+    for(const stream of ['stdout','stderr'])child[stream]?.on('data',chunk=>{
+      if(this.children.get(name)!==child)return;
+      state.diagnostics[`${stream}Bytes`]+=chunk.length;
+      const code=chunk.subarray(0,4096).toString().match(/\b(?:AGENT|BROKER|OPENCODE|MCP|SQLITE)_[A-Z][A-Z0-9_]{1,63}\b|\b(?:EACCES|ENOENT|ENOMEM|EADDRINUSE)\b/)?.[0];
+      if(code && code!==state.diagnostics.lastCode){
+        state.diagnostics.lastCode=code;
+        if(Date.now()-lastDiagnosticAt>=30000){lastDiagnosticAt=Date.now();this.logger.warn('agent_child_diagnostic',{component:name,code});}
+        else state.diagnostics.suppressedCodes++;
+      }
+    });
+    child.on('message',message=>{
+      if(this.children.get(name)!==child || name!=='worker' || message?.type!=='agent-worker-health' || !['connected','degraded'].includes(message.state))return;
+      state.workerHealth={state:message.state,reportedAt:new Date().toISOString()};
+      if(state.state!=='starting')state.state=message.state==='connected'?'running':'degraded';
+      state.errorCode=message.state==='connected'?null:/^AGENT_[A-Z0-9_]{1,64}$/.test(message.errorCode || '')?message.errorCode:'AGENT_WORKER_UNAVAILABLE';
+    });
+    child.on("error",()=>{if(this.children.get(name)===child)this.failed(name,Object.assign(Error(),{code:"AGENT_COMPONENT_SPAWN_FAILED"}));});
     child.once("exit",(code,signal)=>{
       if(this.children.get(name)!==child)return;
       this.children.delete(name);this.signal(child,"SIGTERM");state.pid=null;
       if(this.stopping){state.state="off";return;}
-      this.logger.warn("agent_component_exited",{component:name,exitCode:code,signal});
+      if(Date.now()-Date.parse(state.spawnedAt)>=60000)this.attempts[name]=0;
+      this.logger.warn("agent_component_exited",{component:name,exitCode:code,signal,diagnostics:state.diagnostics});
       this.failed(name,Object.assign(Error(),{code:"AGENT_COMPONENT_EXITED"}));
     });
     try{await this.waitReady(name,child);}catch(error){if(this.children.get(name)!==child)return;throw error;}
     if(this.stopping || this.children.get(name)!==child)return;
-    state.state="running";state.errorCode=null;this.attempts[name]=0;
+    state.state="running";state.errorCode=null;
     this.logger.info("agent_component_started",{component:name,pid:child.pid});
   }
   async waitReady(name,child){
-    if(name==="worker")return;
     const deadline=Date.now()+90000,c=this.config;
     while(Date.now()<deadline && !this.stopping && child.exitCode===null && this.children.get(name)===child){
       try{
-        if(name==="broker"){
+        if(name==='worker'){
+          if(this.components.worker.workerHealth?.state!=='connected')throw Error();
+        }else if(name==="broker"){
           const r=await fetch(c.brokerUrl+"/health",{headers:{Authorization:`Bearer ${c.brokerToken}`},signal:AbortSignal.timeout(2000)});await r.body?.cancel();if(!r.ok)throw Error();
         }else await new OpenCodeClient({baseUrl:c.opencodeUrl,password:c.opencodePassword}).verify(this.controller.signal);
         return;

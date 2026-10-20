@@ -1,4 +1,5 @@
 import { RUNTIME_POLICY } from "../config/runtimePolicy.js";
+import { workerRssStatus } from "../services/news/rssDiagnostics.js";
 // These adapters contain no historical corpus. Domain methods execute inside
 // the SQLite worker; HTTP controllers and pipeline callbacks await their result.
 export function createBusinessAdapters(manager, {rootDir,enabled=true,context=()=>undefined}={}) {
@@ -33,6 +34,6 @@ export function createBusinessAdapters(manager, {rootDir,enabled=true,context=()
     rss:{...proxy("rss",["getSnapshot","refresh"],{}),maxCorpusItems:RUNTIME_POLICY.news.rssAggregateMaxItems,
       // Administrative diagnostics use the worker's last telemetry sample;
       // reading them must not start a collection or compete with persistence.
-      getStatus:()=>manager.getStatus().worker?.rss || null}
+      getStatus:()=>workerRssStatus(manager.getStatus().worker?.rss)}
   };
 }

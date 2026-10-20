@@ -7,9 +7,21 @@ const log=createLogger("backend/storage/pipelinePersistence");
 const appendOnlyKinds=new Set(["awareness-audit","awareness-poll","quotes"]);
 
 export class PipelinePersistence {
-  constructor(manager){this.manager=manager;this.pending=new Set();this.pendingKeys=new Map();this.outcomes=new Map();this.sequence=0;}
+  constructor(manager){this.manager=manager;this.pending=new Set();this.pendingKeys=new Map();this.outcomes=new Map();this.sequence=0;this.deferredStages=new Map();}
+  deferStageWrites(){this.stagesDeferred=true;}
+  resumeStageWrites(){
+    this.stagesDeferred=false;
+    const entries=[...this.deferredStages.values()];this.deferredStages.clear();
+    for(const entry of entries)this.save('pipeline-stage',entry.payload).then(()=>entry.waiters.forEach(w=>w.resolve()),error=>entry.waiters.forEach(w=>w.reject(error)));
+  }
   get failure(){return [...this.outcomes.values()].find(outcome=>outcome.error)?.error || null;}
   save(kind,payload){
+    // Configuration owns the writer during boot. Stage rows are latest-state
+    // upserts: retain the latest per ID, and acknowledge only its actual commit.
+    if(kind==='pipeline-stage' && this.stagesDeferred){
+      const entry=this.deferredStages.get(payload.id)||{waiters:[]};entry.payload=payload;this.deferredStages.set(payload.id,entry);
+      return new Promise((resolve,reject)=>entry.waiters.push({resolve,reject}));
+    }
     // Append-only saves recover only the same record (or the same atomic quote batch).
     const identity=appendOnlyKinds.has(kind) ? stableHash(payload) : kind === "pipeline-stage" ? payload.id : kind === "ai-record" ? payload.enrichmentId : null;
     const key=JSON.stringify([kind,identity]);

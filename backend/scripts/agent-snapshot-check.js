@@ -54,15 +54,21 @@ try {
   report.selectedInstrumentCount = ids.length;
   report.scope = "up-to-50-stored-instruments; validation-copy-only";
   const owner = randomUUID();
-  const queued = repo.enqueue({
-    task: "global_intelligence_brief",
-    model: "llamacpp/validation-only",
-    key: randomUUID(),
-    input: { selectedInstrumentIds: ids },
-  });
-  const job = repo.claim({ owner });
-  if (!job || job.jobId !== queued.jobId)
-    throw Error("Candidate contains pending work; use a dedicated copy");
+  // A consistent production copy naturally contains pending work. Admit one
+  // validation job ahead of those rows on THIS COPY only. If claim selects a
+  // different job, roll the entire admission back instead of altering it and
+  // returning a misleading failure after committing that claim.
+  const job = db.transaction(() => {
+    const score = db.prepare('SELECT min(priority - ((?-julianday(created_at))*24*60)) AS n FROM agent_jobs').get(repo.now()/86400000+2440587.5).n;
+    const queued = repo.enqueue({
+      task: "global_intelligence_brief", model: "llamacpp/validation-only",
+      key: randomUUID(), input: { selectedInstrumentIds: ids },
+      priority: Math.floor(Math.min(0,score ?? 0))-1,
+    });
+    const claimed = repo.claim({ owner, enabledTasks:['global_intelligence_brief'] });
+    if (!claimed || claimed.jobId !== queued.jobId) throw Error('VALIDATION_CLAIM_CONFLICT');
+    return claimed;
+  }).immediate();
   const auth = { jobId: job.jobId, owner, fence: job.fence };
   const start = performance.now();
   const snapshot = repo.snapshot(auth);

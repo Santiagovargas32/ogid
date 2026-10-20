@@ -24,7 +24,7 @@ const workflows=new Map();
 function telemetry(){
   if(!workerData.businessEnabled && !diagnostics){diagnostics=readDatabaseDiagnostics(database);lastDiagnosticsCompletedAt=Date.now();}
   const memory=process.memoryUsage();
-  parentPort.postMessage({type:"telemetry",worker:{threadId,heartbeatAt:new Date().toISOString(),memory:{heapUsed:memory.heapUsed,heapTotal:memory.heapTotal,external:memory.external},activeCommands:[...activeCommands.values()],lastCompletedCommand,lastFailedCommand,database:diagnostics,rss:runtime?.rssDiagnostics || null,news:{corpus:runtime?.newsCorpus?.lastDiagnostics ? {...runtime.newsCorpus.lastDiagnostics,payloadCache:runtime.newsCorpus.payloadCache.status()} : null,collection:runtime?.newsPipeline?.diagnostics || null,projection:runtime?.newsPipeline?.projectionDiagnostics || null,supplemental:runtime?.newsPipeline?.supplementalDiagnostics || null}}});
+  parentPort.postMessage({type:"telemetry",worker:{threadId,heartbeatAt:new Date().toISOString(),memory:{heapUsed:memory.heapUsed,heapTotal:memory.heapTotal,external:memory.external},activeCommands:[...activeCommands.values()],lastCompletedCommand,lastFailedCommand,database:diagnostics,rss:runtime?.rssDiagnostics || null,eventIndex:runtime?.registryDiagnostics || null,news:{corpus:runtime?.newsCorpus?.lastDiagnostics ? {...runtime.newsCorpus.lastDiagnostics,payloadCache:runtime.newsCorpus.payloadCache.status()} : null,collection:runtime?.newsPipeline?.diagnostics || null,projection:runtime?.newsPipeline?.projectionDiagnostics || null,supplemental:runtime?.newsPipeline?.supplementalDiagnostics || null}}});
   // Historical counts are read work, never part of the business writer's
   // heartbeat. Sample only an idle reader, and schedule from completion: a cold
   // sample taking longer than the interval must not trigger continuous rescans.
@@ -78,6 +78,7 @@ function execute(operation, input, requestId) {
     if(!workerData.analysisWorker)fail("STORAGE_INVALID_COMMAND");
     return runtime.services.scenarios.prepare(input);
   }
+  if(operation === "domain.indexPage") return runtime.indexPage(input);
   if(operation === "domain.registry") return runtime.registry(input.instruments);
   if(operation === "domain.configure") {
     const result=runtime.configure(input);

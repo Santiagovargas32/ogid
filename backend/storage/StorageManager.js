@@ -9,7 +9,7 @@ import { AGENT_READER_METHODS } from "./agentRepository.js";
 import { stableHash } from "../utils/stableHash.js";
 const error = code => Object.assign(new Error(code), { code, statusCode: 503 });
 const commandLabel = value => typeof value === "string" ? value.slice(0,128) : null;
-const OPERATIONS = new Set(["agent.call", "agent.snapshot", "agent.read", "storage.status", "storage.verify", "storage.checkpoint", "pipeline.record", "domain.configure", "domain.registry", "domain.call", "scenarios.prepare", "storage.import", "runtime.save", "runtime.load", "rss.fetch", "news.collect", "news.supplemental", "analysis.persist", "snapshot.prepare", "snapshot.claim", "snapshot.fail", "snapshot.pending"]);
+const OPERATIONS = new Set(["agent.call", "agent.snapshot", "agent.read", "storage.status", "storage.verify", "storage.checkpoint", "pipeline.record", "domain.configure", "domain.registry", "domain.indexPage", "domain.call", "scenarios.prepare", "storage.import", "runtime.save", "runtime.load", "rss.fetch", "news.collect", "news.supplemental", "analysis.persist", "snapshot.prepare", "snapshot.claim", "snapshot.fail", "snapshot.pending"]);
 const ISOLATED_SERVICES = new Set(["market","technical","indicators","conditions","advanced","map","coupling","portfolio"]);
 const ISOLATED_NEWS_METHODS = new Set(["getProjection","getFeed","getLiveFeed","search","getItem","getHistory","coverage"]);
 const ISOLATED_METHODS = {events:new Set(["search"]),forecasts:new Set(["evaluate"]),awareness:new Set(["getSnapshot"]),candles:new Set(["query","latest","has","hasCandle"])};
@@ -32,6 +32,7 @@ export class StorageManager extends EventEmitter {
       queries:this.queryManager?.getStatus() || null,queryRecovery:{recovering:Boolean(this.queryRecovery),recoveries:this.queryRecoveries || 0},
       analysisRecovery:{recovering:Boolean(this.analysisRecovery),recoveries:this.analysisRecoveries || 0},
       databasePath:this.options.databasePath, worker:this.workerDiagnostics ? {...this.workerDiagnostics,database} : null, lastExpiredCommand:this.lastExpiredCommand || null,
+      eventIndex:{...(this.eventIndexState||this.workerDiagnostics?.eventIndex||{}),...(this.eventIndexError?{state:"failed",errorCode:this.eventIndexError}:{})},
       activeCommands:[...this.active.values()].map(entry=>this.describeCommand(entry)),
       queuedCommands:this.queue.slice(0,50).map(entry=>this.describeCommand(entry,"queued")),
       queuedCommandsTruncated:this.queue.length>50,
@@ -139,6 +140,8 @@ export class StorageManager extends EventEmitter {
     // recovery instead of exhausting them in repeated, unstarted attempts.
     if(operation==="agent.call" && input.method==="claim" && this.analysisManager && this.analysisManager.state!=="ready")
       return Promise.reject(Object.assign(error("STORAGE_ANALYSIS_UNAVAILABLE"),{causeCode:this.analysisManager.metrics.lastErrorCode,diagnostic:{worker:"analysis",state:this.analysisManager.state}}));
+    if(operation==="agent.call" && input.method==="claim" && this.queryManager && this.queryManager.state!=="ready")
+      return Promise.reject(Object.assign(error("STORAGE_QUERIES_UNAVAILABLE"),{diagnostic:{worker:"queries",state:this.queryManager.state}}));
     if(this.analysisManager && operation==="runtime.load" && input.kind==="awareness")return this.queryManager.request(operation,input,{requestId,timeoutMs,queueTimeoutMs});
     if(this.analysisManager && operation==="agent.call" && input.method==="snapshot")return this.analysisManager.request("agent.snapshot",input.args,{requestId,timeoutMs:storageCommandTimeout(this.options,"agent.snapshot"),queueTimeoutMs});
     if(this.queryManager && operation==="agent.call" && AGENT_READER_METHODS.has(input.method))return this.queryManager.coalescedRead("agent.read",input,{requestId,timeoutMs:storageCommandTimeout(this.options,"agent.read"),queueTimeoutMs});
@@ -157,10 +160,25 @@ export class StorageManager extends EventEmitter {
         else if(this.analysisConfig)this.analysisConfig={...this.analysisConfig,instruments:input.instruments};
         await this.analysisManager.request(operation,{...input,analysisOnly:true},{requestId,timeoutMs,queueTimeoutMs});
         await this.queryManager?.request(operation,{...input,analysisOnly:true},{requestId,timeoutMs,queueTimeoutMs});
-        if(operation==="domain.configure")await this.advancedCoordinator?.recover();return result;
+        if(operation==="domain.configure")await this.advancedCoordinator?.recover();this.resumeEventIndex();return result;
       });
     }
+    if(!this.options.analysisWorker && ['domain.configure','domain.registry'].includes(operation))return this.localRequest(operation,input,{requestId,timeoutMs,queueTimeoutMs}).then(result=>{this.resumeEventIndex();return result;});
     return this.localRequest(operation,input,{requestId,timeoutMs,queueTimeoutMs});
+  }
+  resumeEventIndex(){
+    this.eventIndexRequested=true;
+    if(this.eventIndexTask||this.closingRequested)return;
+    this.eventIndexError=null;this.eventIndexAbort=new AbortController();
+    this.eventIndexTask=(async()=>{
+      while(this.state==='ready'&&!this.closingRequested){
+        this.eventIndexRequested=false;
+        const result=await this.localRequest('domain.indexPage',{});
+        this.eventIndexState=result;
+        if(result.state==='ready'&&!result.cleanupPending&&!this.eventIndexRequested)break;
+        await wait(25,undefined,{signal:this.eventIndexAbort.signal});
+      }
+    })().catch(reason=>{if(!this.closingRequested){this.eventIndexError=reason.code||'STORAGE_INDEX_BUILD_FAILED';this.emit('index-failed',{code:this.eventIndexError});}}).finally(()=>{this.eventIndexTask=null;if(this.eventIndexRequested&&!this.closingRequested&&this.state==='ready')this.resumeEventIndex();});
   }
   coalescedRead(operation,input,options){
     this.sharedReads ||= new Map();
@@ -326,7 +344,7 @@ export class StorageManager extends EventEmitter {
     catch { this.fail(error("STORAGE_CLOSE_FAILED")); }
   }
   async close() {
-    this.closingRequested=true;this.analysisRecoveryAbort?.abort();this.queryRecoveryAbort?.abort();
+    this.closingRequested=true;this.eventIndexAbort?.abort();if(this.eventIndexTask)await this.eventIndexTask;this.analysisRecoveryAbort?.abort();this.queryRecoveryAbort?.abort();
     if(this.queryRecovery)await this.queryRecovery.catch(()=>{});
     if(this.analysisRecovery)await this.analysisRecovery.catch(()=>{});
     if(this.initializing){try{await this.startTask;}catch{/* Release whichever workers started. */}}

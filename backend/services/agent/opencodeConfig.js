@@ -1,3 +1,4 @@
+import {catalogModel} from "./modelCatalog.js";
 import { readFileSync } from "node:fs";
 import Ajv from "ajv";
 import { ANALYST_SYSTEM, agentError } from "./contracts.js";
@@ -29,7 +30,7 @@ export function generateOpenCodeConfig({
     throw agentError("OPENCODE_TOOL_ALLOWLIST_REQUIRED");
   if (!Array.isArray(mcpCommand) || !mcpCommand.length)
     throw agentError("OPENCODE_MCP_COMMAND_REQUIRED");
-  const models = manifest.models.filter(readyModel);
+  const models = manifest.models.filter(catalogModel);
   const selected = models.find((m) => `llamacpp/${m.alias}` === defaultModel);
   if (!selected) throw agentError("OPENCODE_MODEL_UNVERIFIED");
   const compactionContext = Math.min(...models.map((m) => m.context));
