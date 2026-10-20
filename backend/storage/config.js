@@ -2,6 +2,14 @@ import { RUNTIME_POLICY } from "../config/runtimePolicy.js";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 const backendDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+export function isAcquisitionWorkflow(operation,input={}) {
+  return ["news.collect","news.supplemental","rss.fetch"].includes(operation) ||
+    (operation==="domain.call" && input.service==="rss" && input.method==="refresh");
+}
+export function isPureRead(operation,input={}) {
+  if(['agent.read','scenarios.prepare','runtime.load','storage.status'].includes(operation))return true;
+  return operation==='domain.call' && ({news:['search','getItem','getHistory','coverage','getFeed','getLiveFeed'],candles:['query','latest','has','hasCandle'],awareness:['getSnapshot'],events:['search']}[input.service] || []).includes(input.method);
+}
 function integer(value, fallback, minimum) {
   const number = value === undefined ? fallback : Number(value);
   if (!Number.isSafeInteger(number) || number < minimum) throw new Error("Invalid storage limit");
@@ -16,6 +24,7 @@ export function storageConfig(overrides = {}, env = process.env) {
   return {
     enabled,
     analysisWorker:overrides.analysisWorker === true,
+    readerRole:overrides.readerRole === "queries"?"queries":"analysis",
     isolateAnalysis:overrides.isolateAnalysis !== false,
     businessEnabled,
     maxInFlight:integer(overrides.maxInFlight,businessEnabled?policy.maxInFlight:1,1),

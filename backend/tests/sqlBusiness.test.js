@@ -15,8 +15,113 @@ import { EventLedger } from "../services/research/eventLedger.js";
 import { ResearchStore } from "../services/research/researchStore.js";
 import { AwarenessStore } from "../services/awareness/awarenessStore.js";
 import { PipelinePersistence } from "../storage/pipelinePersistence.js";
+import { SqlAwarenessStore, loadAwarenessProjection } from "../storage/sqlAwarenessStore.js";
+import { migrate } from "../storage/migrate.js";
+import { createAwarenessEvent } from "../services/awareness/awarenessParsers.js";
+import { SqlNewsArchive } from "../storage/sqlNewsArchive.js";
+import { SqlEventLedger, SqlCandleStore } from "../storage/sqlRepositories.js";
 const instrumentId="us-equity-general-dynamics";
 const article=(n,extra={})=>({id:`source-${n}`,title:`General Dynamics earnings ${n}`,url:`https://example.org/${n}`,publishedAt:new Date(Date.now()-86400000+n*1000).toISOString(),provider:"fixture-rss",usagePolicy:"headline-only-link-out",description:"Content must not be exposed",...extra});
+
+test("Awareness startup reads bounded indexed candidates, prioritizes upcoming events and retains recent poll audits",()=>{
+ const db=new Database(':memory:');migrate(db);const now=Date.parse('2026-10-19T12:00:00Z'),store=new SqlAwarenessStore(db);
+ const insert=db.prepare('INSERT INTO awareness_events VALUES(?,?,?,?,?)');
+ const source={sourceId:'boot-source',official:true};
+ try{
+  store.events.set('initial',{eventId:'initial',source,revision:1,observedAt:'2026-10-19T11:00:00Z',status:'released'});
+  db.transaction(()=>{for(let n=0;n<12000;n++){
+   const event={eventId:`old-${n}`,source,revision:1,status:'released',observedAt:new Date(now-n*60000).toISOString(),padding:'historical-body'.repeat(64)};
+   insert.run(event.eventId,source.sourceId,event.observedAt,1,JSON.stringify(event));
+  }})();
+  for(const [id,status,scheduledAt]of [['upcoming','scheduled','2026-10-20T00:00:00Z'],['live','live','2026-10-21T00:00:00Z'],['expired','scheduled','2026-10-18T00:00:00Z'],['released-future','released','2026-10-22T00:00:00Z']]){
+   const event={eventId:id,source,revision:1,status,scheduledAt,observedAt:'2020-01-01T00:00:00Z'};insert.run(id,source.sourceId,event.observedAt,1,JSON.stringify(event));
+  }
+  const poll=db.prepare('INSERT INTO source_polls VALUES(?,?,?,?,?)');
+  poll.run('recent',source.sourceId,'2026-10-19T00:00:00Z','ok',JSON.stringify({completedAt:'2026-10-19T00:00:00Z',outcome:'ok'}));
+  poll.run('wrapped',source.sourceId,'2026-10-18T00:00:00Z','ok',JSON.stringify({poll:{completedAt:'2026-10-18T00:00:00Z',outcome:'ok'}}));
+  poll.run('expired',source.sourceId,'2026-10-01T00:00:00Z','ok','{}');
+  const plans=[],prepare=db.prepare.bind(db);
+  db.prepare=sql=>{
+   const statement=prepare(sql);if(!sql.startsWith('SELECT'))return statement;
+   for(const method of ['all','get']){const original=statement[method];statement[method]=function(...args){if(sql.includes('FROM awareness_events') || sql.includes('FROM source_polls'))plans.push({sql,plan:prepare('EXPLAIN QUERY PLAN '+sql).all(...args)});return original.apply(this,args);};}
+   return statement;
+  };
+  const projection=loadAwarenessProjection(db,{now});
+  assert.equal(projection.events.length,1000);assert.deepEqual(new Set(projection.events.slice(0,2).map(e=>e.eventId)),new Set(['upcoming','live']));
+  assert.ok(projection.events.some(e=>e.eventId==='old-0'));assert.ok(!projection.events.some(e=>['expired','released-future'].includes(e.eventId)));
+  assert.equal(projection.polls.length,2);assert.ok(projection.polls.every(p=>p.poll.outcome==='ok'));
+  assert.ok(plans.some(p=>p.plan.some(r=>r.detail.includes('awareness_upcoming_schedule'))));
+  assert.ok(plans.some(p=>p.plan.some(r=>r.detail.includes('awareness_by_time'))));
+  assert.ok(plans.some(p=>p.plan.some(r=>r.detail.includes('source_polls_completed'))));
+  assert.ok(!plans.some(p=>p.plan.some(r=>r.detail==='SCAN awareness_events')));
+  assert.equal(db.prepare('SELECT count(*) AS n FROM awareness_events').get().n,12005);
+ }finally{db.close();}
+});
+
+test("Awareness boot projection runs on the reader while the writer continues committing",async t=>{
+ const f=await fixture();let release,entered;
+ const gate=new Promise(resolve=>{release=resolve;}),started=new Promise(resolve=>{entered=resolve;});
+ const reader=f.manager.queryManager,request=reader.localRequest.bind(reader);
+ t.mock.method(reader,'localRequest',async(operation,input,options)=>{if(operation==='runtime.load' && input.kind==='awareness'){entered();await gate;}return request(operation,input,options);});
+ try{
+  const projection=f.manager.request('runtime.load',{kind:'awareness'});await started;
+  await f.manager.request('runtime.save',{kind:'during-awareness-boot',payload:{committed:true}});
+  assert.deepEqual(await f.manager.request('runtime.load',{kind:'during-awareness-boot'}),{committed:true});
+  release();assert.deepEqual((await projection).events,[]);assert.equal(reader.getStatus().queryOnly,true);
+ }finally{release();await f.close();}
+});
+
+test("SQL stale transitions preserve revisions without loading poll audits; snapshots retain complete poll history",()=>{
+ const db=new Database(':memory:');migrate(db);const store=new SqlAwarenessStore(db),now=new Date().toISOString();
+ const source={sourceId:'poll-isolation',name:'Fixture',url:'https://fixture.invalid/calendar',official:true,admissionState:'active',domains:['financial'],countries:['US']};
+ try{
+  const event=createAwarenessEvent({source,rawId:'release',title:'Fixture release',canonicalUrl:source.url,publishedAt:now,observedAt:now});
+  store.reconcile([event],{sourceId:source.sourceId});
+  db.prepare('INSERT INTO source_polls VALUES(?,?,?,?,?)').run('poll',source.sourceId,now,'ok',JSON.stringify({poll:{completedAt:now,outcome:'ok'}}));
+  const prepare=db.prepare.bind(db);let pollReads=0;
+  const read=prepare('SELECT payload_json FROM awareness_events WHERE event_id=?'),get=read.get.bind(read);let decoded=0;
+  db.prepare=sql=>{if(sql==='SELECT payload_json FROM awareness_events WHERE event_id=?'){read.get=(...args)=>{decoded++;return get(...args);};return read;}return sql.includes('FROM source_polls')?(pollReads++,prepare(sql)):prepare(sql);};
+  assert.equal(store.setSourceStale(source.sourceId,false).changed.length,0);assert.equal(decoded,0);
+  assert.equal(store.setSourceStale(source.sourceId,true).changed[0].dataMode,'stale');
+  const fresh=store.setSourceStale(source.sourceId,false);assert.equal(fresh.changed[0].revision,3);assert.equal(fresh.changed[0].dataMode,'observed');assert.equal(pollReads,0);
+  store.getSnapshot({mode:'visible',publicView:false});assert.equal(pollReads,1);assert.equal(store.pollHistories.get(source.sourceId).length,1);
+ }finally{db.close();}
+});
+
+test("event time windows probe membership by primary key instead of materializing instrument history",()=>{
+ const db=new Database(':memory:');migrate(db);
+ try{
+  const insert=db.prepare('INSERT INTO events VALUES(?,?,?,?,?,?,?,?)');
+  const impact=db.prepare('INSERT INTO event_instruments VALUES(?,?,?)');
+  db.prepare('INSERT INTO instruments VALUES(?,?,?,?,?,?)').run(instrumentId,'GD','equity','USD','America/New_York','{}');
+  for(const [id,at]of [['old','2020-01-01T00:00:00.000Z'],['recent','2026-10-19T10:00:00.000Z']]){
+   insert.run(id,null,'source-publication-v2',1,at,at,'verified',JSON.stringify({eventId:id,identityVersion:'source-publication-v2'}));
+   impact.run(id,instrumentId,JSON.stringify({instrumentId}));
+  }
+  const prepare=db.prepare.bind(db),plans=[];
+  db.prepare=sql=>{const statement=prepare(sql);if(sql.startsWith('SELECT count(*) AS n FROM events')){const get=statement.get;statement.get=function(...args){plans.push(prepare('EXPLAIN QUERY PLAN '+sql).all(...args).map(r=>r.detail));return get.apply(this,args);};}return statement;};
+  const ledger=new SqlEventLedger({store:{db,state:{revision:1}}});
+  const result=ledger.search({instrumentIds:[instrumentId],from:'2026-10-19T00:00:00.000Z'});
+  assert.equal(result.total,1);assert.equal(result.events[0].eventId,'recent');
+  assert.ok(plans[0].some(p=>p.includes('SEARCH events USING COVERING INDEX events_by_time')));
+  assert.ok(plans[0].some(p=>p.startsWith('SEARCH ei ') && p.includes('COVERING INDEX') && p.includes('event_id=?')),JSON.stringify(plans[0]));
+  assert.ok(!plans[0].some(p=>p.includes('LIST SUBQUERY')));
+  const before=plans.length,preview=ledger.search({instrumentIds:[instrumentId],from:'2026-10-19T00:00:00.000Z',includeTotal:false});
+  assert.deepEqual(preview.events,result.events);assert.equal(preview.total,null);assert.equal(plans.length,before);assert.equal(preview.coverage.totalsNotRequested,true);
+ }finally{db.close();}
+});
+
+test('candle windows reuse versioned bodies and invalidate corrected bars without exposing cached mutations',()=>{
+ const db=new Database(':memory:');migrate(db);const store=new SqlCandleStore(db);try{
+  const bar={instrumentId,interval:'1day',openTime:'2026-10-12T13:30:00.000Z',closeTime:'2026-10-12T20:00:00.000Z',fetchedAt:'2026-10-13T00:00:00.000Z',open:100,high:105,low:95,close:101,volume:100,adjusted:true,source:'fixture',provenance:{adjustmentMode:'splits'}};
+  store.append([bar]);const args={instrumentId,interval:'1day',limit:240};
+  const first=store.query(args);assert.equal(first[0].close,101);const misses=store.payloadCache.status().misses;first[0].close=9000;
+  assert.equal(store.query(args)[0].close,101);assert.equal(store.payloadCache.status().misses,misses);
+  store.upsert([{...bar,close:103,fetchedAt:'2026-10-13T01:00:00.000Z'}]);assert.equal(store.query(args)[0].close,103);assert.equal(store.payloadCache.status().misses,misses+1);
+  const plan=db.prepare('EXPLAIN QUERY PLAN SELECT rowid,revision,fetched_at FROM candles INDEXED BY candles_payload_window WHERE instrument_id=? AND interval=? AND adjustment_mode=? AND dataset_id=? ORDER BY open_time DESC LIMIT ?').all(instrumentId,'1day','splits','provider-yahoo',240);
+  assert.ok(plan.some(r=>r.detail.includes('COVERING INDEX candles_payload_window')));
+ }finally{db.close();}
+});
 
 test("quote migration preserves distinct provenance at the same price and timestamp", async () => {
   const f = await fixture();
@@ -72,17 +177,61 @@ test("news feed and archive reads run on the read-only analysis worker without o
   const f=await fixture();
   try{
     await f.call("news","ingest",[article(1,{title:"United States defense forces strike after Russia attack",publishedAt:new Date(Date.now()-1000).toISOString()})]);
-    const writerBefore=f.manager.metrics.completed,analysisBefore=f.manager.analysisManager.metrics.completed;
+    const writerBefore=f.manager.metrics.completed,analysisBefore=f.manager.queryManager.metrics.completed;
     const [feed,live,archive]=await Promise.all([
       f.call("news","getFeed",{}),f.call("news","getLiveFeed",{}),
       f.call("news","getLiveFeed",{includeOlder:true,q:"Russia"})
     ]);
     assert.equal(feed.items.length,1);assert.equal(live.news.length,1);assert.equal(archive.news.length,1);
     assert.equal(f.manager.metrics.completed,writerBefore);
-    assert.equal(f.manager.analysisManager.metrics.completed,analysisBefore+3);
-    assert.equal(f.manager.analysisManager.getStatus().queryOnly,true);
-    assert.equal(f.manager.analysisManager.metrics.failed,0);
+    assert.equal(f.manager.queryManager.metrics.completed,analysisBefore+3);
+    assert.equal(f.manager.queryManager.getStatus().queryOnly,true);
+    assert.equal(f.manager.queryManager.metrics.failed,0);
+    const before=f.manager.queryManager.metrics.completed;
+    const copies=await Promise.all(Array.from({length:12},()=>f.call('news','getFeed',{limit:7})));
+    assert.equal(f.manager.queryManager.metrics.completed,before+1);
+    copies[0].items.length=0;assert.equal(copies[1].items.length,1);
     assert.equal((await f.manager.request("pipeline.record",{runId:"after-feed",pipelineId:"storage",startedAt:new Date().toISOString(),status:"healthy",counts:{}})).persisted,true);
+  }finally{await f.close();}
+});
+
+test("portfolio reads can wait independently while the writer commits; research reads use the reader",async t=>{
+  const f=await fixture();let release,announce;
+  const barrier=new Promise(resolve=>{release=resolve;}),started=new Promise(resolve=>{announce=resolve;});
+  const reader=f.manager.analysisManager,request=reader.localRequest.bind(reader);
+  t.mock.method(reader,"localRequest",async(operation,input,options)=>{
+    if(operation==="domain.call" && input.service==="portfolio"){announce();await barrier;}
+    return request(operation,input,options);
+  });
+  try{
+    let completed=false;
+    const portfolio=f.call("portfolio","getContext",{mode:"daily",instrumentIds:[instrumentId]}).then(result=>{completed=true;return result;});
+    await started;
+    await f.call("news","ingest",[article(22)]);
+    assert.equal(completed,false);assert.equal(f.manager.state,"ready");
+    release();assert.equal((await portfolio).news.articles.length,1);
+    const analysisBefore=reader.metrics.completed,queriesBefore=f.manager.queryManager.metrics.completed;
+    await f.call("events","search",{});await f.call("forecasts","evaluate",{});
+    await f.call("news","coverage",{});await f.call("news","getHistory",{});
+    assert.equal(reader.metrics.completed,analysisBefore+1);assert.equal(f.manager.queryManager.metrics.completed,queriesBefore+3);
+    assert.equal(reader.getStatus().queryOnly,true);
+  }finally{release();await f.close();}
+});
+
+test("material portfolio preparation registers candidates through the writer and respects later acknowledgements",async()=>{
+  const f=await fixture();
+  try{
+    await f.call("news","ingest",[article(23,{publishedAt:new Date().toISOString(),title:"General Dynamics bankruptcy warning"})]);
+    const options={mode:"material",instrumentIds:[instrumentId],includeUncorroborated:true};
+    const reader=f.manager.analysisManager,before=reader.metrics.completed;
+    const first=await f.call("portfolio","getContext",options);
+    assert.equal(reader.metrics.completed,before+1);assert.equal(first.material.candidates.length,1);
+    const ids=first.material.candidates.map(row=>row.candidateId);
+    const db=new Database(f.db,{readonly:true});
+    try{assert.equal(db.prepare("SELECT count(*) AS n FROM alert_rows WHERE collection='observed'").get().n,1);}finally{db.close();}
+    await f.call("alerts","acknowledge",{candidateIds:ids,deliveredAt:new Date().toISOString()});
+    const second=await f.call("portfolio","getContext",options);
+    assert.equal(second.material.candidates.length,0);assert.equal(reader.getStatus().queryOnly,true);
   }finally{await f.close();}
 });
 
@@ -168,6 +317,26 @@ test("SQL archive filters source update time independently of receipt and archiv
     const archiveChanges=await f.call("news","search",{...filters,timeField:"archiveChangedAt"});
     assert.equal(archiveChanges.total,0);
   }finally{await f.close();}
+});
+
+test("bounded immutable archive windows use date indexes before decoding, with stable pagination",async()=>{
+ const f=await fixture();let archive,db;
+ try{
+  await f.call('news','ingest',[article(41,{updatedAt:new Date().toISOString()}),article(42,{updatedAt:new Date().toISOString()})]);
+  db=new Database(f.db,{readonly:true});archive=new SqlNewsArchive(db,{analysisOnly:true});
+  const prepare=archive.reader.prepare.bind(archive.reader),plans=[];
+  archive.reader.prepare=sql=>{
+   const statement=prepare(sql);
+   if(sql.startsWith('SELECT r.rowid')){const iterate=statement.iterate;statement.iterate=function(...args){plans.push(prepare('EXPLAIN QUERY PLAN '+sql).all(...args).map(r=>r.detail));return iterate.apply(this,args);};}
+   return statement;
+  };
+  for(const [field,index]of [['publishedAt','article_revisions_window'],['receivedAt','article_revisions_received_window'],['updatedAt','article_revisions_updated_window'],['archiveChangedAt','article_revisions_changed_window']]){
+   const first=archive.search({timeField:field,from:'2020-01-01T00:00:00.000Z',to:'2099-01-01T00:00:00.000Z',limit:1});
+   assert.equal(first.total,2);assert.equal(first.hasMore,true);
+   assert.ok(plans.at(-1).some(p=>/^SEARCH r USING (?:COVERING )?INDEX /.test(p) && p.includes(index)),JSON.stringify(plans.at(-1)));
+   const second=archive.search({cursor:first.nextCursor,limit:1});assert.equal(second.hasMore,false);assert.notEqual(second.articles[0].id,first.articles[0].id);
+  }
+ }finally{archive?.close();db?.close();await f.close();}
 });
 
 test("offline import retains original IDs and is repeatable without modifying JSON files",async()=>{
@@ -310,6 +479,22 @@ test("SQL HTTP mode serves history, news, map config and health without legacy s
     for(const endpoint of ["/api/health","/api/admin/history","/api/research/sources","/api/map/config","/api/intel/awareness-snapshot?limit=10","/api/news/search?limit=10","/api/news/aggregate?limit=40","/api/capabilities","/api/research/scenarios","/api/research/companyfacts?companyId=fixture-company","/api/signals/delta","/api/market/conditions",`/api/market/technical-context?instrumentId=${instrumentId}`,`/api/portfolio/context?mode=weekly&instrumentIds=${instrumentId}`]){const response=await fetch(base+endpoint);const body=await response.json();assert.equal(response.status,200,`${endpoint}: ${JSON.stringify(body)}`);assert.equal(body.ok,true);}
     assert.equal(runtime.storageManager.getStatus().businessStorage,"sqlite");
   }finally{await runtime.stop();rmSync(dir,{recursive:true,force:true});}
+});
+
+test("an unfinished RSS response does not retain SQLite dispatch or delay a committed write",{timeout:15000},async()=>{
+  const f=await fixture();let announce,release,pending;
+  const entered=new Promise(resolve=>{announce=resolve;});
+  const server=createServer((_req,res)=>{res.setHeader("Content-Type","application/rss+xml");res.write("<rss><channel>");release=()=>res.end("</channel></rss>");announce();});
+  await new Promise(resolve=>server.listen(0,"127.0.0.1",resolve));
+  try{
+    let finished=false;
+    pending=f.manager.request("rss.fetch",{feeds:[{url:`http://127.0.0.1:${server.address().port}/slow`}],timeoutMs:10000}).then(value=>{finished=true;return value;});
+    await entered;
+    const saved=await f.manager.request("runtime.save",{kind:"rss-network-isolation",payload:{committed:true}});
+    assert.equal(saved.persisted,true);assert.equal(finished,false);
+    assert.deepEqual(await f.manager.request("runtime.load",{kind:"rss-network-isolation"}),{committed:true});
+    assert.equal(f.manager.state,"ready");release();await pending;
+  }finally{release?.();await pending?.catch(()=>{});server.closeAllConnections();await new Promise(resolve=>server.close(resolve));await f.close();}
 });
 
 test("RSS deadline includes a slow body and preserves independent successful feeds",async()=>{

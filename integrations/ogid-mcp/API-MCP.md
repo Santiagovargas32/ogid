@@ -1,13 +1,24 @@
 # Inventario API → MCP
 
-Contrato 1.4.0. Generado desde backend/contracts/ogidOperations.js; no editar a mano.
+Contrato 1.5.0. Generado desde backend/contracts/ogidOperations.js; no editar a mano.
 
-74 rutas JSON con método; 50 operaciones de investigación y 33 de operador. Las variantes almacenadas/proveedor comparten algunas rutas.
+81 rutas JSON con método; 57 operaciones de investigación y 33 de operador. Las variantes almacenadas/proveedor comparten algunas rutas.
 
 Las cuatro herramientas compatibles se conservan. ogid_get_awareness_sources compone el catálogo local versionado y la salud pública Awareness, sin una ruta adicional. El inventario cubre las rutas de backend/routes montadas bajo /api; WebSocket, archivos estáticos y transporte del túnel tienen contratos independientes.
 
+El research general conserva diez herramientas. El servicio OpenCode dedicado usa OGID_RESEARCH_SCOPE=agent-evidence: sólo ogid_query, ogid_get_capabilities y ogid_health; sus consultas quedan limitadas a evidencia congelada, clusters y metadata operativa. El alcance se verifica también al ejecutar la lectura, no sólo en el schema.
+
+Las rutas privadas de chat, dispositivos y control agentivo son de primera parte y no se exportan como herramientas MCP. Las rutas de medios retiradas responden MEDIA_RETIRED / HTTP 410 sin adquisición ni llamadas upstream; los consumidores deben dejar de consultarlas.
+
 | Operación | Método y ruta | Herramienta | Perfil / permiso | Proyección | Efectos / coste |
 | --- | --- | --- | --- | --- | --- |
+| agent.capabilities | GET /api/agent/v1/capabilities | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
+| agent.brief | GET /api/agent/v1/brief | ogid_query | research / read:stored | agent-bundle | stored/local-calculation; no-provider |
+| agent.geopolitical | GET /api/agent/v1/geopolitical | ogid_query | research / read:stored | agent-bundle | stored/local-calculation; no-provider |
+| agent.outlooks | GET /api/agent/v1/outlooks | ogid_query | research / read:stored | agent-bundle | stored/local-calculation; no-provider |
+| agent.evidence | GET /api/agent/v1/evidence | ogid_query | research / read:stored | agent-bundle | stored/local-calculation; no-provider |
+| agent.evidence.chunk | GET /api/agent/v1/evidence/chunk | ogid_query | research / read:stored | agent-bundle | stored/local-calculation; no-provider |
+| agent.clusters | GET /api/agent/v1/clusters | ogid_query | research / read:stored | agent-bundle | stored/local-calculation; no-provider |
 | intel.sync | GET /api/intel/sync | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
 | intel.changes | GET /api/intel/changes | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
 | health | GET /api/health | ogid_health | research / read:stored | health | stored/local-calculation; no-provider |
@@ -97,6 +108,220 @@ Las cuatro herramientas compatibles se conservan. ogid_get_awareness_sources com
 Los query arrays viajan como CSV tipado; no se permiten claves extra, cabeceras, URLs o rutas libres. fixed se añade exclusivamente en el cliente y se verifica en backend para operador. La API existente mantiene su autenticación sensible; el permiso MCP añade credenciales de alcance, sin retirarla.
 
 researchRoutes.integration.test.js compara todas las rutas montadas con este registro y ejecuta todas las lecturas contra backend real con proveedores bloqueados. operations.test.js verifica todas las operaciones operador mediante fixtures HTTP, métodos, permisos y cuerpos; no demuestra ejecución de proveedores reales. Las pruebas de archivo, protocolo y e2e comprueban los contratos especializados.
+
+### agent.capabilities
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### agent.brief
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### agent.geopolitical
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### agent.outlooks
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "instrumentId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "cursor": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### agent.evidence
+
+Retención: durable immutable bundle; permitted metadata only. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "snapshotId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "cursor": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      },
+      "domain": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      }
+    },
+    "required": [
+      "snapshotId"
+    ],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### agent.evidence.chunk
+
+Retención: recoverable base64 or readable UTF-8 chunks with sha256. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "snapshotId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "evidenceId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "offset": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 2147483647
+      },
+      "format": {
+        "type": "string",
+        "enum": [
+          "base64",
+          "utf8"
+        ]
+      }
+    },
+    "required": [
+      "snapshotId",
+      "evidenceId"
+    ],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### agent.clusters
+
+Retención: durable ranked catalogue and members from frozen evidence. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "snapshotId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "clusterId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "cursor": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      }
+    },
+    "required": [
+      "snapshotId"
+    ],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
 
 ### intel.sync
 

@@ -77,6 +77,11 @@ test("AI defaults remain none/off; unknown providers fail explicitly even when o
     assert.throws(() => createAppServer(), { code: "AI_PROVIDER_INVALID" });
   });
 });
+test("disabled legacy AI does not inherit NVIDIA credentials, models or endpoint",()=>withEnv({AI_PROVIDER:"none",AI_MODE:"off",NVIDIA_API_KEY:"unused-secret",NVIDIA_MODEL_SUMMARY:"unused-model",LLAMACPP_MODEL_SUMMARY:"unused-local-model"},()=>{
+ const config=readConfig();assert.equal(config.ai.baseUrl,"");assert.equal(config.ai.apiKey,"");assert.equal(config.ai.summaryModel,"");
+ const runtime=createAppServer({market:{historyPersist:false}}),status=runtime.aiCoordinator.getAdminSnapshot();
+ assert.equal(status.enabled,false);assert.equal(status.endpoint,null);assert.equal(status.apiKeyConfigured,false);assert.equal(status.transport.calls,0);
+}));
 
 test("provider overrides select the matching environment and never inherit NVIDIA secrets", () => withEnv({
   AI_PROVIDER: "nvidia", NVIDIA_API_KEY: "nvidia-secret", NVIDIA_MODEL_SUMMARY: "nvidia-model",

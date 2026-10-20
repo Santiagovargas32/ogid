@@ -3,6 +3,31 @@ import assert from "node:assert/strict";
 import { StorageManager } from "../storage/StorageManager.js";
 import { renderWorkerOperations } from "../../frontend/js/workerOperations.js";
 
+test("supplemental watchdog renews only after committed progress and cancels a stalled workflow without failing the writer",async()=>{
+ const manager=new StorageManager({enabled:true,timeoutMs:10000});const messages=[];
+ manager.state='ready';manager.worker={postMessage:m=>messages.push(m)};
+ const pending=manager.request('news.supplemental',{}, {timeoutMs:200});
+ const entry=[...manager.active.values()][0];manager.handleMessage({type:'command-started',id:entry.id,startedAt:Date.now()});
+ const before=entry.timer;
+ manager.handleMessage({type:'command-progress',id:entry.id,completed:10});assert.notEqual(entry.timer,before);
+ const renewed=entry.timer;manager.handleMessage({type:'command-progress',id:entry.id,completed:10});assert.equal(entry.timer,renewed);
+ manager.handleMessage({type:'telemetry',worker:{heartbeatAt:new Date().toISOString()}});assert.equal(entry.timer,renewed);
+ assert.equal(manager.getStatus().activeCommands[0].completedItems,10);
+ clearTimeout(entry.timer);manager.expire(entry);assert.equal(manager.state,'ready');assert.equal(manager.active.size,1);assert.equal(messages.at(-1).type,'cancel-workflow');
+ const rejected=assert.rejects(pending,{code:'STORAGE_WORKFLOW_STALLED'});
+ manager.handleMessage({id:entry.id,error:{code:'STORAGE_WORKFLOW_STALLED'}});await rejected;
+ const write=manager.request('runtime.save',{kind:'survives',payload:{saved:true}}),id=[...manager.active.keys()][0];
+ manager.handleMessage({id,result:{persisted:true},status:{}});await write;assert.equal(manager.state,'ready');
+});
+
+test("unacknowledged workflow cancellation still fences an unresponsive SQLite writer",async()=>{
+ const manager=new StorageManager({enabled:true,analysisWorker:true,timeoutMs:10000});
+ manager.state='ready';manager.worker={postMessage(){},async terminate(){}};
+ const pending=manager.request('news.supplemental');const rejected=assert.rejects(pending,{code:'STORAGE_OUTCOME_UNKNOWN'}),entry=[...manager.active.values()][0];
+ manager.handleMessage({type:'command-started',id:entry.id,startedAt:Date.now()});clearTimeout(entry.timer);manager.expire(entry);
+ assert.equal(entry.cancelling,true);clearTimeout(entry.timer);manager.expire(entry);await rejected;await manager.close();assert.equal(manager.state,'failed');
+});
+
 test("worker observation distinguishes waiting, executing, failed and rejected work, retaining only metadata",async()=>{
   const manager=new StorageManager({enabled:true,maxInFlight:1,maxCommandBytes:1024,queueMaxBytes:8192,queueMaxItems:2});
   manager.state="ready";manager.worker={postMessage(){}};
@@ -73,7 +98,7 @@ test("a worker that never acknowledges a dispatched command still fails with the
   manager.state="ready";manager.worker={postMessage(){},async terminate(){}};
   const pending=manager.request("storage.status",{},{queueTimeoutMs:10});
   const rejected=assert.rejects(pending,reason=>{
-    assert.equal(reason.code,"STORAGE_OUTCOME_UNKNOWN");assert.equal(reason.causeCode,"STORAGE_DISPATCH_TIMEOUT");
+    assert.equal(reason.code,"STORAGE_READ_TIMEOUT");assert.equal(reason.causeCode,"STORAGE_DISPATCH_TIMEOUT");
     assert.equal(reason.diagnostic.operation,"storage.status");assert.equal(reason.diagnostic.phase,"dispatched");return true;
   });
   const entry=[...manager.active.values()][0];

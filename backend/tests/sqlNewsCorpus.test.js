@@ -16,6 +16,43 @@ import { BusinessRuntime } from "../storage/businessRuntime.js";
 const at="2026-10-09T18:00:00.000Z";
 const article=(id, extra={})=>({id:`source-${id}`,title:`Russia military conflict update number ${id}`,url:`https://example.org/news/${id}`,provider:"rss",sourceName:"Fixture source",publishedAt:at,usagePolicy:"standard-link-out",...extra});
 
+test("projection rereads only changed row versions across new transactions and minute windows",async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'ogid-projection-cache-')),db=new Database(join(dir,'db.sqlite'));db.pragma('journal_mode=WAL');migrate(db);
+ let now=Date.parse(at),bodyReads=0;const archive=new SqlNewsArchive(db,{now:()=>now}),corpus=new SqlNewsCorpus(archive,{watchlistCountries:['RU']});
+ const original=Database.prototype.prepare,plans=[];
+ try{
+  archive.ingest(Array.from({length:320},(_,n)=>article(n)));
+  Database.prototype.prepare=function(sql){
+   const stmt=original.call(this,sql);
+   if(sql.startsWith('SELECT rowid,payload_json FROM articles WHERE rowid IN')){const all=stmt.all;stmt.all=function(ids){bodyReads+=JSON.parse(ids).length;return all.call(this,ids);};}
+   if(sql.startsWith('SELECT rowid,revision,last_seen_at FROM articles')){const all=stmt.all,database=this;stmt.all=function(...args){plans.push(original.call(database,'EXPLAIN QUERY PLAN '+sql).all(...args));return all.apply(this,args);};}
+   return stmt;
+  };
+  await corpus.read({now});assert.equal(bodyReads,320);
+  bodyReads=0;now+=60000;const cached=await corpus.read({now});assert.equal(bodyReads,0);
+  assert.ok(plans.every(plan=>plan.some(p=>p.detail.includes('USING COVERING INDEX articles_projection_window'))));
+  archive.ingest([article(0,{title:'Russia updated military conflict report'})]);bodyReads=0;
+  const changed=await corpus.read({now});assert.equal(bodyReads,1);assert.ok(changed.signalCorpus.some(a=>a.title==='Russia updated military conflict report'));
+  const revision=archive.getItem('source-0').article.revision;
+  now+=60000;archive.ingest([article(0,{title:'Russia updated military conflict report'})]);assert.equal(archive.getItem('source-0').article.revision,revision);
+  bodyReads=0;await corpus.read({now});assert.equal(bodyReads,1);
+  const uncached=new SqlNewsCorpus(archive,{watchlistCountries:['RU'],payloadCacheBytes:0}),baseline=await uncached.read({now});
+  const actual=await corpus.read({now});assert.deepEqual(actual.riskResult,baseline.riskResult);assert.deepEqual(actual.news,baseline.news);assert.equal(cached.meta.scannedCount,320);
+  uncached.close();
+ }finally{Database.prototype.prepare=original;corpus.close();archive.close();db.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+test("payload cache eviction remains bounded and never reduces corpus coverage or changes calculations",async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'ogid-projection-evict-')),db=new Database(join(dir,'db.sqlite'));db.pragma('journal_mode=WAL');migrate(db);
+ const now=Date.parse(at),archive=new SqlNewsArchive(db,{now:()=>now}),small=new SqlNewsCorpus(archive,{payloadCacheBytes:8192}),uncached=new SqlNewsCorpus(archive,{payloadCacheBytes:0});
+ try{
+  archive.ingest(Array.from({length:270},(_,n)=>article(n)));await small.read({now});
+  const value=await small.read({now:now+60000}),baseline=await uncached.read({now:now+60000});
+  assert.equal(value.meta.scannedCount,270);assert.deepEqual(value.riskResult,baseline.riskResult);assert.deepEqual(value.news,baseline.news);
+  assert.ok(small.payloadCache.status().evictions>0);assert.ok(small.payloadCache.status().bytes<=8192);
+ }finally{small.close();uncached.close();archive.close();db.close();rmSync(dir,{recursive:true,force:true});}
+});
+
 test("SQL corpus accumulates rotations and providers; daily risk ignores display and analysis caps",async()=>{
   const dir=mkdtempSync(join(tmpdir(),"ogid-news-corpus-")),db=new Database(join(dir,"test.sqlite"));
   db.pragma("journal_mode=WAL");db.pragma("foreign_keys=ON");migrate(db);

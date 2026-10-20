@@ -1,4 +1,5 @@
 import { articleIdentity } from "./articleIdentity.js";
+import { shareOperation } from "../shared/operationContext.js";
 import { createLogger } from "../../utils/logger.js";
 import { BoundedCache } from "../shared/boundedCache.js";
 import { deduplicateRssArticles } from "./rssDeduplicator.js";
@@ -138,7 +139,7 @@ export class RssAggregatorService {
     }
 
     if (this.inFlight) {
-      return this.inFlight;
+      return shareOperation(this.inFlight);
     }
 
     this.lastAttemptMs = Date.now();
@@ -146,7 +147,7 @@ export class RssAggregatorService {
       .finally(() => {
         this.inFlight = null;
       });
-    return this.inFlight;
+    return shareOperation(this.inFlight);
   }
 
   async runRefresh() {

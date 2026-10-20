@@ -6,6 +6,12 @@ import { readFileSync, statSync } from "node:fs";
 export const VERSION = "0.4.0";
 export const ADAPTER_BUILD = captureBuildIdentity("adapter", VERSION);
 export const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+const AGENT_READ_OPERATIONS = new Set([
+  "capabilities", "health", "awareness", "agent.capabilities",
+  "agent.evidence", "agent.evidence.chunk", "agent.clusters",
+]);
+export const allowsResearchOperation = (config, id) =>
+  config.researchScope !== "agent-evidence" || AGENT_READ_OPERATIONS.has(id);
 
 function boundedInteger(value, fallback, min, max) {
   if (value === undefined) return fallback;
@@ -28,6 +34,10 @@ export function loadConfig(env = process.env) {
   const instrumentIds = [...new Set((env.OGID_INSTRUMENT_IDS || "").split(",").map(s => s.trim()).filter(Boolean))];
   const profile = env.OGID_PROFILE || "research";
   const instrumentAuth = env.OGID_INSTRUMENT_AUTH || "allowlist";
+  const researchScope = env.OGID_RESEARCH_SCOPE || "all";
+  if (!["all", "agent-evidence"].includes(researchScope) ||
+      (researchScope === "agent-evidence" && profile !== "research"))
+    throw new Error("Alcance research MCP inválido.");
   if (!["research", "operator"].includes(profile) || !["allowlist", "runtime"].includes(instrumentAuth)) throw new Error("Perfil o autorización MCP inválidos.");
   let operatorCredential = null;
   if (profile === "operator") {
@@ -49,10 +59,12 @@ export function loadConfig(env = process.env) {
   } catch { /* Una distribución sin .git no acredita un commit. */ }
   return Object.freeze({
     baseUrl: url.origin,
-    timeoutMs: boundedInteger(env.OGID_TIMEOUT_MS, 30000, 100, 30000),
+    // Frozen reads may wait 90s for the single analytical reader, then execute
+    // within their own 90s budget. Do not abort them at the generic HTTP limit.
+    timeoutMs: boundedInteger(env.OGID_TIMEOUT_MS, researchScope === 'agent-evidence' ? 190000 : 30000, 100, researchScope === 'agent-evidence' ? 190000 : 30000),
     maxResponseBytes: boundedInteger(env.OGID_MAX_RESPONSE_BYTES, 2097152, 1024, 4194304),
     maxOutputBytes: boundedInteger(env.OGID_MAX_OUTPUT_BYTES, 262144, 4096, 524288),
-    instrumentIds: Object.freeze(instrumentIds), commit, profile, instrumentAuth, operatorCredential,
+    instrumentIds: Object.freeze(instrumentIds), commit, profile, instrumentAuth, operatorCredential, researchScope,
     maxConcurrent: boundedInteger(env.OGID_MAX_CONCURRENT, 4, 1, 8)
   });
 }

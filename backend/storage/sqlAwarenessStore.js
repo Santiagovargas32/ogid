@@ -2,6 +2,23 @@ import { AwarenessStore, AWARENESS_RETENTION_MS } from "../services/awareness/aw
 import { readMeta, writeMeta, sourceRow } from "./sqlRepositories.js";
 import { parseAwarenessSource } from "../services/awareness/awarenessParsers.js";
 
+// Build a bounded startup projection without sorting/parsing historical JSON.
+// Upcoming events retain priority over more recently received releases.
+export function loadAwarenessProjection(db,{now=Date.now(),limit=1000}={}) {
+  return db.transaction(()=>{
+    const upcoming=db.prepare("SELECT event_id FROM awareness_events WHERE json_extract(payload_json,'$.status') IN ('scheduled','live') AND json_extract(payload_json,'$.scheduledAt')>=? ORDER BY observed_at DESC,event_id LIMIT ?").all(new Date(now).toISOString(),limit);
+    const recent=upcoming.length<limit?db.prepare("SELECT event_id FROM awareness_events ORDER BY observed_at DESC,event_id LIMIT ?").all(limit):[];
+    const ids=[...new Set([...upcoming,...recent].map(row=>row.event_id))].slice(0,limit);
+    const event=db.prepare("SELECT payload_json FROM awareness_events WHERE event_id=?");
+    return {
+      revision:readMeta(db,"awareness.revision",0),
+      events:ids.map(id=>JSON.parse(event.get(id).payload_json)),
+      sourceStatus:db.prepare("SELECT payload_json FROM awareness_source_status").all().map(row=>JSON.parse(row.payload_json)),
+      polls:db.prepare("SELECT source_id,diagnostics_json AS payload_json FROM source_polls WHERE completed_at>=? ORDER BY completed_at").all(new Date(now-7*86400000).toISOString()).map(row=>{const value=JSON.parse(row.payload_json);return {sourceId:row.source_id,poll:value.poll || value};})
+    };
+  }).deferred();
+}
+
 // The map interface belongs to the worker. Neither the HTTP process nor a
 // persistent in-memory map owns the complete Awareness history.
 export class SqlAwarenessStore extends AwarenessStore {
@@ -32,9 +49,13 @@ export class SqlAwarenessStore extends AwarenessStore {
     return parseAwarenessSource(body, source, options);
   }
 
-  refreshMetadata() {
+  refreshMetadata({includePolls=false} = {}) {
     this.revision = readMeta(this.db, "awareness.revision", 0);
     this.sourceStatuses = new Map(this.db.prepare("SELECT source_id,payload_json FROM awareness_source_status").all().map(row => [row.source_id, JSON.parse(row.payload_json)]));
+    // Reconciliation/stale transitions use current source metadata only.
+    // Loading seven days of poll audits here blocked the writer twice for
+    // every stale transition. Full histories remain available to snapshots.
+    if(!includePolls)return;
     this.pollHistories = new Map();
     const cutoff = new Date(this.now() - 7 * 86400000).toISOString();
     for (const row of this.db.prepare("SELECT source_id,diagnostics_json AS payload_json FROM source_polls WHERE completed_at>=? ORDER BY completed_at").iterate(cutoff)) {
@@ -69,14 +90,15 @@ export class SqlAwarenessStore extends AwarenessStore {
 
   setSourceStale(sourceId, stale = true) {
     this.refreshMetadata();
-    const events = this.db.prepare("SELECT payload_json FROM awareness_events WHERE source_id=?").all(sourceId).map(row => JSON.parse(row.payload_json))
-      .filter(event => Boolean(event.provenance?.stale) !== Boolean(stale) || (stale ? event.dataMode !== "stale" : event.dataMode === "stale"))
+    const changed=this.db.prepare(`SELECT event_id FROM awareness_events INDEXED BY awareness_source_freshness WHERE source_id=? AND (coalesce(json_extract(payload_json,'$.provenance.stale'),0)!=? OR ${stale ? "coalesce(json_extract(payload_json,'$.dataMode'),'')!='stale'" : "json_extract(payload_json,'$.dataMode')='stale'"})`).all(sourceId,Number(Boolean(stale)));
+    const read=this.db.prepare('SELECT payload_json FROM awareness_events WHERE event_id=?');
+    const events = changed.map(row=>JSON.parse(read.get(row.event_id).payload_json))
       .map(event => ({...event, dataMode:stale ? "stale" : "observed", provenance:{...event.provenance, stale:Boolean(stale)}}));
     return this.reconcile(events);
   }
 
   getSnapshot(options) {
-    this.refreshMetadata();
+    this.refreshMetadata({includePolls:true});
     return super.getSnapshot(options);
   }
 }

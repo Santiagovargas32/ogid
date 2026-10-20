@@ -26,8 +26,8 @@ export function getHealth(req, res) {
   res.json({
     ok: true,
     data: {
-      status:(storage&&(!["ready","disabled"].includes(storage.state)||storage.analysis?.state === "failed"))||Object.values(res.app.locals.pipelineMonitor?.snapshot() || {}).some(s=>["degraded","blocked","failed","stale"].includes(s.status))?"degraded":"ok",
-      storage: administrative ? storage : storage && {state:storage.state,businessStorage:storage.businessStorage,lastErrorCode:storage.lastErrorCode,queue:storage.queue,analysis:storage.analysis&&{state:storage.analysis.state,queue:storage.analysis.queue,lastErrorCode:storage.analysis.lastErrorCode}},
+      status:(storage&&(!["ready","disabled"].includes(storage.state)||storage.analysis?.state === "failed"||storage.analysisRecovery?.recovering||storage.queries?.state === "failed"||storage.queryRecovery?.recovering))||Object.values(res.app.locals.pipelineMonitor?.snapshot() || {}).some(s=>["degraded","blocked","failed","stale"].includes(s.status))?"degraded":"ok",
+      storage: administrative ? storage : storage && {state:storage.state,businessStorage:storage.businessStorage,lastErrorCode:storage.lastErrorCode,queue:storage.queue,queries:storage.queries&&{state:storage.queries.state,queue:storage.queries.queue,lastErrorCode:storage.queries.lastErrorCode},analysis:storage.analysis&&{state:storage.analysis.state,queue:storage.analysis.queue,lastErrorCode:storage.analysis.lastErrorCode}},
       pipeline: res.app.locals.pipelineMonitor?.snapshot() || {},
       server:{pid:process.pid,nodeVersion:process.version,startedAt:new Date(Date.now()-process.uptime()*1000).toISOString(),memory:process.memoryUsage()},
       build: BACKEND_BUILD,

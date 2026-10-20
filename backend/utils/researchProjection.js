@@ -60,6 +60,10 @@ export function publicProjection(value, depth = 0, textLimit = 2000) {
   return result;
 }
 export function projectOperation(operation, data) {
+  // These typed endpoints already project permitted fields in the writer.
+  // Applying the legacy text projection here would corrupt base64 chunks and
+  // silently truncate recoverable evidence and validated publications.
+  if (operation.projection === "agent-bundle") return data;
   if (operation.projection === "health") return publicProjection({ ...pick(data, ["build", "status", "timestamp", "uptimeSeconds", "lastRefreshAt", "refreshIntervalMs", "sourceMode", "dataQuality", "market"]), storage: publicStorageStatus(data.storage) });
   if (operation.projection === "admin-counts") return { generatedAt: data.generatedAt || null, summary: numericProjection(data.summary || {}), pagination: numericProjection(data.pagination || {}), itemCount: data.items?.length ?? data.entries?.length ?? null, metrics: numericProjection(data) };
   if (operation.projection === "quotes") return publicProjection({ ...pick(data,["contractVersion","tickers","snapshotId","asOf","warnings"]), quotes: data.quotes || {}, ...(data.contractVersion === "quotes-compact-v1" && data.timeseries ? {timeseries:data.timeseries}: {}) });

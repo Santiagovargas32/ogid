@@ -358,13 +358,8 @@ test("REST API exposes health and snapshot payloads", async () => {
 
     const mediaStreamsResponse = await fetch(`${baseUrl}/api/media/streams`);
     const mediaStreamsPayload = await mediaStreamsResponse.json();
-    assert.equal(mediaStreamsResponse.status, 200);
-    assert.equal(mediaStreamsPayload.ok, true);
-    assert.ok(mediaStreamsPayload.data.generatedAt);
-    assert.ok(mediaStreamsPayload.data.summary);
-    assert.ok(Array.isArray(mediaStreamsPayload.data.sections.situational));
-    assert.ok(Array.isArray(mediaStreamsPayload.data.sections.webcams));
-    assert.ok(mediaStreamsPayload.data.sections.situational.some((item) => item.id === "bbc-news"));
+    assert.equal(mediaStreamsResponse.status, 410);
+    assert.equal(mediaStreamsPayload.error.code, "MEDIA_RETIRED");
   } finally {
     global.fetch = originalFetch;
     await runtime.stop();

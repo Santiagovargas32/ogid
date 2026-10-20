@@ -1,4 +1,3 @@
-import { RUNTIME_POLICY } from "../../config/runtimePolicy.js";
 import defaultYoutubeLiveCache, {
   channelHandleCacheKey,
   liveCacheKey,
@@ -816,7 +815,7 @@ async function resolvePreparedStreams(streamConfigs = [], options = {}) {
 
   const concurrency = Math.max(
     1,
-    Number.parseInt(String(options.concurrency || RUNTIME_POLICY.media.youtube.resolveConcurrency || DEFAULT_CONCURRENCY), 10) ||
+    Number.parseInt(String(options.concurrency || DEFAULT_CONCURRENCY), 10) ||
       DEFAULT_CONCURRENCY
   );
   const searchResults = await runWithConcurrency(needsSearch, concurrency, (streamConfig) =>

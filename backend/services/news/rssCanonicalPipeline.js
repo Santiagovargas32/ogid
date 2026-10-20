@@ -8,6 +8,7 @@ import {deduplicateRssArticles} from './rssDeduplicator.js';
 import {hasFeedEnvelope,parseFeedArticles} from './providers/rssProvider.js';
 import {articleIdentity} from './articleIdentity.js';
 import {performance} from 'node:perf_hooks';
+import {shareOperation} from '../shared/operationContext.js';
 function initialState(){return {etag:null,lastModified:null,lastAttemptAt:null,lastSuccessAt:null,nextEligibleAt:null,cooldownUntil:null,consecutiveErrors:0,healthStatus:'unknown',articles:[],status:'unqueried'};}
 export class RssCanonicalPipeline {
   constructor({catalog,fetchImpl,now=Date.now,random=Math.random,persistencePath=null,globalConcurrency=4,hostConcurrency=1,maxFeedsPerCycle=18,cycleDeadlineMs=25_000,timeoutMs=8_000,maxCorpusItems=900,maxResponseBytes=2_000_000,maxItemsPerFeed=200,onCollected=null}={}){
@@ -26,7 +27,7 @@ export class RssCanonicalPipeline {
     const selected=[];while(hosts.size&&selected.length<this.maxFeedsPerCycle){for(const [host,queue] of hosts){selected.push(queue.shift());if(!queue.length)hosts.delete(host);if(selected.length===this.maxFeedsPerCycle)break;}}
     return selected;
   }
-  runCycle(){if(this.inFlight)return this.inFlight;this.inFlight=this.collect().finally(()=>{this.inFlight=null;});return this.inFlight;}
+  runCycle(){if(this.inFlight)return shareOperation(this.inFlight);this.inFlight=this.collect().finally(()=>{this.inFlight=null;});return shareOperation(this.inFlight);}
   async collect(){
     const started=this.now(),deadline=started+this.cycleDeadlineMs,selected=this.selectEligible(started),global=new Semaphore(this.globalConcurrency);
     this.controller=new AbortController();const signal=this.controller.signal;const timer=setTimeout(()=>this.controller.abort(new DOMException('RSS cycle deadline','TimeoutError')),this.cycleDeadlineMs);
@@ -54,7 +55,7 @@ export class RssCanonicalPipeline {
       const merged=deduplicateRssArticles([...this.corpus,...results.flatMap(r=>r.articles||[])],{maxItems:this.maxCorpusItems});
       this.metrics.lastDedupeMs=performance.now()-dedupeStarted;
       this.corpus=merged.items;this.metrics.cycles++;this.metrics.lastDurationMs=Math.max(0,this.now()-started);this.metrics.latencyMs+=this.metrics.lastDurationMs;
-      this.generatedAt=new Date(this.now()).toISOString();this.persist();
+      this.generatedAt=new Date(this.now()).toISOString();await this.persist(selected.map(feed=>feed.feedId));
       return { ...this.snapshot(selected.length), selectedFeedIds: selected.map(f=>f.feedId) };
     }catch(error){
       // A 200 response must not leave a new ETag behind when its articles failed

@@ -1,0 +1,94 @@
+.agent-chat-dialog {
+  width: min(850px, 96vw);
+  max-height: 94vh;
+  border: 1px solid #465268;
+  border-radius: 12px;
+  background: #111b2b;
+  color: #e6edf7;
+  padding: 1rem;
+}
+.agent-chat-dialog::backdrop {
+  background: #0009;
+}
+.agent-chat-header,
+.agent-chat-controls {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.agent-chat-controls select {
+  max-width: 48%;
+}
+.agent-chat-messages {
+  height: min(50vh, 500px);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.agent-chat-dialog textarea {
+  width: 100%;
+  background: #182438;
+  color: inherit;
+}
+.agent-chat-dialog button,
+.agent-chat-dialog select {
+  background: #24354e;
+  color: inherit;
+  border: 1px solid #61718b;
+  border-radius: 5px;
+  padding: 0.4rem;
+}
+.agent-message,
+.agent-alert,
+.agent-publication {
+  padding: 0.75rem;
+  border-bottom: 1px solid #40506a;
+  overflow-wrap: anywhere;
+}
+.agent-message p {
+  white-space: pre-wrap;
+}
+.agent-message-user {
+  background: #182a42;
+}
+.agent-alert h3 {
+  font-size: 1rem;
+}
+.agent-alert a {
+  display: block;
+}
+.agent-alert button {
+  margin: 0.3rem;
+}
+.agent-inbox {
+  max-height: 620px;
+  overflow: auto;
+  overflow-anchor: auto;
+  padding: 0.5rem;
+}
+.agent-publication small {
+  display: block;
+}
+.agent-outlook-shell {
+  padding: 1rem;
+}
+.agent-outlook-shell > h3 {
+  font-size: 1.1rem;
+}
+@media (max-width: 600px) {
+  .agent-chat-controls select {
+    max-width: 100%;
+    width: 100%;
+  }
+  .agent-chat-messages {
+    height: 45vh;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-chat-dialog,
+  .agent-alert {
+    animation: none;
+    transition: none;
+  }
+}

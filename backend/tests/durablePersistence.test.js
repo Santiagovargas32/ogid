@@ -9,16 +9,89 @@ import {StorageManager} from '../storage/StorageManager.js';
 import {BusinessRuntime} from '../storage/businessRuntime.js';
 import {SqlNewsArchive} from '../storage/sqlNewsArchive.js';
 import {SqlNewsCorpus} from '../storage/sqlNewsCorpus.js';
-import {SqlAlertStore} from '../storage/sqlRepositories.js';
+import {SqlAlertStore,SqlEventLedger,SqlResearchStore} from '../storage/sqlRepositories.js';
 import {migrate} from '../storage/migrate.js';
 import {createStorageBackup} from '../storage/backup.js';
 import {buildAdvancedCorpus,buildFrequentTerms} from '../services/intel/advancedIntelligenceService.js';
 import {publicProjection} from '../utils/researchProjection.js';
+import {SqlRssCanonicalState} from '../storage/rssCanonicalState.js';
 const config=dir=>({rootDir:dir,news:{analyzeLimit:3000,displayLimit:40},rss:{rssFeeds:[]}});
 const sqlFixture=()=>{const dir=mkdtempSync(join(tmpdir(),'ogid-durable-')),db=new Database(join(dir,'db.sqlite'));db.pragma('journal_mode=WAL');db.pragma('foreign_keys=ON');migrate(db);return {dir,db,close(){db.close();rmSync(dir,{recursive:true,force:true});}};};
 async function fixture(){const dir=mkdtempSync(join(tmpdir(),'ogid-jobs-')),manager=new StorageManager({enabled:true,businessEnabled:true,databasePath:join(dir,'db.sqlite')});await manager.start();await manager.request('domain.configure',config(dir));return {dir,manager,async close(){await this.manager.close();rmSync(dir,{recursive:true,force:true});}};}
 const request=(manager,countries=['RU'])=>manager.request('domain.call',{service:'advanced',method:'getSnapshot',args:[{countries}],context:{newsFromStorage:true,snapshot:{}}});
 const settled=manager=>Promise.all([...manager.advancedCoordinator.tasks.values()]);
+
+test('RSS checkpoints update only polled feeds, preserve legacy recovery and do not advance after a failed page',async()=>{
+ const f=sqlFixture(),runtime=new BusinessRuntime(f.db,()=>{});
+ try{
+  const legacy={version:1,states:Object.fromEntries(Array.from({length:200},(_,i)=>[`feed-${i}`,{etag:`old-${i}`,articles:[{title:`Saved source ${i}`}]}])),corpus:[{title:'Retained corpus'}],metrics:{cycles:10}};
+  runtime.save('rss-canonical',legacy);
+  f.db.exec("CREATE TRIGGER protect_legacy_rss BEFORE UPDATE ON runtime_snapshots WHEN NEW.kind='rss-canonical' BEGIN SELECT RAISE(ABORT,'Legacy recovery must remain intact'); END");
+  const state=new SqlRssCanonicalState(runtime),restored=state.load();
+  const pipeline={states:new Map(Object.entries(restored.states)),corpus:restored.corpus,metrics:{cycles:11}};
+  pipeline.states.set('feed-1',{etag:'new',articles:[{title:'New archived source'}]});
+  await state.save(pipeline,['feed-1']);
+  assert.equal(f.db.prepare("SELECT count(*) AS n FROM runtime_snapshots WHERE kind GLOB 'rss-canonical-feed:*'").get().n,1);
+  const reopened=new SqlRssCanonicalState(runtime).load();assert.equal(Object.keys(reopened.states).length,200);assert.equal(reopened.states['feed-1'].etag,'new');assert.equal(reopened.states['feed-199'].etag,'old-199');assert.deepEqual(reopened.corpus,legacy.corpus);
+  const checkpoint=runtime.load('rss-canonical-v2');
+  f.db.exec("CREATE TRIGGER fail_feed_save BEFORE INSERT ON runtime_snapshots WHEN NEW.kind='rss-canonical-feed:feed-2' BEGIN SELECT RAISE(ABORT,'Simulated feed commit failure'); END");
+  pipeline.metrics={cycles:12};await assert.rejects(state.save(pipeline,['feed-1','feed-2']),{code:'SQLITE_CONSTRAINT_TRIGGER'});
+  assert.deepEqual(runtime.load('rss-canonical-v2'),checkpoint);assert.deepEqual(runtime.load('rss-canonical'),legacy);
+ }finally{runtime.close();f.close();}
+});
+
+test('SQL ingestion preserves history without counting the archive for legacy retention',t=>{
+ const f=sqlFixture(),archive=new SqlNewsArchive(f.db,{maxItems:1});
+ try{
+  const prepare=f.db.prepare.bind(f.db);
+  const mock=t.mock.method(f.db,'prepare',sql=>{assert.ok(!/SELECT count\(\*\).*FROM articles/i.test(sql));return prepare(sql);});
+  for(const n of [1,2])assert.equal(archive.ingest([{id:`retained-${n}`,title:`Source ${n}`,url:`https://fixture.invalid/${n}`,provider:'rss'}]).accepted,1);
+  mock.mock.restore();assert.equal(archive.coverage().totalStored,2);
+ }finally{archive.close();f.close();}
+});
+
+test('portfolio uses its archive window without loading an unused analytical corpus',async()=>{
+ const f=sqlFixture();const runtime=new BusinessRuntime(f.db,()=>{});
+ try{
+  runtime.configure(config(f.dir));
+  runtime.newsCorpus.readAnalytical=async()=>{throw Error('unused corpus must not be loaded');};
+  const result=await runtime.call({service:'portfolio',method:'getContext',args:[{mode:'daily',instrumentIds:['us-equity-general-dynamics']}],context:{newsFromStorage:true,snapshot:{},awareness:{mode:'off',upcoming:[],recent:[]}}});
+  assert.equal(result.mode,'daily');assert.equal(result.news.articles.length,0);assert.equal(result.universe[0].instrumentId,'us-equity-general-dynamics');
+ }finally{runtime.close();f.close();}
+});
+
+test('event coverage counts verified and legacy identities without reading historical payload rows',()=>{
+ const f=sqlFixture();try{
+  const ledger=new SqlEventLedger({store:new SqlResearchStore(f.db)});
+  assert.equal(ledger.search().coverage.storedEvents,0);assert.equal(ledger.search().coverage.legacyRequiresReplay,0);
+  const insert=f.db.prepare('INSERT INTO events(event_id,identity_version,revision,observed_at,status,payload_json) VALUES(?,?,?,?,?,?)');
+  for(const [id,identity] of [['verified','source-publication-v2'],['legacy','legacy'],['older','source-publication-v1']]){
+   const event={eventId:id,identityVersion:identity,quality:{},evidence:[]};insert.run(id,identity,1,'2026-10-18T12:00:00Z','observed',JSON.stringify(event));
+  }
+  const coverage=ledger.search({eventIds:['verified']}).coverage;
+  assert.equal(coverage.storedEvents,3);assert.equal(coverage.legacyRequiresReplay,2);
+  const plan=f.db.prepare("EXPLAIN QUERY PLAN SELECT count(*),sum(identity_version!='source-publication-v2') FROM events INDEXED BY events_by_identity").all();
+  assert.match(JSON.stringify(plan),/COVERING INDEX events_by_identity/);
+ }finally{f.close();}
+});
+
+test('SQL coverage preserves empty, unknown and independent publication/reception bounds',()=>{
+ const f=sqlFixture();let now=Date.parse('2026-10-18T12:00:00Z');const archive=new SqlNewsArchive(f.db,{now:()=>now});
+ try{
+  let coverage=archive.coverage();
+  assert.equal(coverage.totalStored,0);assert.equal(coverage.unknownPublicationCount,0);
+  for(const field of ['oldest','newest','oldestReceivedAt','newestReceivedAt'])assert.equal(coverage[field],null);
+  archive.ingest([{id:'unknown',title:'Publication date unavailable',url:'https://fixture.invalid/unknown',publishedAt:null,provider:'rss'}]);
+  coverage=archive.coverage();assert.equal(coverage.unknownPublicationCount,1);assert.equal(coverage.oldest,null);assert.equal(coverage.retainedSince,new Date(now).toISOString());
+  now+=3600000;
+  archive.ingest([{id:'earlier',title:'Earlier publication',url:'https://fixture.invalid/earlier',publishedAt:'2026-10-16T10:00:00Z',provider:'rss'},{id:'later',title:'Later publication',url:'https://fixture.invalid/later',publishedAt:'2026-10-17T11:00:00Z',provider:'rss'}]);
+  coverage=archive.coverage({from:'2026-10-17T00:00:00Z'});
+  assert.equal(coverage.totalStored,3);assert.equal(coverage.unknownPublicationCount,1);
+  assert.equal(coverage.oldest,'2026-10-16T10:00:00.000Z');assert.equal(coverage.newest,'2026-10-17T11:00:00.000Z');
+  assert.equal(coverage.oldestReceivedAt,'2026-10-18T12:00:00.000Z');assert.equal(coverage.newestReceivedAt,'2026-10-18T13:00:00.000Z');
+  assert.equal(coverage.retainedSince,coverage.oldest);assert.equal(coverage.partial,false);
+ }finally{archive.close();f.close();}
+});
 
 test('twenty equivalent requests share one durable job, commit once and recover after restart',async()=>{
  const f=await fixture();try{

@@ -9,6 +9,11 @@ const MATERIAL_MEDIUM = /\b(?:earnings|guidance|results|regulatory|sanctions|law
 export class PortfolioContextService {
   constructor({ stateManager, archive, alerts, awarenessService, watchlist, scenarioService=null, now = Date.now } = {}) { Object.assign(this, { stateManager, archive, alerts, awarenessService, watchlist, scenarioService, now }); }
   getContext(input) {
+    const prepared = this.prepare(input);
+    if (prepared.result.mode === "material") prepared.result.material.candidates = publicProjection(this.alerts.candidates(prepared.candidates), 2);
+    return prepared.result;
+  }
+  prepare(input) {
     const now = this.now(); const mode = input.mode;
     const window = { from: input.from || new Date(now - (mode === "weekly" ? 7 * 86400000 : mode === "material" ? 3 * 3600000 : mode === "agenda" ? 0 : 86400000)).toISOString(),
       to: input.to || new Date(now + (mode === "agenda" ? 7 * 86400000 : 0)).toISOString() };
@@ -52,13 +57,14 @@ export class PortfolioContextService {
         candidates.push({ ...event, materiality: { band: event.importance, method: event.importanceMethod || "OGID-event-importance", evidence: event.eventId, confidence: event.source?.official ? "official-source-not-portfolio-materiality-proof" : "requires-corroboration" } });
       }
     }
-    return publicProjection({ mode, queriedAt: new Date(now).toISOString(), window, newsWindow, sourceMode: snapshot.meta?.sourceMode || null, dataQuality: snapshot.meta?.dataQuality || {},
+    const result = publicProjection({ mode, queriedAt: new Date(now).toISOString(), window, newsWindow, sourceMode: snapshot.meta?.sourceMode || null, dataQuality: snapshot.meta?.dataQuality || {},
       health: { lastRefreshAt: snapshot.meta?.lastRefreshAt || null, marketUpdatedAt: snapshot.market?.updatedAt || null, newsCoverage: news.coverage },
       universe: instruments.map(instrument => instrumentView(instrument, this.watchlist.selectedInstrumentIds, snapshot.market?.quotes || {})), resolutions, news, awareness: events, market,
       risks: { dataAsOf: snapshot.meta?.lastRefreshAt || null, countries: input.countries?.length ? Object.fromEntries(Object.entries(snapshot.countries || {}).filter(([iso]) => input.countries.includes(iso))) : snapshot.countries || {}, temporalScope: "current-snapshot" },
       scenarioSummary: this.scenarioService ? (()=>{const result=this.scenarioService.list({instrumentIds:ids,limit:input.limit||20});return {snapshotId:result.snapshotId,latestSequence:result.latestSequence,hasMore:result.hasMore,scenarios:result.scenarios.map(s=>({scenarioId:s.scenarioId,instrumentId:s.instrumentId,role:s.role,status:s.status,revision:s.revision,expiresAt:s.expiresAt,seriesRevision:s.context.seriesRevision,quality:s.quality})),deliveryVerified:false};})() : null,
-      impact: { ...impact, evidenceWindow: newsWindow, methodCaveat: "heuristic-association-not-causality" }, history, material: { candidates: mode === "material" ? this.alerts.candidates(candidates) : [], deliveryAcknowledged: false,
+      impact: { ...impact, evidenceWindow: newsWindow, methodCaveat: "heuristic-association-not-causality" }, history, material: { candidates: [], deliveryAcknowledged: false,
         policy: { minImportance: input.minImportance || "medium", includeUncorroborated: input.includeUncorroborated || false, methodVersion: "material-v1" }, partial: news.hasMore || eventsLimited || events.upcoming.length >= (input.limit || 20) || events.recent.length >= (input.limit || 20),
         acknowledgementOperation: "operator-only; acknowledge after actual delivery" }, warnings });
+    return {result,candidates};
   }
 }

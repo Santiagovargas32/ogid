@@ -35,3 +35,11 @@ docs
 docs/performance
 # Mantener los nuevos Markdown fuera del repositorio.
 *.md
+# Instrucciones, planes, seguimiento y evidencias personales de esta implementación.
+/AGENTS.md
+/docs/agentic-intelligence/
+/docs/OGID-Analisis-y-Prompt-Codex-6.1-xhigh.md
+/docs/OGID — Production Hardening & Agentic .md
+# Local agent validation artifacts; keep outside backend's recursive test scan.
+/.agent-validation/
+/backend/data/agent-runtime/

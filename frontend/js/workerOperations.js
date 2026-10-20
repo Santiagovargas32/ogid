@@ -44,7 +44,7 @@ function workerCard(worker, label, explanation, now) {
 export function renderWorkerOperations(storage, {sampledAt, now = Date.now()} = {}) {
   if (!storage) return '<p class="small text-light-emphasis px-3">No hay telemetría de almacenamiento disponible en esta muestra.</p>';
   if (["disabled","new"].includes(storage.state)) return '<p class="small text-light-emphasis px-3">El almacenamiento SQLite está desactivado o todavía no ha iniciado.</p>';
-  const workers = [[storage,"Escritor","Guarda los datos adquiridos y confirma las transacciones SQLite."], ...(storage.analysis ? [[storage.analysis,"Análisis","Lee SQLite y calcula proyecciones. Delega sus guardados al escritor."]] : [])];
+  const workers = [...(storage.queries ? [[storage.queries,"Consultas","Atiende noticias, Awareness, velas y evidencia sin esperar los cálculos del analista."]] : []),[storage,"Escritor","Guarda los datos adquiridos y confirma las transacciones SQLite."], ...(storage.analysis ? [[storage.analysis,"Análisis","Lee SQLite y calcula proyecciones. Delega sus guardados al escritor."]] : [])];
   const active = workers.flatMap(([worker,workerLabel]) => [...(worker.activeCommands || []),...(worker.queuedCommands || [])].map(command => ({...command,workerLabel})));
   const recent = workers.flatMap(([worker,workerLabel]) => (worker.recentCommands || []).map(command => ({...command,workerLabel}))).sort((a,b) => Date.parse(b.finishedAt)-Date.parse(a.finishedAt)).slice(0,30);
   return `<p class="small text-light-emphasis px-3">Muestra: ${escape(time(sampledAt))} · Actualización cada 5 s con la pestaña visible. Contadores desde el arranque; últimos 50 resultados por worker.</p>

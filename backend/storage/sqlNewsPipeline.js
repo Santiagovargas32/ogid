@@ -1,4 +1,5 @@
 import { stableHash } from "../utils/stableHash.js";
+import { ingestNewsBatches } from "./newsIngestion.js";
 import { fetchAggregatedNews } from "../services/news/newsAggregatorService.js";
 import { normalizeAdminArticles } from "../services/normalizeService.js";
 import { computeMarketImpact } from "../services/market/impactEngineService.js";
@@ -7,13 +8,14 @@ import { generateInsights } from "../services/insightService.js";
 import { listVerifiedInstruments } from "../services/market/instrumentRegistry.js";
 import { riskWithPrevious } from "./sqlNewsCorpus.js";
 import apiQuotaTracker from "../services/admin/apiQuotaTrackerService.js";
+import { checkOperation, shareOperation } from "../services/shared/operationContext.js";
 
 export class SqlNewsPipeline {
   constructor(runtime, archive, corpus, config) { Object.assign(this, {runtime, archive, corpus, config}); this.inFlight=null; this.diagnostics=runtime.load("news-collection"); }
   async collect(options = {}) {
-    if (this.inFlight) return this.inFlight;
+    if (this.inFlight) return shareOperation(this.inFlight);
     this.inFlight=this.runCollect(options).catch(error=>{this.runtime.progress(`news.${this.diagnostics.stage}`,"failed",{errorCode:error.code || "NEWS_COLLECTION_FAILED"});throw error;}).finally(() => { this.inFlight=null; });
-    return this.inFlight;
+    return shareOperation(this.inFlight);
   }
   async runCollect(options) {
     const previousSuccess=this.diagnostics?.lastSuccessfulAt || null;
@@ -21,16 +23,13 @@ export class SqlNewsPipeline {
     this.diagnostics={stage:"fetching", startedAt:new Date().toISOString(), providers:options.providers || this.config.providers};
     this.runtime.progress("news.acquire","running");
     const result=await fetchAggregatedNews({...this.config, ...options, rssWorkerFetch:input => this.runtime.fetchRss({...input, lane:"editorial"})});
+    checkOperation();
     this.runtime.progress("news.acquire",result.sourceMode==="unavailable"||result.sourceMode==="fallback"?"degraded":"completed",{processed:result.rawArticles?.length || 0});
     this.runtime.progress("news.persist","running");
     this.diagnostics.stage="persisting";
     // RSS has already committed every article before its response cap.
     const articles=(result.rawArticles || result.articles || []).filter(article => article.provider!=="rss" && !article.synthetic && article.provider!=="fallback");
-    let accepted=0;
-    for (let offset=0; offset<articles.length; offset+=100) {
-      accepted+=this.archive.ingest(articles.slice(offset,offset+100), {lane:options.queryLane || "editorial", awarenessMode:options.awarenessMode || this.config.awarenessMode || "off"}).accepted;
-      await new Promise(resolve => setImmediate(resolve));
-    }
+    const accepted=await ingestNewsBatches(this.archive,articles,{lane:options.queryLane || "editorial",awarenessMode:options.awarenessMode || this.config.awarenessMode || "off"});
     this.runtime.progress("news.persist","completed",{processed:accepted});
     let supplemental=null;
     const supplementalDue=Boolean((options.providers || this.config.providers || []).includes("rss") && this.config.rssAggregateIntervalMs && !this.supplementalInFlight && Date.now()>=(this.runtime.nextGeneratedCollectAt || 0));
@@ -48,16 +47,17 @@ export class SqlNewsPipeline {
     return {articles:[], rawArticles:normalizeAdminArticles((result.rawArticles || []).slice(0,100), result.sourceMeta?.provider), sourceMode:result.sourceMode, sourceMeta:{...result.sourceMeta, acquiredAt:this.diagnostics.completedAt,persistedBeforeAnalysis:true, rawPreviewLimit:100,supplemental}, quotas:providers,supplementalDue:supplementalDue && Boolean(options.deferSupplemental)};
   }
   async collectSupplemental(){
-    if(this.supplementalInFlight)return this.supplementalInFlight;
+    if(this.supplementalInFlight)return shareOperation(this.supplementalInFlight);
     if(!this.config.rssAggregateIntervalMs || Date.now()<(this.runtime.nextGeneratedCollectAt || 0))return {skipped:true};
     this.supplementalInFlight=this.runSupplemental().finally(()=>{this.supplementalInFlight=null;});
-    return this.supplementalInFlight;
+    return shareOperation(this.supplementalInFlight);
   }
   async runSupplemental(){
     const started=performance.now(),previousCursor=this.runtime.rssGeneratedCursor;let committed=false;
     this.supplementalDiagnostics={stage:"fetching-and-archiving",startedAt:new Date().toISOString()};
     try{
       const snapshot=await this.runtime.services.rss.refresh();
+      checkOperation();
       committed=true;
       this.runtime.save("rss",this.runtime.services.rss.lastSnapshot);
       this.runtime.persistedRssSnapshot=this.runtime.services.rss.lastSnapshot;

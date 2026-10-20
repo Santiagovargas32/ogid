@@ -1,6 +1,6 @@
 # OGID MCP 0.4.0
 
-Contrato 1.2.0: histórico por rango desde admin, datasets CSV de procedencia declarada y relectura de eventos con identidad por publicación. [Uso, límites y migración](../../docs/research-cartera/HISTORICO-E-IDENTIDADES.md). Se mantienen diez herramientas de investigación; las operaciones nuevas se consultan mediante `ogid_query` o el perfil operador según sus permisos.
+Contrato 1.5.0: evidencia agentiva durable, clusters y publicaciones persistidas, conservando histórico, datasets CSV e identidades verificadas. [Uso del histórico](../../docs/research-cartera/HISTORICO-E-IDENTIDADES.md). Se mantienen diez herramientas en investigación general; las operaciones nuevas se consultan mediante `ogid_query` o el perfil operador según sus permisos.
 
 Adaptador Node/ESM por stdio, conectado al backend OGID por HTTP loopback. El perfil investigación ofrece diez herramientas y lecturas almacenadas para toda la API JSON clasificada. El perfil operador añade una herramienta con operaciones enumeradas y permisos de servidor. No inicia recolectores ni recibe claves de proveedores.
 
@@ -34,7 +34,9 @@ Las pruebas deterministas usan fixtures y protocolo MCP real; no consumen cuotas
 | ogid_get_portfolio_context | Paquetes agenda/daily/material/weekly |
 | ogid_query | Operación enumerada para mercado, inteligencia, mapas, medios y diagnóstico |
 
-[API-MCP.md](API-MCP.md) enumera las 68 rutas JSON y 77 operaciones: 45 de investigación y 32 de operador. Sus esquemas se generan desde [el registro compartido](../../backend/contracts/ogidOperations.js). Cambiarlo exige regenerar el inventario; una prueba detecta rutas sin clasificación.
+[API-MCP.md](API-MCP.md) enumera 81 rutas JSON exportables y 90 operaciones: 57 de investigación y 33 de operador. Sus esquemas se generan desde [el registro compartido](../../backend/contracts/ogidOperations.js). Las rutas privadas del chat y dispositivos no se exportan como herramientas. Cambiar el registro exige regenerar el inventario; una prueba detecta rutas sin clasificación.
+
+Las rutas de medios retiradas devuelven `MEDIA_RETIRED` / HTTP 410 y no consultan proveedores. Retirar esas consultas de los consumidores durante la transición a la bandeja geopolítica.
 
 Ejemplos de argumentos MCP:
 
@@ -69,6 +71,7 @@ El adaptador no carga .env ni backend/.env automáticamente. La [plantilla de t�
 | --- | --- |
 | OGID_BASE_URL | http://127.0.0.1:3000; solo origen loopback literal |
 | OGID_PROFILE | research por defecto; operator requiere credencial privada |
+| OGID_RESEARCH_SCOPE | all por defecto; agent-evidence limita el servicio analítico a query/capabilities/health y lecturas congeladas; sólo research |
 | OGID_INSTRUMENT_AUTH | allowlist por compatibilidad; runtime recomendado en plantilla |
 | OGID_INSTRUMENT_IDS | IDs autorizados separados por comas para allowlist |
 | OGID_TIMEOUT_MS | 30000 por defecto; 100–30000, incluye cuerpo HTTP; valores explícitos previos prevalecen |

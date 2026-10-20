@@ -10,6 +10,8 @@ import { matchInstrument, resolveReferences } from "../services/research/instrum
 import { readMeta, writeMeta, instrumentRow, sourceRow } from "./sqlRepositories.js";
 import { normalizeArticles } from "../services/normalizeService.js";
 import { classifyFinancialArticle, scoreFinancialImportance } from "../services/news/financialNewsService.js";
+import { sanitizeArticleContent } from '../services/news/newsContentSanitizer.js';
+import { physicalPages } from './sqlNewsCorpus.js';
 const hash=x=>createHash("sha256").update(JSON.stringify(x)).digest("hex");
 const wireSize=data=>{const p={ok:true,queriedAt:new Date().toISOString(),origin:"OGID",data,warnings:data.warnings,truncated:false};return Buffer.byteLength(JSON.stringify({structuredContent:p,content:[{type:"text",text:JSON.stringify(p)}]}));};
 
@@ -38,6 +40,8 @@ export class SqlNewsArchive extends NewsArchive {
     for(const alias of article.originalIds || [])this.db.prepare("INSERT OR IGNORE INTO article_aliases VALUES(?,?)").run(alias,article.id);
     if(previous?.revision===article.revision)return;
     this.db.prepare("INSERT OR IGNORE INTO article_revisions VALUES(?,?,?,?)").run(article.id,article.revision || 1,article.archiveLastSeenAt,JSON.stringify(article));
+    const excerpt=this.pendingExcerpts?.get(article.id);
+    if(excerpt!==undefined&&article.permittedExcerptHash)this.db.prepare('INSERT OR IGNORE INTO article_permitted_excerpts VALUES(?,?,?,?,?)').run(article.id,article.revision,article.permittedExcerptHash,excerpt,article.archiveLastSeenAt);
     for(const alias of article.originalIds || [])this.db.prepare("INSERT OR IGNORE INTO article_aliases VALUES(?,?)").run(alias,article.id);
     for(const table of ["article_instruments","article_countries","article_topics","article_sources"])this.db.prepare(`DELETE FROM ${table} WHERE article_id=?`).run(article.id);
     for(const i of listVerifiedInstruments()) {const reason=matchInstrument(article,i);if(reason){instrumentRow(this.db,i.instrumentId);this.db.prepare("INSERT INTO article_instruments VALUES(?,?,?)").run(article.id,i.instrumentId,JSON.stringify(reason));}}
@@ -51,6 +55,9 @@ export class SqlNewsArchive extends NewsArchive {
     // Facts, provenance and contexts have no automatic retention. Query snapshots are temporary.
     this.db.prepare("DELETE FROM news_query_snapshots WHERE expires_at<=?").run(this.now());
   }
+  // SQL retains historical facts. Counting the full archive after every small
+  // batch served only the legacy retention rule and stalled the writer on cold I/O.
+  shouldPruneAfterIngest(){return false;}
   ingest(values,options){
     // Preserve the existing classifiers' inputs at acquisition time without
     // storing restricted provider bodies. Old rows use permitted metadata until
@@ -63,7 +70,24 @@ export class SqlNewsArchive extends NewsArchive {
       return {...raw,countryMentions:[...new Set([...(raw.countryMentions || []),...normalized.countryMentions])],analysisFeatures:{methodVersion:"news-features-v1",sentiment:normalized.sentiment,conflict:normalized.conflict,financial:classified.financial}};
     });
     const before=Object.fromEntries(["revision","startedAt","lastIngestAt","capacityPrunedAt"].map(k=>[k,this[k]]));
-    try{return this.db.transaction(()=>super.ingest(enriched,options)).immediate();}catch(error){Object.assign(this,readMeta(this.db,"news.meta",before));throw error;}
+    this.pendingExcerpts=new Map();
+    try{return this.db.transaction(()=>super.ingest(enriched,options)).immediate();}catch(error){Object.assign(this,readMeta(this.db,"news.meta",before));throw error;}finally{this.pendingExcerpts=null;}
+  }
+  preparePermittedExcerpt(raw,record,previous){
+    if(!this.pendingExcerpts)return;
+    const policies=[record.usagePolicy,record.usagePolicy?.mode,record.usagePolicy?.contentPolicy,raw.provenance?.contentPolicy];
+    if(record.excerpt===null||policies.includes('headline-only-link-out'))return;
+    // Only the provider's permitted description/excerpt, never raw fullText,
+    // scraping, headers or provider bodies. Old search payloads remain compact.
+    let excerpt=sanitizeArticleContent({description:raw.description||raw.excerpt||''}).description;
+    if(!excerpt){if(previous?.permittedExcerptHash)record.permittedExcerptHash=previous.permittedExcerptHash;return;}
+    if(previous?.permittedExcerptHash&&excerpt.length>=100){
+      const prior=this.db.prepare('SELECT excerpt FROM article_permitted_excerpts WHERE article_id=? AND revision=?').get(previous.id,previous.revision);
+      const prefix=excerpt.replace(/\.{3}$/,'');
+      if(prior?.excerpt.length>excerpt.length&&prior.excerpt.startsWith(prefix))excerpt=prior.excerpt;
+    }
+    record.permittedExcerptHash=createHash('sha256').update(excerpt).digest('hex');
+    this.pendingExcerpts.set(record.id,excerpt);
   }
   recordContext(snapshot){return this.db.transaction(()=>super.recordContext(snapshot)).immediate();}
   getHistory({from,to}={}){
@@ -73,7 +97,15 @@ export class SqlNewsArchive extends NewsArchive {
   }
   coverage(filters={}){
     if(!this.db)return {};
-    const s=this.db.prepare("SELECT count(*) AS totalStored,min(published_at) AS oldest,max(published_at) AS newest,min(received_at) AS oldestReceivedAt,max(received_at) AS newestReceivedAt,sum(published_at IS NULL) AS unknownPublicationCount FROM articles").get();
+    // One consistent statement, each aggregate served by its covering date
+    // index. Combining reception/publication forces a scan of large payload rows.
+    const s=this.db.prepare(`SELECT
+      (SELECT records FROM storage_counts WHERE name='articles') AS totalStored,
+      (SELECT min(published_at) FROM articles) AS oldest,
+      (SELECT max(published_at) FROM articles) AS newest,
+      (SELECT min(received_at) FROM articles) AS oldestReceivedAt,
+      (SELECT max(received_at) FROM articles) AS newestReceivedAt,
+      (SELECT count(*) FROM articles WHERE published_at IS NULL) AS unknownPublicationCount`).get();
     const retainedSince=s.oldest || s.oldestReceivedAt || this.startedAt;
     return {...s,unknownPublicationCount:s.unknownPublicationCount || 0,retentionDays:null,retentionPolicy:"historical-facts-preserved; query-cursors-expire",startedAt:this.startedAt,retainedSince,lastIngestAt:this.lastIngestAt,requestedWindow:{from:filters.from || null,to:filters.to || null,timeField:filters.timeField || "publishedAt"},partial:!filters.from || Date.parse(filters.from)<Date.parse(retainedSince) || Boolean(this.capacityPrunedAt),acquisitionContinuity:"unknown",capacityPrunedAt:this.capacityPrunedAt,recoveryStatus:this.recoveryStatus,meaning:"collected permitted metadata; never all Internet news"};
   }
@@ -101,14 +133,19 @@ export class SqlNewsArchive extends NewsArchive {
       const predicates=['r.rowid<=?','NOT EXISTS (SELECT 1 FROM article_revisions newer WHERE newer.article_id=r.article_id AND newer.revision>r.revision AND newer.rowid<=?)'],args=[snapshot.upper,snapshot.upper];
       for(const [bound,op]of [['from','>='],['to','<=']])if(filters[bound]){predicates.push(`${column}${op}?`);args.push(filters[bound]);}
       // Sort only immutable row references, keeping payloads out of SQLite's temporary sorter.
-      const query=`SELECT r.rowid AS rowid FROM article_revisions r WHERE ${predicates.join(' AND ')} ORDER BY coalesce(${column},json_extract(r.payload_json,'$.receivedAt')) DESC,r.article_id ASC`;
+      // A bounded date window already excludes NULL dates; its expression
+      // index can sort references without opening every historical JSON body.
+      const order=filters.from || filters.to ? column : `coalesce(${column},json_extract(r.payload_json,'$.receivedAt'))`;
+      const windowIndex=({publishedAt:'article_revisions_window',receivedAt:'article_revisions_received_window',updatedAt:'article_revisions_updated_window',archiveChangedAt:'article_revisions_changed_window'})[field];
+      const indexed=filters.from || filters.to?` INDEXED BY ${windowIndex}`:'';
+      const query=`SELECT r.rowid AS rowid FROM article_revisions r${indexed} WHERE ${predicates.join(' AND ')} ORDER BY ${order} DESC,r.article_id ASC`;
       let matched=cursor?offset:0,full=false;
       // Later pages resolve the frozen references directly instead of scanning
       // and sorting the entire revision corpus again for every cursor.
-      const rows=cursor?snapshot.rows.slice(offset,offset+limit).map(rowid=>({rowid})):this.reader.prepare(query).iterate(...args);
+      const rows=cursor?snapshot.rows.slice(offset,offset+limit).map(rowid=>({rowid})):physicalPages(this.reader,'article_revisions',this.reader.prepare(query).iterate(...args));
       const payload=this.reader.prepare("SELECT payload_json FROM article_revisions WHERE rowid=?");
       for(const row of rows){
-        const article=JSON.parse(payload.get(row.rowid).payload_json),reasons=[];
+        const article=JSON.parse(row.payload_json || payload.get(row.rowid).payload_json),reasons=[];
         if(filters.countries?.length){const matches=(article.countryMentions || []).filter(c=>filters.countries.includes(c));if(!matches.length)continue;reasons.push(...matches.map(c=>({kind:'country',method:'country-tag-or-detection',evidence:c})));}
         if(snapshot.instruments.length){const matches=snapshot.instruments.map(i=>matchInstrument(article,i)).filter(Boolean);if(!matches.length)continue;reasons.push(...matches);}
         if(filters.q&&!`${article.title} ${article.excerpt || ''}`.toLowerCase().includes(filters.q.toLowerCase()))continue;

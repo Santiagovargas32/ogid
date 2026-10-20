@@ -11,6 +11,32 @@ import { createReadClient } from "../src/client.js";
 import { toolDefinitions, executeTool } from "../src/tools.js";
 import { zodSchema } from "../src/operations.js";
 const token = "fixture_" + "k".repeat(48);
+test("el MCP del analista limita schema y ejecución a evidencia congelada sin cambiar research general", async () => {
+  const config = loadConfig({ OGID_RESEARCH_SCOPE: "agent-evidence" });
+  let requests = 0;
+  const read = createReadClient(config, async () => {
+    requests++;
+    return new Response(JSON.stringify({ ok: true, data: { contractVersion: "1.5.0" } }), { headers: { "content-type": "application/json" } });
+  });
+  const tools = toolDefinitions(config, read);
+  assert.deepEqual(tools.map(t => t.name).sort(), ["ogid_get_capabilities", "ogid_health", "ogid_query"]);
+  const query = tools.find(t => t.name === "ogid_query");
+  assert.throws(() => query.schema.parse({ operationId: "market.quotes", parameters: {} }));
+  await assert.rejects(() => read.operation("market.quotes", {}), { code: "FORBIDDEN_REQUEST" });
+  await assert.rejects(() => query.run({ operationId: "market.watchlist", parameters: {} }), { code: "FORBIDDEN_REQUEST" });
+  assert.equal(requests, 0);
+  const caps = await tools.find(t => t.name === "ogid_get_capabilities").run({});
+  assert.ok(caps.data.operations.some(op => op.operationId === "agent.evidence"));
+  assert.ok(!caps.data.operations.some(op => op.operationId === "market.quotes"));
+  query.schema.parse({ operationId: "agent.evidence", parameters: { snapshotId: "snapshot" } });
+  assert.equal('pathParameters' in query.schema.shape,false);
+  assert.throws(()=>query.schema.parse({operationId:'agent.evidence',parameters:{snapshotId:'snapshot',domain:'news'},pathParameters:{id:'misplaced'}}));
+  const general=toolDefinitions(loadConfig({}),read).find(t=>t.name==='ogid_query');
+  assert.ok('pathParameters' in general.schema.shape);
+  assert.equal(toolDefinitions(loadConfig({}), read).length, 10);
+  assert.throws(() => loadConfig({ OGID_RESEARCH_SCOPE: "unknown" }));
+  assert.throws(() => loadConfig({ OGID_RESEARCH_SCOPE: "agent-evidence", OGID_PROFILE: "operator" }));
+});
 test("las velas de investigación no pueden activar Yahoo; el operador conserva su ruta autorizada", async () => {
   let requests = 0;
   const config = loadConfig({});

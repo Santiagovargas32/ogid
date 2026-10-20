@@ -90,7 +90,8 @@ export class NewsArchive {
         topics: [...new Set([...(previous?.topics || []), ...(article.topics || []), ...(article.topicTags || [])])],
         countryMentions: [...new Set([...(previous?.countryMentions || []), ...article.countryMentions])] };
       // La política más restrictiva prevalece entre duplicados del mismo artículo.
-      if (previous?.excerpt === null && (previous?.usagePolicy === "headline-only-link-out" || previous?.usagePolicy?.contentPolicy === "headline-only-link-out")) { record.excerpt = null; record.usagePolicy = previous.usagePolicy; }
+      if (previous?.excerpt === null && [previous?.usagePolicy,previous?.usagePolicy?.contentPolicy,previous?.usagePolicy?.mode].includes("headline-only-link-out")) { record.excerpt = null; record.usagePolicy = previous.usagePolicy; }
+      this.preparePermittedExcerpt?.(raw,record,previous);
       const semantic = value => pickSemantic(value);
       const changed = !previous || hash(semantic(record)) !== hash(semantic(previous));
       const contentChanged = !previous || hash(pickContent(record)) !== hash(pickContent(previous));
@@ -99,9 +100,10 @@ export class NewsArchive {
       if (changed) { record.revision++; this.revision++; }
       this.records.set(id, record); if (changed) collected.push(record); accepted++;
     }
-    this.lastIngestAt = now; if (this.records.size > this.maxItems) this.prune(); this.persist(); this.onIngest?.(collected);
+    this.lastIngestAt = now; if (this.shouldPruneAfterIngest()) this.prune(); this.persist(); this.onIngest?.(collected);
     return { accepted, revision: this.revision };
   }
+  shouldPruneAfterIngest() { return this.records.size > this.maxItems; }
   recordContext(snapshot) {
     const observedAt = new Date(this.now()).toISOString(); const bucket = observedAt.slice(0, 13);
     this.history.set(bucket, { bucket, observedAt, dataAsOf: snapshot.meta?.lastRefreshAt || null, quality: snapshot.meta?.dataQuality || {},
@@ -203,5 +205,5 @@ export class NewsArchive {
     return structuredClone(data);
   }
 }
-function pickContent(article) { return { title: article.title, excerpt: article.excerpt, publishedAt: article.publishedAt, updatedAt: article.updatedAt }; }
+function pickContent(article) { return { title: article.title, excerpt: article.excerpt, publishedAt: article.publishedAt, updatedAt: article.updatedAt,...(article.permittedExcerptHash?{permittedExcerptHash:article.permittedExcerptHash}:{}) }; }
 function pickSemantic(article) { return { ...pickContent(article), synthetic: article.synthetic, dataMode: article.dataMode, analysisFeatures: article.analysisFeatures, instrumentIds: article.instrumentIds, topics: article.topics, sectors: article.sectors, countryMentions: article.countryMentions, provenances: article.provenances?.map(p => ({ provider: p.provider, sourceId: p.sourceId, publisher: p.publisher, url: p.url })) }; }

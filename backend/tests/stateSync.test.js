@@ -3,6 +3,16 @@ import assert from 'node:assert/strict';
 import { StateSync } from '../websocket/stateSync.js';
 import { StateSynchronizer } from '../../frontend/js/stateSync.js';
 import { BoundedTransport } from '../websocket/boundedTransport.js';
+import stateManager from '../state/stateManager.js';
+
+test('analysis context keeps current quotes and omits historical market timeseries before cloning',()=>{
+ const original=stateManager.state.market;
+ try{
+  stateManager.state.market={quotes:{GD:{price:100}},revision:'fixture',timeseries:{GD:Array(10000).fill({price:100})}};
+  const context=stateManager.getAnalysisSnapshot();assert.equal(context.market.quotes.GD.price,100);assert.equal(context.market.revision,'fixture');assert.equal(context.market.timeseries,undefined);
+  assert.equal(stateManager.state.market.timeseries.GD.length,10000);
+ }finally{stateManager.state.market=original;}
+});
 
 for (const size of [100, 1_100_000, 11_000_000]) test(`HTTP synchronization preserves ${size} bytes with bounded frames`, async () => {
   const state={news:[{id:'original',text:'ñ🌎'.repeat(Math.ceil(size/6))}],meta:{revision:1}};

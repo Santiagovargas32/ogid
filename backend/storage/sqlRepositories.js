@@ -1,3 +1,4 @@
+import {PayloadCache,physicalPages} from "./sqlitePayloadPages.js";
 import { randomBytes } from "node:crypto";
 import { EventLedger } from "../services/research/eventLedger.js";
 import { MaterialAlertStore } from "../services/research/materialAlertStore.js";
@@ -88,6 +89,7 @@ export class SqlResearchStore {
 export class SqlCandleStore {
   constructor(db, { datasetId = "provider-yahoo", rootDir, enabled = true, readOnly = false } = {}) {
     Object.assign(this,{ db,datasetId,rootDir,enabled });
+    this.payloadCache=new PayloadCache(16*1024*1024);
     if(!readOnly)this.db.prepare("INSERT OR IGNORE INTO market_datasets VALUES(?,?,?,?)").run(datasetId,"provider-observed","mixed", "{}");
   }
   hydrate() { return 0; }
@@ -120,7 +122,8 @@ export class SqlCandleStore {
   query({instrumentId,interval="1day",adjustmentMode="splits",from=null,to=null,limit=100}={}) {
     const predicates=["instrument_id=?","interval=?","adjustment_mode=?","dataset_id=?"], args=[instrumentId,interval,adjustmentMode,this.datasetId];
     if(from){predicates.push("open_time>=?");args.push(new Date(from).toISOString());} if(to){predicates.push("open_time<=?");args.push(new Date(to).toISOString());}
-    return this.db.prepare(`SELECT payload_json FROM candles WHERE ${predicates.join(" AND ")} ORDER BY open_time DESC LIMIT ?`).all(...args,Math.min(10000,Math.max(1,Number(limit)||100))).reverse().map(r=>JSON.parse(r.payload_json));
+    const refs=this.db.prepare(`SELECT rowid,revision,fetched_at FROM candles INDEXED BY candles_payload_window WHERE ${predicates.join(" AND ")} ORDER BY open_time DESC LIMIT ?`).all(...args,Math.min(10000,Math.max(1,Number(limit)||100)));
+    return [...physicalPages(this.db,'candles',refs,this.payloadCache)].reverse().map(r=>JSON.parse(r.payload_json));
   }
   latest(instrumentId,adjustmentMode="splits",interval="1day") { return this.query({instrumentId,interval,adjustmentMode,limit:1}).at(-1)||null; }
 }
@@ -176,14 +179,19 @@ export class SqlAlertStore extends MaterialAlertStore {
 
 export class SqlEventLedger extends EventLedger {
   constructor(options) { super(options); }
-  search({instrumentIds=[],eventIds=[],from,to,limit=20}={}) {
+  search({instrumentIds=[],eventIds=[],from,to,limit=20,includeTotal=true}={}) {
     const db=this.store.db;
     if(instrumentIds.some(id=>!listVerifiedInstruments().some(i=>i.instrumentId===id)))throw new AppError("Instrumento no resuelto.",400,"UNRESOLVED_INSTRUMENT");
     const predicates=[],args=[];
-    for(const [values,column]of [[eventIds,"event_id"],[instrumentIds,"instrument_id"]])if(values.length){predicates.push(column==="event_id"?`event_id IN (${values.map(()=>"?").join(",")})`:`event_id IN (SELECT event_id FROM event_instruments WHERE instrument_id IN (${values.map(()=>"?").join(",")}))`);args.push(...values);}
+    for(const [values,column]of [[eventIds,"event_id"],[instrumentIds,"instrument_id"]])if(values.length){predicates.push(column==="event_id"?`event_id IN (${values.map(()=>"?").join(",")})`:`EXISTS (SELECT 1 FROM event_instruments ei WHERE ei.event_id=events.event_id AND ei.instrument_id IN (${values.map(()=>"?").join(",")}))`);args.push(...values);}
     if(from){predicates.push("observed_at>=?");args.push(from);}if(to){predicates.push("observed_at<=?");args.push(to);}
-    const where=predicates.length?`WHERE ${predicates.join(" AND ")}`:"",total=db.prepare(`SELECT count(*) AS n FROM events ${where}`).get(...args).n;
-    const rows=db.prepare(`SELECT payload_json FROM events ${where} ORDER BY observed_at DESC,event_id LIMIT ?`).all(...args,limit);
+    const where=predicates.length?`WHERE ${predicates.join(" AND ")}`:"";
+    // Narrow dates first, then probe membership by event ID. Building the
+    // complete instrument membership set defeats small incremental windows.
+    const index=instrumentIds.length && !eventIds.length && (from || to)?" INDEXED BY events_by_time":"";
+    const total=includeTotal?db.prepare(`SELECT count(*) AS n FROM events${index} ${where}`).get(...args).n:null;
+    const rows=db.prepare(`SELECT payload_json FROM events${index} ${where} ORDER BY observed_at DESC,event_id LIMIT ?`).all(...args,includeTotal?limit:limit+1);
+    const more=includeTotal?total>limit:rows.length>limit;if(!includeTotal && more)rows.pop();
     const events=rows.map(row=>{
       const e=JSON.parse(row.payload_json),verified=e.identityVersion==="source-publication-v2"&&e.quality?.identityVerified!==false;
       let impacts=db.prepare("SELECT instrument_id,impact_json FROM event_instruments WHERE event_id=? ORDER BY instrument_id").all(e.eventId).filter(r=>!instrumentIds.length||instrumentIds.includes(r.instrument_id)).map(r=>JSON.parse(r.impact_json));
@@ -191,7 +199,7 @@ export class SqlEventLedger extends EventLedger {
       const order=listVerifiedInstruments().map(i=>i.instrumentId);impacts.sort((a,b)=>order.indexOf(a.instrumentId)-order.indexOf(b.instrumentId));
       return {...e,quality:{...e.quality,identityVerified:verified,...(!verified?{identityReason:e.identityVersion!=="source-publication-v2"?"legacy_identity_requires_replay":"publication_identity_insufficient"}:{})},impacts};
     });
-    const coverage=db.prepare("SELECT count(*) AS storedEvents,sum(identity_version!='source-publication-v2') AS legacyRequiresReplay FROM events").get();
-    return {events,total,hasMore:total>limit,asOf:new Date(this.now()).toISOString(),snapshotId:`events-${this.store.state.revision}`,methodVersion:"event-ledger-v2",coverage:{...coverage,legacyRequiresReplay:coverage.legacyRequiresReplay || 0,continuity:"not-guaranteed",revisionHistoryLimit:20,evidenceLimit:50},warnings:["Legacy URL-based event IDs require replay from original sources; excluded from impacts, preserved for audit.","Republished wires are one origin; unknown provenance cannot establish corroboration.","A topic or named company does not establish benefit, contract award or price causality."]};
+    const coverage=includeTotal?db.prepare("SELECT count(*) AS storedEvents,sum(identity_version!='source-publication-v2') AS legacyRequiresReplay FROM events INDEXED BY events_by_identity").get():{totalsNotRequested:true};
+    return {events,total,hasMore:more,asOf:new Date(this.now()).toISOString(),snapshotId:`events-${this.store.state.revision}`,methodVersion:"event-ledger-v2",coverage:{...coverage,legacyRequiresReplay:coverage.legacyRequiresReplay || 0,continuity:"not-guaranteed",revisionHistoryLimit:20,evidenceLimit:50},warnings:["Legacy URL-based event IDs require replay from original sources; excluded from impacts, preserved for audit.","Republished wires are one origin; unknown provenance cannot establish corroboration.","A topic or named company does not establish benefit, contract award or price causality."]};
   }
 }

@@ -6,6 +6,25 @@ import { createReadClient } from "../src/client.js";
 import { toolDefinitions, executeTool } from "../src/tools.js";
 
 const config = loadConfig({});
+test('frozen evidence transport covers queue and read budgets without changing generic research limits',()=>{
+ assert.equal(config.timeoutMs,30000);
+ assert.equal(loadConfig({OGID_RESEARCH_SCOPE:'agent-evidence'}).timeoutMs,190000);
+ assert.throws(()=>loadConfig({OGID_TIMEOUT_MS:'190000'}));
+ assert.equal(loadConfig({OGID_RESEARCH_SCOPE:'agent-evidence',OGID_TIMEOUT_MS:'1000'}).timeoutMs,1000);
+});
+test('invalid cluster arguments return the operation contract without reflecting input',async()=>{
+ const read=createReadClient(config,async()=>{throw Error('must not fetch');});
+ await assert.rejects(read.operation('agent.clusters',{snapshotId:'fixture',domain:'PRIVATE'}),e=>e.code==='INVALID_ARGUMENTS' && e.message.includes('clusterId') && !e.message.includes('PRIVATE'));
+});
+test("missing frozen IDs retain typed recovery instructions without reflecting upstream text",async()=>{
+ for(const [code,operation,params,expected]of [
+  ['AGENT_EVIDENCE_NOT_FOUND','agent.evidence.chunk',{snapshotId:'snapshot-fixture',evidenceId:'invented'},'agent.evidence'],
+  ['AGENT_CLUSTER_NOT_FOUND','agent.clusters',{snapshotId:'snapshot-fixture',clusterId:'invented'},'agent.clusters']
+ ]){
+  const read=createReadClient(config,async()=>Response.json({error:{code,message:'PRIVATE',details:{apiKey:'PRIVATE'}}},{status:404}));
+  await assert.rejects(read.operation(operation,params),e=>e.code===code && e.message.includes(expected) && !e.message.includes('PRIVATE'));
+ }
+});
 function snapshot(mode = "visible") {
   return { schemaVersion: "awareness-v1", mode, revision: 7, generatedAt: new Date().toISOString(),
     upcoming: [], recent: [], quality: { total: 0 }, sourceStatus: mode === "visible" ? [{ sourceId: "awareness-bea-schedule", admissionState: "active", status: "healthy", lastSuccessAt: new Date().toISOString(), lastDiagnostic: { token: "DO_NOT_LEAK" }, window7d: { attempts: 3, token: "DO_NOT_LEAK" } }] : [] };

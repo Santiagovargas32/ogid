@@ -1,0 +1,5 @@
+[
+  "ogid_read_ogid_query",
+  "ogid_read_ogid_get_capabilities",
+  "ogid_read_ogid_health"
+]

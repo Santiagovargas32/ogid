@@ -22,13 +22,14 @@ function inferCycleFromScope(scope = "", message = "") {
   if (normalizedScope.includes("news") || normalizedMessage.includes("news_") || normalizedScope.includes("rssprovider")) {
     return "news";
   }
-  if (normalizedScope.includes("market") || normalizedMessage.includes("market_")) {
+  if (normalizedScope.includes("market") || normalizedMessage.includes("market_") || normalizedMessage.includes("candle_cycle")) {
     return "market";
   }
   return "system";
 }
 
 function inferProviderFromLog(entry = {}) {
+  if(/^STORAGE_/.test(String(entry.code || entry.errorCode || entry.errorMessage || "")))return "storage";
   if (entry.provider) {
     return entry.provider;
   }

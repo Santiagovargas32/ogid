@@ -167,19 +167,6 @@ export const RUNTIME_POLICY = freeze({
     yahooDailyLimit: null,
     yahooDailyBudget: null
   },
-  media: {
-    refreshIntervalMs: 300000,
-    timeoutMs: 8000,
-    youtube: {
-      searchDailyBudget: 100,
-      searchReserve: 40,
-      resolveConcurrency: 2,
-      streamResolvePolicy: "lazy",
-      criticalRefreshHours: 6,
-      normalRefreshHours: 12,
-      lazyRefreshHours: 24
-    }
-  },
   research: {
     sec: {
       tickMs: 60000,
@@ -202,17 +189,28 @@ export const RUNTIME_POLICY = freeze({
     maxCommandBytes: 8388608,
     timeoutMs: 30000,
     queueTimeoutMs: 90000,
-    startupTimeoutMs: 30000,
+    startupTimeoutMs: 300000,
     shutdownTimeoutMs: 300000,
     busyTimeoutMs: 2000,
     providerTimeoutMs: 280000,
+    diagnosticsIntervalMs: 300000,
     maintenanceTimeoutMs: 300000,
     commandTimeouts: {
+      "agent.snapshot": 300000,
+      "agent.read": 90000,
+      "domain.call:market:analyze": 90000,
+      "domain.call:awareness:getSnapshot": 90000,
+      "scenarios.prepare": 90000,
       "rss.fetch": 90000,
       "news.collect": 180000,
       "news.supplemental": 180000,
-      "domain.configure": 90000,
+      "domain.configure": 300000,
       "domain.call:news:getProjection": 90000,
+      "domain.call:conditions:getSnapshot": 90000,
+      "domain.call:technical:get": 90000,
+      "domain.call:portfolio:getContext": 90000,
+      "domain.call:events:search": 90000,
+      "domain.call:forecasts:evaluate": 90000,
       "domain.call:indicators:calculate": 90000,
       "domain.call:advanced:getSnapshot": 180000,
       "domain.call:map:getLayerBundle": 180000,

@@ -7,7 +7,7 @@ import { resolveMarketQuotesPollDelayMs } from "./marketPolling.js";
 import { renderMarketExplanationHistory } from "./aiMarketHistory.js";
 import { getLevelColor } from "./levelColors.js";
 import { DEFAULT_LIVE_NEWS_LIMIT, resolveLiveNewsLimit, filterNews, newsIdentity, newsContentRevision, NewsSelectionTracker } from "./newsFeedModel.js";
-import { mountSituationalWorkspace } from "./media/situationalWorkspace.js";
+import { mountAgentIntelligence } from "./agentIntelligence.js";
 import { startAdvancedIntelligence } from "./intelligence/advancedIntelligence.js";
 import { mountAwarenessCenter } from "./awareness.js";
 import {
@@ -1915,10 +1915,6 @@ function mountWebSocket() {
         scheduleMarketConditionsRefresh();
         return;
       }
-      if (message.type === "media:streams:updated") {
-        window.dispatchEvent(new CustomEvent("media:streams:updated", { detail: message.data || {} }));
-        return;
-      }
       if (message.type === "error") {
         console.error("Realtime update error:", message.data);
       }
@@ -1960,7 +1956,7 @@ async function bootstrap() {
   initNewsDrawer();
   bindNewsControls();
   renderMarketConditionsWindowSelector();
-  teardownHandlers.push(mountSituationalWorkspace({ api }));
+  teardownHandlers.push(mountAgentIntelligence());
   advancedIntelligenceController = startAdvancedIntelligence({ api, getCountries: selectedCountryQueryValue });
   teardownHandlers.push(() => advancedIntelligenceController?.stop());
   awarenessController = mountAwarenessCenter({ api });

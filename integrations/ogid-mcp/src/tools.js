@@ -156,7 +156,9 @@ export function toolDefinitions(config, read) {
       }
     }
     , ...extendedToolDefinitions(config, read)
-  ].map(t => ({ ...t, annotations: t.annotations || ANNOTATIONS }));
+  ].filter(t => config.researchScope !== "agent-evidence" ||
+    ["ogid_query", "ogid_get_capabilities", "ogid_health"].includes(t.name))
+    .map(t => ({ ...t, annotations: t.annotations || ANNOTATIONS }));
 }
 
 export async function executeTool(tool, input, config) {

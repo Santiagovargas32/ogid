@@ -3,6 +3,7 @@ import { readBoundedBody } from "../shared/boundedResponse.js";
 import { ProviderError, ProviderErrorCode, errorFromResponse } from "./providerErrors.js";
 import apiQuotaTracker from "../admin/apiQuotaTrackerService.js";
 import { setTimeout as delay } from "node:timers/promises";
+import { operationContext } from "../shared/operationContext.js";
 
 export class ProviderRuntime {
   constructor(options = {}) {
@@ -33,6 +34,8 @@ export class ProviderRuntime {
     if (circuit.state === "open") circuit.state = "half-open";
   }
   async fetch(provider, url, options = {}) {
+    const operationSignal=operationContext.getStore()?.signal;
+    if(operationSignal){operationSignal.throwIfAborted();options={...options,signal:options.signal?AbortSignal.any([options.signal,operationSignal]):operationSignal};}
     const idempotent = options.idempotent ?? ["GET", "HEAD"].includes(String(options.method || "GET").toUpperCase());
     const key = options.dedupeKey || (idempotent ? `${provider}:${String(options.method || "GET")}:${url}` : null);
     if (key && this.inFlight.has(key)) { this.metric(provider).deduplicated += 1; return this.inFlight.get(key); }
@@ -75,6 +78,9 @@ export class ProviderRuntime {
           }
           this.circuits.set(circuitKey, { state: "closed", failures: 0, openedAt: null }); metric.success += 1; metric.results[response.status] = (metric.results[response.status] || 0) + 1; return response;
         } catch (error) {
+          // An internal workflow cancellation says nothing about source health.
+          const workflowSignal=operationContext.getStore()?.signal;
+          if(workflowSignal?.aborted)throw workflowSignal.reason;
           let normalized = error;
           if (!(error instanceof ProviderError)) normalized = new ProviderError(["AbortError", "TimeoutError"].includes(error?.name) ? ProviderErrorCode.TIMEOUT : ProviderErrorCode.NETWORK, `${provider}-${["AbortError", "TimeoutError"].includes(error?.name) ? "timeout" : "network-error"}`, { provider, cause: error, retryable: true });
           if (!options.signal?.aborted && attempt < retries && normalized.retryable) { metric.retries += 1; const base = normalized.retryAfterMs ?? Math.min(5_000, 250 * (2 ** attempt)); await this.sleep(Math.max(normalized.retryAfterMs || 0,Math.ceil(base * (0.8 + this.random() * 0.4))),options.signal); continue; }

@@ -15,10 +15,18 @@ const terminal=new Set(["invalidated","expired"]);
 function compactContext(c){return {snapshotId:c.snapshotId,seriesRevision:c.seriesRevision,lastClosedCandleAt:c.lastClosedCandleAt,sampleSize:c.sampleSize,observed:c.observed,levels:c.indicators.levels,atr:c.indicators.atr14Wilder,relativeVolume:c.indicators.relativeVolume,relativeReturn:c.indicators.relativeReturn,benchmarkInstrumentId:c.benchmarkInstrumentId,quality:c.quality};}
 export class ScenarioService {
   constructor({alerts,technicalContext,eventLedger,candleStore,now=Date.now,policy={}}={}){Object.assign(this,{alerts,technicalContext,eventLedger,candleStore,now});this.policy={...SIGNAL_POLICY,...policy};for(const key of ["breakoutAtr","anomalyAtr","relativeVolume","hysteresis","cooldownMs","expiryMs"])if(typeof this.policy[key]!=="number"||!Number.isFinite(this.policy[key])||this.policy[key]<=0)throw new Error("invalid-signal-policy");if(this.policy.hysteresis>=1)throw new Error("invalid-signal-hysteresis");}
-  refresh({instrumentIds=[]}={}) {
+  prepare({instrumentIds=[]}={}) {
     if(instrumentIds.length>50)throw new AppError("Universo demasiado grande.",400,"INVALID_INSTRUMENTS");
     const contexts=instrumentIds.map(id=>{if(!getInstrumentById(id))throw new AppError("Instrumento no verificado.",400,"UNRESOLVED_INSTRUMENT");return this.technicalContext.get({instrumentId:id,benchmarkInstrumentId:this.policy.benchmarkInstrumentId});});
     const at=new Date(this.now()).toISOString();
+    return {at,contexts:contexts.map(ctx=>{
+      const evidence=this.eventLedger.search({instrumentIds:[ctx.instrumentId],from:new Date(this.now()-7*86400000).toISOString(),limit:10,includeTotal:false}).events.map(e=>({eventId:e.eventId,claimId:e.claimId,revision:e.revision,claimStatus:e.claimStatus,mechanisms:e.impacts.flatMap(i=>i.mechanisms),evidenceIds:e.evidence.map(a=>a.id)}));
+      const bars=this.candleStore.query({instrumentId:ctx.instrumentId,interval:"1day",adjustmentMode:"splits",limit:5}).filter(c=>Date.parse(c.closeTime)<=Date.parse(ctx.lastClosedCandleAt)).slice(-2);
+      return {ctx,evidence,bars};
+    })};
+  }
+  refresh(options={}) { return this.applyPrepared(this.prepare(options)); }
+  applyPrepared({at,contexts}) {
     return this.alerts.researchTransaction(state=>{
       let changes=0;
       for(const signal of Object.values(state.signals))if(signal.active&&signal.type==="event-review-candidate"&&this.eventLedger.isIdentityVerified&&!this.eventLedger.isIdentityVerified(signal.evidence?.eventId)){
@@ -26,9 +34,8 @@ export class ScenarioService {
         this.alerts.appendChange(state,{kind:"signal-transition",entityId:signal.signalId,revision:signal.revision,snapshot:signal,reason:"event-identity-requires-replay"});changes++;
       }
       for(const scenario of Object.values(state.scenarios))if(!terminal.has(scenario.status)&&Date.parse(scenario.expiresAt)<=this.now()){scenario.status="expired";scenario.updatedAt=at;scenario.revision++;this.alerts.appendChange(state,{kind:"scenario-transition",entityId:scenario.scenarioId,revision:scenario.revision,snapshot:scenario,reason:"horizon-expired"});changes++;}
-      for(const ctx of contexts) {
+      for(const {ctx,evidence,bars} of contexts) {
         const valid=!ctx.quality.reason&&!ctx.quality.stale&&ctx.indicators.levels.value&&ctx.indicators.atr14Wilder.value>0&&typeof ctx.observed?.close==="number";
-        const evidence=this.eventLedger.search({instrumentIds:[ctx.instrumentId],from:new Date(this.now()-7*86400000).toISOString(),limit:10}).events.map(e=>({eventId:e.eventId,claimId:e.claimId,revision:e.revision,claimStatus:e.claimStatus,mechanisms:e.impacts.flatMap(i=>i.mechanisms),evidenceIds:e.evidence.map(a=>a.id)}));
         const date=new Date(this.now());const weekday=(date.getUTCDay()+6)%7;date.setUTCDate(date.getUTCDate()-weekday);const cycle=date.toISOString().slice(0,10);
         for(const role of roles) {
           const id=`scenario-${stableHash([ctx.instrumentId,role,cycle]).slice(0,36)}`;const previous=state.scenarios[id];
@@ -50,7 +57,7 @@ export class ScenarioService {
           state.scenarios[id]=row;this.alerts.appendChange(state,{kind:!previous||previous.status!==row.status?"scenario-transition":"scenario-revision",entityId:id,revision:row.revision,snapshot:row,reason:correction?"data-correction":!valid?"pending-usable-data":"closed-candle-observation"});changes++;
         }
         // Return/gap anomalies preserve unknown cause; no keyword-based causal claim.
-        const bars=this.candleStore.query({instrumentId:ctx.instrumentId,interval:"1day",adjustmentMode:"splits",limit:5}).filter(c=>Date.parse(c.closeTime)<=Date.parse(ctx.lastClosedCandleAt)).slice(-2);const last=bars.at(-1),prior=bars.at(-2);const atr=ctx.indicators.atr14Wilder.value;
+        const last=bars.at(-1),prior=bars.at(-2);const atr=ctx.indicators.atr14Wilder.value;
         const metrics={"return-anomaly":valid&&prior&&last?Math.abs(last.close-prior.close)/atr:null,"gap-anomaly":valid&&prior&&last?Math.abs(last.open-prior.close)/atr:null,"volume-anomaly":valid?ctx.indicators.relativeVolume.value:null,"relative-return-anomaly":valid&&ctx.indicators.relativeReturn?.value!=null?Math.abs(ctx.indicators.relativeReturn.value)/(atr/ctx.observed.close):null};
         for(const [type,metric]of Object.entries(metrics)){
           const id=`signal-${stableHash([ctx.instrumentId,type]).slice(0,36)}`;const previous=state.signals[id];const threshold=type==="volume-anomaly"?this.policy.relativeVolume:this.policy.anomalyAtr;

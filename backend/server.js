@@ -31,7 +31,13 @@ import { MarketDataService, MarketDataStoreAdapter, YahooClient } from "./servic
 import { SlidingWindowRateLimiter } from "./services/marketData/rateLimit.js";
 import { resolveVerifiedInstrumentReferences, listVerifiedInstruments } from "./services/market/instrumentRegistry.js";
 import { calculateMinimumSafeIntervalMs, MarketCreditScheduler, TWELVE_BASIC_POLICY } from "./services/market/marketCreditScheduler.js";
-import MediaStreamService from "./services/media/mediaStreamService.js";
+import RetiredMediaService from "./services/agent/retiredMedia.js";
+import agentRoutes from "./routes/agentRoutes.js";
+import { loadAgentConfig, readyModel } from "./services/agent/config.js";
+import { OpenCodeClient } from "./services/agent/opencodeClient.js";
+import { AgentModelSelection } from "./services/agent/modelSelection.js";
+import { prepareManagedAgentConfig, ManagedAgentRuntime } from "./services/agent/managedRuntime.js";
+import { AgentMaintenance } from "./services/agent/maintenance.js";
 import { createSocketServer } from "./websocket/socketServer.js";
 import { errorHandler, notFoundHandler } from "./utils/error.js";
 import { createLogger, requestLogger } from "./utils/logger.js";
@@ -269,13 +275,13 @@ export function readConfig(overrides = {}) {
     reasoningModel: process.env.LLAMACPP_MODEL_REASONING || process.env.LLAMACPP_MODEL_SUMMARY || "",
     jsonMode: POLICY.ai.jsonMode,
     allowPrivateHttp: toBool(process.env.LLAMACPP_ALLOW_PRIVATE_HTTP, false)
-  } : {
+  } : aiProvider === "nvidia" ? {
     baseUrl: process.env.NVIDIA_BASE_URL || "https://integrate.api.nvidia.com/v1",
     apiKey: process.env.NVIDIA_API_KEY || "",
     structuredOutputMode: POLICY.ai.structuredOutputMode,
     summaryModel: process.env.NVIDIA_MODEL_SUMMARY || "",
     reasoningModel: process.env.NVIDIA_MODEL_REASONING || process.env.NVIDIA_MODEL_SUMMARY || ""
-  };
+  } : {baseUrl:"",apiKey:"",summaryModel:"",reasoningModel:""};
   const newsOverrides = overrides.news || {};
   const watchlistCountries = [...POLICY.watchlistCountries];
   const newsProviders = toList(process.env.NEWS_PROVIDERS, ["rss"]).map(provider=>provider.toLowerCase());
@@ -361,10 +367,7 @@ export function readConfig(overrides = {}) {
       twelveMinuteLimit: marketCreditPolicy.declaredMinuteLimit,
       twelveMinuteBudget: marketCreditPolicy.absoluteMinuteLimit
     },
-    media: {
-      ...POLICY.media,
-      youtube: {...POLICY.media.youtube,apiKey:process.env.YOUTUBE_API_KEY || ""}
-    },
+    media: {status:'retired'},
     security: {
       adminApiToken: process.env.ADMIN_API_TOKEN || "",
       allowLocalAdmin: toBool(process.env.ALLOW_LOCAL_ADMIN, true),
@@ -440,14 +443,7 @@ export function readConfig(overrides = {}) {
       ...config.apiLimits,
       ...(overrides.apiLimits || {})
     },
-    media: {
-      ...config.media,
-      ...(overrides.media || {}),
-      youtube: {
-        ...config.media.youtube,
-        ...(overrides.media?.youtube || {})
-      }
-    },
+    media: {status:'retired'},
     security: {
       ...config.security,
       ...(overrides.security || {})
@@ -519,6 +515,12 @@ export function readConfig(overrides = {}) {
 
 export function createAppServer(overrides = {}) {
   const config = readConfig(overrides);
+  let agentConfig;
+  try{agentConfig=prepareManagedAgentConfig(loadAgentConfig(process.env,overrides.agent || {}));}catch{
+    agentConfig=loadAgentConfig({}, {mode:'off',health:{state:'degraded',errorCode:'AGENT_CONFIGURATION_UNAVAILABLE'}});
+    log.warn('agent_configuration_unavailable',{code:'AGENT_CONFIGURATION_UNAVAILABLE'});
+  }
+  if((agentConfig.mode !== 'off'||agentConfig.health?.state==='degraded') && config.ai.provider === 'llamacpp')config.ai.mode='off';
   const storageManager = overrides.storageManager || new StorageManager(overrides.storage);
 
   const frontendPath = path.resolve(__dirname, "../frontend");
@@ -537,7 +539,7 @@ export function createAppServer(overrides = {}) {
           styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://unpkg.com"],
           imgSrc: ["'self'", "data:", "blob:", "https:"],
           connectSrc: ["'self'", "ws:", "wss:"],
-          frameSrc: ["'self'", "https://www.youtube.com", "https://www.youtube-nocookie.com"],
+          frameSrc: ["'self'"],
           objectSrc: ["'none'"],
           baseUri: ["'self'"],
           frameAncestors: ["'self'"],
@@ -548,7 +550,12 @@ export function createAppServer(overrides = {}) {
   );
   app.use(express.json({ limit: "1mb" }));
   app.use(requestLogger);
+  app.use((req,res,next)=>{
+    if(app.locals.initializing && req.path.startsWith("/api/") && !["/api/health","/api/health/live","/api/health/ready"].includes(req.path))return res.status(503).json({ok:false,error:{code:"BACKEND_INITIALIZING",message:"Inicializando almacenamiento y pipelines; consultar /api/health/ready."}});
+    next();
+  });
   app.use(mcpOperatorAuth);
+  app.use("/api", agentRoutes);
   app.use(sensitiveRouteAuth);
 
   app.use(express.static(frontendPath, { index: "index.html" }));
@@ -654,8 +661,9 @@ export function createAppServer(overrides = {}) {
   const secSourceAgent=new SecSourceAgent({service:officialSourceService,
     instruments:()=>marketWatchlistService.selectedInstruments(),userAgent:process.env.RESEARCH_SEC_USER_AGENT || "",monitor});
   storageManager.on("stage",(id,stage)=>monitor.update(id,stage));
+  storageManager.on("stage",(id,stage)=>{if(id==="storage" && stage.reason?.startsWith("configure."))log.info("storage_initializing",{stage:stage.reason});});
   const researchGuard=async(component,work)=>{
-    try{const result=await monitor.run(`research.${component}`,work);const pendingReplay=Boolean(researchPipeline[component]?.pendingReplay);researchPipeline[component]={...monitor.snapshot()[`research.${component}`],status:pendingReplay?"partial":"completed",pendingReplay};return result;}
+    try{const result=await monitor.run(`research.${component}`,work);const pendingReplay=component==="scenarios"?false:Boolean(researchPipeline[component]?.pendingReplay);researchPipeline[component]={...monitor.snapshot()[`research.${component}`],status:pendingReplay?"partial":"completed",pendingReplay};return result;}
     catch(error){researchPipeline[component]={...monitor.snapshot()[`research.${component}`],failureCode:error.code || "RESEARCH_PIPELINE_ERROR",pendingReplay:true};log.warn("research_pipeline_blocked",{component,code:error.code || "RESEARCH_PIPELINE_ERROR"});return null;}
   };
   if (!business) newsArchive.onIngest = items => researchGuard("archiveEvents",()=>{for(let offset=0;offset<items.length;offset+=500)eventLedger.ingest(items.slice(offset,offset+500));});
@@ -705,13 +713,7 @@ export function createAppServer(overrides = {}) {
     snapshotFile: config.market?.snapshotFile,
     tickers: config.market?.tickers || []
   });
-  const mediaStreamService = new MediaStreamService({
-    refreshIntervalMs: config.media?.refreshIntervalMs,
-    timeoutMs: config.media?.timeoutMs,
-    youtubeApiKey: config.media?.youtube?.apiKey,
-    youtube: config.media?.youtube,
-    resolveConcurrency: config.media?.youtube?.resolveConcurrency
-  });
+  const mediaStreamService = new RetiredMediaService();
   const dailyCandleService = new DailyCandleService({ store: dailyCandleStore, marketConfig: config.market });
   const intradayCandleService = new IntradayCandleService({ store: dailyCandleStore, marketConfig: config.market });
   const technicalIndicatorService = business?.indicators || new TechnicalIndicatorService({ store: dailyCandleStore });
@@ -843,6 +845,17 @@ export function createAppServer(overrides = {}) {
   app.locals.technicalIndicatorService = technicalIndicatorService;
   app.locals.newsPriceCouplingService = newsPriceCouplingService;
   app.locals.storageManager = storageManager;
+  app.locals.agentConfig = agentConfig;
+  app.locals.agentRuntime = new ManagedAgentRuntime({config:agentConfig,logger:log});
+  app.locals.agentProgress = new Map();
+  app.locals.agentCall = (method,args={}) => {
+    if(storageManager.state === 'disabled' && method === 'publications')return Promise.resolve({items:[],hasMore:false,nextCursor:null,status:'unavailable'});
+    return storageManager.request("agent.call",{method,args});
+  };
+  app.locals.agentModels=new AgentModelSelection({config:agentConfig,call:app.locals.agentCall,opencode:new OpenCodeClient({baseUrl:agentConfig.opencodeUrl,password:agentConfig.opencodePassword})});
+  app.locals.agentMaintenance = new AgentMaintenance({call:app.locals.agentCall,business,
+    instruments:()=>marketWatchlistService.selectedInstrumentIds,
+    enabled:Boolean(business && app.locals.agentConfig.mode !== "off")});
   app.locals.business = business;
   app.locals.marketWatchlistService = marketWatchlistService;
   app.locals.marketDataService = marketDataService;
@@ -878,6 +891,9 @@ export function createAppServer(overrides = {}) {
       if (startTask) return startTask;
       startTask = (async () => {
       const startupAt = performance.now();
+      app.locals.initializing=true;
+      await new Promise((resolve,reject)=>{server.once("error",reject);server.listen(config.port,config.host,()=>{server.removeListener("error",reject);resolve();});});
+      log.info("http_listening",{port:server.address().port,ready:false});
       await storageManager.start();
       if (storageManager.state === "ready") {
         const now = new Date().toISOString();
@@ -894,6 +910,13 @@ export function createAppServer(overrides = {}) {
         await newsArchive.coverage();
         await pipelinePersistence.hydrate({awarenessStore,aiStore,aiBudget,marketHistoryStore,quotaTracker:apiQuotaTracker});
         aiCoordinator.syncProjection();
+      }
+      if(business){
+        const control=await app.locals.agentCall('control');app.locals.agentPaused=control.paused;
+        if(control.backgroundModel){
+          if(readyModel(agentConfig.manifest.models.find(m=>`llamacpp/${m.alias}`===control.backgroundModel)))agentConfig.backgroundModel=control.backgroundModel;
+          else app.locals.agentModelWarning='AGENT_SAVED_MODEL_UNVERIFIED';
+        }
       }
       const hydratedWatchlist = await marketWatchlistService.hydrate();
       if(business)await storageManager.request("domain.registry",{instruments:listVerifiedInstruments()});
@@ -913,13 +936,7 @@ export function createAppServer(overrides = {}) {
         await storageManager.request("storage.status");
         await storageManager.analysisManager?.request("storage.status");
       }
-      await new Promise((resolve, reject) => {
-        server.once("error", reject);
-        server.listen(config.port, config.host, () => {
-          server.removeListener("error", reject);
-          resolve();
-        });
-      });
+      app.locals.initializing=false;
       runtimeMetrics.start(performance.now() - startupAt);
       const aiStatus = aiCoordinator.getAdminSnapshot();
       log.info("api_config_status", {
@@ -946,12 +963,6 @@ export function createAppServer(overrides = {}) {
         marketActiveIntervalMs: config.market.activeIntervalMs,
         marketOffHoursIntervalMs: config.market.offHoursIntervalMs,
         manualRefresh: config.manualRefresh,
-        mediaRefreshIntervalMs: config.media?.refreshIntervalMs,
-        mediaTimeoutMs: config.media?.timeoutMs,
-        youtubeApiKeyConfigured: isRealKey(config.media?.youtube?.apiKey),
-        youtubeSearchDailyBudget: config.media?.youtube?.searchDailyBudget,
-        youtubeSearchReserve: config.media?.youtube?.searchReserve,
-        youtubeResolveConcurrency: config.media?.youtube?.resolveConcurrency,
         aiProvider: config.ai?.provider,
         aiActiveProvider: aiProvider.name,
         aiMode: config.ai?.mode,
@@ -970,9 +981,10 @@ export function createAppServer(overrides = {}) {
         void awarenessService.start().catch((error) => log.warn("awareness_start_failed", { message: error.message }));
         orchestrator.start();
         void secSourceAgent.start();
-        mediaStreamService.start();
+        app.locals.agentMaintenance.start();
       }
       log.info("server_started", { port: server.address().port, refreshIntervalMs: config.news.intervalMs });
+      void app.locals.agentRuntime.start(`http://127.0.0.1:${server.address().port}`);
       })();
       return startTask;
     },
@@ -983,6 +995,8 @@ export function createAppServer(overrides = {}) {
       const drain=async work=>{try{await work();}catch(error){failures.push(error);}};
       try {
       runtimeMetrics.stop();
+      await drain(()=>app.locals.agentRuntime.stop());
+      await drain(()=>app.locals.agentMaintenance.stop());
       // Stop accepting HTTP/upgrade work before draining owners of background jobs.
       const httpStopped = new Promise((resolve,reject) => {
         if (!server.listening) return resolve();
@@ -1036,13 +1050,19 @@ export async function run(overrides = {}) {
 
   runtime.storageManager.on("failed", (error) => {
     const status=runtime.storageManager.getStatus();
-    const worker=error.diagnostic?.worker === "analysis" ? status.analysis?.worker : status.worker;
+      const worker=error.diagnostic?.worker === "analysis" ? status.analysis?.worker : error.diagnostic?.worker === "queries" ? status.queries?.worker : status.worker;
     log.error("storage_worker_failed", { code: error.code,command:error.diagnostic,worker:worker?.lastCompletedCommand,news:worker?.news });
+    if(["analysis","queries"].includes(error.diagnostic?.worker) && runtime.app.locals.runtimeMetrics.ready){
+      void runtime.storageManager.recoverReader(error.diagnostic.worker).catch(reason=>log.warn("analysis_recovery_failed",{code:reason.code || "STORAGE_ANALYSIS_RECOVERY_FAILED"}));
+      return;
+    }
     if (runtime.server.listening) void shutdown("storage-worker-failed", 1);
   });
+  runtime.storageManager.on("analysis-recovered",event=>log.info("analysis_worker_recovered",event));
 
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGHUP", () => shutdown("SIGHUP"));
   const fatal = (event, error) => {
     log.error("fatal_runtime_error", { event, name:error?.name || "Error", message:error?.message || "Unhandled runtime failure" });
     void shutdown(event, 1);

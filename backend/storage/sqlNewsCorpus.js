@@ -1,3 +1,5 @@
+import {PayloadCache,physicalPages} from "./sqlitePayloadPages.js";
+export {physicalPages} from "./sqlitePayloadPages.js";
 import { compareNews } from "../utils/newsOrder.js";
 import { publicationDate, articleIdentity } from "../services/news/articleIdentity.js";
 import { dateTimeFormatter } from "../utils/dateTimeFormat.js";
@@ -14,6 +16,9 @@ import { readMeta } from "./sqlRepositories.js";
 const HOUR = 3600000;
 const positive = (value, fallback, max = 10000) => Math.min(max, Math.max(1, Number(value) || fallback));
 
+// Retain bounded, versioned payloads across read transactions. Model loading can
+// evict the OS file cache; unchanged archive rows must not require another cold
+// HDD traversal on every minute or small acquisition revision.
 export function newsDayStart(now, timeZone = "Europe/Madrid") {
   const parts = dateTimeFormatter("en-GB", { timeZone, year:"numeric", month:"2-digit", day:"2-digit" }).formatToParts(new Date(now));
   const date = Object.fromEntries(parts.map(part => [part.type, part.value]));
@@ -38,7 +43,10 @@ export class SqlNewsCorpus {
     this.config = config;
     this.cache = new Map();
     this.inFlight = new Map();
+    this.payloadCache=new PayloadCache(config.payloadCacheBytes ?? 64*1024*1024);
   }
+
+  close(){this.payloadCache.clear();this.cache.clear();}
 
   async read({ now = this.archive.now(), windowHours = this.config.candidateWindowHours || 36, countries = this.config.watchlistCountries || [], sources = [], awarenessMode = "off" } = {}) {
     const hours = positive(windowHours, 36, 336);
@@ -93,7 +101,8 @@ export class SqlNewsCorpus {
       };
       // Publication index bounds the scan. No pagination snapshots, full archive
       // hydration, or synchronous writes are created by this read.
-      for (const row of reader.prepare("SELECT payload_json FROM articles WHERE published_at>=? AND published_at<=? ORDER BY published_at DESC,article_id DESC").iterate(from, asOf)) {
+      const references=reader.prepare("SELECT rowid,revision,last_seen_at FROM articles INDEXED BY articles_projection_window WHERE published_at>=? AND published_at<=? ORDER BY published_at DESC,article_id DESC").all(from,asOf);
+      for (const row of physicalPages(reader,'articles',references,this.payloadCache)) {
         scanned++;
         const stored = JSON.parse(row.payload_json);
         if (!stored.title?.trim() || !stored.url || stored.synthetic || ["synthetic","fallback","seeded"].includes(stored.dataMode) || stored.provenance?.synthetic) continue;
@@ -149,21 +158,26 @@ export class SqlNewsCorpus {
       revision=readMeta(reader,'news.meta',{}).revision || 0;
       revisionWatermark ??= reader.prepare('SELECT coalesce(max(rowid),0) AS n FROM article_revisions').get().n;
       const rollout=reader.prepare('SELECT applied_at FROM schema_migrations WHERE version=9').get()?.applied_at || asOf;
-      excluded=reader.prepare(`SELECT coalesce(sum(json_extract(r.payload_json,'$.publishedAt') IS NULL),0) AS unknownPublicationCount,
-        coalesce(sum(json_extract(r.payload_json,'$.publishedAt')>?),0) AS futurePublicationCount FROM article_revisions r
-        WHERE r.rowid<=? AND r.observed_at<=? AND NOT EXISTS (SELECT 1 FROM article_revisions newer
-          WHERE newer.article_id=r.article_id AND newer.observed_at<=? AND newer.rowid<=? AND newer.revision>r.revision)`)
-        .get(asOf,revisionWatermark,asOf,asOf,revisionWatermark);
+      // Bound each exclusion by the existing publication index. A conditional
+      // SUM over every revision reads the whole historical JSON corpus on boot.
+      const available=`r.rowid<=? AND r.observed_at<=? AND NOT EXISTS (SELECT 1 FROM article_revisions newer
+        WHERE newer.article_id=r.article_id AND newer.observed_at<=? AND newer.rowid<=? AND newer.revision>r.revision)`;
+      const bounds=[revisionWatermark,asOf,asOf,revisionWatermark];
+      excluded={
+        unknownPublicationCount:reader.prepare(`SELECT count(*) AS n FROM article_revisions r INDEXED BY article_revisions_window WHERE json_extract(r.payload_json,'$.publishedAt') IS NULL AND ${available}`).get(...bounds).n,
+        futurePublicationCount:reader.prepare(`SELECT count(*) AS n FROM article_revisions r INDEXED BY article_revisions_window WHERE json_extract(r.payload_json,'$.publishedAt')>? AND ${available}`).get(asOf,...bounds).n,
+      };
       // Choose each article's last available revision, including corrections that
       // move its publication date out of the requested window. No future revision
       // is substituted for the revision known at inputsAsOf.
-      const query=reader.prepare(`SELECT r.payload_json,r.observed_at FROM article_revisions r
+      const query=reader.prepare(`SELECT r.rowid,r.observed_at,r.revision FROM article_revisions r INDEXED BY article_revisions_window
         WHERE r.rowid<=? AND r.observed_at<=? AND json_extract(r.payload_json,'$.publishedAt')>=?
           AND json_extract(r.payload_json,'$.publishedAt')<=?
           AND NOT EXISTS (SELECT 1 FROM article_revisions newer WHERE newer.article_id=r.article_id
             AND newer.observed_at<=? AND newer.rowid<=? AND newer.revision>r.revision)
         ORDER BY r.article_id`);
-      for(const row of query.iterate(revisionWatermark,asOf,from,asOf,asOf,revisionWatermark)) {
+      const references=query.all(revisionWatermark,asOf,from,asOf,asOf,revisionWatermark);
+      for(const row of physicalPages(reader,'article_revisions',references,this.payloadCache)) {
         const stored=JSON.parse(row.payload_json);
         if(!stored.title?.trim() || !stored.url || stored.synthetic || ['synthetic','fallback','seeded'].includes(stored.dataMode) || stored.provenance?.synthetic)continue;
         eligible++;

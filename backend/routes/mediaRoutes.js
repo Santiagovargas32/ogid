@@ -1,16 +1,8 @@
 import { Router } from "express";
-import {
-  getMediaStreamById,
-  getMediaStreams,
-  getMediaStreamsHealth,
-  refreshMediaStreams
-} from "../controllers/mediaController.js";
-
-const router = Router();
-
-router.get("/streams", getMediaStreams);
-router.get("/streams/health", getMediaStreamsHealth);
-router.get("/streams/:id", getMediaStreamById);
-router.post("/streams/refresh", refreshMediaStreams);
-
+const router=Router();
+const retired=(_req,res)=>res.status(410).json({ok:false,error:{code:"MEDIA_RETIRED",message:"El workspace de vídeos se ha retirado. Usar la bandeja geopolítica."}});
+router.get("/streams",retired);
+router.get("/streams/health",retired);
+router.get("/streams/:id",retired);
+router.post("/streams/refresh",retired);
 export default router;

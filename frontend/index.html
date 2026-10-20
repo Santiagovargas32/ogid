@@ -10,6 +10,7 @@
 
   <link rel="stylesheet" href="/css/styles.css" />
   <link rel="icon" type="image/svg+xml" href="/assets/ogid-logo.svg" />
+  <link rel="stylesheet" href="/css/agentIntelligence.css">
 </head>
 
 <body>
@@ -147,16 +148,17 @@
               <h3>Signal Anomalies</h3>
               <div id="signal-anomalies-body"></div>
             </article>
+            <article class="intel-card"><h3>Agent Intelligence Brief</h3><div id="agent-brief-body" aria-live="polite"></div></article>
           </div>
         </section>
       </div>
       <div class="col-12 col-xl-3">
         <section id="panel-situational" class="panel panel-vertical h-100">
           <header class="panel-header d-flex justify-content-between align-items-center gap-2">
-            <h2 class="panel-title mb-0">Live Situational Awareness</h2>
-            <div id="situational-view-toggle-shell"></div>
+            <h2 class="panel-title mb-0">Geopolitical Alert Inbox</h2>
+
           </header>
-          <div id="situational-workspace-panel" class="situational-panel-body"></div>
+          <div id="geopolitical-alert-inbox" class="agent-inbox" aria-live="polite"></div>
         </section>
       </div>
     </div>
@@ -245,14 +247,15 @@
         <section id="panel-market-conditions" class="panel panel-vertical market-conditions-panel h-100">
           <header class="panel-header market-conditions-header">
             <div>
-              <h2 class="panel-title mb-1">Deterministic Market Conditions</h2>
-              <p class="market-conditions-intro mb-0">Observed news, market reaction and technical context. Indices and pressure bands are not probabilities, price predictions or trade instructions.</p>
+              <h2 class="panel-title mb-1">Predictive Market Conditions</h2>
+              <p class="market-conditions-intro mb-0">Outlook experimental con evidencia, contradicciones e invalidación. Horizonte predictivo y ventana de evidencia son distintos.</p>
             </div>
             <div class="market-conditions-header-status">
               <span id="market-conditions-input-badge" class="badge text-bg-secondary">Inputs: initializing</span>
               <span id="market-conditions-updated" class="small text-light-emphasis">--</span>
             </div>
           </header>
+          <div class="agent-outlook-shell"><h3>Outlook del agente · horizonte 24 horas</h3><label for="agent-outlook-instrument">Universo / instrumento</label><select id="agent-outlook-instrument"><option value="">Watchlist observada</option></select><div id="agent-outlooks-body"></div></div><div class="agent-outlook-shell"><h3>Contexto geopolítico</h3><div id="agent-geopolitical-body"></div></div><div class="px-3"><strong>Evidencia determinista observada / fallback</strong></div>
           <div class="market-conditions-toolbar">
             <div id="market-conditions-window-selector" class="chart-selector market-conditions-window-selector"></div>
             <div id="market-conditions-status" class="market-conditions-status small text-light-emphasis" aria-live="polite">Loading market conditions...</div>

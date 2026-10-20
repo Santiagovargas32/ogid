@@ -1,3 +1,4 @@
+import { mountAgentAdmin } from "./agentAdmin.js";
 import { api } from "./api.js";
 import { SectionRefresh } from "./adminRefresh.js";
 import { SmartPollLoop } from "./smartPollLoop.js";
@@ -1072,8 +1073,6 @@ async function refreshAll({ forceMedia = false } = {}) {
     {key:"aggregate-news-body", load: signal => api.getAggregateNews({limit:40,stored:1},{signal}), render: v => renderNewsTable(v.items || [],elements.aggregateNewsBody,elements.aggregateNewsCount)},
     {key:"intel-news-raw-body", load: signal => api.getAdminNewsRaw({dataset:"intel",page:rawPaginationState.intel,pageSize:RAW_PAGE_SIZE,stored:1},{signal}), render:v=>applyRawNewsPayload("intel",v)},
     {key:"aggregate-news-raw-body", load: signal => api.getAdminNewsRaw({dataset:"rss-aggregate",page:rawPaginationState.rssAggregate,pageSize:RAW_PAGE_SIZE,stored:1},{signal}), render:v=>applyRawNewsPayload("rssAggregate",v)},
-    {key:"media-streams-body", load: signal => api.getMediaStreams(forceMedia?{resolve:"all",force:1}:{resolve:"none"},{signal}), render:(v, values)=>{renderMediaStreams(v);renderMediaSummary(v, values.get("media-stream-summary-body") || {});}},
-    {key:"media-stream-summary-body", load: signal => api.getMediaStreamsHealth({signal}), render:(v, values)=>renderMediaSummary(values.get("media-streams-body") || {},v)},
     {key:"ai-enrichments-body", load: signal => api.getAdminAiEnrichments({page:1,pageSize:50},{signal}), render:renderAiEnrichments}
   ];
   const results = await sections.refresh(definitions);
@@ -1126,3 +1125,5 @@ document.addEventListener("DOMContentLoaded", () => {
     console.error("admin bootstrap failed", error);
   });
 });
+
+mountAgentAdmin();

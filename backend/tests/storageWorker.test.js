@@ -19,7 +19,7 @@ test("SQLite migrations, idempotency, rollback and reopen preserve committed row
   const f=fixture();
   try {
     await f.manager.start();
-    const status=await f.manager.request("storage.status");assert.equal(status.migrations.length,9);assert.equal(status.businessStorage,"legacy-json");
+    const status=await f.manager.request("storage.status");assert.equal(status.migrations.length,17);assert.equal(status.businessStorage,"legacy-json");
     const row=run(),requestId=randomUUID();
     const first=await f.manager.request("pipeline.record",row,{requestId});
     assert.deepEqual(await f.manager.request("pipeline.record",{counts:row.counts,status:row.status,completedAt:row.completedAt,startedAt:row.startedAt,pipelineId:row.pipelineId,runId:row.runId},{requestId}),first);
@@ -28,7 +28,7 @@ test("SQLite migrations, idempotency, rollback and reopen preserve committed row
     const integrity=await f.manager.request("storage.verify");assert.deepEqual(integrity.foreignKeys,[]);assert.equal(integrity.integrity[0].integrity_check,"ok");
     await f.manager.close();
     const db=new Database(f.databasePath,{readonly:true});assert.equal(db.prepare("select count(*) as n from pipeline_runs").get().n,1);assert.equal(db.prepare("select count(*) as n from storage_commands").get().n,1);db.close();
-    f.manager=new StorageManager({enabled:true,databasePath:f.databasePath});await f.manager.start();assert.equal((await f.manager.request("storage.status")).migrations.length,9);
+    f.manager=new StorageManager({enabled:true,databasePath:f.databasePath});await f.manager.start();assert.equal((await f.manager.request("storage.status")).migrations.length,17);
   } finally {await f.close();}
 });
 
@@ -135,6 +135,21 @@ test("analysis failure is observable by the owner and leaves accepted writer wor
     assert.equal((await f.manager.request("pipeline.record",run())).persisted,true);
     await f.manager.close();assert.equal(f.manager.state,"closed");
   }finally{await f.close();}
+});
+
+test('analytical reader recovery preserves interactive reads and the single writer',async()=>{
+ const f=fixture({businessEnabled:true});try{
+  await f.manager.start();await f.manager.request('domain.configure',{rootDir:f.directory,instruments:[],news:{},rss:{rssFeeds:[]}});
+  const queryThread=f.manager.queryManager.worker.threadId;
+  await f.manager.analysisManager.worker.terminate();
+  const feed=await f.manager.request('domain.call',{service:'news',method:'getFeed',args:[{limit:5}]});assert.equal(feed.items.length,0);
+  assert.equal((await f.manager.request('runtime.save',{kind:'reader-isolation',payload:{saved:true}})).persisted,true);
+  await f.manager.recoverAnalysis();assert.equal(f.manager.queryManager.worker.threadId,queryThread);
+  assert.equal(f.manager.queryManager.getStatus().queryOnly,true);assert.equal(f.manager.analysisManager.getStatus().queryOnly,true);
+  await f.manager.queryManager.worker.terminate();
+  assert.equal((await f.manager.analysisManager.request('storage.status')).readOnlyConnection,true);
+  await f.manager.recoverReader('queries');assert.deepEqual((await f.manager.request('domain.call',{service:'candles',method:'query',args:[{instrumentId:'none'}]})),[]);
+ }finally{await f.close();}
 });
 
 test("server shutdown releases both SQL workers after stage persistence fails",async t=>{

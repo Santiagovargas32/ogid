@@ -1,8 +1,20 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PipelinePersistence } from "../storage/pipelinePersistence.js";
+import { AwarenessStore } from "../services/awareness/awarenessStore.js";
 
 const storageError=code=>Object.assign(new Error(code),{code});
+
+test("startup hydration uses the boot deadline without extending writes or later runtime reads",async()=>{
+ const calls=[],manager={options:{timeoutMs:30,startupTimeoutMs:300},request:async(operation,input,options)=>{calls.push({operation,input,options});return null;}};
+ const persistence=new PipelinePersistence(manager),marketHistoryStore={};
+ await persistence.hydrate({awarenessStore:new AwarenessStore(),aiStore:{records:new Map(),upsert:r=>r,recoverInterrupted(){}},aiBudget:{},marketHistoryStore,quotaTracker:{providers:{},ensureProvider(){}}});
+ await persistence.flush();
+ const hydration=calls.filter(c=>c.operation==='runtime.load');assert.equal(hydration.length,4);
+ assert.ok(hydration.every(c=>c.options.timeoutMs===300 && c.options.queueTimeoutMs===300));
+ assert.ok(calls.filter(c=>c.operation==='runtime.save').every(c=>c.options===undefined));
+ await marketHistoryStore.loadSnapshot();assert.equal(calls.at(-1).options,undefined);assert.equal(manager.options.timeoutMs,30);
+});
 
 test("a successful stage save clears its previous failure without hiding another stage failure",async()=>{
   let failing=true;

@@ -1,6 +1,6 @@
 // Registro compartido: contratos de transporte, permisos e inventario API→MCP.
 // Sin imports de runtime ni secretos. Los parámetros son valores tipados; nunca URLs/rutas libres.
-export const OPERATIONS_VERSION = "1.4.0";
+export const OPERATIONS_VERSION = "1.5.0";
 const str = (maxLength = 128) => ({ type: "string", minLength: 1, maxLength });
 const int = (minimum, maximum) => ({ type: "integer", minimum, maximum });
 const choice = (...values) => ({ type: "string", enum: values });
@@ -28,6 +28,13 @@ function op(id, method, path, parameters = {}, options = {}) {
 const costly = { profile: "operator", scope: "provider:query", effects: "provider requests and cache updates", cost: "provider quota/rate limits" };
 const mutation = (scope) => ({ profile: "operator", scope, effects: "mutation", cost: "see runtime quotas" });
 export const OGID_OPERATIONS = Object.freeze([
+  op("agent.capabilities", "GET", "/api/agent/v1/capabilities"),
+  op("agent.brief", "GET", "/api/agent/v1/brief", {}, {projection:"agent-bundle"}),
+  op("agent.geopolitical", "GET", "/api/agent/v1/geopolitical", {}, {projection:"agent-bundle"}),
+  op("agent.outlooks", "GET", "/api/agent/v1/outlooks", {instrumentId:str(),cursor:str(),limit}, {projection:"agent-bundle"}),
+  op("agent.evidence", "GET", "/api/agent/v1/evidence", {snapshotId:str(),cursor:str(),limit,domain:str()}, {required:["snapshotId"],projection:"agent-bundle",retention:"durable immutable bundle; permitted metadata only"}),
+  op("agent.evidence.chunk", "GET", "/api/agent/v1/evidence/chunk", {snapshotId:str(),evidenceId:str(),offset:int(0,2147483647),format:choice('base64','utf8')}, {required:["snapshotId","evidenceId"],projection:"agent-bundle",retention:"recoverable base64 or readable UTF-8 chunks with sha256"}),
+  op("agent.clusters", "GET", "/api/agent/v1/clusters", {snapshotId:str(),clusterId:str(),cursor:str(),limit}, {required:["snapshotId"],projection:"agent-bundle",retention:"durable ranked catalogue and members from frozen evidence"}),
   op("intel.sync", "GET", "/api/intel/sync", {resource:str(64),epoch:str(64),revision:int(0,2147483647),cursor:int(0,2147483647)}),
   op("intel.changes", "GET", "/api/intel/changes", {epoch:str(64),since:int(0,2147483647)}),
   op("health", "GET", "/api/health", {}, { tool: "ogid_health", projection: "health" }),
@@ -135,3 +142,17 @@ export function operationPath(operation, values = {}) {
     return encodeURIComponent(values[name]);
   });
 }
+
+// Session/device endpoints are first-party transports, deliberately absent from
+// MCP research/operator tools. They have their own ownership and CSRF checks.
+export const AGENT_PRIVATE_ROUTES = Object.freeze([
+ "GET /api/agent/v1/models", "POST /api/admin/agent/model",
+  "GET /api/alerts/v1/geopolitical/:id/revisions",
+ "POST /api/agent/v1/access/device", "GET /api/agent/v1/access",
+ "GET /api/agent/v1/chat/sessions", "POST /api/agent/v1/chat/sessions",
+ "GET /api/agent/v1/chat/sessions/:id/messages", "POST /api/agent/v1/chat/sessions/:id/messages",
+ "GET /api/agent/v1/chat/sessions/:id/events", "GET /api/agent/v1/runs/:id", "POST /api/agent/v1/runs/:id/cancel",
+ "GET /api/alerts/v1/geopolitical", "PATCH /api/alerts/v1/geopolitical/:id/state",
+ "GET /api/admin/agent", "POST /api/admin/agent/pause", "POST /api/admin/agent/devices/:id/revoke",
+ "POST /api/agent/v1/internal/:method"
+]);

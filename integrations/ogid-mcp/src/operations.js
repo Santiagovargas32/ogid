@@ -2,7 +2,7 @@ import * as z from "zod/v4";
 import { OGID_OPERATIONS, OPERATIONS_VERSION, getOperation, operationPath, validIsoDate } from "../../../backend/contracts/ogidOperations.js";
 import { projectOperation } from "../../../backend/utils/researchProjection.js";
 import { ReadError } from "./client.js";
-import { VERSION, ADAPTER_BUILD } from "./config.js";
+import { VERSION, ADAPTER_BUILD, allowsResearchOperation } from "./config.js";
 
 export function zodSchema(def) {
   if (def.type === "object") return z.strictObject(Object.fromEntries(Object.entries(def.properties).map(([name, value]) => [name, (def.required || []).includes(name) ? zodSchema(value) : zodSchema(value).optional()])));
@@ -49,10 +49,13 @@ function compactWeeklyHistory(data) {
     warnings: [...(data.warnings || []), "Historial MCP resumido por día UTC; incluye los días extremos disponibles y no representa todas las observaciones horarias. Consultar historyCoverage y la API para el detalle."] };
 }
 export function extendedToolDefinitions(config, read) {
-  const research = OGID_OPERATIONS.filter(operation => operation.profile === "research");
+  const research = OGID_OPERATIONS.filter(operation => operation.profile === "research" && allowsResearchOperation(config, operation.id));
   const operator = OGID_OPERATIONS.filter(operation => operation.profile === "operator" && config.operatorCredential?.scopes.includes(operation.scope));
   const operatorBodies = operator.filter(operation => operation.body).map(operation => zodSchema(operation.body).describe(operation.id));
+  const researchPaths = research.some(operation=>operation.pathParameters)
+    ? {pathParameters:z.strictObject({id:z.string().regex(/^[A-Za-z0-9._:-]{1,128}$/)}).optional()} : {};
   async function execute(operation, params, body, pathParams) {
+    if (!allowsResearchOperation(config, operation.id)) throw new ReadError("FORBIDDEN_REQUEST", "Lectura fuera de la evidencia congelada del analista.");
     const values = clean(zodSchema(operation.parameters).parse(params));
     if (values.from && values.to && Date.parse(values.from) > Date.parse(values.to)) throw new ReadError("INVALID_WINDOW", "from debe ser anterior o igual a to.");
     if (operation.profile === "research" && operation.id !== "instruments.resolve") await authorizeInstruments(config, read, [...(values.instrumentIds || []), ...(values.symbols || []), ...(values.tickers || []), ...(values.instrumentId ? [values.instrumentId] : []), ...(values.benchmarkInstrumentId ? [values.benchmarkInstrumentId] : [])]);
@@ -72,8 +75,10 @@ export function extendedToolDefinitions(config, read) {
     { name: "ogid_get_news_item", description: "Lee metadata y extracto permitido de un artículo por ID del archivo. No devuelve texto completo ni reconstruye noticias fuera de retención.", schema: z.strictObject({ id: z.string().regex(/^[A-Za-z0-9._:-]{1,128}$/) }), run: ({ id }) => execute(getOperation("news.item"), {}, undefined, { id }) },
     { name: "ogid_resolve_instruments", description: "Resuelve símbolos, nombres o IDs contra identidades verificadas del runtime, incluso sin watchlist. Devuelve alternativas para ASML, Alphabet y clases ETF ambiguas; nunca elige mercado/clase ni consulta proveedores.", schema: zodSchema(getOperation("instruments.resolve").parameters), run: args => execute(getOperation("instruments.resolve"), args) },
     { name: "ogid_get_portfolio_context", description: "Reúne contexto complementario OGID para agenda, resumen diario, candidatos materiales o revisión semanal. Usa datos almacenados, identifica cobertura parcial y no marca alertas entregadas. Confirmar hechos con fuentes externas; no inventar pesos/posiciones ni causalidad.", schema: zodSchema(getOperation("portfolio.context").parameters), run: args => execute(getOperation("portfolio.context"), args) },
-    { name: "ogid_query", description: "Consulta operaciones de lectura enumeradas: watchlist, precios, velas, indicadores/contexto técnico, eventos, escenarios, cambios por consumidor, holdings fechados, evaluación, condiciones, impactos, inteligencia, mapas, medios y diagnóstico seguro. Parámetros según operationId; stored impide consumo de proveedores. Descubrir contratos con ogid_get_capabilities.",
-      schema: z.strictObject({ operationId: z.enum(research.filter(op => op.tool === "ogid_query").map(op => op.id)), parameters: z.union(research.filter(op => op.tool === "ogid_query").map(op => zodSchema(op.parameters).describe(op.id))).default({}), pathParameters: z.strictObject({ id: z.string().regex(/^[A-Za-z0-9._:-]{1,128}$/) }).optional() }),
+    { name: "ogid_query", description: config.researchScope === "agent-evidence"
+      ? "Lee el snapshot durable indicado en la tarea mediante agent.evidence, agent.evidence.chunk y agent.clusters. Usa snapshotId exacto y recorre nextCursor/nextOffset. Datos ausentes permanecen ausentes: no hay lecturas vivas de precios ni búsqueda externa. Descubre parámetros con ogid_get_capabilities."
+      : "Consulta operaciones de lectura enumeradas: watchlist, precios, velas, indicadores/contexto técnico, eventos, escenarios, cambios por consumidor, holdings fechados, evaluación, condiciones, impactos, inteligencia, mapas, medios y diagnóstico seguro. Parámetros según operationId; stored impide consumo de proveedores. Descubrir contratos con ogid_get_capabilities.",
+      schema: z.strictObject({ operationId: z.enum(research.filter(op => op.tool === "ogid_query").map(op => op.id)), parameters: z.union(research.filter(op => op.tool === "ogid_query").map(op => zodSchema(op.parameters).describe(op.id))).default({}), ...researchPaths }),
       async run({ operationId, parameters, pathParameters }) {
         const operation = getOperation(operationId);
         if (operation.pathParameters) zodSchema(operation.pathParameters).parse(pathParameters); else if (pathParameters) throw new ReadError("INVALID_ARGUMENTS", "Esta operación no admite parámetros de ruta.");

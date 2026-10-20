@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createAppServer } from "../server.js";
-import { OGID_OPERATIONS, getOperation, operationPath, OPERATIONS_VERSION } from "../contracts/ogidOperations.js";
+import { AGENT_PRIVATE_ROUTES, OGID_OPERATIONS, getOperation, operationPath, OPERATIONS_VERSION } from "../contracts/ogidOperations.js";
 import { projectOperation } from "../utils/researchProjection.js";
 import { getInstrumentByCanonicalSymbol } from "../services/market/instrumentRegistry.js";
 import { NewsArchive } from "../services/research/newsArchive.js";
@@ -40,8 +40,10 @@ test("inventario: todas las rutas JSON montadas tienen contrato y permiso; rutas
     for (const match of mounts) routes.push(...enumerate(imports.get(match[3]), prefix + (match[2] || ""), new Set(seen)));
     return routes;
   };
-  const mounted = new Set(enumerate("index.js", "/api")); const registered = new Set(OGID_OPERATIONS.map(op => `${op.method} ${op.path}`));
-  assert.deepEqual([...mounted].sort(), [...registered].sort()); assert.equal(OPERATIONS_VERSION, "1.4.0");
+  const agentSource=readFileSync(dir+'agentRoutes.js','utf8');
+  const agentRoutes=[...agentSource.matchAll(/router\.(get|post|put|delete|patch)\s*\(\s*(["'`])([^"'`]+)\2/g)].map(m=>`${m[1].toUpperCase()} /api${m[3]}`);
+  const mounted = new Set([...enumerate("index.js", "/api"),...agentRoutes]); const registered = new Set([...OGID_OPERATIONS.map(op => `${op.method} ${op.path}`),...AGENT_PRIVATE_ROUTES]);
+  assert.deepEqual([...mounted].sort(), [...registered].sort()); assert.equal(OPERATIONS_VERSION, "1.5.0");
   for (const operation of OGID_OPERATIONS) { assert.ok(operation.scope); assert.ok(operation.effects); assert.ok(operation.projection); assert.equal(operation.parameters.additionalProperties, false); assert.ok(["research", "operator"].includes(operation.profile)); }
 });
 test("todas las lecturas MCP sobre backend real: almacenadas, sin refresh/cuotas, identidades y separación operador", async () => {
@@ -62,6 +64,9 @@ test("todas las lecturas MCP sobre backend real: almacenadas, sin refresh/cuotas
   const change=alertStore.researchTransaction(state=>alertStore.appendChange(state,{kind:'fixture',entityId:'fixture',revision:1,snapshot:{status:'watch'}}));
   try {
     for (const operation of OGID_OPERATIONS.filter(op => op.profile === "research")) {
+      if(operation.id.startsWith('media.')){await assert.rejects(read.operation(operation.id,{},undefined,operation.pathParameters?{id:'fixture-stream'}:undefined),{code:'MEDIA_RETIRED'});continue;}
+      if((operation.id.startsWith('agent.evidence')||operation.id==='agent.clusters')){await assert.rejects(read.operation(operation.id,{snapshotId:'missing',...(operation.id.endsWith('chunk')?{evidenceId:'missing'}:{})}));continue;}
+
       const params = operation.id === "signals.change" ? {changeId:change.changeId} : ["market.candles","market.indicators","market.technical-context"].includes(operation.id) ? { instrumentId: nvda } : operation.id === "etf.holdings" ? {instrumentId:getInstrumentByCanonicalSymbol("QQQ").instrumentId} : operation.id === "market.history.job" ? {jobId:runtime.app.locals.historicalAcquisitionService.create({requestId:"fixture",instrumentIds:[nvda]}).jobId} : operation.id === "research.companyfacts" ? {companyId:"unavailable-fixture"} : operation.id === "portfolio.context" ? { mode: "weekly", instrumentIds: [nvda] } : {};
       const path = operation.pathParameters ? { id: operation.id === "news.item" ? id : "fixture-stream" } : undefined;
       const data = await read.operation(operation.id, params, undefined, path); assert.ok(data && typeof data === "object", operation.id);

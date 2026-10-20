@@ -2,6 +2,7 @@ import { buildPersistenceMetadata,filterPersistedQuotes } from "../services/mark
 import { MARKET_PROVIDER_SCHEMA_VERSION } from "../services/market/marketSnapshotMigration.js";
 import { createLogger } from "../utils/logger.js";
 import { stableHash } from "../utils/stableHash.js";
+import { RUNTIME_POLICY } from "../config/runtimePolicy.js";
 const log=createLogger("backend/storage/pipelinePersistence");
 const appendOnlyKinds=new Set(["awareness-audit","awareness-poll","quotes"]);
 
@@ -28,7 +29,8 @@ export class PipelinePersistence {
   }
   async flush(){while(this.pending.size)await Promise.allSettled([...this.pending]);if(this.failure)throw this.failure;}
   async hydrate({awarenessStore,aiStore,aiBudget,marketHistoryStore,quotaTracker}){
-    const load=kind=>this.manager.request("runtime.load",{kind});
+    const startupTimeoutMs=this.manager.options?.startupTimeoutMs ?? RUNTIME_POLICY.storage.startupTimeoutMs;
+    const load=kind=>this.manager.request("runtime.load",{kind},{timeoutMs:startupTimeoutMs,queueTimeoutMs:startupTimeoutMs});
     const [awareness,ai,budget,quotas]=await Promise.all([load("awareness"),load("ai"),load("ai-budget"),load("provider-quota")]);
     if(quotas?.providers)for(const [provider,saved]of Object.entries(quotas.providers)){quotaTracker.ensureProvider(provider);Object.assign(quotaTracker.providers[provider],saved);}
     quotaTracker.persist=()=>this.save("provider-quota",{version:1,providers:Object.fromEntries(Object.entries(quotaTracker.providers).map(([provider,s])=>[provider,Object.fromEntries(["events","headerLimit","headerRemaining","apiCreditsUsed","apiCreditsLeft","lastCallAt","lastStatus"].map(k=>[k,s[k]]))]))});
@@ -47,7 +49,8 @@ export class PipelinePersistence {
     awarenessStore.appendPollAudit=(sourceId,poll)=>this.save("awareness-poll",{recordedAt:poll.completedAt,sourceId,poll});
     awarenessStore.persist();
     aiBudget.persist=()=>this.save("ai-budget",{version:1,state:aiBudget.state});
-    marketHistoryStore.loadSnapshot=()=>load("market");marketHistoryStore.ensureDirectories=async()=>{};
+    // The longer deadline belongs to boot hydration, not subsequent runtime reads.
+    marketHistoryStore.loadSnapshot=()=>this.manager.request("runtime.load",{kind:"market"});marketHistoryStore.ensureDirectories=async()=>{};
     marketHistoryStore.loadTickerHistory=ticker=>this.manager.request("domain.call",{service:"quotes",method:"history",args:[ticker]});
     marketHistoryStore.saveSnapshot=async(marketState,decision,options={})=>{
       const savedAt=new Date().toISOString();marketState.sourceMeta={...marketState.sourceMeta,...buildPersistenceMetadata({eligible:true,reason:decision.reason,trigger:options.trigger || null,providerBacked:decision.providerBacked,savedAt})};

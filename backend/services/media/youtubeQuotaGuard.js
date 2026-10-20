@@ -1,4 +1,4 @@
-import { RUNTIME_POLICY } from "../../config/runtimePolicy.js";
+const RETIRED_YOUTUBE_POLICY={searchDailyBudget:100,searchReserve:40,streamResolvePolicy:'lazy',criticalRefreshHours:6,normalRefreshHours:12,lazyRefreshHours:24};
 const DEFAULT_SEARCH_DAILY_BUDGET = 100;
 const DEFAULT_SEARCH_RESERVE = 40;
 const DEFAULT_POLICY = "lazy";
@@ -26,12 +26,12 @@ function normalizePriority(value = "normal") {
 export class YoutubeQuotaGuard {
   constructor({
     apiKey = process.env.YOUTUBE_API_KEY || "",
-    searchDailyBudget = RUNTIME_POLICY.media.youtube.searchDailyBudget,
-    searchReserve = RUNTIME_POLICY.media.youtube.searchReserve,
-    streamResolvePolicy = RUNTIME_POLICY.media.youtube.streamResolvePolicy,
-    criticalRefreshHours = RUNTIME_POLICY.media.youtube.criticalRefreshHours,
-    normalRefreshHours = RUNTIME_POLICY.media.youtube.normalRefreshHours,
-    lazyRefreshHours = RUNTIME_POLICY.media.youtube.lazyRefreshHours
+    searchDailyBudget = RETIRED_YOUTUBE_POLICY.searchDailyBudget,
+    searchReserve = RETIRED_YOUTUBE_POLICY.searchReserve,
+    streamResolvePolicy = RETIRED_YOUTUBE_POLICY.streamResolvePolicy,
+    criticalRefreshHours = RETIRED_YOUTUBE_POLICY.criticalRefreshHours,
+    normalRefreshHours = RETIRED_YOUTUBE_POLICY.normalRefreshHours,
+    lazyRefreshHours = RETIRED_YOUTUBE_POLICY.lazyRefreshHours
   } = {}) {
     this.apiKey = String(apiKey || "").trim();
     this.searchDailyBudget = toNonNegativeInt(searchDailyBudget, DEFAULT_SEARCH_DAILY_BUDGET);

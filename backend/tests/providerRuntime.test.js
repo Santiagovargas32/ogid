@@ -7,6 +7,7 @@ import { ApiQuotaTrackerService } from "../services/admin/apiQuotaTrackerService
 import { ProviderErrorCode, parseRetryAfter } from "../services/providers/providerErrors.js";
 import { getProviderPolicy } from "../services/providers/providerPolicies.js";
 import { ProviderRuntime } from "../services/providers/providerRuntime.js";
+import { operationContext } from "../services/shared/operationContext.js";
 
 const ok = (status = 200, headers = {}) => new Response("{}", { status, headers });
 const unlimitedQuota = { getProviderSnapshot: () => ({ exhausted: false }) };
@@ -93,4 +94,11 @@ test("one failed model attempt counts once toward the circuit threshold", async 
     assert.equal(runtime.getMetrics("llamacpp").errors, attempt);
     assert.equal(runtime.getCircuitSnapshot("llamacpp").state, attempt === 3 ? "open" : "closed");
   }
+});
+test("workflow cancellation aborts the provider without retrying or opening its circuit",async()=>{
+ let enter;const entered=new Promise(r=>{enter=r;}),controller=new AbortController();
+ const runtime=new ProviderRuntime({failureThreshold:1,fetchImpl:async(_url,{signal})=>new Promise((_resolve,reject)=>{enter();signal.addEventListener('abort',()=>reject(signal.reason),{once:true});})});
+ const pending=operationContext.run({signal:controller.signal},()=>runtime.fetch('workflow','https://fixture.invalid/feed',{quotaTracker:unlimitedQuota}));
+ const rejected=assert.rejects(pending,{code:'STORAGE_WORKFLOW_STALLED'});await entered;controller.abort(Object.assign(new Error('stalled'),{code:'STORAGE_WORKFLOW_STALLED'}));await rejected;
+ assert.equal(runtime.getCircuitSnapshot('workflow').state,'closed');assert.equal(runtime.getMetrics('workflow').retries,0);assert.equal(runtime.getMetrics('workflow').errors,0);
 });
