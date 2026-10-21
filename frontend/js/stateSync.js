@@ -4,7 +4,7 @@ export class StateSynchronizer {
     this.api = api; this.onUpdate = onUpdate; this.onStatus = onStatus;
     this.epoch = null; this.applied = {}; this.target = {}; this.revision = 0;
     this.task = null; this.timer = null; this.closed = false; this.failures = 0;
-    this.controller = new AbortController();
+    this.controller = new AbortController();this.generation=0;
   }
   accept(message) {
     if(this.closed)return;
@@ -33,8 +33,9 @@ export class StateSynchronizer {
   }
   drain() {
     if (this.closed || this.task || this.timer) return this.task;
+    const generation=this.generation;
     this.task = this.sync().catch(error => {
-      if (this.closed) return;
+      if (this.closed || generation!==this.generation) return;
       this.onStatus('degraded', error);
       const delay = Math.min(30_000, 1000 * 2 ** Math.min(5, this.failures++)) * (.5 + Math.random() * .5);
       this.timer = setTimeout(() => { this.timer = null; this.drain(); }, delay);
@@ -64,6 +65,10 @@ export class StateSynchronizer {
         } catch (error) {
           if (epoch !== this.epoch) return;
           if (error.status === 409) {
+            // Resources are independently versioned, as in WS partial updates.
+            // Never discard an already complete resource because a later one
+            // changed. No fragment or partially decoded resource is published.
+            if(Object.keys(versions).length){this.onUpdate(update);Object.assign(this.applied,versions);}
             const manifest = await this.api.getSyncSnapshot({}, { signal });
             this.accept({ data: manifest }); return;
           }
@@ -74,5 +79,10 @@ export class StateSynchronizer {
       this.onUpdate(update); Object.assign(this.applied, versions);
     }
   }
-  close() { this.closed = true; clearTimeout(this.timer); this.controller.abort(); }
+  close() { this.closed = true;this.generation++; clearTimeout(this.timer);this.timer=null; this.controller.abort(); }
+  resume(){
+    if(!this.closed)return;
+    this.closed=false;this.controller=new AbortController();this.applied={};this.failures=0;
+    void this.requestSnapshot().catch(error=>{this.onStatus('degraded',error);this.drain();});
+  }
 }

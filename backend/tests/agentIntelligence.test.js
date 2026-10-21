@@ -116,7 +116,7 @@ test("snapshot preparation uses a physical reader and fenced batches, preserving
   try{
    await manager.start();await manager.request('domain.configure',{rootDir:dir,news:{},rss:{rssFeeds:[]}});
    const call=(method,args={})=>manager.request('agent.call',{method,args});
-   const articles=Array.from({length:215},(_,i)=>({id:`frozen-${i}`,title:`Frozen source ${i}`,url:`https://fixture.invalid/${i}`,publishedAt:new Date().toISOString(),provider:'rss'}));
+   const articles=Array.from({length:1000},(_,i)=>({id:`frozen-${i}`,title:`Frozen source ${i}`,url:`https://fixture.invalid/${i}`,publishedAt:new Date().toISOString(),provider:'rss'}));
    await manager.request('domain.call',{service:'news',method:'ingest',args:[articles]});
    const queued=await call('enqueue',{task:'global_intelligence_brief',scope:'global',model:'llamacpp/fixture',key:randomUUID(),priority:10});
    const claimed=await call('claim',{owner:'snapshot-owner'}),auth={jobId:queued.jobId,owner:'snapshot-owner',fence:claimed.fence};
@@ -132,7 +132,7 @@ test("snapshot preparation uses a physical reader and fenced batches, preserving
    let timer;
    try{
     const feed=await Promise.race([manager.request('domain.call',{service:'news',method:'getFeed',args:[{limit:5}]}),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('interactive read blocked by snapshot')),5000);})]);
-    assert.equal(feed.meta.scannedCount,215);assert.equal(manager.queryManager.getStatus().queryOnly,true);
+    assert.equal(feed.meta.scannedCount,1000);assert.equal(manager.queryManager.getStatus().queryOnly,true);
    }finally{clearTimeout(timer);}
    assert.equal((await manager.request('runtime.save',{kind:'snapshot-write-isolation',payload:{saved:true}})).persisted,true);
    await call('heartbeat',auth);
@@ -142,7 +142,8 @@ test("snapshot preparation uses a physical reader and fenced batches, preserving
    release();
    if(cancel){await assert.rejects(pending,{code:'AGENT_LEASE_LOST'});await assert.rejects(call('evidence',{snapshotId}),{code:'AGENT_SNAPSHOT_BUILD_INCOMPLETE'});}
    else{
-    const snapshot=await pending;assert.equal(snapshot.coverage.sealed,true);assert.equal(snapshot.coverage.domains.news.count,215);assert.ok(pages>3);
+    const snapshot=await pending;assert.equal(snapshot.coverage.sealed,true);assert.equal(snapshot.coverage.domains.news.count,1000);assert.ok(pages>3);
+    assert.ok(pages<=40,'distinct clusters and members must remain batched instead of creating one commit per row');
     const items=[];let cursor;
     for(;;){const evidence=await call('evidence',{snapshotId,domain:'news',limit:100,cursor});items.push(...evidence.items);if(!evidence.hasMore)break;cursor=evidence.nextCursor;}
     assert.ok(items.every(e=>e.revision===1));assert.equal(items.find(e=>e.data.url==='https://fixture.invalid/0')?.data.title,'Frozen source 0');

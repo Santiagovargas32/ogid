@@ -635,7 +635,7 @@ export async function fetchAggregatedNews({
       filteredCountByProvider[providerName] = filteredArticles.length;
       if (providerName === "rss" && Array.isArray(providerResult.sourceMeta?.feedStatus)) {
         rssFeedStatus.push(...providerResult.sourceMeta.feedStatus);
-        rssAcquisition=Object.fromEntries(["collectedCount","returnedCount","returnedCorpusBounded","catalogSize","queriedFeedCount","partial","acquisition"].filter(key=>providerResult.sourceMeta[key]!==undefined).map(key=>[key,providerResult.sourceMeta[key]]));
+        rssAcquisition=Object.fromEntries(["collectedCount","returnedCount","returnedCorpusBounded","catalogSize","queriedFeedCount","partial","acquisition","acquisitionOwner"].filter(key=>providerResult.sourceMeta[key]!==undefined).map(key=>[key,providerResult.sourceMeta[key]]));
       }
       attempts.push({
         provider: providerName,

@@ -1,3 +1,4 @@
+import { FrozenRows } from "./frozenRows.js";
 import { RUNTIME_POLICY } from "../config/runtimePolicy.js";
 import { assertWriterAvailable, acquireWriter, releaseWriter } from "./writerOwnership.js";
 import { parentPort, workerData, threadId } from "node:worker_threads";
@@ -20,6 +21,7 @@ import { isAcquisitionWorkflow } from "./config.js";
 let database, migrations, version, runtime;
 let diagnostics,lastDiagnosticsCompletedAt=0,lastCompletedCommand,lastFailedCommand;
 const activeCommands=new Map();
+let commandEpoch=0;
 const workflows=new Map();
 function telemetry(){
   if(!workerData.businessEnabled && !diagnostics){diagnostics=readDatabaseDiagnostics(database);lastDiagnosticsCompletedAt=Date.now();}
@@ -103,25 +105,37 @@ function execute(operation, input, requestId) {
 }
 async function prepareAgentSnapshot(auth){
   runtime.agent ||= new AgentRepository(runtime);
-  const prepared=runtime.agent.prepareSnapshot(auth);
-  if(prepared.existing)return prepared.existing;
-  const write=input=>rpc("analysis.persist",{type:"agent-snapshot",input:{...auth,...input}});
-  const {rows,...descriptor}=prepared;
-  await write({phase:"begin",prepared:descriptor,counts:Object.fromEntries(Object.entries(rows).map(([table,values])=>[table,values.length]))});
-  let page=0;
-  for(const [table,values]of Object.entries(rows)){
-    let batch=[],bytes=0;
-    const flush=async()=>{if(!batch.length)return;await write({phase:"page",snapshotId:prepared.snapshotId,table,page:page++,rows:batch});batch=[];bytes=0;};
-    for(const row of values){
-      const size=Buffer.byteLength(JSON.stringify(row));
-      if(size>4*1024*1024)fail("STORAGE_COMMAND_TOO_LARGE");
-      if(batch.length && (batch.length>=100 || bytes+size>128000))await flush();
-      batch.push(row);bytes+=size;
+  const frozen=Object.fromEntries(['evidence','clusters','members'].map(table=>[table,new FrozenRows()]));
+  const maxBytes=frozen.evidence.maxBytes;let capturedBytes=0;
+  try {
+    const prepared=runtime.agent.prepareSnapshot(auth,{rowSink:(table,row)=>{
+      const spool=frozen[table],before=spool.bytes;
+      spool.maxBytes=spool.bytes+maxBytes-capturedBytes;
+      spool.add(row);capturedBytes+=spool.bytes-before;
+    }});
+    if(prepared.existing)return prepared.existing;
+    const write=input=>rpc("analysis.persist",{type:"agent-snapshot",input:{...auth,...input}});
+    while((await write({phase:'cleanup'})).hasMore)await new Promise(resolve=>setImmediate(resolve));
+    const {rows,...descriptor}=prepared;
+    await write({phase:"begin",prepared:descriptor,counts:Object.fromEntries(Object.entries(rows).map(([table,values])=>[table,values.length]))});
+    let page=0;
+    // Capture may alternate clusters and members. Publish each table together
+    // so that alternation cannot turn every row into a separate FULL commit.
+    for(const [table,spool]of Object.entries(frozen)){
+      let batch=[],bytes=0;
+      const flush=async()=>{if(!batch.length)return;await write({phase:"page",snapshotId:prepared.snapshotId,table,page:page++,rows:batch});batch=[];bytes=0;};
+      for(const row of spool.rows()){
+        const size=Buffer.byteLength(JSON.stringify(row));
+        if(size>4*1024*1024)fail("STORAGE_COMMAND_TOO_LARGE");
+        if(batch.length && (batch.length>=100 || bytes+size>128000))await flush();
+        batch.push(row);bytes+=size;
+      }
+      await flush();
     }
-    await flush();
-  }
-  return write({phase:"seal",snapshotId:prepared.snapshotId,page});
+    return await write({phase:"seal",snapshotId:prepared.snapshotId,page});
+  }finally{for(const spool of Object.values(frozen))spool.close();}
 }
+
 try {
   mkdirSync(path.dirname(workerData.databasePath), { recursive: true, mode: 0o700 });
   database = new Database(workerData.databasePath, { readonly:workerData.analysisWorker, fileMustExist:workerData.analysisWorker, timeout: workerData.busyTimeoutMs });
@@ -159,8 +173,9 @@ try {
       // Reject it before announcing execution or performing any write.
       if(Number.isFinite(envelope.queueDeadline) && Date.now()>=envelope.queueDeadline)fail("STORAGE_QUEUE_TIMEOUT");
       const start = performance.now();
-      // Attribution is valid only on the isolated analysis worker (one command at a time).
-      const cpuStart = workerData.analysisWorker && typeof process.threadCpuUsage === "function" ? process.threadCpuUsage() : null;
+      // Attribute thread CPU only when no other command overlaps this interval.
+      const epoch=++commandEpoch;
+      const cpuStart = workerData.analysisWorker && !activeCommands.size && typeof process.threadCpuUsage === "function" ? process.threadCpuUsage() : null;
       const command={operation:message.operation,service:message.input?.service || null,method:message.input?.method || null,kind:message.input?.kind || null,startedAt:new Date().toISOString()};
       activeCommands.set(message.id,command);parentPort.postMessage({type:"command-started",id:message.id,startedAt:Date.now()});
       let result;runtime.lastCommitMs=null;
@@ -181,7 +196,7 @@ try {
           completed+=count;parentPort.postMessage({type:"command-progress",id:message.id,completed,at:Date.now()});
         }},async()=>{const value=await execute(message.operation,message.input,message.requestId);checkOperation();return value;});
       } else { result = await execute(message.operation,message.input,message.requestId); }
-      const cpu = cpuStart ? process.threadCpuUsage(cpuStart) : null;
+      const cpu = cpuStart && epoch===commandEpoch ? process.threadCpuUsage(cpuStart) : null;
       const cpuMs = cpu ? (cpu.user + cpu.system) / 1000 : null;
       parentPort.postMessage({ id: message.id, result, durationMs: performance.now() - start, cpuMs, outputBytes:Buffer.byteLength(JSON.stringify(result ?? null)),commitMs:runtime.lastCommitMs ?? null, status: status() });
       lastCompletedCommand={...command,completedAt:new Date().toISOString(),durationMs:performance.now()-start,cpuMs};

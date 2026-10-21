@@ -1,0 +1,19 @@
+{
+  "at": "2026-10-20T23:24:10.990Z",
+  "pages": 81,
+  "tables": {
+    "evidence": 37,
+    "clusters": 22,
+    "members": 22
+  },
+  "maximumPageRows": 100,
+  "maximumPageBytes": 272334,
+  "productionModified": false,
+  "elapsedMs": 27870.317483999996,
+  "evidence": 2309,
+  "captureMs": 2122.2740589999994,
+  "news": 2145,
+  "clusters": 2108,
+  "sealed": true,
+  "closed": true
+}

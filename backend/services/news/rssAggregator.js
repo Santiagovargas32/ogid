@@ -4,8 +4,7 @@ import { createLogger } from "../../utils/logger.js";
 import { BoundedCache } from "../shared/boundedCache.js";
 import { deduplicateRssArticles } from "./rssDeduplicator.js";
 import { buildExtendedRssFeedCatalog, classifyRssArticle } from "./rssClassifier.js";
-import { fetchRss } from "./providers/rssProvider.js";
-import { buildCanonicalRssCatalog } from "./rssCanonicalCatalog.js";
+import { canonicalizeFeedUrl, buildCanonicalRssCatalog } from "./rssCanonicalCatalog.js";
 import { compareRssSnapshots, projectCanonicalToProvider, RssCanonicalPipeline } from "./rssCanonicalPipeline.js";
 
 const log = createLogger("backend/services/news/rssAggregator");
@@ -46,7 +45,7 @@ export class RssAggregatorService {
       cycleDeadlineMs: config.cycleDeadlineMs || config.news?.rssCycleDeadlineMs || 25_000,
       timeoutMs: this.timeoutMs,
       maxCorpusItems: this.maxCorpusItems,
-      onCollected: articles => { if (this.pipelineMode === "canonical") return this.onCollected?.(articles); },
+      onCollected: articles => this.onCollected?.(articles),
       maxResponseBytes: config.news?.rssMaxResponseBytes || 2_000_000,
       maxItemsPerFeed: config.news?.rssMaxItemsPerFeed || 200
     });
@@ -68,11 +67,10 @@ export class RssAggregatorService {
     void tick();
   }
   getStatus() {
-    if (this.pipelineMode === "legacy") {
-      const meta = this.lastSnapshot?.meta || {};
-      return {...meta, pipelineMode:"legacy", active:!this.stopped, lastSuccessAt:this.corpus.length?this.lastSnapshot?.generatedAt:null, availability:this.corpus.length?(meta.feedStatus?.some(f=>f.status==="error")?"degraded":"healthy"):"no-recoverable-data"};
-    }
-    const meta = this.canonicalPipeline.snapshot().meta; const successes = meta.feedStatus.map(f=>f.lastSuccessAt).filter(Boolean).sort(); return {...meta, active:!this.stopped, lastSuccessAt:successes.at(-1) || null}; }
+    const meta=this.canonicalPipeline.snapshot().meta;
+    const successes=meta.feedStatus.map(feed=>feed.lastSuccessAt).filter(Boolean).sort();
+    return {...meta,pipelineMode:this.pipelineMode,active:!this.stopped,lastSuccessAt:successes.at(-1) || null};
+  }
   async stop() { this.stopped = true; clearTimeout(this.scheduler); await this.canonicalPipeline.stop(); await this.inFlight; }
 
   configure(config = {}) {
@@ -131,9 +129,27 @@ export class RssAggregatorService {
     return batch;
   }
 
-  async refresh({ force = false } = {}) {
+  registerFeeds(feeds=[]){
+    const known=new Set(this.canonicalCatalog.feeds.flatMap(feed=>[feed.canonicalUrl,...feed.aliases]));
+    const missing=feeds.filter(feed=>{try{return !known.has(canonicalizeFeedUrl(feed.url || feed));}catch{return false;}});
+    if(missing.length){
+      const all=[...this.canonicalCatalog.feeds,...missing];
+      const catalog=buildCanonicalRssCatalog({primaryFeeds:all.filter(feed=>!feed.generated),secondaryFeeds:all.filter(feed=>feed.generated)});
+      for(const feed of catalog.feeds){const previous=this.canonicalCatalog.byId.get(feed.feedId);if(previous)feed.aliases=[...new Set([...previous.aliases,...feed.aliases])];}
+      this.canonicalCatalog=catalog;this.canonicalPipeline.catalog=catalog;
+    }
+    const urls=new Set(feeds.map(feed=>{try{return canonicalizeFeedUrl(feed.url || feed);}catch{return null;}}));
+    return this.canonicalCatalog.feeds.filter(feed=>urls.has(feed.canonicalUrl)||feed.aliases.some(url=>urls.has(url))).map(feed=>feed.feedId);
+  }
+  async refresh({ force = false,feedIds=null,maxFeedsPerCycle,timeoutMs } = {}) {
     const cacheKey = "rss-aggregate";
-    const cached = (!force || Date.now() - (this.lastAttemptMs || 0) < this.refreshIntervalMs) ? this.cache.get(cacheKey) : null;
+    // A disjoint trigger with no eligible feeds reads the last committed corpus;
+    // it must not subscribe to a slow acquisition belonging to another scope.
+    if(feedIds && this.inFlight && !this.canonicalPipeline.selectEligible(this.canonicalPipeline.now(),{feedIds,maxFeedsPerCycle}).length){
+      const snapshot=this.lastSnapshot || {generatedAt:null,items:[],meta:{}};
+      return {...snapshot,meta:{...snapshot.meta,stored:true,queriedFeedCount:0,feedStatus:[],acquisition:{attempted:0,successfulChecks:0,contentChanges:0}}};
+    }
+    const cached = !feedIds && (!force || Date.now() - (this.lastAttemptMs || 0) < this.refreshIntervalMs) ? this.cache.get(cacheKey) : null;
     if (cached?.value) {
       return cached.value;
     }
@@ -143,24 +159,19 @@ export class RssAggregatorService {
     }
 
     this.lastAttemptMs = Date.now();
-    this.inFlight = this.runRefresh()
+    this.inFlight = this.runRefresh({feedIds,maxFeedsPerCycle,timeoutMs})
       .finally(() => {
         this.inFlight = null;
       });
     return shareOperation(this.inFlight);
   }
 
-  async runRefresh() {
-    const feeds = this.nextFeedBatch();
-    const legacyPromise = this.pipelineMode === "canonical" ? null : fetchRss({ feeds, timeoutMs: this.timeoutMs });
-    const canonicalPromise = this.pipelineMode === "legacy" ? null : this.canonicalPipeline.runCycle();
-    if (this.pipelineMode === "canonical") {
-      const canonicalSnapshot = await canonicalPromise;
-      return this.#buildSnapshot(projectCanonicalToProvider(canonicalSnapshot), feeds, { canonicalSnapshot });
-    }
-    const providerResult = await legacyPromise;
-    const canonicalSnapshot = canonicalPromise ? await canonicalPromise : null;
-    return this.#buildSnapshot(providerResult, feeds, { canonicalSnapshot });
+  async runRefresh(options={}) {
+    // Modes select projections; all modes share eligibility and durable acquisition.
+    const canonicalSnapshot = await this.canonicalPipeline.runCycle(options);
+    const ids=new Set(canonicalSnapshot.selectedFeedIds);
+    const feeds=this.canonicalCatalog.feeds.filter(feed=>ids.has(feed.feedId)).map(feed=>({...feed,url:feed.canonicalUrl}));
+    return this.#buildSnapshot(projectCanonicalToProvider(canonicalSnapshot), feeds, { canonicalSnapshot });
   }
 
   async #buildSnapshot(providerResult, feeds, { canonicalSnapshot = null } = {}) {
@@ -190,7 +201,8 @@ export class RssAggregatorService {
         pipelineMode: this.pipelineMode,
         canonicalCatalogStats: this.canonicalCatalog.stats,
         coverage: canonicalSnapshot?.meta?.coverage || null,
-        availability: canonicalSnapshot?.meta?.availability || null
+        availability: canonicalSnapshot?.meta?.availability || null,
+        acquisition: canonicalSnapshot?.meta?.acquisition || null
       }
     };
 
@@ -204,18 +216,19 @@ export class RssAggregatorService {
       this.shadowComparisonStats.equivalentCycles = equivalent ? this.shadowComparisonStats.equivalentCycles + 1 : 0;
       snapshot.meta.shadow = this.pipelineMode === "shadow";
       snapshot.meta.equivalence = {
+        basis: "shared-acquisition-projection-comparison",
         ...comparison,
         errorRate,
         equivalent,
         consecutiveEquivalentCycles: this.shadowComparisonStats.equivalentCycles,
-        cutoverEligible: this.shadowComparisonStats.equivalentCycles >= 10,
+        cutoverEligible: false,
+        reason: "shared-acquisition-does-not-validate-independent-transports",
         criteria: { minimumCoverage: 0.95, maximumErrorRate: 0.05, consecutiveCycles: 10 }
       };
       snapshot.meta.canonicalMetrics = canonicalSnapshot.meta?.metrics || {};
     }
 
     this.lastSnapshot = snapshot;
-    if (this.pipelineMode !== "canonical") await this.onCollected?.(enriched);
     this.cache.set("rss-aggregate", snapshot, this.refreshIntervalMs);
     log.info("rss_aggregate_refreshed", {
       catalogSize: this.feedCatalog.length,

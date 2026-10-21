@@ -17,8 +17,9 @@ function buildPath(path, params = {}) {
 
 export const HTTP_DEADLINES=Object.freeze({default:12000,analysis:275000,storedRead:185000,watchlist:45000});
 function requestDeadline(path){return /\/(advanced-snapshot|conditions|analytics)$/.test(path)?HTTP_DEADLINES.analysis:/\/(candles|awareness-snapshot)$/.test(path)?HTTP_DEADLINES.storedRead:['/api/intel/news','/api/news/aggregate'].includes(path)?HTTP_DEADLINES.storedRead:path==='/api/market/watchlist'?HTTP_DEADLINES.watchlist:HTTP_DEADLINES.default;}
-const pageController = new AbortController();
-window.addEventListener("pagehide", () => pageController.abort(), { once: true });
+let pageController = new AbortController();
+window.addEventListener("pagehide", () => pageController.abort());
+window.addEventListener("pageshow", () => {if(pageController.signal.aborted)pageController=new AbortController();});
 
 export async function request(path, params = {}, options = {}) {
   const method = options.method || "GET";
@@ -76,7 +77,7 @@ export const api = {
   getHealth: (options = {}) => request("/api/health", {}, options),
   getSnapshot: (params = {}, options = {}) => request("/api/intel/snapshot", params, options),
   getAdvancedIntelligenceSnapshot: (params = {}, options = {}) => request("/api/intel/advanced-snapshot", params, { ...options, cache: "no-store" }),
-  getAwarenessSnapshot: () => request("/api/intel/awareness-snapshot", {}, { cache: "no-store" }),
+  getAwarenessSnapshot: (params = {}, options = {}) => request("/api/intel/awareness-snapshot", params, { ...options, cache: "no-store" }),
   refreshIntel: (payload = {}) => request("/api/intel/refresh", {}, { method: "POST", body: payload }),
   getNews: (params = {}, options = {}) => request("/api/intel/news", params, options),
   getAggregateNews: (params = {}, options = {}) => request("/api/news/aggregate", params, options),

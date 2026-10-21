@@ -411,6 +411,23 @@ test("primary news pipeline forwards its RSS worker and visibility policy",async
   }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));await f.close();}
 });
 
+test('financial RSS kept in shadow survives restart and archives all facts beyond the preview when visible',async()=>{
+ const f=await fixture();let requests=0;
+ const server=createServer((_req,res)=>{requests++;res.setHeader('etag','"held"');res.end('<rss><channel>'+Array.from({length:205},(_,i)=>`<item><title>General Dynamics report ${i}</title><link>https://example.org/held-${i}</link></item>`).join('')+'</channel></rss>');});
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+ const feeds=[{url:`http://127.0.0.1:${server.address().port}/held`}];
+ try{
+  await f.manager.request('domain.configure',{rootDir:f.dir,rss:{rssFeeds:feeds,maxCorpusItems:1}});
+  await f.manager.request('rss.fetch',{feeds,lane:'financial',awarenessMode:'shadow'});
+  assert.equal((await f.call('news','coverage')).totalStored,0);
+  await f.manager.close();f.manager=new StorageManager({enabled:true,businessEnabled:true,databasePath:f.db});await f.manager.start();
+  await f.manager.request('domain.configure',{rootDir:f.dir,rss:{rssFeeds:feeds,maxCorpusItems:1}});
+  await f.manager.request('rss.fetch',{feeds,lane:'financial',awarenessMode:'visible'});
+  assert.equal((await f.manager.request('domain.call',{service:'news',method:'coverage',args:[]})).totalStored,205);assert.equal(requests,1);
+  const db=new Database(f.db,{readonly:true});try{assert.equal(db.prepare("SELECT count(*) AS n FROM runtime_snapshots WHERE kind GLOB 'rss-held:*'").get().n,0);}finally{db.close();}
+ }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));await f.close();}
+});
+
 test("RSS rotation resumes after reopening and retains diagnostics for the full configured catalog",async()=>{
   const f=await fixture();const server=createServer((req,res)=>res.end(`<rss><channel><title>Fixture</title><item><title>General Dynamics ${req.url}</title><link>https://example.org${req.url}</link></item></channel></rss>`));
   await new Promise(resolve=>server.listen(0,"127.0.0.1",resolve));
@@ -419,7 +436,8 @@ test("RSS rotation resumes after reopening and retains diagnostics for the full 
     const first=await f.manager.request("rss.fetch",{feeds,timeoutMs:500});assert.equal(first.sourceMeta.queriedFeedCount,18);assert.ok(first.sourceMeta.feedStatus.every(feed=>feed.lastSuccessAt));
     const before=await f.manager.request("runtime.load",{kind:"rss-feeds"});assert.equal(before.nextFeedOffset,18);assert.equal(Object.keys(before.feeds).length,18);
     await f.manager.close();f.manager=new StorageManager({enabled:true,businessEnabled:true,databasePath:f.db});await f.manager.start();await f.manager.request("domain.configure",{instruments:listVerifiedInstruments(),rootDir:f.dir,rss:{rssFeeds:[]}});
-    const second=await f.manager.request("rss.fetch",{feeds,timeoutMs:500});assert.equal(second.sourceMeta.feedStatus[0].url,feeds[18].url);
+    const second=await f.manager.request("rss.fetch",{feeds,timeoutMs:500});assert.equal(second.sourceMeta.feedStatus.length,4);
+    assert.ok(second.sourceMeta.feedStatus.every(feed=>!before.feeds[feed.url]),"restart must select only previously unqueried feeds");
     const after=await f.manager.request("runtime.load",{kind:"rss-feeds"});assert.equal(Object.keys(after.feeds).length,22);assert.ok(!after.feeds[feeds[22].url]);
     const db=new Database(f.db,{readonly:true});try{assert.equal(db.prepare("SELECT count(*) AS n FROM pipeline_runs WHERE pipeline_id='rss' AND status='healthy'").get().n,2);}finally{db.close();}
   }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));await f.close();}

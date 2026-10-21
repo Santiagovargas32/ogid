@@ -19,6 +19,8 @@ export class SmartPollLoop {
     this.inFlight = false;
     this.stopped = true;
     this.controller = null;
+    this.handlePageHide=()=>{this.resumeAfterPageShow=!this.stopped;this.stop({preserveLifecycle:true});};
+    this.handlePageShow=event=>{if(event.persisted && this.resumeAfterPageShow){this.resumeAfterPageShow=false;this.start();}};
     this.handleVisibilityChange = () => {
       if (!this.stopped) {
         this.schedule();
@@ -81,6 +83,8 @@ export class SmartPollLoop {
     }
     this.stopped = false;
     document.addEventListener("visibilitychange", this.handleVisibilityChange);
+    globalThis.window?.addEventListener("pagehide",this.handlePageHide);
+    globalThis.window?.addEventListener("pageshow",this.handlePageShow);
     if (this.immediate) {
       this.tick();
       return;
@@ -95,7 +99,8 @@ export class SmartPollLoop {
     this.schedule(delayMs);
   }
 
-  stop() {
+  stop({preserveLifecycle=false}={}) {
+    if(!preserveLifecycle){this.resumeAfterPageShow=false;globalThis.window?.removeEventListener("pagehide",this.handlePageHide);globalThis.window?.removeEventListener("pageshow",this.handlePageShow);}
     this.stopped = true;
     this.controller?.abort();
     clearTimeout(this.timer);

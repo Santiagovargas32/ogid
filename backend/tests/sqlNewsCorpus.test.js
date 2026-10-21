@@ -91,6 +91,22 @@ test("current news day follows local midnight and DST",()=>{
   assert.equal(newsDayStart(Date.parse("2026-10-25T12:00:00Z"),"Europe/Madrid"),"2026-10-24T22:00:00.000Z");
 });
 
+test('archive filtering releases its consistent SQLite view before asynchronous classification',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'ogid-archive-capture-')),db=new Database(join(dir,'db.sqlite'));
+ db.pragma('journal_mode=WAL');migrate(db);
+ const archive=new SqlNewsArchive(db),corpus=new SqlNewsCorpus(archive);
+ try{
+  archive.ingest(Array.from({length:300},(_,n)=>article(n)));
+  const revision=archive.revision;
+  const reading=corpus.getArchiveFeed({limit:500});
+  // getArchiveFeed has yielded after row 256; the detached cut is now complete.
+  archive.ingest([article(0,{title:'Changed after the captured cut'})]);
+  const checkpoint=db.pragma('wal_checkpoint(TRUNCATE)')[0];assert.equal(checkpoint.busy,0);
+  const result=await reading;assert.equal(result.meta.revision,revision);
+  assert.equal(result.news.length,300);assert.equal(result.news.some(row=>row.title==='Changed after the captured cut'),false);
+ }finally{corpus.close();archive.close();db.close();rmSync(dir,{recursive:true,force:true});}
+});
+
 test("SQL preserves derived news features without storing restricted provider text and invalidates revised evidence",async()=>{
   const dir=mkdtempSync(join(tmpdir(),"ogid-news-features-")),db=new Database(join(dir,"test.sqlite"));db.pragma("journal_mode=WAL");db.pragma("foreign_keys=ON");migrate(db);
   const archive=new SqlNewsArchive(db,{now:()=>Date.parse(at)}),corpus=new SqlNewsCorpus(archive,{watchlistCountries:["RU"]});
@@ -157,7 +173,7 @@ test("worker collects each rotating RSS batch into SQL before returning and pres
   }finally{await manager.close();await new Promise(resolve=>server.close(resolve));rmSync(dir,{recursive:true,force:true});}
 });
 
-test("supplemental generated RSS searches keep collecting and persist their own cursor",async()=>{
+test("supplemental RSS shares durable eligibility and never downloads a primary twice",async()=>{
   const requests=[];
   const server=createServer((req,res)=>{requests.push(req.url);res.end(`<rss version="2.0"><channel><item><title>Russia military conflict ${req.url}</title><link>https://example.org${req.url}</link><pubDate>${new Date().toUTCString()}</pubDate></item></channel></rss>`);});
   await new Promise(resolve=>server.listen(0,"127.0.0.1",resolve));
@@ -168,9 +184,12 @@ test("supplemental generated RSS searches keep collecting and persist their own 
     runtime.services.rss.feedCatalog=[{url:base+"/generated-1",generated:true},{url:base+"/generated-2",generated:true}];
     await runtime.newsPipeline.collect({providers:["rss"]});
     assert.equal(db.prepare("SELECT count(*) AS n FROM articles").get().n,2);
-    assert.equal(runtime.load("rss-generated").nextOffset,1);
+    assert.ok(runtime.load("rss-generated").nextCollectAt>Date.now());
+    const states=runtime.services.rss.canonicalPipeline.states;
+    assert.equal([...states.values()].filter(state=>state.lastSuccessAt).length,2);
     await runtime.newsPipeline.collect({providers:["rss"]});
-    assert.deepEqual(requests,["/primary","/generated-1","/primary"]);
+    assert.equal(requests.filter(path=>path==="/primary").length,1);
+    assert.equal(requests.length,2);
     assert.ok(runtime.load("news-collection").lastSuccessfulAt);
   }finally{runtime.close();db.close();await new Promise(resolve=>server.close(resolve));rmSync(dir,{recursive:true,force:true});}
 });

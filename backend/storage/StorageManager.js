@@ -3,10 +3,11 @@ import { AdvancedCoordinator } from "./advancedSnapshots.js";
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
 import { Worker } from "node:worker_threads";
-import { storageConfig, storageCommandTimeout, isAcquisitionWorkflow, isPureRead } from "./config.js";
+import { storageConfig, storageCommandTimeout, storageWorkClass, isAcquisitionWorkflow, isPureRead } from "./config.js";
 import { setTimeout as wait } from "node:timers/promises";
 import { AGENT_READER_METHODS } from "./agentRepository.js";
 import { stableHash } from "../utils/stableHash.js";
+import { ScopedWork } from './scopedWork.js';
 const error = code => Object.assign(new Error(code), { code, statusCode: 503 });
 const commandLabel = value => typeof value === "string" ? value.slice(0,128) : null;
 const OPERATIONS = new Set(["agent.call", "agent.snapshot", "agent.read", "storage.status", "storage.verify", "storage.checkpoint", "pipeline.record", "domain.configure", "domain.registry", "domain.indexPage", "domain.call", "scenarios.prepare", "storage.import", "runtime.save", "runtime.load", "rss.fetch", "news.collect", "news.supplemental", "analysis.persist", "snapshot.prepare", "snapshot.claim", "snapshot.fail", "snapshot.pending"]);
@@ -38,6 +39,7 @@ export class StorageManager extends EventEmitter {
       queuedCommandsTruncated:this.queue.length>50,
       recentCommands:this.recentCommands.map(entry=>({...entry})),lastRejectedCommand:this.lastRejectedCommand ? {...this.lastRejectedCommand} : null,
       activeErrors:[...this.activeErrors.values()],jobs:{active:this.advancedCoordinator?.tasks.size || 0},
+      calculations:{active:this.calculations?.scopes.size || 0,pending:[...(this.calculations?.scopes.values() || [])].filter(scope=>scope.pending).length,bytes:this.calculations?.bytes || 0,maxBytes:this.options.queueMaxBytes,...this.calculations?.metrics},
       queue: { pending: this.queue.length, inFlight: this.active.size, cpuInFlight:[...this.active.values()].filter(entry=>entry.cpu).length,maxCpuInFlight:this.options.maxCpuInFlight,bytes: this.pendingBytes, maxItems: this.options.queueMaxItems, maxBytes: this.options.queueMaxBytes, maxCommandBytes: this.options.maxCommandBytes }, ...this.metrics };
   }
   describeCommand(entry, phase = entry.startedAt ? "executing" : "dispatched") {
@@ -92,7 +94,9 @@ export class StorageManager extends EventEmitter {
     return this.getStatus();
   }
   createAnalysisManager(role="analysis") {
-      const reader = new StorageManager({...this.options,analysisWorker:true,readerRole:role,maxInFlight:role==='queries'?2:1});
+      // A snapshot releases SQLite before awaiting its writer RPC pages. Keep a
+      // second slot for one calculation while those pages are being committed.
+      const reader = new StorageManager({...this.options,analysisWorker:true,readerRole:role,maxInFlight:2});
       reader.rpcHandler=(operation,input)=>operation === "analysis.persist"
         ? this.localRequest(operation,input) : this.rpcHandler?.(operation,input);
       if(role==="analysis")reader.on("stage",(...args)=>this.emit("stage",...args));
@@ -142,7 +146,7 @@ export class StorageManager extends EventEmitter {
       return Promise.reject(Object.assign(error("STORAGE_ANALYSIS_UNAVAILABLE"),{causeCode:this.analysisManager.metrics.lastErrorCode,diagnostic:{worker:"analysis",state:this.analysisManager.state}}));
     if(operation==="agent.call" && input.method==="claim" && this.queryManager && this.queryManager.state!=="ready")
       return Promise.reject(Object.assign(error("STORAGE_QUERIES_UNAVAILABLE"),{diagnostic:{worker:"queries",state:this.queryManager.state}}));
-    if(this.analysisManager && operation==="runtime.load" && input.kind==="awareness")return this.queryManager.request(operation,input,{requestId,timeoutMs,queueTimeoutMs});
+    if(this.analysisManager && operation==="runtime.load" && ["awareness","maintenance-inputs"].includes(input.kind))return this.queryManager.request(operation,input,{requestId,timeoutMs,queueTimeoutMs});
     if(this.analysisManager && operation==="agent.call" && input.method==="snapshot")return this.analysisManager.request("agent.snapshot",input.args,{requestId,timeoutMs:storageCommandTimeout(this.options,"agent.snapshot"),queueTimeoutMs});
     if(this.queryManager && operation==="agent.call" && AGENT_READER_METHODS.has(input.method))return this.queryManager.coalescedRead("agent.read",input,{requestId,timeoutMs:storageCommandTimeout(this.options,"agent.read"),queueTimeoutMs});
     if(this.queryManager && operation==="domain.call" && ((input.service==="news" && ISOLATED_NEWS_METHODS.has(input.method) && input.method!=="getProjection") || ISOLATED_METHODS[input.service]?.has(input.method) && input.service!=="forecasts"))return this.queryManager.coalescedRead(operation,input,{requestId,timeoutMs,queueTimeoutMs});
@@ -153,7 +157,13 @@ export class StorageManager extends EventEmitter {
       return this.analysisManager.request("scenarios.prepare",input.args?.[0] || {},{requestId,timeoutMs:Math.min(timeoutMs,storageCommandTimeout(this.options,"scenarios.prepare")),queueTimeoutMs})
         .then(preparedScenarios=>this.localRequest(operation,{...input,preparedScenarios},{requestId,timeoutMs,queueTimeoutMs}));
     }
-    if (this.analysisManager && operation === "domain.call" && (ISOLATED_SERVICES.has(input.service) || ISOLATED_METHODS[input.service]?.has(input.method) || (input.service === "news" && ISOLATED_NEWS_METHODS.has(input.method)))) return this.analysisManager.request(operation,input,{requestId,timeoutMs,queueTimeoutMs});
+    if (this.analysisManager && operation === "domain.call" && (ISOLATED_SERVICES.has(input.service) || ISOLATED_METHODS[input.service]?.has(input.method) || (input.service === "news" && ISOLATED_NEWS_METHODS.has(input.method)))) {
+      let bytes;try{bytes=Buffer.byteLength(JSON.stringify({operation,input,requestId}));}catch{return Promise.reject(error('STORAGE_INVALID_COMMAND'));}
+      if(bytes>this.options.maxCommandBytes)return Promise.reject(error('STORAGE_COMMAND_TOO_LARGE'));
+      this.calculations ||= new ScopedWork({maxScopes:this.options.queueMaxItems,maxBytes:this.options.queueMaxBytes});
+      const captured=structuredClone(input),scope=stableHash([operation,input.service,input.method,input.args,input.context?.selectedInstrumentIds]);
+      return this.calculations.run(scope,stableHash(captured),()=>this.analysisManager.request(operation,captured,{requestId,timeoutMs,queueTimeoutMs}),{bytes}).then(result=>structuredClone(result));
+    }
     if (this.analysisManager && ["domain.configure","domain.registry"].includes(operation)) {
       return this.localRequest(operation,input,{requestId,timeoutMs,queueTimeoutMs}).then(async result=>{
         if(operation==="domain.configure")this.analysisConfig={...input};
@@ -191,6 +201,8 @@ export class StorageManager extends EventEmitter {
     this.sharedReads.set(key,task);return task.then(value=>structuredClone(value));
   }
   localRequest(operation, input = {}, { requestId = randomUUID(), timeoutMs = storageCommandTimeout(this.options,operation,input), queueTimeoutMs = this.options.queueTimeoutMs } = {}) {
+    const workClass=storageWorkClass(operation,input),control=workClass==='control';
+    if(operation==='agent.call' && input.method==='heartbeat')queueTimeoutMs=Math.min(queueTimeoutMs,35000);
     if (!OPERATIONS.has(operation)) return Promise.reject(error("STORAGE_UNKNOWN_OPERATION"));
     if (this.state !== "ready") return Promise.reject(Object.assign(error("STORAGE_NOT_READY"), {
       causeCode: this.metrics.lastErrorCode,
@@ -210,13 +222,14 @@ export class StorageManager extends EventEmitter {
     if (bytes > this.options.maxCommandBytes) {
       return rejectCommand("STORAGE_COMMAND_TOO_LARGE");
     }
-    if (this.queue.length + this.active.size >= this.options.queueMaxItems || this.pendingBytes + bytes > this.options.queueMaxBytes) {
+    const reserveItems=this.options.queueMaxItems>8?4:0,reserveBytes=Math.min(65536,Math.floor(this.options.queueMaxBytes/8));
+    if (this.queue.length + this.active.size >= this.options.queueMaxItems-(control?0:reserveItems) || this.pendingBytes + bytes > this.options.queueMaxBytes-(control?0:reserveBytes)) {
       return rejectCommand("STORAGE_BACKPRESSURE");
     }
     return new Promise((resolve, reject) => {
       const slow = ["rss.fetch", "news.collect", "news.supplemental"].includes(operation) || (operation === "domain.call" && (["rss","advanced","map"].includes(input.service) || ["run","import"].includes(input.method)));
       const cpu = operation === "scenarios.prepare" || (operation === "domain.call" && (CPU_SERVICES.has(input.service) || (input.service === "news" && ISOLATED_NEWS_METHODS.has(input.method))));
-      const entry = { id: randomUUID(), encoded, bytes, resolve, reject, slow, cpu, pureRead:this.options.analysisWorker && isPureRead(operation,input),workflow:isAcquisitionWorkflow(operation,input),queuedAt:Date.now(),timeoutMs,queueTimeoutMs,diagnostic };
+      const entry = { id: randomUUID(), encoded, bytes, resolve, reject, slow, cpu,capture:operation==='agent.snapshot',workClass,control,pureRead:this.options.analysisWorker && isPureRead(operation,input),workflow:isAcquisitionWorkflow(operation,input),queuedAt:Date.now(),timeoutMs,queueTimeoutMs,diagnostic:{...diagnostic,workClass} };
       entry.timer = setTimeout(() => this.expire(entry), queueTimeoutMs);
       this.pendingBytes += bytes; this.queue.push(entry); this.pump();
     });
@@ -224,14 +237,31 @@ export class StorageManager extends EventEmitter {
   pump() {
     if (!["ready", "closing"].includes(this.state)) return;
     while (this.queue.length && this.active.size < this.options.maxInFlight) {
-      const slowCount=[...this.active.values()].filter(e=>e.slow).length;
+      const slowCount=[...this.active.values()].filter(e=>e.slow && !e.workflow).length;
+      const acquisitionCount=[...this.active.values()].filter(e=>e.workflow).length;
       const cpuCount=[...this.active.values()].filter(e=>e.cpu).length;
-      const eligible=e=>(!e.slow || slowCount<Math.min(2,this.options.maxInFlight))&&(!e.cpu || cpuCount<this.options.maxCpuInFlight);
+      const captureActive=[...this.active.values()].some(e=>e.capture);
+      const sqlActive=[...this.active.values()].some(e=>!e.workflow && !e.control && !e.cpu);
+      // Network workflows release the writer while awaiting I/O. Admit only one
+      // other writer unit so seven dispatched SQL commands cannot queue ahead
+      // of a lease renewal inside the worker's mailbox.
+      // Shared RSS + primary news may both await the same acquisition. They
+      // must not consume the two legacy slow slots and starve other sources.
+      // Four cooperative acquisitions still leave room for commits and control.
+      const acquisitionLimit=Math.min(4,Math.max(1,this.options.maxInFlight-2));
+      const eligible=e=>(!e.workflow || acquisitionCount<acquisitionLimit)&&
+        (!e.slow || e.workflow || slowCount<Math.min(2,this.options.maxInFlight))&&
+        (e.control || this.options.maxInFlight<=2 || this.active.size<this.options.maxInFlight-1)&&
+        (!e.cpu || cpuCount<this.options.maxCpuInFlight)&&(!e.capture || !captureActive)&&
+        (this.options.analysisWorker || e.control || e.workflow || e.cpu || !sqlActive);
+      const heartbeat=this.queue.findIndex(e=>eligible(e)&&e.control&&e.diagnostic.method==='heartbeat');
+      const waitingBusiness=this.queue.findIndex(e=>eligible(e)&&!e.control);
+      const urgent=heartbeat>=0?heartbeat:(this.controlBurst || 0)>=4&&waitingBusiness>=0?-1:this.queue.findIndex(e=>eligible(e)&&e.control);
       const aged=this.queue.findIndex(e=>eligible(e)&&Date.now()-e.queuedAt>=1000);
       const quick=this.queue.findIndex(e=>eligible(e)&&!e.slow);
-      const index=aged>=0?aged:quick>=0?quick:this.queue.findIndex(eligible);
+      const index=urgent>=0?urgent:aged>=0?aged:quick>=0?quick:this.queue.findIndex(eligible);
       if(index < 0)break;
-      const [entry] = this.queue.splice(index,1); this.active.set(entry.id, entry);
+      const [entry] = this.queue.splice(index,1);this.controlBurst=entry.control?(this.controlBurst || 0)+1:0; this.active.set(entry.id, entry);
       entry.dispatchedAt=Date.now();
       try { this.worker.postMessage({ id: entry.id, encoded: entry.encoded, queueDeadline:entry.queuedAt+entry.queueTimeoutMs }); }
       catch { this.fail(error("STORAGE_WORKER_FAILED")); return; }

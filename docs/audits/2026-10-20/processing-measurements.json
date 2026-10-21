@@ -1,0 +1,110 @@
+{
+  "benchmark-baseline": {
+    "label": "baseline",
+    "database": "/srv/bitcoin/ogid/validation/20261020-processing/candidate.sqlite",
+    "asOf": "2026-10-20T17:35:23.444Z",
+    "cache": "host cache not flushed; first pass and two process-warm passes",
+    "samples": [
+      {
+        "iteration": 0,
+        "elapsedMs": 2385.947324,
+        "transactionMs": 2384.157004,
+        "scanned": 3897,
+        "eligible": 3825,
+        "display": 100,
+        "hash": "07e85feb078b582237742e5729dfe2a7dd4d9cf483b071be1088c0ee9381181f"
+      },
+      {
+        "iteration": 1,
+        "elapsedMs": 1804.3368920000003,
+        "transactionMs": 1803.6483369999996,
+        "scanned": 3897,
+        "eligible": 3825,
+        "display": 100,
+        "hash": "07e85feb078b582237742e5729dfe2a7dd4d9cf483b071be1088c0ee9381181f"
+      },
+      {
+        "iteration": 2,
+        "elapsedMs": 1965.8668089999992,
+        "transactionMs": 1965.2563609999997,
+        "scanned": 3897,
+        "eligible": 3825,
+        "display": 100,
+        "hash": "07e85feb078b582237742e5729dfe2a7dd4d9cf483b071be1088c0ee9381181f"
+      }
+    ],
+    "maxRss": 202416128,
+    "plan": [
+      {
+        "id": 3,
+        "parent": 0,
+        "notused": 153,
+        "detail": "SEARCH articles USING COVERING INDEX articles_projection_window (published_at>? AND published_at<?)"
+      }
+    ]
+  },
+  "benchmark-candidate": {
+    "label": "candidate",
+    "database": "/srv/bitcoin/ogid/validation/20261020-processing/candidate.sqlite",
+    "asOf": "2026-10-20T17:35:23.444Z",
+    "cache": "host cache not flushed; first pass and two process-warm passes",
+    "samples": [
+      {
+        "iteration": 0,
+        "elapsedMs": 2160.688262,
+        "transactionMs": 113.91788,
+        "scanned": 3897,
+        "eligible": 3825,
+        "display": 100,
+        "captureMs": 105.448841,
+        "capturedBytes": 9574765,
+        "hash": "07e85feb078b582237742e5729dfe2a7dd4d9cf483b071be1088c0ee9381181f"
+      },
+      {
+        "iteration": 1,
+        "elapsedMs": 2023.1070990000003,
+        "transactionMs": 58.30909399999973,
+        "scanned": 3897,
+        "eligible": 3825,
+        "display": 100,
+        "captureMs": 57.304479000000356,
+        "capturedBytes": 9574765,
+        "hash": "07e85feb078b582237742e5729dfe2a7dd4d9cf483b071be1088c0ee9381181f"
+      },
+      {
+        "iteration": 2,
+        "elapsedMs": 1965.3661060000004,
+        "transactionMs": 54.256092999999964,
+        "scanned": 3897,
+        "eligible": 3825,
+        "display": 100,
+        "captureMs": 53.314777000000504,
+        "capturedBytes": 9574765,
+        "hash": "07e85feb078b582237742e5729dfe2a7dd4d9cf483b071be1088c0ee9381181f"
+      }
+    ],
+    "maxRss": 200863744,
+    "plan": [
+      {
+        "id": 3,
+        "parent": 0,
+        "notused": 153,
+        "detail": "SEARCH articles USING COVERING INDEX articles_projection_window (published_at>? AND published_at<?)"
+      }
+    ]
+  },
+  "semantic-baseline": {
+    "label": "baseline",
+    "analysisRuns": 2,
+    "outbox": 2,
+    "calculations": null,
+    "emptyConsumeWrites": 10
+  },
+  "semantic-candidate": {
+    "label": "candidate",
+    "analysisRuns": 1,
+    "outbox": 1,
+    "calculations": 1,
+    "emptyConsumeWrites": 0
+  }
+}

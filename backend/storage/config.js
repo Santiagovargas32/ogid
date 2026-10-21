@@ -2,9 +2,17 @@ import { RUNTIME_POLICY } from "../config/runtimePolicy.js";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 const backendDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const CONTROL_METHODS=new Set(['heartbeat','cancel','interruptClaim','cancelAcknowledged','progress','state','publish','link']);
+export function storageWorkClass(operation,input={}){
+  if(operation==='agent.call' && CONTROL_METHODS.has(input.method))return 'control';
+  if(['domain.indexPage','storage.checkpoint','storage.verify','storage.import'].includes(operation))return 'maintenance';
+  if(isAcquisitionWorkflow(operation,input))return 'acquisition';
+  if(operation==='analysis.persist' || operation==='runtime.save' || operation==='pipeline.record')return 'commit';
+  return isPureRead(operation,input)?'read':'calculation';
+}
 export function isAcquisitionWorkflow(operation,input={}) {
   return ["news.collect","news.supplemental","rss.fetch"].includes(operation) ||
-    (operation==="domain.call" && input.service==="rss" && input.method==="refresh");
+    (operation==="domain.call" && ((input.service==="rss" && input.method==="refresh") || (['sources','history'].includes(input.service) && input.method==='run')));
 }
 export function isPureRead(operation,input={}) {
   if(['agent.read','scenarios.prepare','runtime.load','storage.status'].includes(operation))return true;
@@ -47,6 +55,7 @@ export function storageConfig(overrides = {}, env = process.env) {
 }
 
 export function storageCommandTimeout(options,operation,input={}) {
+  if(operation==='agent.call' && input.method==='heartbeat')return Math.min(5000,options.timeoutMs);
   const key=operation === "domain.call" ? `${operation}:${input.service}:${input.method}` : operation;
   return options.commandTimeouts?.[key] ?? (operation === "domain.call" && ["run","import","refresh"].includes(input.method)
     ? options.networkTimeoutMs : options.timeoutMs);

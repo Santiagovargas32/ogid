@@ -83,3 +83,26 @@ test('mutable resources cannot hide a revision or serve a cached previous payloa
   resource.value=2;const next=sync.change(['meta']);assert.ok(next.revision>first.data.revision);
   assert.equal(JSON.parse(sync.page({resource:'meta'}).data.fragment).value,2);
 });
+
+test('frequent invalidations cannot expire a revision already being paged within its bounded lease',async()=>{
+ const state={news:[{text:'ñ🌎'.repeat(500)}],pipelineStatus:{tick:0}};
+ const original=structuredClone(state.news),sync=new StateSync({getSnapshot:()=>state},{pageChars:100,cacheBytes:65536,retainedLimit:4});
+ let first=true;const updates=[];
+ const client=new StateSynchronizer({api:{getSyncSnapshot:async input=>{
+   if(!input.resource)return sync.manifest();
+   const response=sync.page(input);if(response.status!==200)throw Object.assign(Error(response.code),{status:response.status});
+   if(input.resource==='news'){
+     state.news=[{text:`new-${input.cursor}`}];state.pipelineStatus={tick:input.cursor};sync.change(['news','pipelineStatus']);
+   }
+   return response.data;
+ }},onUpdate:update=>{updates.push(update);if(first){first=false;client.close();}}});
+ await client.requestSnapshot();assert.deepEqual(updates[0].news,original);assert.ok(sync.retained.size<=4);assert.ok(sync.metrics.retainedBytes<=65536);
+});
+
+test('a serialized change is reused by HTTP, and retained pages expire without unbounded memory',()=>{
+ let now=0;const state={meta:{value:1}},sync=new StateSync({getSnapshot:()=>state},{now:()=>now,versionTtlMs:1000,cacheBytes:1024});
+ sync.change(['meta']);const serializations=sync.metrics.serializations;
+ sync.page({resource:'meta'});assert.equal(sync.metrics.serializations,serializations);
+ state.meta={value:2};sync.change(['meta']);assert.equal(sync.page({resource:'meta',revision:1}).status,200);
+ now=1001;assert.equal(sync.page({resource:'meta',revision:1}).status,409);assert.equal(sync.retained.size,0);
+});

@@ -67,3 +67,35 @@ test('polling stop and restart cannot publish a cancelled response or overlap ta
   assert.equal(calls,2);assert.deepEqual(data,['fresh']);
   loop.stop();
 });
+
+test('pagehide/pageshow restores one connection and one poller without duplicate listeners',async t=>{
+ browser(t);let calls=0;
+ const realtime=new RealtimeSocket({});const loop=new SmartPollLoop({task:async()=>++calls});
+ realtime.connect();loop.start();await new Promise(resolve=>setImmediate(resolve));
+ const old=realtime.socket;old.readyState=1;old.emit('open');
+ window.dispatchEvent(new Event('pagehide'));assert.equal(loop.stopped,true);assert.equal(old.readyState,3);
+ const show=new Event('pageshow');Object.defineProperty(show,'persisted',{value:true});window.dispatchEvent(show);window.dispatchEvent(show);
+ await new Promise(resolve=>setImmediate(resolve));assert.equal(FakeSocket.instances.length,2);assert.equal(calls,2);
+ loop.stop();realtime.close();window.dispatchEvent(show);assert.equal(FakeSocket.instances.length,2);
+});
+
+test('an OPEN socket without application traffic recovers and hidden tabs get a grace period',t=>{
+ browser(t);let now=0;const statuses=[];
+ const realtime=new RealtimeSocket({now:()=>now,staleMs:60000,onStatusChange:state=>statuses.push(state)});
+ realtime.connect();realtime.socket.readyState=1;realtime.socket.emit('open');
+ document.hidden=true;now=60000;t.mock.timers.tick(60000);assert.equal(statuses.at(-1),'connected');
+ document.hidden=false;now=120000;t.mock.timers.tick(60000);assert.equal(statuses.at(-1),'reconnecting');
+ assert.equal(realtime.lastClose.reason,'application-heartbeat-stalled');
+ t.mock.timers.tick(1000);assert.equal(FakeSocket.instances.length,2);realtime.close();
+});
+
+test('API creates a new page cancellation scope after bfcache restoration',async t=>{
+ browser(t);window.location.origin='http://ogid.local:3000';
+ const original=globalThis.fetch;const signals=[];
+ globalThis.fetch=async(_path,options)=>{signals.push(options.signal);options.signal.throwIfAborted();return Response.json({data:{ok:true}});};
+ t.after(()=>{globalThis.fetch=original;});
+ const {request}=await import('../../frontend/js/api.js?processing-lifecycle');
+ await request('/fixture');window.dispatchEvent(new Event('pagehide'));assert.equal(signals[0].aborted,true);
+ const show=new Event('pageshow');Object.defineProperty(show,'persisted',{value:true});window.dispatchEvent(show);
+ assert.deepEqual(await request('/fixture'),{ok:true});assert.equal(signals[1].aborted,false);
+});

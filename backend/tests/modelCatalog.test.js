@@ -17,7 +17,7 @@ test('metadata-only Awareness can hydrate once from an older full response, but 
  const hydrated=mergeAwarenessPayload(compact,full);assert.equal(hydrated.recent.length,1);assert.equal(hydrated.revision,8970);assert.equal(hydrated.hydrationRevision,8969);
  const empty=mergeAwarenessPayload(compact,{...full,revision:8970,recent:[]});assert.equal(mergeAwarenessPayload(empty,full).recent.length,0);
 });
-test('internal HTTP covers queue plus execution while heartbeat remains bounded within its lease',()=>{assert.equal(internalDeadline('heartbeat'),30000);assert.equal(internalDeadline('publish'),125000);assert.equal(internalDeadline('snapshot'),395000);});
+test('internal HTTP covers queue plus execution while heartbeat remains bounded within its lease',()=>{assert.equal(internalDeadline('heartbeat'),50000);assert.ok(20000+internalDeadline('heartbeat')+10000<90000);assert.equal(internalDeadline('publish'),125000);assert.equal(internalDeadline('snapshot'),395000);});
 test('lost model-load response is reconciled without repeating the mutation',async()=>{
  let inventory=0,loads=0;const manifest={models:[{alias:'new',context:8192,slots:1,state:'available'}]};const service=new LlamaModels({upstream:'http://localhost:8080',apiKey:'secret',manifest,fetchImpl:async(url,o)=>{const p=new URL(url).pathname;if(p==='/models')return Response.json({data:[{id:'new',status:{value:++inventory===1?'unloaded':'loaded'}}]});if(p==='/models/load'){loads++;throw new TypeError('response lost');}if(p==='/props')return Response.json({total_slots:1,default_generation_settings:{n_ctx:8192,params:{n_predict:-1,max_tokens:-1}}});assert.fail(p);}});
  await service.load('new');assert.equal(loads,1);assert.equal(manifest.models[0].resident,true);

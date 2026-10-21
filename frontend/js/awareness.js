@@ -464,14 +464,14 @@ export function mountAwarenessCenter({
     }
   }
 
-  async function loadSnapshot() {
+  async function loadSnapshot(signal) {
     if (stopped || requestInFlight || typeof api?.getAwarenessSnapshot !== "function") {
       return null;
     }
     requestInFlight = true;
     const token = ++requestToken;
     try {
-      const payload = await api.getAwarenessSnapshot();
+      const payload = await api.getAwarenessSnapshot({}, {signal});
       if (!stopped && token === requestToken) {
         roots.panel.dataset.awarenessRefresh = "ok";
         const isBootstrap = !initialHydrationSettled;

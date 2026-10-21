@@ -1,3 +1,4 @@
+import { FrozenRows } from "./frozenRows.js";
 import {PayloadCache,physicalPages} from "./sqlitePayloadPages.js";
 export {physicalPages} from "./sqlitePayloadPages.js";
 import { compareNews } from "../utils/newsOrder.js";
@@ -65,10 +66,11 @@ export class SqlNewsCorpus {
 
   async scan({ now, hours, countries, viewSources, awarenessMode }) {
     for(const id of ["news.normalize","news.classify","news.risk","news.select"])this.config.progress?.(id,"running");
-    const reader=new Database(this.archive.db.name,{readonly:true,timeout:1500});
+    const reader=new Database(this.archive.db.name,{readonly:true,timeout:1500}),frozen=new FrozenRows();
+    let captureMs=0;
     try {
       reader.pragma("query_only=ON");reader.exec("BEGIN");
-      const started = performance.now(), revision = readMeta(reader,"news.meta",{revision:this.archive.revision}).revision;
+      const started = performance.now(), capturedMeta=readMeta(reader,"news.meta",{revision:this.archive.revision}),revision=capturedMeta.revision;
       const asOf = new Date(now).toISOString(), dayStart = newsDayStart(now, this.config.dayTimeZone || "Europe/Madrid");
       const from = new Date(Math.min(now-hours*HOUR, Date.parse(dayStart))).toISOString();
       const analyzeLimit = positive(this.config.analyzeLimit, 3000), displayLimit = positive(this.config.displayLimit, 40, 200);
@@ -101,8 +103,16 @@ export class SqlNewsCorpus {
       };
       // Publication index bounds the scan. No pagination snapshots, full archive
       // hydration, or synchronous writes are created by this read.
-      const references=reader.prepare("SELECT rowid,revision,last_seen_at FROM articles INDEXED BY articles_projection_window WHERE published_at>=? AND published_at<=? ORDER BY published_at DESC,article_id DESC").all(from,asOf);
-      for (const row of physicalPages(reader,'articles',references,this.payloadCache)) {
+      const references=reader.prepare("SELECT rowid,revision,last_seen_at FROM articles INDEXED BY articles_projection_window WHERE published_at>=? AND published_at<=? ORDER BY published_at DESC,article_id DESC").iterate(from,asOf);
+      const captureStarted=performance.now();
+      for(const row of physicalPages(reader,'articles',references,this.payloadCache)){
+        frozen.add(row);
+        if(performance.now()-captureStarted>30000)throw Object.assign(Error('News capture deadline'),{code:'STORAGE_CAPTURE_TIMEOUT'});
+      }
+      reader.exec("COMMIT");captureMs=performance.now()-captureStarted;
+      // Classification/ranking now reads a detached immutable cut. Neither a
+      // provider update nor retention can change it; WAL is free to checkpoint.
+      for (const row of frozen.rows()) {
         scanned++;
         const stored = JSON.parse(row.payload_json);
         if (!stored.title?.trim() || !stored.url || stored.synthetic || ["synthetic","fallback","seeded"].includes(stored.dataMode) || stored.provenance?.synthetic) continue;
@@ -144,8 +154,8 @@ export class SqlNewsCorpus {
       for(const id of ["news.normalize","news.classify","news.risk","news.select"])this.config.progress?.(id,"completed",{processed:id==="news.risk"?dailyCount:eligible,discarded:scanned-eligible,revision});
       return { signalCorpus:geo, marketSignalCorpus, news:selection.displaySelection, displayCandidates, selectionMeta:selection.selectionMeta, financialSelection,
         riskResult:risk.finish(),
-        meta:{ source:"sqlite", revision, asOf, from, to:asOf, dayStart, dayTimeZone:this.config.dayTimeZone || "Europe/Madrid", windowHours:hours, scannedCount:scanned, eligibleCount:eligible, duplicateCount, dailyCandidateCount:dailyCount, displayCandidateCount, geopoliticalCandidateCount:geoCount, financialCandidateCount:financialCount, analysisCount:geo.length, marketAnalysisCount:marketSignalCorpus.length, displayCount:selection.displaySelection.length, analyzeLimit, displayLimit, analysisTruncated:geoCount>geo.length || financialCount>financialSelection.signalCorpus.length, riskUsesAllDailyCandidates:true, providerCounts, sourceCount:sources.size, lastIngestAt:this.archive.lastIngestAt, latestGeopoliticalPublishedAt, durationMs:Math.round(performance.now()-started) } };
-    } finally { reader.close(); }
+        meta:{ source:"sqlite", revision, asOf, from, to:asOf, dayStart, dayTimeZone:this.config.dayTimeZone || "Europe/Madrid", windowHours:hours, scannedCount:scanned, eligibleCount:eligible, duplicateCount, dailyCandidateCount:dailyCount, displayCandidateCount, geopoliticalCandidateCount:geoCount, financialCandidateCount:financialCount, analysisCount:geo.length, marketAnalysisCount:marketSignalCorpus.length, displayCount:selection.displaySelection.length, analyzeLimit, displayLimit, analysisTruncated:geoCount>geo.length || financialCount>financialSelection.signalCorpus.length, riskUsesAllDailyCandidates:true, providerCounts, sourceCount:sources.size, lastIngestAt:capturedMeta.lastIngestAt || null, latestGeopoliticalPublishedAt,captureMs,capturedBytes:frozen.bytes, durationMs:Math.round(performance.now()-started) } };
+    } finally { reader.close();frozen.close(); }
   }
 
   async readAnalytical({asOf = new Date().toISOString(), windowHours = 48, maxBytes = 64 * 1024 * 1024, awarenessMode = "off",revisionWatermark = null} = {}) {
@@ -212,7 +222,7 @@ export class SqlNewsCorpus {
 
   async getArchiveFeed({countries=[],sources=[],limit=40,page=1,order="recent",q="",windowHours=null}={}) {
     const boundedLimit=Math.min(500,Math.max(1,Number(limit)||40)),offset=(Math.min(10000,Math.max(1,Number(page)||1))-1)*boundedLimit;
-    const reader=new Database(this.archive.db.name,{readonly:true});const heap=[];const compare=(a,b)=>compareNews(a,b,order);
+    const reader=new Database(this.archive.db.name,{readonly:true}),frozen=new FrozenRows();const heap=[];const compare=(a,b)=>compareNews(a,b,order);
     const push=value=>{
       if(heap.length<offset+boundedLimit){heap.push(value);let i=heap.length-1;while(i>0){const p=(i-1)>>1;if(compare(heap[i],heap[p])<=0)break;[heap[i],heap[p]]=[heap[p],heap[i]];i=p;}}
       else if(compare(value,heap[0])<0){heap[0]=value;let i=0;for(;;){let next=i;for(const child of [2*i+1,2*i+2])if(child<heap.length&&compare(heap[child],heap[next])>0)next=child;if(next===i)break;[heap[i],heap[next]]=[heap[next],heap[i]];i=next;}}
@@ -221,7 +231,13 @@ export class SqlNewsCorpus {
     try{
       reader.exec("BEGIN");const revision=readMeta(reader,"news.meta",{}).revision;
       if(reader.prepare("SELECT count(*) AS n FROM articles").get().n<=offset)return {news:[],meta:{revision,collection:"archive-permitted-metadata",hasMore:false}};
+      const captureStarted=performance.now();
       for(const row of reader.prepare("SELECT payload_json FROM articles ORDER BY article_id").iterate()){
+        frozen.add(row);
+        if(performance.now()-captureStarted>30000)throw Object.assign(Error('Archive capture deadline'),{code:'STORAGE_CAPTURE_TIMEOUT'});
+      }
+      reader.exec('COMMIT');
+      for(const row of frozen.rows()){
         const raw=JSON.parse(row.payload_json);scanned++;
         if(cutoff!==null&&(Date.parse(raw.publishedAt || raw.archiveFirstSeenAt || raw.receivedAt)||0)<cutoff)continue;
         const article={...classifyRssArticle(raw),...publicationDate(raw.publishedAt),identity:articleIdentity(raw),firstSeenAt:raw.archiveFirstSeenAt || raw.receivedAt,severityOrigin:"rss-classifier-rules"};
@@ -231,7 +247,7 @@ export class SqlNewsCorpus {
         total++;push(article);if(scanned%256===0)await new Promise(resolve=>setImmediate(resolve));
       }
       return {news:heap.sort(compare).slice(offset,offset+boundedLimit),meta:{revision,collection:"archive-permitted-metadata",total,page,hasMore:total>offset+boundedLimit,scannedCount:scanned,stored:true}};
-    }finally{reader.close();}
+    }finally{reader.close();frozen.close();}
   }
 
   async getLiveFeed({countries=this.config.watchlistCountries || [],sources=[],limit=this.config.displayLimit || 40,includeOlder=false,q="",order="recent",page=1,windowHours=null}={}) {

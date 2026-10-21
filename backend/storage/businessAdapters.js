@@ -2,7 +2,7 @@ import { RUNTIME_POLICY } from "../config/runtimePolicy.js";
 import { workerRssStatus } from "../services/news/rssDiagnostics.js";
 // These adapters contain no historical corpus. Domain methods execute inside
 // the SQLite worker; HTTP controllers and pipeline callbacks await their result.
-export function createBusinessAdapters(manager, {rootDir,enabled=true,context=()=>undefined}={}) {
+export function createBusinessAdapters(manager, {rootDir,enabled=true,rssEnabled=false,rssIntervalMs=30000,context=()=>undefined}={}) {
   const call=(service,method,args=[],options={})=>manager.request("domain.call",{service,method,args,...(options.context?{context:context()}: {})},{timeoutMs:options.timeoutMs});
   const proxy=(service,methods,options={})=>Object.fromEntries(methods.map(method=>[method,(...args)=>call(service,method,args,options)]));
   let coverage={totalStored:0};
@@ -24,16 +24,29 @@ export function createBusinessAdapters(manager, {rootDir,enabled=true,context=()
   map.getDashboardMapAssets=(input={})=>call("map","getDashboardMapAssets",[{snapshot:input.snapshot?{news:input.snapshot.news,countries:input.snapshot.countries,hotspots:input.snapshot.hotspots,meta:input.snapshot.meta}:null}],{context:true});
   const signals=proxy("signals",["recordSnapshot","getAnomalies"]);
   signals.recordSnapshot=(snapshot,aggregate)=>call("signals","recordSnapshot",[{meta:{lastRefreshAt:snapshot.meta?.lastRefreshAt},signalCorpus:snapshot.signalCorpus || [],impact:snapshot.impact,predictions:snapshot.predictions,market:{quotes:snapshot.market?.quotes || {}}},aggregate]);
-  return {call,news,candles,
+  const rss={...proxy("rss",["getSnapshot","refresh"],{}),maxCorpusItems:RUNTIME_POLICY.news.rssAggregateMaxItems,
+    getStatus:()=>workerRssStatus(manager.getStatus().worker?.rss),
+    start(){
+      if(!rssEnabled || !rssIntervalMs || rss.running)return;
+      rss.running=true;
+      const tick=()=>{
+        rss.task=call('rss','refresh',[]).then(snapshot=>{
+          if(rss.running && snapshot.meta?.acquisition?.successfulChecks)Promise.resolve(rss.onSnapshot?.(snapshot)).catch(()=>{});
+        }).catch(error=>{rss.lastErrorCode=error.code || 'RSS_ACQUISITION_FAILED';}).finally(()=>{
+          rss.task=null;if(rss.running){rss.timer=setTimeout(tick,rssIntervalMs);rss.timer.unref?.();}
+        });
+      };
+      tick();
+    },
+    async stop(){rss.running=false;clearTimeout(rss.timer);await rss.task;}
+  };
+  return {call,news,candles,rss,
     store:proxy("store",["view","getRow"]),events:proxy("events",["ingest","search","replayAwareness"]),alerts:proxy("alerts",["acknowledge","delta","getChange","acknowledgeChanges","recoverCheckpoint"]),
     sources:proxy("sources",["status","run","holdings","stop"]),history:proxy("history",["create","get","run","coverage"]),imports:proxy("imports",["datasets","import"]),
     technical:proxy("technical",["get"]),indicators:proxy("indicators",["calculate"]),coupling:proxy("coupling",["calculate"]),scenarios:proxy("scenarios",["refresh","list","remove"]),
     forecasts:proxy("forecasts",["evaluate","record"]),portfolio:proxy("portfolio",["getContext"],{context:true}),
     conditions:proxy("conditions",["getSnapshot"],{context:true}),map,
     advanced:proxy("advanced",["getSnapshot"],{context:true}),signals,
-    rss:{...proxy("rss",["getSnapshot","refresh"],{}),maxCorpusItems:RUNTIME_POLICY.news.rssAggregateMaxItems,
-      // Administrative diagnostics use the worker's last telemetry sample;
-      // reading them must not start a collection or compete with persistence.
-      getStatus:()=>workerRssStatus(manager.getStatus().worker?.rss)}
+
   };
 }

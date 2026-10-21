@@ -523,7 +523,7 @@ export class AgentRepository {
             }),
           );
         }
-        this.db
+        if(latest!==previous)this.db
           .prepare(
             "INSERT INTO consumer_checkpoints VALUES(?,?,?) ON CONFLICT(consumer_id) DO UPDATE SET sequence=excluded.sequence,acknowledged_at=excluded.acknowledged_at",
           )
@@ -844,6 +844,16 @@ export class AgentRepository {
   snapshotWrite(input) {
     return this.db.transaction(()=>{
       const job=this.fenced(input);
+      if(input.phase==='cleanup'){
+        const abandoned=this.db.prepare("SELECT snapshot_id FROM agent_snapshots s WHERE json_extract(manifest_json,'$.sealed')=0 AND json_extract(manifest_json,'$.building.jobId')=? AND NOT EXISTS(SELECT 1 FROM agent_jobs j WHERE j.snapshot_id=s.snapshot_id) ORDER BY as_of LIMIT 1").get(job.job_id);
+        if(!abandoned)return {hasMore:false};
+        for(const table of ['agent_cluster_members','agent_clusters','agent_evidence']){
+          const removed=this.db.prepare(`DELETE FROM ${table} WHERE rowid IN (SELECT rowid FROM ${table} WHERE snapshot_id=? LIMIT 100)`).run(abandoned.snapshot_id).changes;
+          if(removed)return {hasMore:true,removed};
+        }
+        this.db.prepare('DELETE FROM agent_snapshots WHERE snapshot_id=?').run(abandoned.snapshot_id);
+        return {hasMore:true,removed:1};
+      }
       if(job.snapshot_id)return this.snapshotInfo(job.snapshot_id);
       if(input.phase==="begin"){
         const p=input.prepared;
@@ -874,7 +884,8 @@ export class AgentRepository {
       return this.snapshotInfo(input.snapshotId);
     }).immediate();
   }
-  prepareSnapshot(input) {
+  prepareSnapshot(input, {rowSink=null,maxPreparationMs=15000}={}) {
+    const preparationStarted=performance.now();
     return this.db
       .transaction(() => {
         // Pin the reader's consistent view before choosing its temporal cut.
@@ -891,8 +902,10 @@ export class AgentRepository {
             selectedInstrumentIds:
               parse(job.input_json).selectedInstrumentIds || [],
           };
-        const evidence=[],clusters=[],members=[],seen=new Set(),groups=new Map(),digest=createHash("sha256");
+        const rowsFor=table=>rowSink?{length:0,push(row){rowSink(table,row);this.length++;}}:[];
+        const evidence=rowsFor('evidence'),clusters=rowsFor('clusters'),members=rowsFor('members'),seen=new Set(),groups=new Map(),digest=createHash("sha256");
         const add=(id,domain,at,data,articleId=null,articleRevision=null,articlePayload=null)=>{
+          if(performance.now()-preparationStarted>maxPreparationMs)throw agentError('AGENT_SNAPSHOT_PREPARATION_TIMEOUT',503);
           if(seen.has(id))return;
           seen.add(id);const payload=data===null?null:json(data);
           evidence.push([id,domain,at,articleId,articleRevision,payload]);
@@ -942,7 +955,7 @@ export class AgentRepository {
           .prepare(
             "SELECT * FROM awareness_events WHERE observed_at<=? AND observed_at>=? ORDER BY observed_at",
           )
-          .all(asOf, since)) {
+          .iterate(asOf, since)) {
           const e = parse(row.payload_json);
           if (admitted(row.source_id))
             add(
@@ -1008,7 +1021,7 @@ export class AgentRepository {
           .prepare(
             "SELECT * FROM geopolitical_alerts WHERE updated_at<=? ORDER BY updated_at DESC LIMIT 500",
           )
-          .all(asOf)) {
+          .iterate(asOf)) {
           const alert=parse(row.payload_json),references=[];
           for(const id of Array.isArray(alert.evidenceIds)?alert.evidenceIds:[]){
             if(typeof id!=='string')continue;
@@ -1059,7 +1072,7 @@ export class AgentRepository {
           .prepare(
             "SELECT entity_id,payload_json FROM research_rows WHERE collection='companyFacts' LIMIT 100",
           )
-          .all())
+          .iterate())
           add(
             `fundamentals:${row.entity_id}:${snapshotId}`,
             "fundamentals",
@@ -1112,6 +1125,7 @@ export class AgentRepository {
           freeze: "materialized",
           semanticGrouping: false,
         };
+        manifest.preparationMs=performance.now()-preparationStarted;
         manifest.evidenceCount = evidence.length;
         manifest.sha256 = digest.digest("hex");
         manifest.sealed = true;

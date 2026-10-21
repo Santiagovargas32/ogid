@@ -1,3 +1,8 @@
+import { stableHash } from '../../utils/stableHash.js';
+import { getInstrumentById } from '../market/instrumentRegistry.js';
+import { resolveExpectedClosedDailyCandle } from '../market/dailyCandleService.js';
+import { sessionPolicyResolver } from '../market/sessionPolicyResolver.js';
+import { candleIntervalMs } from '../market/canonicalCandle.js';
 // Owns deterministic prerequisites and alerts independently of browser traffic.
 // Existing readers compute; all mutations continue through StorageManager.
 export class AgentMaintenance {
@@ -5,10 +10,12 @@ export class AgentMaintenance {
     call,
     business,
     context,
+    dependencies = null,
+    now = Date.now,
     instruments = () => [],
     enabled = false,
   }) {
-    Object.assign(this, { call, business, context, instruments, enabled });
+    Object.assign(this, { call, business, context, dependencies, now, instruments, enabled });
     this.status = { state: "idle", lastSuccessAt: null, errorCode: null };
   }
   tick() {
@@ -26,8 +33,21 @@ export class AgentMaintenance {
       });
     return this.task;
   }
-  async run() {
+  async run({force=false}={}) {
     if (!this.enabled) return;
+    const inputs=await this.dependencies?.();
+    const now=this.now(),asOf=new Date(now);
+    this.completedInputs ||= new Map();
+    const revisionFor=domain=>{
+      if(!inputs)return null;
+      const temporal=inputs.news?.hasRecentNews?Math.floor(now/60000):null;
+      if(domain.startsWith('technical:')){
+        const [,id,interval]=domain.split(':');const instrument=getInstrumentById(id);
+        const expected=interval==='1day'?resolveExpectedClosedDailyCandle(instrument,asOf)?.closeTime:sessionPolicyResolver.resolve(instrument,asOf,{intervalMs:candleIntervalMs(interval)}).expectedLatestCandleAt;
+        return stableHash([inputs.candles[`candles.revision:provider-yahoo:${id}:${interval}:splits`] || 0,expected]);
+      }
+      return stableHash(domain==='alerts'?[inputs.news?.revision,inputs.awareness,inputs.research]:domain==='evaluation'?[inputs.research,inputs.candles]:[inputs.news?.revision,inputs.awareness,inputs.market,inputs.signals,inputs.candles,temporal]);
+    };
     const operations = [
       ["alerts", () => this.call("alertSync")],
       ["advanced", () => this.business.advanced.getSnapshot({})],
@@ -48,11 +68,15 @@ export class AgentMaintenance {
     this.status={...this.status,state:"running",errorCode:null,startedAt:new Date().toISOString()};
     for (const [domain, execute] of operations) {
       if (this.stopping) break;
+      const revision=revisionFor(domain);
+      if(!force && revision && this.completedInputs.get(domain)===revision){domains[domain]={...previousDomains[domain],state:'ready',deferredReason:'inputs-unchanged',inputRevision:revision};continue;}
       this.status={...this.status,currentDomain:domain,domains:{...domains,[domain]:{state:"running",startedAt:new Date().toISOString()}}};
       try {
         await execute();
+        if(revision)this.completedInputs.set(domain,revision);
         domains[domain] = {
           state: "ready",
+          inputRevision:revision,
           lastSuccessAt: new Date().toISOString(),
         };
       } catch (e) {

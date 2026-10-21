@@ -336,7 +336,7 @@ class RefreshOrchestratorService {
     const baseIntervalMs = this.resolveNextNewsDelayMs() ?? this.getNewsBaseIntervalMs() ?? 0;
     const backoffCapMs = this.getNewsBackoffMaxMs() ?? baseIntervalMs;
     const delayMs = this.config.news?.collectInWorker
-      ? Math.max(1000,baseIntervalMs-(this.newsCycleTelemetry.lastDurationMs || 0))
+      ? baseIntervalMs
       : baseIntervalMs + Math.min(this.newsBackoffMs, Math.max(0, backoffCapMs - baseIntervalMs));
     this.nextNewsRunAt=new Date(Date.now()+delayMs).toISOString();
     this.newsTimerHandle = setTimeout(async () => {

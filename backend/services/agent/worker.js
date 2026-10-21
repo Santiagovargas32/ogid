@@ -368,8 +368,14 @@ export class IntelligenceWorker {
     }
     this.admissionError = null;
     try {
-      const admitted=await this.controlCall("consume", { model: this.model });
-      if(typeof admitted?.model==="string")this.model=admitted.model;
+      const started=performance.now();let batches=0,admitted;
+      do {
+        admitted=await this.controlCall("consume", { model: this.model });batches++;
+        if(typeof admitted?.model==="string")this.model=admitted.model;
+        if(!admitted?.hasMore || batches>=8 || performance.now()-started>=500)break;
+        await new Promise(resolve=>setImmediate(resolve));
+      }while(!this.controller.signal.aborted);
+      this.outboxDrain={batches,sequence:admitted?.sequence,hasMore:admitted?.hasMore===true,durationMs:performance.now()-started};
     } catch (error) {
       if (error.code !== "AGENT_BACKPRESSURE") throw error;
       // The outbox transaction remains uncommitted. Still drain admitted jobs

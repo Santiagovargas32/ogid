@@ -107,6 +107,7 @@ export class SqlCandleStore {
     const counts = { inserted:0, ...(update ? {updated:0} : {}), duplicates:0,rejectedOpen:0 };
     if (!this.enabled) { counts.duplicates=values.length; return counts; }
     return this.db.transaction(() => {
+      const changedScopes=new Set();
       for (const raw of values) {
         if (Date.parse(raw.closeTime)>now.getTime()) { counts.rejectedOpen++; continue; }
         let c = sanitizeSensitiveData(raw); const key=this.key(c);
@@ -117,7 +118,10 @@ export class SqlCandleStore {
         instrumentRow(this.db,c.instrumentId,c);
         this.db.prepare("INSERT INTO candles VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(instrument_id,interval,adjustment_mode,dataset_id,session_key) DO UPDATE SET open_time=excluded.open_time,close_time=excluded.close_time,open=excluded.open,high=excluded.high,low=excluded.low,close=excluded.close,volume=excluded.volume,revision=excluded.revision,fetched_at=excluded.fetched_at,provenance_json=excluded.provenance_json,payload_json=excluded.payload_json").run(...key,c.openTime,c.closeTime,c.open,c.high,c.low,c.close,c.volume ?? null,c.revision || 1,c.fetchedAt || now.toISOString(),JSON.stringify(c.provenance || {}),JSON.stringify(c));
         this.db.prepare("INSERT OR IGNORE INTO candle_revisions VALUES(?,?,?,?,?,?,?,?)").run(...key,c.revision || 1,c.fetchedAt || now.toISOString(),JSON.stringify(c));
+        const revisionKey=`candles.revision:${this.datasetId}:${c.instrumentId}:${c.interval}:${key[2]}`;
+        changedScopes.add(revisionKey);
       }
+      for(const key of changedScopes)writeMeta(this.db,key,readMeta(this.db,key,0)+1);
       return counts;
     }).immediate();
   }

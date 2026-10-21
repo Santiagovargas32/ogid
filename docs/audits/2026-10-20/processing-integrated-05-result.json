@@ -1,0 +1,33 @@
+{
+  "artifact": "e7eb788d69761d94f3d6100a81354ea46f83793fd640d65bb409f4519051ad6d",
+  "startedAt": "2026-10-20T23:02:31.631Z",
+  "readyAt": "2026-10-20T23:02:45.728Z",
+  "closedAt": "2026-10-20T23:22:34.658Z",
+  "elapsedMs": 1123477.5233439999,
+  "completed": false,
+  "sameArtifact": true,
+  "backendGone": true,
+  "npmExit": 0,
+  "client": {
+    "updates": 267,
+    "statuses": {
+      "syncing": 366,
+      "synchronized": 255
+    },
+    "heartbeats": 78,
+    "pages": 2722,
+    "errors": 0
+  },
+  "error": "ABORT_ERR",
+  "finding": {
+    "phase": "snapshot pages",
+    "expiredAfterMs": 300000,
+    "expectedRows": {
+      "evidence": 2220,
+      "clusters": 2025,
+      "members": 2060
+    },
+    "committedPagesAtFailure": 378,
+    "cause": "cluster/member alternation forced one or two rows per FULL transaction"
+  }
+}

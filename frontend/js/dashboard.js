@@ -62,6 +62,7 @@ let latestMarketConditions = null;
 let latestMarketConditionsContext = "";
 let latestMarketConditionsError = "";
 let marketConditionsRequestToken = 0;
+let marketConditionsTask=null,marketConditionsTaskKey=null,marketConditionsController=null;
 let selectedMarketConditionsWindowMin = DEFAULT_MARKET_CONDITIONS_WINDOW_MIN;
 let marketQuotesPoller = null;
 let marketQuotesPollerStarted = false;
@@ -851,6 +852,7 @@ function handleActionClick(event) {
 }
 
 const dashboardController = new AbortController();
+let pageSuspended=false;
 let wsConnected=false, wsHasSnapshot=false, fallbackFailures=0, newsFallback=null, newsTransportToken=0;
 const newsOptions={q:'',severity:'',order:'critical',page:1,pageSize:DEFAULT_LIVE_NEWS_LIMIT,windowHours:36};
 let baseline=null;
@@ -1655,6 +1657,7 @@ async function refreshStoredLiveNews(state) {
 function setWsStatus(status, diagnostics = null) {
   if (status !== "connected") wsHasSnapshot = false;
   wsConnected = status === "connected" && wsHasSnapshot;
+  if(pageSuspended)return;
   if (wsConnected) { fallbackFailures = 0; newsFallback?.stop(); } else if (newsFallback?.stopped) newsFallback.start();
   const displayStatus = status === "connected" && !wsHasSnapshot ? "syncing" : status;
   elements.wsStatusBadge.className = `badge ${wsBadgeClass(displayStatus)}`;
@@ -1677,7 +1680,16 @@ function marketConditionsMatchesCurrentContext() {
   return Boolean(latestMarketConditions) && latestMarketConditionsContext === marketConditionsContextKey();
 }
 
-async function refreshMarketConditions() {
+function refreshMarketConditions(){
+  const state=getState();
+  const key=JSON.stringify([marketConditionsContextKey(),state.market?.revision,state.meta?.sourceMeta?.corpus?.revision,state.awareness?.revision]);
+  if(marketConditionsTask && marketConditionsTaskKey===key)return marketConditionsTask;
+  marketConditionsController?.abort();marketConditionsController=new AbortController();
+  marketConditionsTaskKey=key;
+  const task=loadMarketConditions(marketConditionsController.signal).finally(()=>{if(marketConditionsTask===task){marketConditionsTask=null;marketConditionsTaskKey=null;}});
+  marketConditionsTask=task;return task;
+}
+async function loadMarketConditions(signal) {
   const requestToken = ++marketConditionsRequestToken;
   const countryKey = selectedCountryQueryValue();
   const contextKey = marketConditionsContextKey();
@@ -1686,7 +1698,7 @@ async function refreshMarketConditions() {
     const payload = await api.getMarketConditions({
       countries: countryKey,
       windowMin: selectedMarketConditionsWindowMin
-    });
+    },{signal});
     if (requestToken !== marketConditionsRequestToken) {
       return;
     }
@@ -1780,11 +1792,12 @@ function mountWebSocket() {
     if (update.news || update.market) scheduleMarketConditionsRefresh();
   }, onStatus: status => {
     if (status === "synchronized") wsHasSnapshot = true;
-    else if (status === "degraded") wsHasSnapshot = false;
+    else if (["degraded","syncing"].includes(status)) wsHasSnapshot = false;
     if (socket?.socket?.readyState === WebSocket.OPEN) setWsStatus("connected");
   } });
   stateSynchronizer=synchronizer;
-  window.addEventListener("pagehide", () => synchronizer.close(), { once: true });
+  window.addEventListener("pagehide", () => {pageSuspended=true;synchronizer.close();marketConditionsController?.abort();});
+  window.addEventListener("pageshow",event=>{pageSuspended=false;if(event.persisted)synchronizer.resume();});
   socket = new RealtimeSocket({
     path: "/ws",
     onStatusChange: setWsStatus,
@@ -1916,7 +1929,8 @@ async function bootstrap() {
   marketQuotesPoller?.trigger(0);
   startMarketProviderPolling();
 
-  window.addEventListener("beforeunload", () => {
+  window.addEventListener("pagehide", event => {
+    if(event.persisted)return;
     dashboardController.abort();
     newsFallback?.stop();
     socket?.close();

@@ -585,15 +585,10 @@ export function createAppServer(overrides = {}) {
   const sqlBusiness = storageManager.options.businessEnabled && storageManager.options.enabled;
   let businessContext = () => undefined;
   const pipelinePersistence = sqlBusiness ? new PipelinePersistence(storageManager) : null;
-  const business = sqlBusiness ? createBusinessAdapters(storageManager, {rootDir:config.market.historyDir,enabled:config.market?.dailyCandles?.enabled !== false || config.market?.intradayCandles?.enabled === true,context:()=>businessContext()}) : null;
+  const business = sqlBusiness ? createBusinessAdapters(storageManager, {rssEnabled:config.news.providers.includes("rss"),rssIntervalMs:config.news.rssAggregateIntervalMs,rootDir:config.market.historyDir,enabled:config.market?.dailyCandles?.enabled !== false || config.market?.intradayCandles?.enabled === true,context:()=>businessContext()}) : null;
   if (business) config.news.rssWorkerFetch = input => storageManager.request("rss.fetch",input);
   if (business) config.news.collectInWorker = async input => {
     const result=await storageManager.request("news.collect",{...input,deferSupplemental:true});
-    if(result.supplementalDue){
-      const task=storageManager.request("news.supplemental",{});
-      activeCycles.add(task);
-      task.catch(error=>log.warn("rss_supplemental_failed",{code:error.code || "RSS_SUPPLEMENTAL_FAILED"})).finally(()=>activeCycles.delete(task));
-    }
     return result;
   };
   const dailyCandleStore = business?.candles || new DailyCandleStore({
@@ -862,6 +857,7 @@ export function createAppServer(overrides = {}) {
   };
   app.locals.agentModels=new AgentModelSelection({config:agentConfig,call:app.locals.agentCall,opencode:new OpenCodeClient({baseUrl:agentConfig.opencodeUrl,password:agentConfig.opencodePassword}),...(agentConfig.managed.broker?{onVerified:manifest=>{if(!process.env.AGENT_MODEL_MANIFEST)return;const file=path.resolve(__dirname,process.env.AGENT_MODEL_MANIFEST),temporary=file+'.next';writeFileSync(temporary,JSON.stringify(manifest,null,2)+'\n',{mode:0o600});renameSync(temporary,file);},brokerInventory:async()=>(await brokerRequest('/v1/models')).data,activate:async(model,signal)=>(await brokerRequest('/v1/models/activate',{body:{model:model.replace(/^llamacpp\//,'')},signal})).model}:{})});
   app.locals.agentMaintenance = new AgentMaintenance({call:app.locals.agentCall,business,
+    dependencies:()=>storageManager.request("runtime.load",{kind:"maintenance-inputs"}),
     instruments:()=>marketWatchlistService.selectedInstrumentIds,
     enabled:Boolean(business && app.locals.agentConfig.mode !== "off")});
   app.locals.business = business;
