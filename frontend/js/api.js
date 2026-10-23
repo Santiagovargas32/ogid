@@ -1,3 +1,6 @@
+import {ReadCoordinator} from './readCoordinator.js';
+const readCoordinator=new ReadCoordinator();
+const validatedBodies=new Map();
 function buildPath(path, params = {}) {
   const url = new URL(path, window.location.origin);
 
@@ -21,7 +24,18 @@ let pageController = new AbortController();
 window.addEventListener("pagehide", () => pageController.abort());
 window.addEventListener("pageshow", () => {if(pageController.signal.aborted)pageController=new AbortController();});
 
-export async function request(path, params = {}, options = {}) {
+export function request(path,params={},options={}) {
+  if((options.method||'GET')!=='GET')return performRequest(path,params,options);
+  const key=JSON.stringify([path,params,options.headers||{},options.cache,options.timeoutMs]);
+  const signal=AbortSignal.any([pageController.signal,...(options.signal?[options.signal]:[])]);
+  return readCoordinator.read(key,
+    sharedSignal=>performRequest(path,params,{...options,signal:sharedSignal}),
+    {signal,heavy:/\/(advanced-snapshot|conditions|analytics)$/.test(path)}).catch(error=>{
+    if(signal.aborted)throw Object.assign(new Error('Petición cancelada.'),{code:'REQUEST_CANCELLED',cause:error});
+    throw error;
+  });
+}
+async function performRequest(path, params = {}, options = {}) {
   const method = options.method || "GET";
   const headers = {
     Accept: "application/json",
@@ -33,6 +47,10 @@ export async function request(path, params = {}, options = {}) {
   }
 
   const signal = AbortSignal.any([pageController.signal, options.signal || new AbortController().signal, AbortSignal.timeout(options.timeoutMs ?? requestDeadline(path))]);
+  const cacheKey=JSON.stringify([path,params,options.headers||{}]);
+  const cached=options.revalidate?validatedBodies.get(cacheKey):null;
+  if(cached)headers['If-None-Match']=cached.etag;
+  let requestId=null;
   try {
   const response = await fetch(buildPath(path, params), {
     method,
@@ -41,6 +59,11 @@ export async function request(path, params = {}, options = {}) {
     signal,
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined
   });
+  requestId=response.headers?.get?.('x-request-id') || null;
+  if(response.status===304){
+    if(cached)return cached.data;
+    throw Object.assign(Error('Conditional response without cached representation'),{code:'CACHE_REPRESENTATION_MISSING',requestId});
+  }
 
   const payload = await response.json().catch(error => {
     if (signal.aborted) throw error;
@@ -55,23 +78,27 @@ export async function request(path, params = {}, options = {}) {
     error.status = response.status;
     error.code = payload?.error?.code || null;
     error.details = payload?.error?.details || null;
+    error.requestId=payload?.error?.requestId || requestId;
     const retryHeader = response.headers.get("Retry-After");
     const retryAfter = /^\d+$/.test(retryHeader || "") ? Number(retryHeader) : Math.max(0, (Date.parse(retryHeader) - Date.now()) / 1000);
     error.retryAfterSec = Number.isFinite(retryAfter) ? retryAfter : null;
     throw error;
   }
 
+  const etag=response.headers?.get?.('etag');
+  if(options.revalidate && etag && JSON.stringify(payload?.data).length<=128*1024){validatedBodies.set(cacheKey,{etag,data:payload?.data});while(validatedBodies.size>8)validatedBodies.delete(validatedBodies.keys().next().value);}
   return payload?.data;
   } catch (error) {
     if (signal.aborted) {
       const timedOut = signal.reason?.name === "TimeoutError";
-      throw Object.assign(new Error(timedOut ? "La petición excedió su tiempo de espera." : "Petición cancelada."), { code: timedOut ? "REQUEST_TIMEOUT" : "REQUEST_CANCELLED", cause: error });
+      throw Object.assign(new Error(timedOut ? "La petición excedió su tiempo de espera." : "Petición cancelada."), { code: timedOut ? "REQUEST_TIMEOUT" : "REQUEST_CANCELLED", requestId, cause: error });
     }
     throw error;
   }
 }
 
 export const api = {
+  getDashboardBootstrap:(params={},options={})=>request('/api/intel/bootstrap',{profile:'dashboard-v1',...params},{...options,revalidate:true,cache:'no-cache'}),
   getSyncSnapshot: (params = {}, options = {}) => request("/api/intel/sync", params, { ...options, cache: "no-store" }),
   getSyncChanges: (params = {}, options = {}) => request("/api/intel/changes", params, { ...options, cache: "no-store" }),
   getHealth: (options = {}) => request("/api/health", {}, options),

@@ -1,4 +1,5 @@
 import { SmartPollLoop } from "./smartPollLoop.js";
+import {observeInterest} from './interest.js';
 import {
   AWARENESS_MAP_EVENT_NAME,
   AWARENESS_PREFERENCES_KEY,
@@ -308,6 +309,7 @@ export function mountAwarenessCenter({
   rootIds = {},
   intervalMs = 60_000,
   hiddenIntervalMs = 180_000,
+  deferUntilInterested=false,
   storage = typeof window !== "undefined" ? window.localStorage : null
 } = {}) {
   const ids = { ...DEFAULT_ROOT_IDS, ...rootIds };
@@ -323,6 +325,7 @@ export function mountAwarenessCenter({
   let requestInFlight = false;
   let requestToken = 0;
   let initialHydrationSettled = false;
+  let interest=null;
   const toastTimers = new Set();
 
   function visibleEvents(events = []) {
@@ -465,6 +468,7 @@ export function mountAwarenessCenter({
   }
 
   async function loadSnapshot(signal) {
+    if(interest?.interested===false)return null;
     if (stopped || requestInFlight || typeof api?.getAwarenessSnapshot !== "function") {
       return null;
     }
@@ -558,7 +562,8 @@ export function mountAwarenessCenter({
     render();
   }, 30_000);
   render();
-  loop.start();
+  if(deferUntilInterested)interest=observeInterest(roots.panel,active=>active?loop.start():loop.stop());
+  else loop.start();
 
   return {
     applyRealtime(payload = {}) {
@@ -589,6 +594,7 @@ export function mountAwarenessCenter({
       stopped = true;
       requestToken += 1;
       loop.stop();
+      interest?.destroy();
       clearInterval(countdownTimer);
       toastTimers.forEach(clearTimeout);
       toastTimers.clear();

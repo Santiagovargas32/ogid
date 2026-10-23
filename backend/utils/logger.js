@@ -94,22 +94,30 @@ export function getRecentLogs({ limit = 20, levels = ["warn", "error"] } = {}) {
 const requestLog = createLogger("backend/utils/logger#request");
 
 export function requestLogger(req, res, next) {
-  const requestId = req.headers["x-request-id"] || randomUUID();
+  const suppliedId=req.headers['x-request-id'];
+  const requestId = typeof suppliedId==='string' && /^[A-Za-z0-9._:-]{1,128}$/.test(suppliedId) ? suppliedId : randomUUID();
   const started = process.hrtime.bigint();
   const clientIpInfo = resolveClientIp(req);
 
   req.requestId = requestId;
   req.clientIpInfo = clientIpInfo;
   res.setHeader("x-request-id", requestId);
+  requestLog.debug('http_request_started',{requestId,method:req.method,path:sanitizeUrl(req.originalUrl)});
 
-  res.on("finish", () => {
+  let recorded=false;
+  const record = outcome => {
+    if(recorded)return;recorded=true;
     const ended = process.hrtime.bigint();
     const durationMs = Number(ended - started) / 1_000_000;
     requestLog.info("http_request", {
       requestId,
       method: req.method,
       path: sanitizeUrl(req.originalUrl),
+      route:req.route?.path?`${req.baseUrl||''}${req.route.path}`:null,
+      resource:typeof req.query?.resource==='string' && /^[a-zA-Z]{1,40}$/.test(req.query.resource)?req.query.resource:null,
+      revision:Number.isSafeInteger(Number(req.query?.revision))?Number(req.query.revision):null,
       statusCode: res.statusCode,
+      outcome,
       durationMs: Number(durationMs.toFixed(2)),
       ip: clientIpInfo.clientIp || req.ip || null,
       clientIp: clientIpInfo.clientIp,
@@ -118,7 +126,9 @@ export function requestLogger(req, res, next) {
       origin: req.headers.origin || null,
       referer: sanitizeUrl(req.headers.referer || req.headers.referrer || "") || null
     });
-  });
+  };
+  res.on('finish',()=>record('finished'));
+  res.on('close',()=>record(res.writableFinished?'finished':'aborted'));
 
   next();
 }

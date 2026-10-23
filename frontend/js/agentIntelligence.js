@@ -1,6 +1,8 @@
 // Trusted UI markup only. Model/source text is always rendered with textContent.
 import {fillAgentModels} from "./agentModels.js";
-export function mountAgentIntelligence() {
+import {observeInterest} from './interest.js';
+import {request as coordinatedRequest} from './api.js';
+export function mountAgentIntelligence({getWatchlist=()=>null,deferUntilInterested=false}={}) {
   const byId = (id) => document.getElementById(id);
   let csrf = "",
     sessionId = "",
@@ -9,7 +11,10 @@ export function mountAgentIntelligence() {
     events,
     stopped = false;
   const sessions = new Map();
+  let initialization,capabilitiesState=null,interest=null;
   const request = async (path, options = {}) => {
+    if(!options.method || options.method==='GET')return coordinatedRequest(path,{},
+      {...options,headers:{...(csrf?{'x-ogid-csrf':csrf}:{}),...options.headers}});
     const r = await fetch(path, {
       credentials: "same-origin",
       ...options,
@@ -81,6 +86,9 @@ export function mountAgentIntelligence() {
     drawer.querySelector("[data-context]").textContent =
       `Contexto adjunto: ${ids.join(", ") || "global"} · Horizonte evaluable: 24 h`;
     drawer.showModal();
+    void initialize().then(async()=>{
+      try{const d=await request('/api/agent/v1/access');csrf=d.csrf;await loadSessions();}catch{/* Enrollment remains explicit. */}
+    }).catch(showError);
     void loadModels().catch(showError);
     input.focus();
   }
@@ -454,7 +462,7 @@ export function mountAgentIntelligence() {
     }
   }
   async function refresh() {
-    if (stopped) return;
+    if (stopped || interest?.interested===false || capabilitiesState?.mode!=='visible') return;
     const results = await Promise.allSettled([
       request("/api/agent/v1/brief"),
       request(
@@ -598,10 +606,13 @@ export function mountAgentIntelligence() {
     ),
     button("Abrir chat", () => open()),
   );
-  void (async () => {
+  function initialize() {
+    if(initialization)return initialization;
+    initialization=(async()=>{
     try {
       const capabilities = await request("/api/agent/v1/capabilities");
-      const watchlist = await request("/api/market/watchlist").catch(() => ({
+      capabilitiesState=capabilities;
+      const watchlist = await getWatchlist() || await request("/api/market/watchlist").catch(() => ({
         instruments: [],
       }));
       const instruments = byId("agent-outlook-instrument");
@@ -616,27 +627,24 @@ export function mountAgentIntelligence() {
         }
         instruments.onchange = () => void refresh().catch(showError);
       }
-      await loadModels();
       status.textContent =
         capabilities.mode === "off"
           ? "Analista desactivado. Los datos deterministas continúan disponibles."
           : "Análisis experimental · evaluación diaria disponible según cobertura";
-      try {
-        const d = await request("/api/agent/v1/access");
-        csrf = d.csrf;
-        await loadSessions();
-      } catch {
-        /* device enrollment remains explicit */
-      }
       await refresh();
     } catch (e) {
       showError(e);
     }
-  })();
+    })();
+    return initialization;
+  }
+  if(deferUntilInterested)interest=observeInterest(brief?.closest('article')||brief,active=>{if(active)void initialize();});
+  else void initialize();
   const timer = setInterval(() => void refresh().catch(showError), 30000);
   return () => {
     stopped = true;
     clearInterval(timer);
+    interest?.destroy();
     events?.close();
     drawer.remove();
   };

@@ -7,6 +7,7 @@ import { resolveMarketQuotesPollDelayMs } from "./marketPolling.js";
 import { getLevelColor } from "./levelColors.js";
 import { DEFAULT_LIVE_NEWS_LIMIT, resolveLiveNewsLimit, filterNews, newsIdentity, newsContentRevision, NewsSelectionTracker } from "./newsFeedModel.js";
 import { mountAgentIntelligence } from "./agentIntelligence.js";
+import {observeInterest} from './interest.js';
 import { startAdvancedIntelligence } from "./intelligence/advancedIntelligence.js";
 import { mountAwarenessCenter } from "./awareness.js";
 import {
@@ -45,7 +46,7 @@ let stateSynchronizer;
 let marketQuotesMarkup = null;
 let selectedCountries = new Set();
 let currentWatchlist = [];
-let liveNewsView=null,liveNewsRequestKey=null,liveNewsRequestToken=0;
+let liveNewsView=null,liveNewsRequestKey=null,liveNewsRequestToken=0,liveNewsTask=null;
 let selectedMarketSymbols = [];
 let marketWatchlistLoaded = false;
 let marketWatchlistModel = { maxSelected: null, instruments: [] };
@@ -609,6 +610,7 @@ function renderMeta(meta, market, pipeline = {}) {
   }
   elements.sourceModeBadge.className = `badge ${sourceBadgeClass(meta.sourceMode)}`;
   elements.sourceModeBadge.textContent = `Source: ${meta.sourceMode}`;
+  elements.sourceModeBadge.title=(meta.sourceMeta?.corpus?.staleReasons||[]).join(' · ');
 
   elements.marketModeBadge.className = `badge ${sourceBadgeClass(market.sourceMode)}`;
   const sessionLabel = market.session?.open ? "open" : market.session?.state || "closed";
@@ -749,7 +751,7 @@ function startMarketProviderPolling() {
     onData:renderMarketProviderStatus,
     onError:error=>{ if(elements.marketProviderStatusText) elements.marketProviderStatusText.textContent=`Yahoo transport diagnostics unavailable: ${error.message}`; }
   });
-  marketProviderPoller.start();
+  if(providerInterest?.interested!==false)marketProviderPoller.start();
 }
 
 function handleFilterClick(event) {
@@ -854,6 +856,9 @@ function handleActionClick(event) {
 const dashboardController = new AbortController();
 let pageSuspended=false;
 let wsConnected=false, wsHasSnapshot=false, fallbackFailures=0, newsFallback=null, newsTransportToken=0;
+let conditionsInterest=null,ohlcvInterest=null,providerInterest=null,newsInterest=null;
+let newsDetailsRequested=false,liveNewsController=null;
+let operationalEpoch=null,operationalSequence=-1,lastSyncProgressAt=0;
 const newsOptions={q:'',severity:'',order:'critical',page:1,pageSize:DEFAULT_LIVE_NEWS_LIMIT,windowHours:36};
 let baseline=null;
 try { baseline=JSON.parse(sessionStorage.getItem('ogid-news-baseline') || 'null'); } catch {}
@@ -904,7 +909,7 @@ function newsRowMarkup(article,ai){
 }
 function renderNews(news=[],countries={},ai={}){
   if (newsOptions.windowHours === 0 && olderNews) news=olderNews;
-  const page=filterNews(news,newsOptions);
+  const page=filterNews(news,{...newsOptions,countries:activeCountryList()});
   if(newsOptions.page>page.pages){newsOptions.page=page.pages;return renderNews(news,countries,ai);}
   currentNewsById=new Map(news.map(a=>[String(a.id),a]));
   // Resolver el drawer por identidad aunque el proveedor cambie su alias externo.
@@ -919,9 +924,12 @@ function renderNews(news=[],countries={},ai={}){
 
     }
   }
-  elements.newsCount.textContent=`${page.total} items`;
-  byId('news-page').textContent=`Página ${newsOptions.page} de ${page.pages}`;
-  byId('news-prev').disabled=newsOptions.page<=1;byId('news-next').disabled=newsOptions.page>=page.pages;
+  const view=getState().meta?.view?.news;
+  const hasDeferredNews=view && !view.complete && liveNewsView?.key!==liveNewsKey(getState()) && !olderNews;
+  const total=hasDeferredNews?Math.max(page.total,view.availableCount):page.total,pages=Math.max(1,Math.ceil(total/newsOptions.pageSize));
+  elements.newsCount.textContent=`${total} items`;
+  byId('news-page').textContent=`Página ${newsOptions.page} de ${pages}`;
+  byId('news-prev').disabled=newsOptions.page<=1;byId('news-next').disabled=newsOptions.page>=pages;
   const canReorder=forceNewsRender||!visibleNewsOrder.length||safeFeedInsertion();
   let ordered=page.items;
   if(!canReorder){const byIdentity=new Map(news.map(a=>[newsIdentity(a),a]));ordered=visibleNewsOrder.map(id=>byIdentity.get(id)||renderedArticles.get(id)).filter(Boolean);}
@@ -955,14 +963,20 @@ function bindNewsControls(){
       image.classList.add("news-thumb-fallback"); image.alt = "OGID: imagen no disponible"; image.src = NEWS_PLACEHOLDER_SRC;
     }
   }, { capture:true, signal:dashboardController.signal });
-  const update=()=>{newsOptions.q=byId('news-search').value;newsOptions.order=byId('news-order').value;newsOptions.severity=byId('news-severity').value;newsOptions.windowHours=Number(byId('news-window').value);newsOptions.page=1;forceNewsRender=true;renderDashboard(getState());
+  const update=()=>{newsDetailsRequested=true;newsOptions.q=byId('news-search').value;newsOptions.order=byId('news-order').value;newsOptions.severity=byId('news-severity').value;newsOptions.windowHours=Number(byId('news-window').value);newsOptions.page=1;forceNewsRender=true;renderDashboard(getState());
     if(newsOptions.windowHours===0){const token=++olderRequestToken;api.getNews({countries:"ALL",limit:500,includeOlder:1,order:newsOptions.order,q:newsOptions.q||undefined},{signal:dashboardController.signal}).then(data=>{if(token===olderRequestToken){olderNews=data.news||[];forceNewsRender=true;renderDashboard(getState());}}).catch(error=>{byId('news-ingestion-status').textContent=`Archivo no disponible: ${error.message}`;});}
-    else { olderRequestToken++; olderNews=null; }
+    else { olderRequestToken++; olderNews=null;void refreshStoredLiveNews(getState()); }
   };
   for(const id of ['news-order','news-severity','news-window'])byId(id).addEventListener('change',update,{signal:dashboardController.signal});
   byId('news-search').addEventListener('input',update,{signal:dashboardController.signal});
   byId('news-prev').addEventListener('click',()=>{newsOptions.page--;forceNewsRender=true;renderDashboard(getState());},{signal:dashboardController.signal});
-  byId('news-next').addEventListener('click',()=>{newsOptions.page++;forceNewsRender=true;renderDashboard(getState());},{signal:dashboardController.signal});
+  byId('news-next').addEventListener('click',async()=>{
+    const key=liveNewsKey(getState()),page=newsOptions.page;
+    byId('news-next').disabled=true;newsDetailsRequested=true;
+    await refreshStoredLiveNews(getState());
+    if(key===liveNewsKey(getState()))newsOptions.page=page+1;
+    forceNewsRender=true;renderDashboard(getState());
+  },{signal:dashboardController.signal});
   byId('news-new-button').addEventListener('click',()=>{newsOptions.page=1;forceNewsRender=true;renderDashboard(getState());elements.newsFeed.scrollTo({top:0,behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});pendingNews.clear();updatedNews.clear();lastNewsRenderKey='';renderDashboard(getState());},{signal:dashboardController.signal});
 }
 
@@ -1528,6 +1542,7 @@ function renderMarketOhlcv(payload, instrument) {
 }
 
 async function loadMarketOhlcv() {
+  if(ohlcvInterest?.interested===false)return;
   const instrumentId = elements.marketOhlcvInstrument.value;
   const instrument = marketWatchlistDraft.find((item) => item.instrumentId === instrumentId);
   if (!instrument) return;
@@ -1590,6 +1605,7 @@ function startMarketQuotesPolling() {
         return null;
       }
 
+      if(wsConnected)return null;
       return api.getMarketQuotes({ tickers }, { signal });
     },
     onData: (payload) => {
@@ -1616,7 +1632,7 @@ function renderWhenChanged(panel, data, render) {
 }
 
 function renderDashboard(rawState) {
-  const displayLimit=resolveLiveNewsLimit(rawState);
+  const displayLimit=rawState.meta?.view?.news?.pageSize || resolveLiveNewsLimit(rawState);
   if(newsOptions.pageSize!==displayLimit){newsOptions.pageSize=displayLimit;newsOptions.page=1;forceNewsRender=true;}
   const state = filterStateBySelection(rawState);
   renderMeta(rawState.meta, rawState.market || {},rawState.pipelineStatus || {});
@@ -1639,24 +1655,32 @@ function liveNewsKey(state) {
   return corpus ? `${selectedCountryQueryValue()}|${corpus.revision}|${corpus.dayStart}|${resolveLiveNewsLimit(state)}` : null;
 }
 
-async function refreshStoredLiveNews(state) {
+function refreshStoredLiveNews(state) {
+  if(newsInterest?.interested===false)return Promise.resolve();
+  if(state.meta?.view?.profile==='dashboard-v1' && !newsDetailsRequested)return Promise.resolve();
   const key=liveNewsKey(state);
-  if(!key || liveNewsView?.key===key || liveNewsRequestKey===key) return;
+  if(!key || liveNewsView?.key===key)return Promise.resolve();
+  if(liveNewsRequestKey===key)return liveNewsTask;
   liveNewsRequestKey=key;
+  liveNewsController?.abort();liveNewsController=new AbortController();
   const token=++liveNewsRequestToken;
+  liveNewsTask=(async()=>{
   try{
-    const payload=await api.getNews({countries:selectedCountryQueryValue(),limit:resolveLiveNewsLimit(state)});
-    if(token!==liveNewsRequestToken || key!==liveNewsKey(getState())) return;
+    const payload=await api.getNews({countries:selectedCountryQueryValue(),limit:resolveLiveNewsLimit(state),order:'critical'},
+      {signal:AbortSignal.any([dashboardController.signal,liveNewsController.signal])});
+    if(token!==liveNewsRequestToken || key!==liveNewsKey(getState()) || newsInterest?.interested===false) return;
     liveNewsView={key,news:payload.news || [],meta:payload.meta?.newsRead || state.meta.sourceMeta.corpus};
     const current=filterStateBySelection(getState());
     renderNews(liveNewsView.news,current.countries,getState().ai || {},liveNewsView.meta);
-  }catch(error){console.error("Failed to read stored daily news:",error);}
+  }catch(error){if(error.code!=='REQUEST_CANCELLED')console.error("Failed to read stored daily news:",error);}
   finally{if(token===liveNewsRequestToken)liveNewsRequestKey=null;}
+  })();
+  return liveNewsTask;
 }
 
 function setWsStatus(status, diagnostics = null) {
   if (status !== "connected") wsHasSnapshot = false;
-  wsConnected = status === "connected" && wsHasSnapshot;
+  wsConnected = status === "connected" && (wsHasSnapshot || Date.now()-lastSyncProgressAt<15000);
   if(pageSuspended)return;
   if (wsConnected) { fallbackFailures = 0; newsFallback?.stop(); } else if (newsFallback?.stopped) newsFallback.start();
   const displayStatus = status === "connected" && !wsHasSnapshot ? "syncing" : status;
@@ -1681,6 +1705,7 @@ function marketConditionsMatchesCurrentContext() {
 }
 
 function refreshMarketConditions(){
+  if(conditionsInterest?.interested===false)return Promise.resolve(null);
   const state=getState();
   const key=JSON.stringify([marketConditionsContextKey(),state.market?.revision,state.meta?.sourceMeta?.corpus?.revision,state.awareness?.revision]);
   if(marketConditionsTask && marketConditionsTaskKey===key)return marketConditionsTask;
@@ -1710,8 +1735,7 @@ async function loadMarketConditions(signal) {
     if (requestToken !== marketConditionsRequestToken) {
       return;
     }
-    latestMarketConditions = null;
-    latestMarketConditionsContext = contextKey;
+    if(error.code==='REQUEST_CANCELLED')return;
     latestMarketConditionsError = "Market conditions are unavailable. Existing quotes and country risk remain unchanged.";
     console.error("Failed to refresh market conditions:", error);
     renderDashboard(getState());
@@ -1719,6 +1743,7 @@ async function loadMarketConditions(signal) {
 }
 
 function scheduleMarketConditionsRefresh() {
+  if(conditionsInterest?.interested===false)return;
   clearTimeout(marketConditionsRefreshTimer);
   marketConditionsRefreshTimer = setTimeout(() => {
     refreshMarketConditions();
@@ -1733,6 +1758,7 @@ async function requestFilteredSnapshot() {
     latestMarketConditionsError = "";
     newsOptions.page = 1; forceNewsRender = true;
     renderDashboard(getState());
+    newsDetailsRequested=true;void refreshStoredLiveNews(getState());
     void refreshMarketConditions();
   } catch (error) {
     console.error("Failed to refresh filtered snapshot:", error);
@@ -1784,24 +1810,35 @@ async function refreshBoundedSnapshot(signal) {
 }
 
 function mountWebSocket() {
-  const synchronizer = new StateSynchronizer({ api, onUpdate: update => {
+  const synchronizer = new StateSynchronizer({ api,profile:'dashboard-v1',getFilters:()=>({countries:'ALL',limit:20,order:'critical'}),
+    onHydrate:payload=>{if(payload.watchlist && (!marketWatchlistLoaded||JSON.stringify(payload.watchlist.selectedInstrumentIds)!==JSON.stringify(marketWatchlistModel.selectedInstrumentIds)))renderMarketWatchlist(payload.watchlist,{refreshOhlcv:false});},onUpdate: update => {
+    lastSyncProgressAt=Date.now();
     if (update.news) newsTransportToken++;
     applyUpdate(update);
+    if(!performance.getEntriesByName('ogid:first-useful-view').length)requestAnimationFrame(()=>requestAnimationFrame(()=>{if(!performance.getEntriesByName('ogid:first-useful-view').length)performance.mark('ogid:first-useful-view');}));
     awarenessController?.syncCompact(update.awareness);
     if (update.news || update.countries) void advancedIntelligenceController?.refresh();
     if (update.news || update.market) scheduleMarketConditionsRefresh();
   }, onStatus: status => {
+    if(status==='syncing'||status==='progress')lastSyncProgressAt=Date.now();
     if (status === "synchronized") wsHasSnapshot = true;
     else if (["degraded","syncing"].includes(status)) wsHasSnapshot = false;
     if (socket?.socket?.readyState === WebSocket.OPEN) setWsStatus("connected");
   } });
   stateSynchronizer=synchronizer;
-  window.addEventListener("pagehide", () => {pageSuspended=true;synchronizer.close();marketConditionsController?.abort();});
+  window.addEventListener("pagehide", () => {pageSuspended=true;synchronizer.close();marketConditionsController?.abort();liveNewsController?.abort();});
   window.addEventListener("pageshow",event=>{pageSuspended=false;if(event.persisted)synchronizer.resume();});
   socket = new RealtimeSocket({
     path: "/ws",
     onStatusChange: setWsStatus,
     onMessage: (message) => {
+      if(message.type==='pipeline:status:v1'){
+        const value=message.data||{};
+        if(value.epoch!==stateSynchronizer.epoch || !Number.isSafeInteger(value.sequence))return;
+        if(operationalEpoch!==value.epoch){operationalEpoch=value.epoch;operationalSequence=-1;}
+        if(value.sequence<=operationalSequence)return;
+        operationalSequence=value.sequence;applyUpdate({pipelineStatus:value.stages||{}});return;
+      }
       if (["ws:ready:v2", "state:revision:v2", "resync:required:v2"].includes(message.type)) {
         synchronizer.accept(message); return;
       }
@@ -1874,13 +1911,18 @@ function syncWatchlistFromState(state) {
 
 async function bootstrap() {
   cacheElements();
+  conditionsInterest=observeInterest(byId('panel-market-conditions'),active=>{if(active)void refreshMarketConditions();else marketConditionsController?.abort();});
+  ohlcvInterest=observeInterest(elements.marketOhlcvCanvas,active=>{if(active&&marketWatchlistLoaded)void loadMarketOhlcv();});
+  providerInterest=observeInterest(elements.marketProviderStatusText,active=>{if(active)marketProviderPoller?.start();else marketProviderPoller?.stop();});
+  newsInterest=observeInterest(elements.panelNews,active=>{if(active)void refreshStoredLiveNews(getState());else liveNewsController?.abort();});
+  teardownHandlers.push(()=>{conditionsInterest.destroy();ohlcvInterest.destroy();providerInterest.destroy();newsInterest.destroy();});
   initNewsDrawer();
   bindNewsControls();
   renderMarketConditionsWindowSelector();
-  teardownHandlers.push(mountAgentIntelligence());
-  advancedIntelligenceController = startAdvancedIntelligence({ api, getCountries: selectedCountryQueryValue });
+  teardownHandlers.push(mountAgentIntelligence({getWatchlist:async()=>{if(!marketWatchlistLoaded)await stateSynchronizer?.requestSnapshot();return marketWatchlistLoaded?marketWatchlistModel:null;},deferUntilInterested:true}));
+  advancedIntelligenceController = startAdvancedIntelligence({ api, getCountries: selectedCountryQueryValue,deferUntilInterested:true });
   teardownHandlers.push(() => advancedIntelligenceController?.stop());
-  awarenessController = mountAwarenessCenter({ api });
+  awarenessController = mountAwarenessCenter({ api,deferUntilInterested:true });
   teardownHandlers.push(() => awarenessController?.stop());
   initRiskChart();
 
@@ -1895,7 +1937,6 @@ async function bootstrap() {
   elements.marketWatchlistSelected.addEventListener("click", handleMarketWatchlistAction);
   elements.marketOhlcvInstrument.addEventListener("change", loadMarketOhlcv);
   elements.marketOhlcvInterval.addEventListener("change", loadMarketOhlcv);
-  void loadMarketWatchlist().catch(error => console.error("Watchlist unavailable", error));
 
   subscribe((state) => {
     syncWatchlistFromState(state);
@@ -1918,6 +1959,7 @@ async function bootstrap() {
 
   try {
     await refreshBoundedSnapshot(dashboardController.signal);
+    if(!marketWatchlistLoaded)await loadMarketWatchlist();
     void refreshMarketConditions();
   } catch (error) {
     console.error("Failed to fetch initial snapshot:", error);
@@ -1926,7 +1968,6 @@ async function bootstrap() {
   }
 
   startMarketQuotesPolling();
-  marketQuotesPoller?.trigger(0);
   startMarketProviderPolling();
 
   window.addEventListener("pagehide", event => {

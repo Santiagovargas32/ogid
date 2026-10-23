@@ -7,6 +7,7 @@ export { sendBoundedEnvelope } from "./boundedTransport.js";
 import { normalizeIp, resolveClientIp } from "../utils/clientIp.js";
 import { createLogger } from "../utils/logger.js";
 import { sanitizeSensitiveData } from "../utils/sanitize.js";
+import {operationalSummary,DASHBOARD_POLICY} from '../state/dashboardProjection.js';
 
 const log = createLogger("backend/websocket/socketServer");
 const MAX_ACTIVE_CONNECTIONS = 5;
@@ -177,6 +178,19 @@ export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000,
   const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
   const clients = new Set();
   const sync = new StateSync(stateManager);
+  let pipelineTimer=null,operationalSequence=0,lastPipelineStatus={};
+  const publishState=resources=>{
+    const change=sync.change(resources);if(!change)return;
+    const manifest=sync.manifest();
+    const latest={...change,resources:manifest.resources,profiles:manifest.profiles};
+    for(const client of clients)send(client,'state:revision:v2',latest,{},'state');
+    if(resources.includes('pipelineStatus')){
+      const stages=operationalSummary(stateManager.getSyncResource?stateManager.getSyncResource('pipelineStatus'):stateManager.getSnapshot().pipelineStatus);
+      let summary={epoch:sync.epoch,sequence:++operationalSequence,stages};
+      if(Buffer.byteLength(createEnvelope('pipeline:status:v1',summary))>DASHBOARD_POLICY.operationalBytes)summary={epoch:sync.epoch,sequence:operationalSequence,stages:{},status:'unavailable',reason:'summary-budget-exceeded'};
+      for(const client of clients)send(client,'pipeline:status:v1',summary,{},'pipeline');
+    }
+  };
   const transportSamples = [];
   const recentEvents = [];
   const websocketState = {
@@ -343,10 +357,14 @@ export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000,
     broadcast(type, data, meta = {}) {
       if (["snapshot", "update", "ai:update:v1", "awareness:update:v1"].includes(type)) {
         const resources = type === "awareness:update:v1" ? ["awareness"] : type === "ai:update:v1" ? ["ai"] : Object.keys(data || {});
-        const change = sync.change(resources); if (!change) return;
-        // A replacement includes all current resource revisions: coalescing cannot lose invalidations.
-        const latest = { ...change, resources: sync.manifest().resources };
-        for (const client of clients) send(client, "state:revision:v2", latest, {}, "state");
+        if(resources.length===1 && resources[0]==='pipelineStatus'){
+          const stages=data.pipelineStatus || {};
+          const urgent=Object.entries(stages).some(([id,stage])=>stage.status!==lastPipelineStatus[id] &&
+            (['failed','blocked','degraded'].includes(stage.status)||['failed','blocked','degraded'].includes(lastPipelineStatus[id])));
+          lastPipelineStatus=Object.fromEntries(Object.entries(stages).map(([id,stage])=>[id,stage.status]));
+          if(urgent){clearTimeout(pipelineTimer);pipelineTimer=null;publishState(resources);}
+          else if(!pipelineTimer){pipelineTimer=setTimeout(()=>{pipelineTimer=null;publishState(resources);},1000);pipelineTimer.unref?.();}
+        }else publishState(resources);
         return;
       }
       for (const client of clients) send(client, type, data, meta);
@@ -373,6 +391,7 @@ export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000,
       };
     },
     close() {
+      clearTimeout(pipelineTimer);
       clearInterval(heartbeatTimer);
       server.removeListener("upgrade", handleUpgrade);
       for (const client of clients) {

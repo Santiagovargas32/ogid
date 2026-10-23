@@ -140,9 +140,13 @@ test('snapshot writer RPC waits share the analysis reader with one calculation w
     reader.localRequest('domain.call',{service:'technical',method:'get',args:[{instrumentId:'a'}]}),
     reader.localRequest('domain.call',{service:'technical',method:'get',args:[{instrumentId:'b'}]}),
     reader.localRequest('agent.snapshot',{jobId:'second'})];
+  assert.equal(reader.active.size,1);assert.equal(reader.queue.length,3);
+  const capture=reader.active.values().next().value;
+  assert.equal(capture.capture,true);
+  reader.handleMessage({type:'command-phase',id:capture.id,phase:'capture-completed',captureMs:1});
   assert.equal(reader.active.size,2);assert.equal(reader.queue.length,2);
   assert.equal([...reader.active.values()].filter(e=>e.cpu).length,1);
-  assert.equal([...reader.active.values()].filter(e=>e.capture).length,1);
+  assert.equal([...reader.active.values()].filter(e=>e.capture).length,0);
   const completed=entry=>reader.handleMessage({id:entry.id,result:{},status:{},durationMs:1});
   completed([...reader.active.values()].find(e=>e.cpu));
   assert.equal([...reader.active.values()].filter(e=>e.cpu).length,1);

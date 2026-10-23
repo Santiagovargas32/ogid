@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getSyncSnapshot, getSyncChanges, getAwarenessSnapshot, getHotspots, getInsights, getNews, getRisks, getSnapshot, postRefresh } from "../controllers/intelController.js";
+import { getDashboardBootstrap, getSyncSnapshot, getSyncChanges, getAwarenessSnapshot, getHotspots, getInsights, getNews, getRisks, getSnapshot, postRefresh } from "../controllers/intelController.js";
 import {
   getAdvancedIntelligenceSnapshot,
   getCountryInstability,
@@ -10,6 +10,7 @@ import {
 const router = Router();
 
 router.get("/snapshot", getSnapshot);
+router.get('/bootstrap',getDashboardBootstrap);
 router.get("/sync", getSyncSnapshot);
 router.get("/changes", getSyncChanges);
 router.post("/refresh", postRefresh);

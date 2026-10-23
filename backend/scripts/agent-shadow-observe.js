@@ -35,23 +35,47 @@ export async function shadowSample({ base = "http://127.0.0.1:3000", token = "",
     try {
       const response = await fetchImpl(new URL(path, base), { headers: token ? { Authorization: `Bearer ${token}` } : {}, signal: AbortSignal.timeout(10000), redirect: "error" });
       const value = await response.json();
-      return { http: response.status, latencyMs: Math.round(performance.now() - started), value: value.data };
-    } catch { return { http: null, error: "PROBE_UNAVAILABLE" }; }
+      return { http: response.status, latencyMs: Math.round(performance.now() - started), value: value.data,availability:'observed' };
+    } catch(error) {
+      const cause=error.cause?.code || error.code;
+      return { http:null,error:cause==='ECONNREFUSED'?'PROBE_CONNECTION_REFUSED':error.name==='TimeoutError'?'PROBE_TIMEOUT':'PROBE_UNAVAILABLE',availability:cause==='ECONNREFUSED'?'endpoint-refused':'unknown' };
+    }
   };
   const [health, ready, agent] = await Promise.all([probe("/api/health"), probe("/api/health/ready"), probe("/api/admin/agent")]);
   const h = health.value || {}, a = agent.value || {};
   return {
     at: new Date().toISOString(), http: { health: health.http, ready: ready.http, agent: agent.http },
+    probeAvailability:{health:health.availability,ready:ready.availability,agent:agent.availability},
+    probeErrors:{health:health.error || null,ready:ready.error || null,agent:agent.error || null},
     probeLatencyMs: { health: health.latencyMs ?? null, ready: ready.latencyMs ?? null, agent: agent.latencyMs ?? null },
-    status: h.status || null, uptimeSeconds: h.uptimeSeconds ?? null, pid: h.server?.pid ?? null, rss: h.server?.memory?.rss ?? null,
+    status: h.status || null, uptimeSeconds: h.uptimeSeconds ?? null, pid: h.server?.pid ?? null, startedAt:h.server?.startedAt || null, build:h.build?.artifactHash || h.build?.buildCommit || null, rss: h.server?.memory?.rss ?? null,
     storage: { state: h.storage?.state || null, queue: numeric(h.storage?.queue), analysisState: h.storage?.analysis?.state || null,queriesState:h.storage?.queries?.state || null,
       queryRecovery:{recovering:h.storage?.queryRecovery?.recovering===true,recoveries:h.storage?.queryRecovery?.recoveries ?? 0},
       analysisRecovery:{recovering:h.storage?.analysisRecovery?.recovering === true,recoveries:h.storage?.analysisRecovery?.recoveries ?? 0},
       eventIndex:h.storage?.worker?.eventIndex || null,writer:workerSample(h.storage),analysis:workerSample(h.storage?.analysis),queries:workerSample(h.storage?.queries) },
-    websocket: { clients: h.websocketClients ?? null, metrics: numeric(h.websocket?.metrics) },
+    websocket: { clients: h.websocketClients ?? null, metrics: numeric(h.websocket?.metrics),sync:numeric(h.websocket?.synchronization?.metrics) },
     pipelines: Object.fromEntries(Object.entries(h.pipeline || {}).map(([k,v]) => [k,{ status: v.status || null }])),
-    agent: { mode: a.mode || null,taskModes:a.taskModes || null, runtime: a.runtime || null, paused: a.paused ?? null, workerState: a.workerHealth?.state || null, workerError: a.workerHealth?.errorCode || null, jobs: (a.jobs || []).map(j=>({ status: j.status, count: j.count })),sinceCounts:a.sinceCounts || [],oldestQueuedAt:a.queueAge?.oldestQueuedAt || null,publicationCount:a.publicationCount??null, latestPublicationAt: a.latest?.publishedAt || null, recentRuns: (a.runs || []).slice(0,20).map(r=>({jobId:r.jobId, status: r.status, startedAt: r.startedAt, finishedAt: r.finishedAt,progress:{phase:r.metadata?.phase,toolsCompleted:r.metadata?.toolsCompleted,lastProgressAt:r.metadata?.lastProgressAt,firstProgressMs:r.metadata?.firstProgressMs} })) },
+    agent: { mode: a.mode || null,taskModes:a.taskModes || null, runtime: a.runtime || null, paused: a.paused ?? null, workerState: a.workerHealth?.state || null, workerError: a.workerHealth?.errorCode || null, jobs: (a.jobs || []).map(j=>({ status: j.status, count: j.count })),sinceCounts:a.sinceCounts || [],oldestQueuedAt:a.queueAge?.oldestQueuedAt || null,publicationCount:a.publicationCount??null, latestPublicationAt: a.latest?.publishedAt || null, recentRuns: (a.runs || []).slice(0,20).map(r=>({jobId:r.jobId,fence:r.fence, status: r.status, startedAt: r.startedAt, finishedAt: r.finishedAt,progress:{phase:r.metadata?.phase,toolsCompleted:r.metadata?.toolsCompleted,lastProgressAt:r.metadata?.lastProgressAt,firstProgressMs:r.metadata?.firstProgressMs} })) },
   };
+}
+
+export function recordContinuity(summary,sample,{gapMs=0}={}) {
+  summary.continuousBackendObservation ??= true;
+  summary.backendChanges ??= 0;
+  summary.telemetryGaps ??= 0;
+  summary.segments ??= [];
+  const identity=sample.pid && sample.startedAt ? `${sample.pid}:${sample.startedAt}:${sample.build||''}` : null;
+  const available=Object.values(sample.http).every(status=>status===200);
+  const backendObserved=sample.http.health!==null && Boolean(identity);
+  const segment=summary.segments.at(-1);
+  if(!backendObserved || gapMs>90000)summary.continuousBackendObservation=false;
+  if(gapMs>90000)summary.telemetryGaps++;
+  if(identity && summary.backendIdentity && identity!==summary.backendIdentity){summary.backendChanges++;summary.continuousBackendObservation=false;}
+  if(identity)summary.backendIdentity=identity;
+  if(!segment || segment.available!==available || segment.identity!==identity || segment.backendObserved!==backendObserved){
+    if(summary.segments.length<128)summary.segments.push({from:sample.at,to:sample.at,identity,available,backendObserved,samples:1});
+    else summary.segmentsTruncated=true;
+  }else{segment.to=sample.at;segment.samples++;}
 }
 
 async function main() {
@@ -78,12 +102,19 @@ async function main() {
       if(sample.walBytes!==null)summary.maxWalBytes=Math.max(summary.maxWalBytes||0,sample.walBytes);
       writeSync(file, JSON.stringify(sample)+"\n"); summary.samples++;
       if (Object.values(sample.http).some(status=>status !== 200)) summary.unavailableSamples++;
+      if(sample.probeAvailability.health==='endpoint-refused')summary.endpointRefusedSamples=(summary.endpointRefusedSamples||0)+1;
+      else if(sample.http.health===null)summary.unknownBackendSamples=(summary.unknownBackendSamples||0)+1;
       if (!sample.agent.mode)summary.unknownModeSamples=(summary.unknownModeSamples||0)+1;
       else if (sample.agent.mode !== "shadow" || Object.values(sample.agent.taskModes||{}).includes('visible')) summary.notShadowSamples++;
-      if (sample.agent.workerState !== "connected") summary.workerDisconnectedSamples++;
+      if (!sample.agent.workerState || sample.agent.workerState==='unknown')summary.unknownWorkerSamples=(summary.unknownWorkerSamples||0)+1;
+      else if(sample.agent.workerState !== 'connected')summary.workerUnhealthySamples=(summary.workerUnhealthySamples||0)+1;
+      if (sample.agent.workerState==='disconnected') summary.workerDisconnectedSamples++;
+      recordContinuity(summary,sample,{gapMs:summary.lastSample?Date.parse(sample.at)-Date.parse(summary.lastSample.at):0});
       if ([sample.storage.writer,sample.storage.analysis,sample.storage.queries].some(w=>w.heartbeatAgeMs>15000))summary.storageHeartbeatDelayedSamples++;
       summary.maxQueryRecoveries=Math.max(summary.maxQueryRecoveries,sample.storage.queryRecovery.recoveries);
       summary.maxAnalysisRecoveries=Math.max(summary.maxAnalysisRecoveries,sample.storage.analysisRecovery.recoveries);
+      summary.maxSyncConflicts=Math.max(summary.maxSyncConflicts||0,sample.websocket.sync.conflicts||0);
+      summary.maxSyncCapacityRejected=Math.max(summary.maxSyncCapacityRejected||0,sample.websocket.sync.capacityRejected||0);
       summary.maxRss = Math.max(summary.maxRss, sample.rss || 0);
       summary.lastSample = sample; summary.observedMs = Math.round(performance.now()-started);
       console.log(JSON.stringify({at:sample.at,ready:sample.http.ready,agent:sample.http.agent,mode:sample.agent.mode,worker:sample.agent.workerState,jobs:sample.agent.jobs,latestPublicationAt:sample.agent.latestPublicationAt,writerHeartbeatAgeMs:sample.storage.writer.heartbeatAgeMs,analysisRecoveries:sample.storage.analysisRecovery.recoveries}));

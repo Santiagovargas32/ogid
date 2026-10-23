@@ -18,6 +18,7 @@ import { importLegacy } from "./importLegacy.js";
 import { randomUUID } from "node:crypto";
 import { operationContext, checkOperation } from "../services/shared/operationContext.js";
 import { isAcquisitionWorkflow } from "./config.js";
+import {assertStorageVolume} from './volumeGuard.js';
 let database, migrations, version, runtime;
 let diagnostics,lastDiagnosticsCompletedAt=0,lastCompletedCommand,lastFailedCommand;
 const activeCommands=new Map();
@@ -51,7 +52,7 @@ function pipelineRecord(input) {
   database.prepare(`INSERT INTO pipeline_runs VALUES(?,?,?,?,?,?,?)`).run(input.runId,input.pipelineId,input.startedAt,input.completedAt || null,input.status,JSON.stringify(input.counts),input.errorCode || null);
   return { runId: input.runId, persisted: true };
 }
-function execute(operation, input, requestId) {
+function execute(operation, input, requestId, commandId) {
   if(operation === "agent.read"){
     if(!workerData.analysisWorker || !AGENT_READER_METHODS.has(input.method))fail("STORAGE_INVALID_COMMAND");
     runtime.agent ||= new AgentRepository(runtime);
@@ -59,7 +60,7 @@ function execute(operation, input, requestId) {
   }
   if(operation === "agent.snapshot") {
     if(!workerData.analysisWorker)fail("STORAGE_INVALID_COMMAND");
-    return prepareAgentSnapshot(input);
+    return prepareAgentSnapshot(input,commandId);
   }
   if(operation === "agent.call") {
     if(workerData.analysisWorker)fail("STORAGE_READ_ONLY");
@@ -93,7 +94,7 @@ function execute(operation, input, requestId) {
   }
   if(operation === "storage.import") return importLegacy(database,runtime,input);
   if(operation === "runtime.save") return runtime.save(input.kind,input.payload);
-  if(operation === "runtime.load") return runtime.load(input.kind);
+  if(operation === "runtime.load") return runtime.load(input.kind,input.options);
   if(operation === "rss.fetch") return runtime.fetchRss(input);
   if(operation === "news.collect") return runtime.newsPipeline.collect(input);
   if(operation === "news.supplemental") return runtime.newsPipeline.collectSupplemental();
@@ -103,16 +104,18 @@ function execute(operation, input, requestId) {
   if (operation === "pipeline.record") return pipelineRecord(input);
   fail("STORAGE_UNKNOWN_OPERATION");
 }
-async function prepareAgentSnapshot(auth){
+async function prepareAgentSnapshot(auth,commandId){
   runtime.agent ||= new AgentRepository(runtime);
   const frozen=Object.fromEntries(['evidence','clusters','members'].map(table=>[table,new FrozenRows()]));
   const maxBytes=frozen.evidence.maxBytes;let capturedBytes=0;
   try {
+    const captureStarted=performance.now();
     const prepared=runtime.agent.prepareSnapshot(auth,{rowSink:(table,row)=>{
       const spool=frozen[table],before=spool.bytes;
       spool.maxBytes=spool.bytes+maxBytes-capturedBytes;
       spool.add(row);capturedBytes+=spool.bytes-before;
     }});
+    parentPort.postMessage({type:'command-phase',id:commandId,phase:'capture-completed',captureMs:performance.now()-captureStarted});
     if(prepared.existing)return prepared.existing;
     const write=input=>rpc("analysis.persist",{type:"agent-snapshot",input:{...auth,...input}});
     while((await write({phase:'cleanup'})).hasMore)await new Promise(resolve=>setImmediate(resolve));
@@ -137,6 +140,7 @@ async function prepareAgentSnapshot(auth){
 }
 
 try {
+  if(!workerData.analysisWorker)assertStorageVolume(workerData.databasePath);
   mkdirSync(path.dirname(workerData.databasePath), { recursive: true, mode: 0o700 });
   database = new Database(workerData.databasePath, { readonly:workerData.analysisWorker, fileMustExist:workerData.analysisWorker, timeout: workerData.busyTimeoutMs });
   if(!workerData.analysisWorker)chmodSync(workerData.databasePath, 0o600);
@@ -176,9 +180,11 @@ try {
       // Attribute thread CPU only when no other command overlaps this interval.
       const epoch=++commandEpoch;
       const cpuStart = workerData.analysisWorker && !activeCommands.size && typeof process.threadCpuUsage === "function" ? process.threadCpuUsage() : null;
-      const command={operation:message.operation,service:message.input?.service || null,method:message.input?.method || null,kind:message.input?.kind || null,startedAt:new Date().toISOString()};
+      const agentInput=message.operation==='agent.call'?message.input.args:message.input;
+      const command={operation:message.operation,service:message.input?.service || null,method:message.input?.method || null,kind:message.input?.kind || null,
+        jobId:typeof agentInput?.jobId==='string'?agentInput.jobId.slice(0,128):null,fence:Number.isSafeInteger(agentInput?.fence)?agentInput.fence:null,startedAt:new Date().toISOString()};
       activeCommands.set(message.id,command);parentPort.postMessage({type:"command-started",id:message.id,startedAt:Date.now()});
-      let result;runtime.lastCommitMs=null;
+      let result;runtime.lastCommitMs=null;runtime.lastValidationMs=null;
       if (["pipeline.record","runtime.save"].includes(message.operation)) {
         const requestId = message.requestId;
         if (!/^[A-Za-z0-9._:-]{1,128}$/.test(requestId || "")) fail("STORAGE_INVALID_REQUEST_ID");
@@ -186,7 +192,7 @@ try {
         result = database.transaction(() => {
           const previous = database.prepare("SELECT * FROM storage_commands WHERE request_id=?").get(requestId);
           if (previous) { if (previous.input_hash !== hash) fail("STORAGE_IDEMPOTENCY_CONFLICT"); return JSON.parse(previous.result_json); }
-          const value = execute(message.operation,message.input,message.requestId);
+          const value = execute(message.operation,message.input,message.requestId,message.id);
           database.prepare("INSERT INTO storage_commands VALUES(?,?,?,?,?)").run(requestId,message.operation,hash,JSON.stringify(value),new Date().toISOString());
           return value;
         }).immediate();
@@ -194,15 +200,15 @@ try {
         const controller=new AbortController();workflows.set(message.id,controller);let completed=0;
         result=await operationContext.run({signal:controller.signal,committed:count=>{
           completed+=count;parentPort.postMessage({type:"command-progress",id:message.id,completed,at:Date.now()});
-        }},async()=>{const value=await execute(message.operation,message.input,message.requestId);checkOperation();return value;});
-      } else { result = await execute(message.operation,message.input,message.requestId); }
+        }},async()=>{const value=await execute(message.operation,message.input,message.requestId,message.id);checkOperation();return value;});
+      } else { result = await execute(message.operation,message.input,message.requestId,message.id); }
       const cpu = cpuStart && epoch===commandEpoch ? process.threadCpuUsage(cpuStart) : null;
       const cpuMs = cpu ? (cpu.user + cpu.system) / 1000 : null;
-      parentPort.postMessage({ id: message.id, result, durationMs: performance.now() - start, cpuMs, outputBytes:Buffer.byteLength(JSON.stringify(result ?? null)),commitMs:runtime.lastCommitMs ?? null, status: status() });
+      parentPort.postMessage({ id: message.id, result, durationMs: performance.now() - start, cpuMs, outputBytes:Buffer.byteLength(JSON.stringify(result ?? null)),commitMs:runtime.lastCommitMs ?? null,validationMs:runtime.lastValidationMs ?? null, status: status() });
       lastCompletedCommand={...command,completedAt:new Date().toISOString(),durationMs:performance.now()-start,cpuMs};
     } catch (error) {
       lastFailedCommand={...activeCommands.get(message.id),failedAt:new Date().toISOString(),code:error.code || "STORAGE_COMMAND_FAILED"};
-      log.error("storage_command_failed",{operation:message.operation,service:message.input?.service,method:message.input?.method,code:error.code || "STORAGE_COMMAND_FAILED",stack:error.stack});
+      log.error("storage_command_failed",{operation:message.operation,service:message.input?.service,method:message.input?.method,jobId:activeCommands.get(message.id)?.jobId,fence:activeCommands.get(message.id)?.fence,code:error.code || "STORAGE_COMMAND_FAILED",stack:error.stack});
       const code = /^[A-Z][A-Z0-9_]{1,63}$/.test(error.code || "") ? error.code : "STORAGE_COMMAND_FAILED";
       parentPort.postMessage({ id: message.id, error: { code, statusCode: error.statusCode || 503, message: error.statusCode < 500 ? error.message : code, causeCode: error.causeCode, diagnostic: error.diagnostic,details:error.statusCode<500?error.details:null } });
     }finally{activeCommands.delete(message.id);workflows.delete(message.id);}

@@ -1,6 +1,7 @@
 import { BACKEND_BUILD } from "../utils/buildIdentity.js";
 import stateManager from "../state/stateManager.js";
 import { isAdminAuthorized } from "../middleware/sensitiveRouteAuth.js";
+const SERVER_STARTED_AT = new Date(Date.now() - process.uptime() * 1000).toISOString();
 
 export function getHealth(req, res) {
   const socketServer = res.app.locals.socketServer;
@@ -26,10 +27,10 @@ export function getHealth(req, res) {
   res.json({
     ok: true,
     data: {
-      status:(storage&&(!["ready","disabled"].includes(storage.state)||storage.analysis?.state === "failed"||storage.analysisRecovery?.recovering||storage.queries?.state === "failed"||storage.queryRecovery?.recovering))||Object.values(res.app.locals.pipelineMonitor?.snapshot() || {}).some(s=>["degraded","blocked","failed","stale"].includes(s.status))?"degraded":"ok",
+      status:(storage&&(!["ready","disabled"].includes(storage.state)||storage.reconciliation?.pending||storage.analysis?.state === "failed"||storage.analysisRecovery?.recovering||storage.queries?.state === "failed"||storage.queryRecovery?.recovering))||Object.values(res.app.locals.pipelineMonitor?.snapshot() || {}).some(s=>["degraded","blocked","failed","stale"].includes(s.status))?"degraded":"ok",
       storage: administrative ? storage : storage && {state:storage.state,businessStorage:storage.businessStorage,lastErrorCode:storage.lastErrorCode,queue:storage.queue,queries:storage.queries&&{state:storage.queries.state,queue:storage.queries.queue,lastErrorCode:storage.queries.lastErrorCode},analysis:storage.analysis&&{state:storage.analysis.state,queue:storage.analysis.queue,lastErrorCode:storage.analysis.lastErrorCode}},
       pipeline: res.app.locals.pipelineMonitor?.snapshot() || {},
-      server:{pid:process.pid,nodeVersion:process.version,startedAt:new Date(Date.now()-process.uptime()*1000).toISOString(),memory:process.memoryUsage()},
+      server:{pid:process.pid,nodeVersion:process.version,startedAt:SERVER_STARTED_AT,memory:process.memoryUsage()},
       build: BACKEND_BUILD,
       timestamp: new Date().toISOString(),
       uptimeSeconds: Math.floor(process.uptime()),

@@ -1,6 +1,6 @@
 // Registro compartido: contratos de transporte, permisos e inventario API→MCP.
 // Sin imports de runtime ni secretos. Los parámetros son valores tipados; nunca URLs/rutas libres.
-export const OPERATIONS_VERSION = "1.5.0";
+export const OPERATIONS_VERSION = "1.6.0";
 const str = (maxLength = 128) => ({ type: "string", minLength: 1, maxLength });
 const int = (minimum, maximum) => ({ type: "integer", minimum, maximum });
 const choice = (...values) => ({ type: "string", enum: values });
@@ -35,7 +35,8 @@ export const OGID_OPERATIONS = Object.freeze([
   op("agent.evidence", "GET", "/api/agent/v1/evidence", {snapshotId:str(),cursor:str(),limit,domain:str()}, {required:["snapshotId"],projection:"agent-bundle",retention:"durable immutable bundle; permitted metadata only"}),
   op("agent.evidence.chunk", "GET", "/api/agent/v1/evidence/chunk", {snapshotId:str(),evidenceId:str(),offset:int(0,2147483647),format:choice('base64','utf8')}, {required:["snapshotId","evidenceId"],projection:"agent-bundle",retention:"recoverable base64 or readable UTF-8 chunks with sha256"}),
   op("agent.clusters", "GET", "/api/agent/v1/clusters", {snapshotId:str(),clusterId:str(),cursor:str(),limit}, {required:["snapshotId"],projection:"agent-bundle",retention:"durable ranked catalogue and members from frozen evidence"}),
-  op("intel.sync", "GET", "/api/intel/sync", {resource:str(64),epoch:str(64),revision:int(0,2147483647),cursor:int(0,2147483647)}),
+  op("intel.bootstrap", "GET", "/api/intel/bootstrap", {profile:choice('dashboard-v1'),countries,sources:array(str()),limit:int(1,20),order:choice('recent','critical')}, {required:['profile'],effects:'stored compact projection; never admits acquisition or calculation',retention:'versioned dashboard-v1; full details retain v2 contracts'}),
+  op("intel.sync", "GET", "/api/intel/sync", {resource:str(64),epoch:str(64),revision:int(0,2147483647),cursor:int(0,2147483647),profile:choice('dashboard-v1'),downloadId:str(160),filterKey:str(256)}),
   op("intel.changes", "GET", "/api/intel/changes", {epoch:str(64),since:int(0,2147483647)}),
   op("health", "GET", "/api/health", {}, { tool: "ogid_health", projection: "health" }),
   op("health.live", "GET", "/api/health/live", {}, { projection: "health" }),

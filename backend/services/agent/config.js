@@ -128,6 +128,7 @@ export function publicCapabilities(config) {
     mode: config.mode,
     taskModes: config.taskModes,
     contextPolicy: "server-context",
+    generationContract:{transport:'opencode-2.0.31',structuredGeneration:false,reason:'Pinned prompt transport accepts textual contracts; model structured-output capability is separate.'},
     localQuota: null,
     experimental: true,
     health: config.health || {

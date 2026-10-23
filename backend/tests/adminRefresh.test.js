@@ -22,3 +22,19 @@ test('request bounds body, supports cancellation, auth errors and Retry-After da
  await assert.rejects(request('/test'),e=>e.status===401&&e.code==='ADMIN_AUTH_REQUIRED'&&e.retryAfterSec>0&&/autorizado/.test(e.message));
  }finally{globalThis.fetch=original;delete globalThis.window;}
 });
+test('conditional browser reads retain the previous representation and never parse an empty 304',async()=>{
+ globalThis.window={location:{origin:'http://localhost'},addEventListener(){}};
+ const {request}=await import('../../frontend/js/api.js'),original=globalThis.fetch;
+ let calls=0;
+ try{
+  globalThis.fetch=async(_url,options)=>{
+   calls++;
+   if(calls===1)return Response.json({ok:true,data:{revision:1,items:['retained']}},{headers:{ETag:'W/"fixture"'}});
+   assert.equal(options.headers['If-None-Match'],'W/"fixture"');
+   return {status:304,ok:false,headers:new Headers(),json:()=>assert.fail('304 body must not be parsed')};
+  };
+  const first=await request('/conditional-fixture',{}, {revalidate:true});
+  const cached=await request('/conditional-fixture',{}, {revalidate:true});
+  assert.equal(cached,first);assert.deepEqual(cached.items,['retained']);assert.equal(calls,2);
+ }finally{globalThis.fetch=original;delete globalThis.window;}
+});

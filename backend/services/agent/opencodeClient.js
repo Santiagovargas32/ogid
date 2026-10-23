@@ -183,6 +183,7 @@ export class OpenCodeClient {
             status: p.state?.status || "running",
             operationId: p.state?.input?.operationId,
             snapshotId: p.state?.input?.parameters?.snapshotId,
+            durationMs:Number.isFinite(p.time?.ran) && Number.isFinite(p.time?.completed) && p.time.completed>=p.time.ran ? p.time.completed-p.time.ran : null,
           })),
       ),
       messageId: latest?.id,

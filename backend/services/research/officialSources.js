@@ -32,7 +32,12 @@ export function sourceFailureCode(error,{cancelled=false,timedOut=false}={}) {
   if(timedOut)return 'SOURCE_TIMEOUT';
   if(error.status)return `HTTP_${error.status}`;
   if(error instanceof SyntaxError)return 'SOURCE_JSON_INVALID';
-  if(error instanceof TypeError || /^(ECONN|ENOTFOUND|EAI_|UND_ERR_|CERT_)/.test(error.cause?.code||error.code||''))return 'SOURCE_TRANSPORT_ERROR';
+  const code=error.cause?.code || error.code || '';
+  if(/^(ENOTFOUND|EAI_)/.test(code))return 'SOURCE_DNS_ERROR';
+  if(/^(CERT_|ERR_TLS|UNABLE_TO_VERIFY|DEPTH_ZERO|SELF_SIGNED)/.test(code))return 'SOURCE_TLS_ERROR';
+  if(/TIMEOUT|ETIMEDOUT/.test(code))return 'SOURCE_TIMEOUT';
+  if(/^(ECONN|UND_ERR_SOCKET)/.test(code))return 'SOURCE_CONNECTION_ERROR';
+  if(error instanceof TypeError || /^UND_ERR_/.test(code))return 'SOURCE_TRANSPORT_ERROR';
   if(['cik-mismatch','invalid-sec-submissions','invalid-dated-issuer-holdings','invalid-holding','invalid-holdings-total'].includes(error.message))return 'SOURCE_CONTRACT_INVALID';
   return error.code || 'SOURCE_UNCLASSIFIED_ERROR';
 }

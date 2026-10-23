@@ -23,6 +23,8 @@ export class StorageManager extends EventEmitter {
     this.state = this.options.enabled ? "new" : "disabled";
     this.queue = []; this.active = new Map(); this.pendingBytes = 0; this.metadata = {};
     this.recentCommands = [];this.activeErrors=new Map();
+    this.reconciliations = new Map();
+    this.reconciliationMetrics = { delayed: 0, resolved: 0 };
     this.metrics = { failuresByCategory:{write:0,query:0,calculation:0,transport:0,worker:0,validation:0}, completed: 0, rejected: 0, failed: 0, lastDurationMs: null, lastErrorCode: null };
   }
   getStatus() {
@@ -32,6 +34,9 @@ export class StorageManager extends EventEmitter {
       analysis:this.analysisManager?.getStatus() || null,
       queries:this.queryManager?.getStatus() || null,queryRecovery:{recovering:Boolean(this.queryRecovery),recoveries:this.queryRecoveries || 0},
       analysisRecovery:{recovering:Boolean(this.analysisRecovery),recoveries:this.analysisRecoveries || 0},
+      reconciliation: { pending: this.reconciliations.size > 0, ...this.reconciliationMetrics,
+        commands: [...this.reconciliations.values()].map(entry => this.describeCommand(entry, "reconciling")) },
+      failure:this.failureContext || null,
       databasePath:this.options.databasePath, worker:this.workerDiagnostics ? {...this.workerDiagnostics,database} : null, lastExpiredCommand:this.lastExpiredCommand || null,
       eventIndex:{...(this.eventIndexState||this.workerDiagnostics?.eventIndex||{}),...(this.eventIndexError?{state:"failed",errorCode:this.eventIndexError}:{})},
       activeCommands:[...this.active.values()].map(entry=>this.describeCommand(entry)),
@@ -47,6 +52,8 @@ export class StorageManager extends EventEmitter {
       startedAt:entry.startedAt ? new Date(entry.startedAt).toISOString() : null,elapsedMs:Date.now()-entry.queuedAt,
       queueMs:(entry.startedAt || Date.now())-entry.queuedAt,executionMs:entry.startedAt ? Date.now()-entry.startedAt : null,
       timeoutMs:entry.timeoutMs,queueTimeoutMs:entry.queueTimeoutMs,
+      captureMs:entry.captureMs ?? null,
+      ...(entry.reconciling ? { reconciliationDeadline: new Date(entry.startedAt + this.options.timeoutMs).toISOString() } : {}),
       ...(entry.workflow?{deadlinePolicy:"committed-progress",completedItems:entry.completedItems || 0,lastProgressAt:entry.lastProgressAt?new Date(entry.lastProgressAt).toISOString():null,cancelling:Boolean(entry.cancelling)}:{})};
   }
   recordCommand(entry,status,code=null,timing={}) {
@@ -100,7 +107,9 @@ export class StorageManager extends EventEmitter {
       reader.rpcHandler=(operation,input)=>operation === "analysis.persist"
         ? this.localRequest(operation,input) : this.rpcHandler?.(operation,input);
       if(role==="analysis")reader.on("stage",(...args)=>this.emit("stage",...args));
+      reader.on('productive',()=>{this.readerFailureStreak ||= {};this.readerFailureStreak[role]=0;});
       reader.on("failed", reason => {
+        this.readerFailureStreak ||= {};this.readerFailureStreak[role]=(this.readerFailureStreak[role]||0)+1;
         if (!["failed", "closed"].includes(this.state)) {
           reason.diagnostic = {...reason.diagnostic, worker: role};
           this.emit("failed", reason);
@@ -122,7 +131,8 @@ export class StorageManager extends EventEmitter {
         const previous=this[managerKey];
         await previous?.termination;
         if(this.state!=="ready" || this.closingRequested)break;
-        if(attempt){await wait(Math.min(60000,1000*2**Math.min(attempt,6)),undefined,{signal:this[abortKey].signal}).catch(()=>{});}
+        const failures=Math.max(attempt,(this.readerFailureStreak?.[role]||0)-1);
+        if(failures>0){await wait(Math.min(60000,1000*2**Math.min(failures-1,6)),undefined,{signal:this[abortKey].signal}).catch(()=>{});}
         if(this.state!=="ready" || this.closingRequested)break;
         const reader=this.createAnalysisManager(role);this[managerKey]=reader;
         try{
@@ -139,6 +149,7 @@ export class StorageManager extends EventEmitter {
   }
   request(operation, input = {}, { requestId = randomUUID(), timeoutMs = storageCommandTimeout(this.options,operation,input), queueTimeoutMs = this.options.queueTimeoutMs } = {}) {
     if(this.closingRequested)return Promise.reject(error("STORAGE_NOT_READY"));
+    if(operation==='agent.call' && input.method==='claim' && this.reconciliations.size)return Promise.reject(error('STORAGE_CONTROL_RECONCILING'));
     if (this.state !== "ready") return this.localRequest(operation,input,{requestId,timeoutMs,queueTimeoutMs});
     // A claim needs the evidence reader next. Keep jobs queued during reader
     // recovery instead of exhausting them in repeated, unstarted attempts.
@@ -146,7 +157,7 @@ export class StorageManager extends EventEmitter {
       return Promise.reject(Object.assign(error("STORAGE_ANALYSIS_UNAVAILABLE"),{causeCode:this.analysisManager.metrics.lastErrorCode,diagnostic:{worker:"analysis",state:this.analysisManager.state}}));
     if(operation==="agent.call" && input.method==="claim" && this.queryManager && this.queryManager.state!=="ready")
       return Promise.reject(Object.assign(error("STORAGE_QUERIES_UNAVAILABLE"),{diagnostic:{worker:"queries",state:this.queryManager.state}}));
-    if(this.analysisManager && operation==="runtime.load" && ["awareness","maintenance-inputs"].includes(input.kind))return this.queryManager.request(operation,input,{requestId,timeoutMs,queueTimeoutMs});
+    if(this.analysisManager && operation==="runtime.load" && ["awareness","maintenance-inputs","dashboard-analysis"].includes(input.kind))return this.queryManager.coalescedRead(operation,input,{requestId,timeoutMs,queueTimeoutMs});
     if(this.analysisManager && operation==="agent.call" && input.method==="snapshot")return this.analysisManager.request("agent.snapshot",input.args,{requestId,timeoutMs:storageCommandTimeout(this.options,"agent.snapshot"),queueTimeoutMs});
     if(this.queryManager && operation==="agent.call" && AGENT_READER_METHODS.has(input.method))return this.queryManager.coalescedRead("agent.read",input,{requestId,timeoutMs:storageCommandTimeout(this.options,"agent.read"),queueTimeoutMs});
     if(this.queryManager && operation==="domain.call" && ((input.service==="news" && ISOLATED_NEWS_METHODS.has(input.method) && input.method!=="getProjection") || ISOLATED_METHODS[input.service]?.has(input.method) && input.service!=="forecasts"))return this.queryManager.coalescedRead(operation,input,{requestId,timeoutMs,queueTimeoutMs});
@@ -211,7 +222,9 @@ export class StorageManager extends EventEmitter {
     let encoded;
     try { encoded = JSON.stringify({ operation, input, requestId }); } catch { return Promise.reject(error("STORAGE_INVALID_COMMAND")); }
     const bytes = Buffer.byteLength(encoded);
-    const diagnostic={operation,service:commandLabel(input.service),method:commandLabel(input.method),kind:commandLabel(input.kind)};
+    const agentInput=operation==='agent.call'?input.args:input;
+    const diagnostic={operation,service:commandLabel(input.service),method:commandLabel(input.method),kind:commandLabel(input.kind),
+      jobId:typeof agentInput?.jobId==='string'?agentInput.jobId.slice(0,128):null,fence:Number.isSafeInteger(agentInput?.fence)?agentInput.fence:null};
     const rejectCommand=code=>{
       this.metrics.rejected++;
       const reason=error(code);
@@ -236,6 +249,9 @@ export class StorageManager extends EventEmitter {
   }
   pump() {
     if (!["ready", "closing"].includes(this.state)) return;
+    // Accepted commands retain their slots and outcomes. A delayed renewal is
+    // not permission to dispatch another mutation into an uncertain writer.
+    if (this.reconciliations.size) return;
     while (this.queue.length && this.active.size < this.options.maxInFlight) {
       const slowCount=[...this.active.values()].filter(e=>e.slow && !e.workflow).length;
       const acquisitionCount=[...this.active.values()].filter(e=>e.workflow).length;
@@ -250,6 +266,7 @@ export class StorageManager extends EventEmitter {
       // Four cooperative acquisitions still leave room for commits and control.
       const acquisitionLimit=Math.min(4,Math.max(1,this.options.maxInFlight-2));
       const eligible=e=>(!e.workflow || acquisitionCount<acquisitionLimit)&&
+        (!this.options.analysisWorker || ((!e.capture || cpuCount===0) && (!e.cpu || !captureActive)))&&
         (!e.slow || e.workflow || slowCount<Math.min(2,this.options.maxInFlight))&&
         (e.control || this.options.maxInFlight<=2 || this.active.size<this.options.maxInFlight-1)&&
         (!e.cpu || cpuCount<this.options.maxCpuInFlight)&&(!e.capture || !captureActive)&&
@@ -272,6 +289,11 @@ export class StorageManager extends EventEmitter {
     if (["failed", "closed"].includes(this.state)) return;
     if(message.type==="stage"){this.emit("stage",message.id,message.stage);return;}
     if(message.type==="telemetry"){this.workerDiagnostics=message.worker;return;}
+    if(message.type==='command-phase'){
+      const entry=this.active.get(message.id);
+      if(entry && message.phase==='capture-completed'){entry.capture=false;entry.captureMs=message.captureMs;this.pump();}
+      return;
+    }
     if(message.type==="command-progress"){
       const entry=this.active.get(message.id);
       // Only committed, monotonically advancing acquisition batches renew this
@@ -297,7 +319,7 @@ export class StorageManager extends EventEmitter {
       ).catch(() => {}); return;
     }
     if (message.type === "ready") {
-      clearTimeout(this.startTimer); this.metadata = message.status; this.state = "ready";
+      clearTimeout(this.startTimer); this.metadata = message.status; this.state = "ready";this.wasReady=true;
       this.readyResolve(this.getStatus()); return;
     }
     if (message.type === "failed") { this.fail(error(message.error.code)); return; }
@@ -308,22 +330,40 @@ export class StorageManager extends EventEmitter {
     }
     const entry = this.active.get(message.id); if (!entry) return;
     this.active.delete(message.id); clearTimeout(entry.timer); this.pendingBytes -= entry.bytes;
-    this.recordCommand(entry,message.error?"failed":"completed",message.error?.code || null,{executionMs:message.durationMs ?? (entry.startedAt?Date.now()-entry.startedAt:null),cpuMs:message.cpuMs ?? null,outputBytes:message.outputBytes ?? null,commitMs:message.commitMs ?? null});
+    if (this.reconciliations.delete(entry.id)) {
+      this.reconciliationMetrics.resolved++;
+      this.emit("control-reconciled", { command: this.describeCommand(entry), code: message.error?.code || null });
+    }
+    this.recordCommand(entry,message.error?"failed":"completed",message.error?.code || null,{executionMs:message.durationMs ?? (entry.startedAt?Date.now()-entry.startedAt:null),cpuMs:message.cpuMs ?? null,outputBytes:message.outputBytes ?? null,commitMs:message.commitMs ?? null,validationMs:message.validationMs ?? null});
+    const {jobId:ignoredJob,fence:ignoredFence,...operationDiagnostic}=entry.diagnostic;
+    const operationKey=JSON.stringify(operationDiagnostic);
     if (message.error) {
       const code=message.error.code;
       const category=code.startsWith("AGENT_")?"validation":/^(SIGNAL_ITEM_TOO_LARGE|NEWS_ITEM_TOO_LARGE|OUTPUT_TOO_LARGE)$/.test(code)?'transport':this.options.analysisWorker?'calculation':/^(SQLITE_|STORAGE_IDEMPOTENCY)/.test(code)?'write':'query';
       this.metrics.failuresByCategory[category]++;this.metrics.lastErrorCategory=category;this.metrics.lastErrorAt=new Date().toISOString();
-      this.activeErrors.set(JSON.stringify(entry.diagnostic),{...entry.diagnostic,code,category,at:this.metrics.lastErrorAt});
+      this.activeErrors.set(operationKey,{...entry.diagnostic,code,category,at:this.metrics.lastErrorAt});
       if(this.activeErrors.size>50)this.activeErrors.delete(this.activeErrors.keys().next().value);
       this.metrics.failed++; this.metrics.lastErrorCode = message.error.code; entry.reject(Object.assign(error(message.error.code), { statusCode: message.error.statusCode || 503, message: message.error.message || message.error.code, causeCode: message.error.causeCode, diagnostic: message.error.diagnostic,details:message.error.details || null })); }
     else {this.metrics.lastSuccessAt=new Date().toISOString();this.metrics.lastOutputBytes=message.outputBytes ?? null;
-      this.activeErrors.delete(JSON.stringify(entry.diagnostic));
+      this.activeErrors.delete(operationKey);
+      if(['domain.call','agent.snapshot','scenarios.prepare'].includes(entry.diagnostic.operation))this.emit('productive');
       this.metrics.lastQueueMs = (entry.startedAt || Date.now()) - entry.queuedAt; this.metrics.lastExecutionMs=message.durationMs;this.metrics.lastTotalMs=Date.now()-entry.queuedAt;this.metrics.lastCpuMs=message.cpuMs ?? null; this.metadata = message.status; this.metrics.completed++; this.metrics.lastDurationMs = message.durationMs; entry.resolve(message.result); }
     this.pump();
   }
   expire(entry) {
     this.lastExpiredCommand={...entry.diagnostic,queuedAt:new Date(entry.queuedAt).toISOString(),elapsedMs:Date.now()-entry.queuedAt,executionMs:entry.startedAt?Date.now()-entry.startedAt:null,timeoutMs:entry.startedAt?entry.timeoutMs:entry.queueTimeoutMs,phase:this.active.has(entry.id)?(entry.startedAt?"executing":"dispatched"):"queued"};
     if (this.active.has(entry.id)) {
+      if (!this.options.analysisWorker && entry.startedAt && !entry.reconciling &&
+          entry.diagnostic.operation === "agent.call" && entry.diagnostic.method === "heartbeat" &&
+          Date.now() < entry.startedAt + this.options.timeoutMs) {
+        entry.reconciling = true;
+        this.reconciliations.set(entry.id, entry);
+        this.reconciliationMetrics.delayed++;
+        clearTimeout(entry.timer);
+        entry.timer = setTimeout(() => this.expire(entry), Math.max(1, entry.startedAt + this.options.timeoutMs - Date.now()));
+        this.emit("control-delayed", { code: "STORAGE_CONTROL_RECONCILING", command: this.describeCommand(entry, "reconciling") });
+        return;
+      }
       if(entry.workflow && entry.startedAt && !entry.cancelling){
         entry.cancelling=true;clearTimeout(entry.timer);
         try{this.worker.postMessage({type:"cancel-workflow",id:entry.id});}
@@ -354,12 +394,17 @@ export class StorageManager extends EventEmitter {
   }
   fail(reason) {
     if (["closed", "failed"].includes(this.state)) return;
+    this.failureContext={code:reason.code,causeCode:reason.causeCode || null,at:new Date().toISOString(),
+      unconfirmedCommands:[...this.active.values()].filter(entry=>!entry.pureRead).map(entry=>this.describeCommand(entry)),
+      undispatchedCommands:this.queue.slice(0,50).map(entry=>this.describeCommand(entry,'queued')),
+      undispatchedTruncated:this.queue.length>50};
     this.state = "failed"; clearTimeout(this.startTimer); clearTimeout(this.closeTimer);
     this.metrics.lastErrorCode = reason.code;this.metrics.lastErrorAt=new Date().toISOString();this.metrics.lastErrorCategory="worker";this.metrics.failuresByCategory.worker++;
     this.readyReject?.(reason); this.closeReject?.(reason);
     this.metrics.failed += this.active.size + this.queue.length;
     for (const entry of this.active.values()) { const code=entry.pureRead?'STORAGE_READ_TIMEOUT':'STORAGE_OUTCOME_UNKNOWN';clearTimeout(entry.timer); this.recordCommand(entry,"failed",code);entry.reject(Object.assign(error(code),{causeCode:reason.causeCode || reason.code,diagnostic:reason.diagnostic})); }
     this.active.clear();
+    this.reconciliations.clear();
     for (const entry of this.queue.splice(0)) { clearTimeout(entry.timer); this.recordCommand(entry,"failed","STORAGE_WORKER_FAILED");entry.reject(Object.assign(error("STORAGE_WORKER_FAILED"),{causeCode:reason.causeCode || reason.code,diagnostic:reason.diagnostic})); }
     this.pendingBytes = 0;
     this.termination = this.worker?.terminate().then(()=>{
@@ -389,7 +434,11 @@ export class StorageManager extends EventEmitter {
   }
   async closeLocal() {
     if (["disabled", "closed", "new"].includes(this.state)) { if (this.state === "new") this.state = "closed"; return; }
-    if (this.state === "failed") { await this.termination; return; }
+    if (this.state === "failed") {
+      await this.termination;
+      if(this.wasReady && this.metrics.ownershipCleanupError)throw error(this.metrics.ownershipCleanupError);
+      return;
+    }
     if (this.state === "starting") { try { await this.startPromise; } catch { await this.termination; return; } }
     if (this.closePromise) return this.closePromise;
     this.closePromise = new Promise((resolve, reject) => { this.closeResolve = resolve; this.closeReject = reject; });

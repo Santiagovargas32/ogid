@@ -54,7 +54,7 @@ test('lost/coalesced events, expired journal and restart preserve recoverable re
   assert.equal(sync.changes(initial.epoch,initial.revision).resyncRequired,true);
   assert.equal(sync.changes(sync.epoch,sync.revision-1).resources.news,sync.revision);
   assert.equal(sync.changes('previous-process',sync.revision).resyncRequired,true);
-  assert.equal(sync.page({resource:'news',revision:0}).status,409);
+  assert.equal(sync.page({resource:'news',revision:0}).status,200,'the advertised initial revision is retained too');
   const unchanged=sync.change(['news']);assert.equal(unchanged,null);
 });
 

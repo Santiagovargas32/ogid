@@ -16,6 +16,12 @@ export const advancedScope = options => stableHash([ADVANCED_INTELLIGENCE_METHOD
 // updated in the same transaction as the immutable run and job completion.
 export class AdvancedSnapshots {
   constructor(runtime, { now = Date.now, ttlMs = 30000 } = {}) { Object.assign(this, {runtime, db:runtime.db, now, ttlMs}); }
+  peek(options={}) {
+    const scope=advancedScope(options);
+    const latest=this.db.prepare('SELECT analysis_id AS revision,as_of AS asOf FROM analysis_latest WHERE scope_key=?').get(scope);
+    const job=this.db.prepare("SELECT job_id AS jobId,status,error_code AS errorCode FROM analysis_jobs WHERE scope_key=? AND status IN ('queued','running') ORDER BY created_at LIMIT 1").get(scope);
+    return {revision:latest?.revision||null,asOf:latest?.asOf||null,lifecycle:{status:job?(latest?'refreshing':'preparing'):latest?'ready':'preparing',snapshotAvailable:Boolean(latest),jobId:job?.jobId||null,jobStatus:job?.status||null,retryAfterMs:job?2000:null,reason:!latest&&!job?'not-calculated':null}};
+  }
   recover() {
     this.db.prepare("UPDATE analysis_jobs SET status=CASE WHEN attempts<3 THEN 'queued' ELSE 'failed' END,error_code='STORAGE_RESTART_INTERRUPTED',updated_at=? WHERE status='running'").run(new Date(this.now()).toISOString());
   }

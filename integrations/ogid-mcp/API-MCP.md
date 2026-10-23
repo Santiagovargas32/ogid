@@ -1,8 +1,8 @@
 # Inventario API → MCP
 
-Contrato 1.5.0. Generado desde backend/contracts/ogidOperations.js; no editar a mano.
+Contrato 1.6.0. Generado desde backend/contracts/ogidOperations.js; no editar a mano.
 
-81 rutas JSON con método; 57 operaciones de investigación y 33 de operador. Las variantes almacenadas/proveedor comparten algunas rutas.
+82 rutas JSON con método; 58 operaciones de investigación y 33 de operador. Las variantes almacenadas/proveedor comparten algunas rutas.
 
 Las cuatro herramientas compatibles se conservan. ogid_get_awareness_sources compone el catálogo local versionado y la salud pública Awareness, sin una ruta adicional. El inventario cubre las rutas de backend/routes montadas bajo /api; WebSocket, archivos estáticos y transporte del túnel tienen contratos independientes.
 
@@ -19,6 +19,7 @@ Las rutas privadas de chat, dispositivos y control agentivo son de primera parte
 | agent.evidence | GET /api/agent/v1/evidence | ogid_query | research / read:stored | agent-bundle | stored/local-calculation; no-provider |
 | agent.evidence.chunk | GET /api/agent/v1/evidence/chunk | ogid_query | research / read:stored | agent-bundle | stored/local-calculation; no-provider |
 | agent.clusters | GET /api/agent/v1/clusters | ogid_query | research / read:stored | agent-bundle | stored/local-calculation; no-provider |
+| intel.bootstrap | GET /api/intel/bootstrap | ogid_query | research / read:stored | public | stored compact projection; never admits acquisition or calculation; no-provider |
 | intel.sync | GET /api/intel/sync | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
 | intel.changes | GET /api/intel/changes | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
 | health | GET /api/health | ogid_health | research / read:stored | health | stored/local-calculation; no-provider |
@@ -323,6 +324,66 @@ Retención: durable ranked catalogue and members from frozen evidence. Procedenc
 }
 ```
 
+### intel.bootstrap
+
+Retención: versioned dashboard-v1; full details retain v2 contracts. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "profile": {
+        "type": "string",
+        "enum": [
+          "dashboard-v1"
+        ]
+      },
+      "countries": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$"
+        },
+        "minItems": 1,
+        "maxItems": 50,
+        "uniqueItems": true
+      },
+      "sources": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "minItems": 1,
+        "maxItems": 50,
+        "uniqueItems": true
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 20
+      },
+      "order": {
+        "type": "string",
+        "enum": [
+          "recent",
+          "critical"
+        ]
+      }
+    },
+    "required": [
+      "profile"
+    ],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
 ### intel.sync
 
 Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
@@ -351,6 +412,22 @@ Retención: current snapshot; consult response coverage. Procedencia: OGID runti
         "type": "integer",
         "minimum": 0,
         "maximum": 2147483647
+      },
+      "profile": {
+        "type": "string",
+        "enum": [
+          "dashboard-v1"
+        ]
+      },
+      "downloadId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 160
+      },
+      "filterKey": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256
       }
     },
     "required": [],

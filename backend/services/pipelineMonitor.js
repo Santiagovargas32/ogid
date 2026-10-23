@@ -1,7 +1,11 @@
 import { performance } from 'node:perf_hooks';
 const RECOVERABLE=new Set(['SQLITE_BUSY','STORAGE_BACKPRESSURE','STORAGE_QUEUE_TIMEOUT','STORAGE_READ_TIMEOUT','STORAGE_ANALYSIS_UNAVAILABLE','YAHOO_TIMEOUT','REQUEST_TIMEOUT']);
 export class PipelineMonitor {
-  constructor({ publish=()=>{},persist=null }={}) {this.stages=new Map();this.tasks=new Map();this.publish=publish;this.persist=persist;this.pending=new Set();}
+  constructor({ publish=()=>{},persist=null }={}) {this.stages=new Map();this.tasks=new Map();this.publish=publish;this.persist=persist;this.pending=new Set();this.policies=new Map([['storage',{kind:'initialization'}]]);}
+  register(id, {kind = 'periodic', staleMs = 600000} = {}) {
+    if (!['initialization','periodic','event'].includes(kind) || !Number.isFinite(staleMs) || staleMs <= 0) throw new TypeError('Invalid pipeline freshness policy');
+    this.policies.set(id,{kind,staleMs});
+  }
   update(id,patch){
     const previous=this.stages.get(id)||{enabled:true,status:'queued',lastRunAt:null,lastSuccessAt:null,durationMs:null,queue:0,processed:0,discarded:0,errorCode:null,reason:null,revision:null};
     const stage={...previous,...patch};this.stages.set(id,stage);this.publish(id,stage);
@@ -29,6 +33,12 @@ export class PipelineMonitor {
       }catch(error){this.update(id,{status:RECOVERABLE.has(error.code)?'degraded':/STORAGE_|SQLITE_|RESEARCH_CAPACITY/.test(error.code || '')?'blocked':'failed',durationMs:performance.now()-started,errorCode:error.code || 'PIPELINE_FAILED',reason:RECOVERABLE.has(error.code)?'recoverable; next scheduled run':'requires recovery'});throw error;}
     }).finally(()=>this.tasks.delete(id));this.tasks.set(id,task);return task;
   }
-  snapshot({staleMs=600000}={}){return Object.fromEntries([...this.stages].map(([id,s])=>[id,{...s,...(s.status==='completed'&&Date.now()-Date.parse(s.lastSuccessAt)>staleMs?{status:'stale'}:{})}]));}
+  snapshot({staleMs=600000}={}) {
+    return Object.fromEntries([...this.stages].map(([id,s])=>{
+      const policy=this.policies.get(id) || this.policies.get(id.replace(/\.persistence$/,'')) || {kind:'periodic',staleMs};
+      const expired=policy.kind==='periodic' && s.status==='completed' && Date.now()-Date.parse(s.lastSuccessAt)>(policy.staleMs || staleMs);
+      return [id,{...s,freshness:policy,...(expired?{status:'stale'}:{})}];
+    }));
+  }
   async flush(){await Promise.allSettled([...this.pending]);}
 }

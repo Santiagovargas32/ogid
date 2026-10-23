@@ -1,3 +1,4 @@
+import {RUNTIME_POLICY} from '../config/runtimePolicy.js';
 // Versioned, byte-bounded payload reads shared by immutable news and candle windows.
 export class PayloadCache {
   constructor(maxBytes=64*1024*1024){if(!Number.isSafeInteger(maxBytes) || maxBytes<0)throw Error('Invalid news payload cache budget');this.maxBytes=maxBytes;this.rows=new Map();this.bytes=0;this.hits=0;this.misses=0;this.evictions=0;}
@@ -26,17 +27,28 @@ export class PayloadCache {
 // no longer seek across the archive in publication/headline order.
 export function* physicalPages(reader,table,references,cache=null){
   const read=reader.prepare(`SELECT rowid,payload_json FROM ${table} WHERE rowid IN (SELECT value FROM json_each(?)) ORDER BY rowid`);
+  const one=reader.prepare(`SELECT payload_json FROM ${table} WHERE rowid=?`);
   function* resolve(page){
     const payloads=new Map(),missing=[];
     for(const row of page){const payload=cache?.get(cache.key(table,row));if(payload===undefined)missing.push(row);else payloads.set(row.rowid,payload);}
     if(missing.length){
-      const fetched=new Map(read.all(JSON.stringify(missing.map(r=>r.rowid))).map(r=>[r.rowid,r.payload_json]));
-      for(const row of missing){const payload=fetched.get(row.rowid);payloads.set(row.rowid,payload);cache?.set(cache.key(table,row),payload);}
+      let bytes=0;
+      for(const row of read.iterate(JSON.stringify(missing.map(row=>row.rowid)))){
+        const size=Math.max(Buffer.byteLength(row.payload_json),row.payload_json.length*2);
+        if(bytes+size>RUNTIME_POLICY.storage.readPageBytes)break;
+        payloads.set(row.rowid,row.payload_json);bytes+=size;
+      }
+      // Oversized pages fall back to individual rows within the SAME read
+      // transaction. No result is truncated to satisfy the memory budget.
+      for(const row of missing)if(payloads.has(row.rowid))cache?.set(cache.key(table,row),payloads.get(row.rowid));
     }
-    for(const ref of page)yield {...ref,payload_json:payloads.get(ref.rowid)};
+    for(const ref of page){
+      const payload=payloads.has(ref.rowid)?payloads.get(ref.rowid):one.get(ref.rowid)?.payload_json;
+      yield {...ref,payload_json:payload};
+    }
   }
   let page=[];
-  for(const ref of references){page.push(ref);if(page.length===1024){yield* resolve(page);page=[];}}
+  for(const ref of references){page.push(ref);if(page.length===RUNTIME_POLICY.storage.readPageRows){yield* resolve(page);page=[];}}
   if(page.length)yield* resolve(page);
 }
 

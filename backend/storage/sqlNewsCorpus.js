@@ -44,6 +44,7 @@ export class SqlNewsCorpus {
     this.config = config;
     this.cache = new Map();
     this.inFlight = new Map();
+    this.feedViews = new WeakMap();
     this.payloadCache=new PayloadCache(config.payloadCacheBytes ?? 64*1024*1024);
   }
 
@@ -108,6 +109,7 @@ export class SqlNewsCorpus {
       for(const row of physicalPages(reader,'articles',references,this.payloadCache)){
         frozen.add(row);
         if(performance.now()-captureStarted>30000)throw Object.assign(Error('News capture deadline'),{code:'STORAGE_CAPTURE_TIMEOUT'});
+        if(frozen.count%128===0)await new Promise(resolve=>setImmediate(resolve));
       }
       reader.exec("COMMIT");captureMs=performance.now()-captureStarted;
       // Classification/ranking now reads a detached immutable cut. Neither a
@@ -170,7 +172,7 @@ export class SqlNewsCorpus {
       const rollout=reader.prepare('SELECT applied_at FROM schema_migrations WHERE version=9').get()?.applied_at || asOf;
       // Bound each exclusion by the existing publication index. A conditional
       // SUM over every revision reads the whole historical JSON corpus on boot.
-      const available=`r.rowid<=? AND r.observed_at<=? AND NOT EXISTS (SELECT 1 FROM article_revisions newer
+      const available=`r.rowid<=? AND r.observed_at<=? AND NOT EXISTS (SELECT 1 FROM article_revisions newer INDEXED BY article_revisions_available
         WHERE newer.article_id=r.article_id AND newer.observed_at<=? AND newer.rowid<=? AND newer.revision>r.revision)`;
       const bounds=[revisionWatermark,asOf,asOf,revisionWatermark];
       excluded={
@@ -183,7 +185,7 @@ export class SqlNewsCorpus {
       const query=reader.prepare(`SELECT r.rowid,r.observed_at,r.revision FROM article_revisions r INDEXED BY article_revisions_window
         WHERE r.rowid<=? AND r.observed_at<=? AND json_extract(r.payload_json,'$.publishedAt')>=?
           AND json_extract(r.payload_json,'$.publishedAt')<=?
-          AND NOT EXISTS (SELECT 1 FROM article_revisions newer WHERE newer.article_id=r.article_id
+          AND NOT EXISTS (SELECT 1 FROM article_revisions newer INDEXED BY article_revisions_available WHERE newer.article_id=r.article_id
             AND newer.observed_at<=? AND newer.rowid<=? AND newer.revision>r.revision)
         ORDER BY r.article_id`);
       const references=query.all(revisionWatermark,asOf,from,asOf,asOf,revisionWatermark);
@@ -260,8 +262,16 @@ export class SqlNewsCorpus {
 
   async getFeed({countries=[], topic="", threat="", limit=120, offset=0, paginate=false,page=1,windowHours, rssOnly=false, awarenessMode=this.config.awarenessMode || "off"} = {}) {
     const corpus = await this.read({windowHours, countries:this.config.watchlistCountries || [], awarenessMode});
-    const candidates = (rssOnly ? corpus.marketSignalCorpus.filter(article => article.provider === "rss" || article.provider === "rss-aggregate") : corpus.marketSignalCorpus).map(article=>({...classifyRssArticle(article),countryMentions:article.countryMentions}));
-    const items = candidates.filter(article => (!countries.length || article.countryMentions.some(country => countries.includes(country))) && (!topic || article.topicTags?.includes(topic)) && (!threat || article.threatLevel===threat));
+    let views=this.feedViews.get(corpus);
+    if(!views){views=new Map();this.feedViews.set(corpus,views);}
+    const key=stableHash(['admin-feed-v1',[...countries].sort(),topic,threat,rssOnly]);
+    let items=views.get(key);
+    if(!items){
+      const candidates=(rssOnly?corpus.marketSignalCorpus.filter(article=>article.provider==='rss'||article.provider==='rss-aggregate'):corpus.marketSignalCorpus)
+        .map(article=>({...classifyRssArticle(article),countryMentions:article.countryMentions}));
+      items=candidates.filter(article=>(!countries.length||article.countryMentions.some(country=>countries.includes(country)))&&(!topic||article.topicTags?.includes(topic))&&(!threat||article.threatLevel===threat));
+      views.set(key,items);while(views.size>8)views.delete(views.keys().next().value);
+    }
     const count=positive(limit,120,10000),totalPages=Math.max(1,Math.ceil(items.length/count)),currentPage=Math.min(Math.max(1,Number(page) || 1),totalPages);
     const start=paginate ? (currentPage-1)*count : Math.max(0,Number(offset) || 0),selected=items.slice(start,start+count);
     return {generatedAt:corpus.meta.asOf, items:selected, ...(paginate ? {pagination:{page:currentPage,pageSize:count,totalPages,totalItems:items.length}} : {}),meta:{...corpus.meta, provider:"sqlite-news", totalItems:items.length, filteredCount:selected.length, stored:true}};

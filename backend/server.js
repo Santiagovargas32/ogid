@@ -998,8 +998,16 @@ export function createAppServer(overrides = {}) {
     stop() {
       if (stopTask) return stopTask;
       stopTask = (async () => {
-      const failures=[];
-      const drain=async work=>{try{await work();}catch(error){failures.push(error);}};
+      const failures=[],unconfirmedPersistence=[];
+      const drain=async (work,phase='cleanup')=>{
+        try{await work();}
+        catch(error){
+          if(phase.startsWith('persistence.') && storageManager.state==='failed' &&
+              ['STORAGE_NOT_READY','STORAGE_WORKER_FAILED','STORAGE_OUTCOME_UNKNOWN','STORAGE_READ_TIMEOUT','STORAGE_ANALYSIS_UNAVAILABLE'].includes(error.code))
+            unconfirmedPersistence.push({phase,code:error.code,causeCode:error.causeCode || null});
+          else failures.push(error);
+        }
+      };
       try {
       runtimeMetrics.stop();
       storageManager.deferEventIndex?.();
@@ -1028,16 +1036,17 @@ export function createAppServer(overrides = {}) {
       await sourcesStopped;
       await rssStopped;
       await cyclesStopped;
-      await drain(()=>newsArchive.flush?.());
+      await drain(()=>newsArchive.flush?.(),'persistence.archive');
       await backgroundStopped;
       await drain(()=>aiCoordinator.stop());
       await httpDrained;
       await Promise.allSettled([...activeCycles]);
-      await drain(()=>marketDataStore.flushPersistence());
-      await drain(()=>monitor.flush());
-      await drain(()=>pipelinePersistence?.flush());
+      await drain(()=>marketDataStore.flushPersistence(),'persistence.market');
+      await drain(()=>monitor.flush(),'persistence.monitor');
+      await drain(()=>pipelinePersistence?.flush(),'persistence.pipeline');
       } finally { await drain(()=>storageManager.close()); }
-      log.info("server_stopped",{cleanupErrors:failures.length});
+      app.locals.shutdownReport={primaryCause:storageManager.getStatus().failure || null,unconfirmedPersistence,cleanupErrors:failures.map(error=>({code:error.code || 'CLEANUP_FAILED'}))};
+      log.info("server_stopped",app.locals.shutdownReport);
       if(failures.length)throw failures[0];
       })();
       return stopTask;
@@ -1059,7 +1068,7 @@ export async function run(overrides = {}) {
       await runtime.stop();
       process.exit(exitCode);
     } catch (error) {
-      log.error("shutdown_failed", { message: error.message });
+      log.error("shutdown_failed", { code:error.code,message: error.message,primaryCause:runtime.storageManager.getStatus().failure || null });
       process.exit(1);
     }
   };
@@ -1067,13 +1076,15 @@ export async function run(overrides = {}) {
   runtime.storageManager.on("failed", (error) => {
     const status=runtime.storageManager.getStatus();
       const worker=error.diagnostic?.worker === "analysis" ? status.analysis?.worker : error.diagnostic?.worker === "queries" ? status.queries?.worker : status.worker;
-    log.error("storage_worker_failed", { code: error.code,command:error.diagnostic,worker:worker?.lastCompletedCommand,news:worker?.news });
+    log.error("storage_worker_failed", { code: error.code,command:error.diagnostic,worker:worker?.lastCompletedCommand,activeCommands:worker?.activeCommands,heartbeatAt:worker?.heartbeatAt,news:worker?.news });
     if(["analysis","queries"].includes(error.diagnostic?.worker) && runtime.app.locals.runtimeMetrics.ready){
       void runtime.storageManager.recoverReader(error.diagnostic.worker).catch(reason=>log.warn("analysis_recovery_failed",{code:reason.code || "STORAGE_ANALYSIS_RECOVERY_FAILED"}));
       return;
     }
     if (runtime.server.listening) void shutdown("storage-worker-failed", 1);
   });
+  runtime.storageManager.on("control-delayed",event=>log.warn("storage_control_reconciling",event));
+  runtime.storageManager.on("control-reconciled",event=>log.info("storage_control_reconciled",event));
   runtime.storageManager.on("index-failed",event=>log.warn("event_index_build_failed",event));
   runtime.storageManager.on("analysis-recovered",event=>log.info("analysis_worker_recovered",event));
 

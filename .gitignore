@@ -52,3 +52,10 @@ docs/performance
 !/docs/audits/2026-10-20/*.md
 !/docs/audits/2026-10-20/*.json
 !/docs/audits/2026-10-20/*.csv
+# Seguimiento de la implementación shadow y referencias para su revisión.
+!/docs/OGID-Prompt-Codex-GPT-6.1-xhigh.md
+!/docs/audits/2026-10-21/
+!/docs/audits/2026-10-21/current-run-evaluation-action-plan.md
+!/docs/audits/2026-10-23/
+!/docs/audits/2026-10-23/shadow-implementation.md
+!/docs/audits/2026-10-23/live-sec-etf-diagnosis.md

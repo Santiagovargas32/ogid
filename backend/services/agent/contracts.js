@@ -1,6 +1,7 @@
 import Ajv from "ajv";
 import { AppError } from "../../utils/error.js";
-export const PROMPT_VERSION = "ogid-analyst-v1.5";
+import { numericFactProblem } from './evidencePaths.js';
+export const PROMPT_VERSION = "ogid-analyst-v1.6";
 export const TASKS = [
   "global_intelligence_brief",
   "geopolitical_alert_assessment",
@@ -165,6 +166,71 @@ export const publicationSchema = {
 };
 const ajv = new Ajv({ allErrors: true, strict: false });
 export const validatePublication = ajv.compile(publicationSchema);
+
+// Compile once per task. Instrument identity is checked separately using the
+// same const advertised in the generation contract, never cached per job.
+const taskValidators = new Map();
+export function publicationSchemaForJob(job) {
+  const outlook = ['instrument_outlook','market_outlook_global'].includes(job.task);
+  const directional = { not: { const: 'unavailable' } };
+  return {
+    ...publicationSchema,
+    required: [...publicationSchema.required, ...(job.task === 'instrument_outlook' ? ['instrumentId'] : [])],
+    properties: {
+      ...publicationSchema.properties,
+      task: { const: job.task },
+      ...(job.task === 'instrument_outlook' ? {instrumentId: job.scope ? {const:job.scope} : {type:'string',minLength:1}} : {}),
+      ...(job.task !== 'geopolitical_alert_assessment' ? {alertAssessments:{...publicationSchema.properties.alertAssessments,maxItems:0}} : {}),
+      intradayScenarios: {...publicationSchema.properties.intradayScenarios,items:{
+        ...publicationSchema.properties.intradayScenarios.items,
+        allOf:[{if:{properties:{direction:directional}},then:{properties:{invalidation:{minItems:1},evidenceIds:{minItems:1}}}}],
+      }},
+    },
+    allOf: [...publicationSchema.allOf, ...(outlook ? [{
+      if:{properties:{direction:directional}},
+      then:{properties:{invalidation:{minItems:1},drivers:{minItems:1},
+        scenarios:{minItems:3,maxItems:3,allOf:['base','bull','bear'].map(name=>({contains:{properties:{name:{const:name}},required:['name']}}))},
+        ...(job.task==='instrument_outlook'?{technicalFacts:{minItems:1}}:{})}},
+    }] : [])],
+  };
+}
+export function validatePublicationForJob(value, job) {
+  if (!TASKS.includes(job.task) || job.task==='contextual_chat') {
+    validatePublicationForJob.errors=[{instancePath:'/task',keyword:'enum',params:{}}];
+    return false;
+  }
+  if (!taskValidators.has(job.task)) taskValidators.set(job.task, ajv.compile(publicationSchemaForJob({task:job.task})));
+  const validator=taskValidators.get(job.task);
+  let valid=validator(value);
+  validatePublicationForJob.errors=validator.errors || [];
+  if (valid && job.task==='instrument_outlook' && value.instrumentId!==job.scope) {
+    valid=false;
+    validatePublicationForJob.errors=[{instancePath:'/instrumentId',keyword:'const',params:{allowedValue:job.scope}}];
+  }
+  return valid;
+}
+export function parsePublication(text) {
+  const value=String(text).trim();
+  const block=value.match(/^```(?:json)?\s*\n([\s\S]*?)\n```$/);
+  return JSON.parse(block ? block[1] : value);
+}
+export function taskInstructions(job) {
+  const specific={
+    instrument_outlook:'Sólo el instrumento indicado. Incluye intradayScenarios; si no hay técnica elegible, dirección unavailable. No incluyas alertAssessments salvo [].',
+    market_outlook_global:'Sólo la watchlist cubierta. No incluyas intradayScenarios ni alertAssessments salvo [].',
+    global_intelligence_brief:'Síntesis de evidencia consultada. No incluyas campos exclusivos de outlook/intradía ni alertAssessments salvo [].',
+    geopolitical_alert_assessment:'Valora exclusivamente revisiones congeladas de alertas; alertAssessments cita sus alertId/revision y evidenceId exactos. No incluyas intradía.',
+    contextual_chat:'Responde en texto con citas [evidence:ID] consultadas del snapshot; sin JSON.',
+  };
+  return specific[job.task] || '';
+}
+export function publicationExample(job,evidenceId) {
+  if(!evidenceId || job.task==='contextual_chat')return null;
+  const value={schemaVersion:'ogid-agent-publication-v1',task:job.task,summary:'La evidencia consultada no permite una dirección comprobable.',direction:'unavailable',sentiment:'unavailable',stability:'unavailable',horizonHours:24,probability:null,confidenceKind:'qualitative-uncalibrated',evidenceIds:[evidenceId],contradictions:[],invalidation:[],limitations:['Cobertura limitada; consultar el snapshot.'],technicalFacts:[]};
+  if(['instrument_outlook','market_outlook_global'].includes(job.task))Object.assign(value,{drivers:[],scenarios:[],alternatives:[],missingEvidence:['Falta evidencia elegible para una dirección.'],target:'absolute-return-direction; first available daily close after 24h',methods:{sentiment:'qualitative-evidence-synthesis-v1',stability:'qualitative-watchlist-v1'}});
+  if(job.task==='instrument_outlook')Object.assign(value,{instrumentId:job.scope,intradayScenarios:[{horizonMinutes:60,interval:'1h',direction:'unavailable',summary:'Sin técnica intradía elegible.',evidenceIds:[],invalidation:[],evaluation:'unavailable'}]});
+  return value;
+}
 export const evidenceSchema = {
   type: "object",
   required: [
@@ -202,6 +268,17 @@ export const validateEvidence = ajv.compile(evidenceSchema);
 export function agentError(code, status = 400, details = null) {
   return new AppError(code, status, code, details);
 }
+export function safeValidationDetails(raw) {
+  if (!raw || typeof raw!=='object') return null;
+  const clean={};
+  for(const key of ['code','evidenceId','path','reason','foundType','suggestedPath','field'])
+    if(typeof raw[key]==='string')clean[key]=raw[key].slice(0,256);
+  for(const key of ['expectedValue','providedValue'])
+    if(raw[key]===null || (typeof raw[key]==='number' && Number.isFinite(raw[key])))clean[key]=raw[key];
+  if(Array.isArray(raw.problems))clean.problems=raw.problems.slice(0,16).map(problem=>safeValidationDetails({...problem,problems:undefined}));
+  if(typeof raw.truncated==='boolean')clean.truncated=raw.truncated;
+  return Object.keys(clean).length ? clean : null;
+}
 export function normalizePublicationEvidence(value) {
   if(!validatePublication(value))throw agentError('AGENT_INVALID_PUBLICATION');
   // Normalize explicit references, never values. Every ID and numeric fact
@@ -235,18 +312,29 @@ export function assertPublication(
   if (value.task !== job.task) throw agentError("AGENT_TASK_MISMATCH");
   if (now - Date.parse(snapshot.asOf) > 86400000)
     throw agentError("AGENT_EVIDENCE_STALE", 409);
-  const items = new Map();
+  const items = new Map(), problems=[];
+  let problemCount=0;
+  const addProblem=problem=>{problemCount++;if(problems.length<16)problems.push(problem);};
   for (const id of value.evidenceIds) {
     const item = lookup(id);
-    if (!item) throw agentError("AGENT_UNKNOWN_EVIDENCE",400,{evidenceId:id.slice(0,256),reason:'not-in-snapshot'});
+    if (!item) {addProblem({code:'AGENT_UNKNOWN_EVIDENCE',evidenceId:id.slice(0,256),reason:'not-in-snapshot'});continue;}
     if (
       !item.availableAt ||
       Date.parse(item.availableAt) > Date.parse(snapshot.asOf)
     )
-      throw agentError("AGENT_FUTURE_EVIDENCE");
+      addProblem({code:'AGENT_FUTURE_EVIDENCE',evidenceId:id.slice(0,256)});
     const qualityCode=evidencePublicationCode(item);
-    if(qualityCode)throw agentError(qualityCode,400,{evidenceId:id.slice(0,256),reason:qualityCode});
+    if(qualityCode)addProblem({code:qualityCode,evidenceId:id.slice(0,256),reason:qualityCode});
     items.set(id, item);
+  }
+  for (const fact of value.technicalFacts) {
+    if (!items.has(fact.evidenceId)) continue;
+    const problem=numericFactProblem(fact,items.get(fact.evidenceId).data);
+    if(problem)addProblem(problem);
+  }
+  if(problems.length) {
+    const first=problems[0];
+    throw agentError(first.code,400,{...first,problems,truncated:problemCount>16});
   }
   for (const driver of value.drivers || [])
     if (driver.evidenceIds.some((id) => !items.has(id)))
@@ -278,7 +366,7 @@ export function assertPublication(
     value.alertAssessments?.length &&
     job.task !== "geopolitical_alert_assessment"
   )
-    throw agentError("AGENT_TASK_MISMATCH");
+    throw agentError("AGENT_TASK_FIELD_MISMATCH",400,{field:'alertAssessments'});
   for (const a of value.alertAssessments || [])
     if (
       a.evidenceIds.some((id) => !items.has(id)) ||
@@ -341,6 +429,7 @@ export function assertPublication(
     !value.invalidation.length
   )
     throw agentError("AGENT_INVALIDATION_REQUIRED");
+  if (!validatePublicationForJob(value,job)) throw agentError('AGENT_INVALID_PUBLICATION');
   return value;
 }
 export const ANALYST_SYSTEM = `Eres el analista de inteligencia de mercados de OGID (${PROMPT_VERSION}).

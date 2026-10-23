@@ -29,7 +29,7 @@ test("advanced intelligence panels share one filtered snapshot polling contract"
   assert.match(page, /Rule-based News Severity/);
   assert.match(page, /Frequent Headline Terms/);
   assert.match(api, /getAdvancedIntelligenceSnapshot:[\s\S]*?\/api\/intel\/advanced-snapshot/);
-  assert.match(dashboard, /startAdvancedIntelligence\(\{ api, getCountries: selectedCountryQueryValue \}\)/);
+  assert.match(dashboard, /startAdvancedIntelligence\(\{ api, getCountries: selectedCountryQueryValue,deferUntilInterested:true \}\)/);
   assert.doesNotMatch(dashboard, /startWorldBrief|startThreatClassifier|startRiskEngine|startTrendDetector|startEscalationHotspots|startSignalAnomalies/);
 
   const intelligenceScripts = [coordinator, worldBrief, risk, severity, terms, anomalies].join("\n");

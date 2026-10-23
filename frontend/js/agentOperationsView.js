@@ -15,13 +15,20 @@ export function renderAgentOperations(data,{process,activity,publications,update
  }
  if(activity){
   activity.replaceChildren(node('p',`Ejecuciones de este arranque: ${counts(data.sinceCounts)}`),node('p',`Trabajos acumulados: ${counts(data.jobs)}`),node('p',`Publicaciones durables: ${data.publicationCount??'--'} · Pendiente más antiguo: ${date(data.queueAge?.oldestQueuedAt)}`));
+  if(data.proposalMetrics){
+   const metrics=data.proposalMetrics;
+   activity.append(node('p',`Validación: ${metrics.sampled} ejecuciones recientes${metrics.truncated?' (ventana limitada)':''} · sin telemetría de propuesta: ${metrics.excluded}`));
+   for(const group of metrics.groups||[])
+    activity.append(node('p',`${group.task} · ${group.model}: conformes inicialmente ${group.initialValid}/${group.initialAssessed}; reparaciones válidas ${group.repairValid}/${group.repairAssessed} evaluadas, ${group.repairAttempts} intentadas; resultado desconocido ${group.initialUnknown} iniciales / ${group.repairUnknown} reparaciones.`));
+  }
   const wrap=node('div');wrap.className='table-responsive';const table=node('table');table.className='table table-sm table-dark align-middle';
   const head=node('tr');for(const label of ['Tarea / ámbito','Estado / fase','Modelo','Antigüedad','Progreso','Error','Job / snapshot'])head.append(node('th',label));const thead=node('thead');thead.append(head);table.append(thead);const body=node('tbody');table.append(body);
   for(const j of data.recentJobs||[]){
-   const run=(data.runs||[]).find(r=>r.jobId===j.jobId),m=run?.metadata||{},row=node('tr');
+   const run=(data.runs||[]).find(r=>r.jobId===j.jobId&&r.fence===j.fence),m=run?.metadata||{},row=node('tr');
    const elapsed=Math.max(0,Date.parse(run?.finishedAt||data.sampledAt)-Date.parse(run?.startedAt||j.createdAt));
    const progress=`${m.toolsCompleted??"--"} herramientas · primera señal ${seconds(m.firstProgressMs)} · actividad ${date(m.lastProgressAt)}`;
-   for(const text of [`${j.task} · ${j.scope}`,`${j.status}${m.phase?` / ${m.phase}`:''}`,j.model,seconds(elapsed),progress,j.errorCode||'--',`${j.jobId} · fence ${j.fence} · ${j.snapshotId||'sin snapshot'}`])row.append(node('td',text));
+   const repairs=m.validationAttempts?.length?` · reparación ${m.validationAttempts.length}`:'';
+   for(const text of [`${j.task} · ${j.scope}`,`${j.status}${m.phase?` · fase ${m.phase}`:''}${repairs}`,j.model,seconds(elapsed),progress,j.errorCode||'--',`${j.jobId} · fence ${j.fence} · ${j.snapshotId||'sin snapshot'}`])row.append(node('td',text));
    body.append(row);
   }
   wrap.append(table);activity.append(wrap);

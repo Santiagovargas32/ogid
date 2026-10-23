@@ -1,5 +1,5 @@
 import { localUrl } from "./config.js";
-import { agentError } from "./contracts.js";
+import { agentError, safeValidationDetails } from "./contracts.js";
 import { setTimeout as wait } from "node:timers/promises";
 
 // Reads and a fenced lease renewal can be repeated after a lost response.
@@ -37,9 +37,7 @@ export function createAgentInternalClient({
           const code = /^(AGENT|FORECAST|OPENCODE)_[A-Z0-9_]+$/.test(value.error?.code || "")
             ? value.error.code : `AGENT_INTERNAL_HTTP_${r.status}`;
           const raw=value.error?.details;
-          const details=code==='AGENT_UNVERIFIED_NUMBER' && raw && typeof raw.evidenceId==='string' && typeof raw.path==='string'
-            ? {evidenceId:raw.evidenceId.slice(0,256),path:raw.path.slice(0,256),expectedValue:typeof raw.expectedValue==='number'&&Number.isFinite(raw.expectedValue)?raw.expectedValue:null,reason:raw.reason==='exact-value-required'?'exact-value-required':'numeric-path-not-found'}
-            : ['AGENT_STALE_EVIDENCE','AGENT_SYNTHETIC_EVIDENCE','AGENT_FALLBACK_EVIDENCE','AGENT_UNKNOWN_EVIDENCE'].includes(code) && typeof raw?.evidenceId==='string'?{evidenceId:raw.evidenceId.slice(0,256),reason:code==='AGENT_UNKNOWN_EVIDENCE'?'not-in-snapshot':code}:null;
+          const details=safeValidationDetails(raw);
           throw agentError(code, r.status,details);
         }
         return value.data;

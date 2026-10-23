@@ -174,7 +174,8 @@ export class BusinessRuntime {
       return {persisted:true};
     }).immediate();
   }
-  load(kind){
+  load(kind,options={}){
+    if(kind==='dashboard-analysis')return this.advancedSnapshots.peek(options);
     if(kind==="maintenance-inputs")return this.db.transaction(()=>({
       news:{...readMeta(this.db,"news.meta",{}),hasRecentNews:Boolean(this.db.prepare("SELECT 1 FROM articles INDEXED BY articles_projection_window WHERE published_at>=? AND published_at<=? LIMIT 1").get(new Date(Date.now()-48*3600000).toISOString(),new Date().toISOString()))},awareness:readMeta(this.db,"awareness.revision",0),
       research:readMeta(this.db,"research.revision",0),signals:readMeta(this.db,"signals.revision",null),

@@ -24,8 +24,8 @@ test("projection rereads only changed row versions across new transactions and m
   archive.ingest(Array.from({length:320},(_,n)=>article(n)));
   Database.prototype.prepare=function(sql){
    const stmt=original.call(this,sql);
-   if(sql.startsWith('SELECT rowid,payload_json FROM articles WHERE rowid IN')){const all=stmt.all;stmt.all=function(ids){bodyReads+=JSON.parse(ids).length;return all.call(this,ids);};}
-   if(sql.startsWith('SELECT rowid,revision,last_seen_at FROM articles')){const all=stmt.all,database=this;stmt.all=function(...args){plans.push(original.call(database,'EXPLAIN QUERY PLAN '+sql).all(...args));return all.apply(this,args);};}
+   if(sql.startsWith('SELECT rowid,payload_json FROM articles WHERE rowid IN')){const iterate=stmt.iterate;stmt.iterate=function*(ids){for(const row of iterate.call(this,ids)){bodyReads++;yield row;}};}
+   if(sql.startsWith('SELECT rowid,revision,last_seen_at FROM articles')){const iterate=stmt.iterate,database=this;stmt.iterate=function(...args){plans.push(original.call(database,'EXPLAIN QUERY PLAN '+sql).all(...args));return iterate.apply(this,args);};}
    return stmt;
   };
   await corpus.read({now});assert.equal(bodyReads,320);

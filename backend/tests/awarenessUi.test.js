@@ -202,7 +202,7 @@ test("dashboard exposes the additive awareness REST, WS and inbox while dashboar
   assert.match(page, /id="awareness-recent-list"/);
   assert.match(page, /id="awareness-toast-region"/);
   assert.match(api, /getAwarenessSnapshot:[\s\S]*?\/api\/intel\/awareness-snapshot[\s\S]*?no-store/);
-  assert.match(dashboard, /mountAwarenessCenter\(\{ api \}\)/);
+  assert.match(dashboard, /mountAwarenessCenter\(\{ api,deferUntilInterested:true \}\)/);
   assert.match(dashboard, /message\.type === "awareness:update:v1"/);
   assert.match(state, /awareness:[\s\S]*?schemaVersion: "awareness-v1"/);
   assert.match(awareness, /if \(realtime && initialHydrationSettled\)/);

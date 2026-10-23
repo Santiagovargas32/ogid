@@ -194,6 +194,10 @@ export const RUNTIME_POLICY = freeze({
     busyTimeoutMs: 2000,
     providerTimeoutMs: 280000,
     diagnosticsIntervalMs: 300000,
+    readPageRows: 128,
+    readPageBytes: 1048576,
+    commitBatchRows: 10,
+    commitBatchBytes: 131072,
     maintenanceTimeoutMs: 300000,
     commandTimeouts: {
       "agent.snapshot": 300000,

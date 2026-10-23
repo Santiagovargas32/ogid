@@ -12,6 +12,7 @@ export class RuntimeMetrics {
   constructor() {
     this.lag = monitorEventLoopDelay({resolution:20});
     this.http = []; this.activeRequests = 0; this.requests = 0; this.errors = 0;
+    this.traffic={agentInternal:{samples:[],requests:0,errors:0,aborted:0},browserAndOther:{samples:[],requests:0,errors:0,aborted:0}};
     this.ready = false; this.startupMs = null; this.timer = null;
   }
   start(startupMs) {
@@ -25,14 +26,18 @@ export class RuntimeMetrics {
   }
   stop() { this.ready=false; this.lag.disable(); clearInterval(this.timer); this.timer=null; }
   middleware() {
-    return (_req,res,next)=>{
+    return (req,res,next)=>{
       const start=performance.now(); this.activeRequests++;
+      const traffic=this.traffic[String(req.path||req.url||'').startsWith('/api/agent/v1/internal/')?'agentInternal':'browserAndOther'];
       let finished=false;
       const record=()=>{
         if(finished)return; finished=true;
         this.activeRequests--; this.requests++;
         if(res.statusCode>=500)this.errors++;
-        this.http.push(performance.now()-start);
+        const elapsed=performance.now()-start;
+        traffic.requests++;if(res.statusCode>=500)traffic.errors++;if(!res.writableFinished)traffic.aborted++;
+        traffic.samples.push(elapsed);if(traffic.samples.length>256)traffic.samples.shift();
+        this.http.push(elapsed);
         if(this.http.length>512)this.http.shift();
       };
       res.once('finish',record); res.once('close',record); next();
@@ -45,7 +50,8 @@ export class RuntimeMetrics {
       ready:this.ready, startupMs:this.startupMs, memory:process.memoryUsage(),
       cpu:{...cpu,elapsedMs}, eventLoopUtilization:this.elu?performance.eventLoopUtilization(this.elu):null,
       eventLoopDelayMs:{p50:this.lag.percentile(50)/1e6,p95:this.lag.percentile(95)/1e6,p99:this.lag.percentile(99)/1e6,max:this.lag.max/1e6},
-      http:{...percentiles(this.http),active:this.activeRequests,requests:this.requests,errors:this.errors}
+      http:{...percentiles(this.http),active:this.activeRequests,requests:this.requests,errors:this.errors,
+        byTraffic:Object.fromEntries(Object.entries(this.traffic).map(([key,{samples,...counts}])=>[key,{...counts,...percentiles(samples)}]))}
     };
   }
 }

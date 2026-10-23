@@ -1,4 +1,5 @@
 import { SmartPollLoop } from "../smartPollLoop.js";
+import {observeInterest} from '../interest.js';
 import { buildCountryInstabilityHtml } from "./riskEngine.js";
 import { buildSignalAnomaliesHtml } from "./signalAnomalies.js";
 import { buildNewsSeverityHtml } from "./threatClassifier.js";
@@ -97,7 +98,8 @@ export function startAdvancedIntelligence({
   getCountries = () => "",
   rootIds = {},
   intervalMs = 90_000,
-  hiddenIntervalMs = 180_000
+  hiddenIntervalMs = 180_000,
+  deferUntilInterested=false
 } = {}) {
   const ids = { ...DEFAULT_ROOT_IDS, ...rootIds };
   const roots = Object.fromEntries(Object.keys(SECTION_BUILDERS).map((key) => [key, document.getElementById(ids[key])]));
@@ -111,6 +113,7 @@ export function startAdvancedIntelligence({
   let lastSnapshotContext = "";
   let pendingPollMs = null;
   let pendingAttempts = 0;
+  let interest=null;
 
   const currentCountries = () => countryParam(typeof getCountries === "function" ? getCountries() : "");
 
@@ -161,8 +164,8 @@ export function startAdvancedIntelligence({
     if (panel) panel.dataset.advancedRefresh = "error";
   }
 
-  async function loadSnapshot() {
-    if (stopped) {
+  async function loadSnapshot(signal) {
+    if (stopped || interest?.interested===false) {
       return null;
     }
     if (requestInFlight) {
@@ -174,7 +177,7 @@ export function startAdvancedIntelligence({
     const token = ++requestToken;
     const countries = currentCountries();
     try {
-      const payload = await api.getAdvancedIntelligenceSnapshot({ countries });
+      const payload = await api.getAdvancedIntelligenceSnapshot({ countries },{signal});
       if (stopped || token !== requestToken) {
         return null;
       }
@@ -200,6 +203,7 @@ export function startAdvancedIntelligence({
       } else {pendingPollMs=null;pendingAttempts=0;renderSnapshot(payload || {}, countries);}
       return payload;
     } catch (error) {
+      if(error.code==='REQUEST_CANCELLED')return null;
       if (!stopped && token === requestToken && countries === currentCountries()) {
         renderFailure(error, countries);
       }
@@ -226,11 +230,12 @@ export function startAdvancedIntelligence({
     metaRoot.className = "intel-panel-meta";
     metaRoot.textContent = "Loading advanced intelligence snapshot...";
   }
-  loop.start();
+  if(deferUntilInterested)interest=observeInterest(panel,active=>active?loop.start():loop.stop());
+  else loop.start();
 
   return {
     refresh() {
-      if (stopped) {
+      if (stopped || interest?.interested===false) {
         return Promise.resolve(null);
       }
       if (requestInFlight) {
@@ -246,6 +251,7 @@ export function startAdvancedIntelligence({
       pendingRefresh = false;
       requestToken += 1;
       loop.stop();
+      interest?.destroy();
     }
   };
 }

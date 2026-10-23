@@ -11,6 +11,8 @@ import {
 } from "../utils/filters.js";
 import { resolveClientIp } from "../utils/clientIp.js";
 import { AppError } from "../utils/error.js";
+import { stableHash } from '../utils/stableHash.js';
+import { projectDashboard, operationalSummary, DASHBOARD_PROFILE, DASHBOARD_POLICY } from '../state/dashboardProjection.js';
 
 function mapResponse(data) {
   return {
@@ -316,11 +318,38 @@ export function postRefresh(req, res) {
 export function getSyncSnapshot(req, res) {
   const sync = res.app.locals.socketServer.sync;
   res.setHeader('Cache-Control', 'no-store');
+  if(req.query.profile && req.query.profile!==DASHBOARD_PROFILE)throw new AppError('Unknown dashboard profile',400,'SYNC_PROFILE_UNKNOWN');
   if (!req.query.resource) return res.json(mapResponse(sync.manifest()));
   const result = sync.page({ resource: String(req.query.resource), epoch: req.query.epoch,
-    revision: req.query.revision === undefined ? undefined : Number(req.query.revision), cursor: Number(req.query.cursor || 0) });
+    revision: req.query.revision === undefined ? undefined : Number(req.query.revision), cursor: Number(req.query.cursor || 0),
+    profile:req.query.profile,downloadId:req.query.downloadId,clientKey:String(req.headers['x-ogid-client']||req.ip).slice(0,128),filterKey:String(req.query.filterKey||'').slice(0,256) });
+  if(result.retryAfterMs)res.setHeader('Retry-After',String(Math.ceil(result.retryAfterMs/1000)));
   if (result.status !== 200) return res.status(result.status).json({ ok: false, error: { code: result.code, message: result.code, details: result.manifest || null } });
   return res.json(mapResponse(result.data));
+}
+export async function getDashboardBootstrap(req,res) {
+  if(req.query.profile!==DASHBOARD_PROFILE)throw new AppError('Unknown dashboard profile',400,'SYNC_PROFILE_UNKNOWN');
+  if(Object.keys(req.query).some(key=>!['profile','countries','sources','limit','order'].includes(key)))throw new AppError('Unsupported dashboard filter',400,'INVALID_DASHBOARD_FILTER');
+  if(req.query.limit && (!Number.isSafeInteger(Number(req.query.limit)) || Number(req.query.limit)<1 || Number(req.query.limit)>20))throw new AppError('Dashboard limit must be 1–20',400,'INVALID_DASHBOARD_FILTER');
+  const filters=buildFilters(req,res),sync=res.app.locals.socketServer.sync;
+  const analysis=res.app.locals.business ? await res.app.locals.storageManager.request('runtime.load',{kind:'dashboard-analysis',options:{countries:filters.countries}}).catch(error=>({lifecycle:{status:'unavailable',snapshotAvailable:false,errorCode:error.code}})) : {lifecycle:{status:'preparing',snapshotAvailable:false,reason:'not-calculated'}};
+  // Capture the vector after the asynchronous metadata read. Projection below
+  // is synchronous and cannot accidentally label newer state with an old cut.
+  const manifest=sync.manifest(),resources=manifest.profiles[DASHBOARD_PROFILE].resources;
+  const watchlist=res.app.locals.marketWatchlistService?.snapshot?.() || null;
+  const agent={mode:res.app.locals.agentConfig?.mode||'off'};
+  const etag=`"dashboard-${stableHash([DASHBOARD_PROFILE,1,manifest.epoch,resources,filters,watchlist,analysis,agent,operationalSummary(stateManager.state.pipelineStatus)])}"`;
+  // The compact view is semantically unchanged when only deferred histories or
+  // source-vector bookkeeping advance. Use a weak validator for that contract.
+  res.setHeader('Cache-Control','private, no-cache');res.setHeader('ETag',`W/${etag}`);
+  if(String(req.headers['if-none-match']||'').split(',').some(value=>value.trim()==='*'||value.trim().replace(/^W\//,'')===etag))return res.status(304).end();
+  const data=projectDashboard(stateManager.state,{...filters,limit:Math.min(filters.limit,DASHBOARD_POLICY.newsLimit),filterNews:applyNewsFilters});
+  const payload={protocol:1,profile:DASHBOARD_PROFILE,epoch:manifest.epoch,revision:manifest.revision,resources,sourceRevisions:manifest.resources,
+    filters:{...filters,limit:Math.min(filters.limit,DASHBOARD_POLICY.newsLimit)},data,watchlist,analysis,
+    agent,details:{resourceUrl:'/api/intel/sync',newsUrl:'/api/intel/news',awarenessUrl:'/api/intel/awareness-snapshot',analysisUrl:'/api/intel/advanced-snapshot'}};
+  const body=JSON.stringify({ok:true,data:payload});
+  if(Buffer.byteLength(body)>DASHBOARD_POLICY.bootstrapBytes)throw new AppError('Dashboard representation exceeds its budget; request stored details',503,'DASHBOARD_BUDGET_EXCEEDED');
+  return res.type('application/json').send(body);
 }
 export function getSyncChanges(req, res) {
   res.setHeader('Cache-Control', 'no-store');

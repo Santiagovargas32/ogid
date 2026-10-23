@@ -1,5 +1,9 @@
 import { randomUUID, createHash, randomBytes } from "node:crypto";
+import { performance } from 'node:perf_hooks';
 import { stableHash } from "../utils/stableHash.js";
+import { AGENT_POLICY } from "../services/agent/config.js";
+import { numericPaths } from '../services/agent/evidencePaths.js';
+import { summarizeProposals } from '../services/agent/proposalMetrics.js';
 import { physicalPages } from "./sqlNewsCorpus.js";
 import {
   permittedArticle,
@@ -117,6 +121,7 @@ export class AgentRepository {
       sampledAt:stamp(this.now()),
       since:validSince,
       sinceCounts:this.db.prepare('SELECT status,count(*) AS count FROM agent_runs WHERE started_at>=? GROUP BY status').all(validSince),
+      proposalMetrics:summarizeProposals(this.db.prepare("SELECT j.task,j.model,json_extract(r.metadata_json,'$.validation') AS validation FROM (SELECT job_id,metadata_json FROM agent_runs WHERE started_at>=? ORDER BY started_at DESC LIMIT 1001) r JOIN agent_jobs j ON j.job_id=r.job_id").all(validSince),{since:validSince}),
       queueAge:this.db.prepare("SELECT min(created_at) AS oldestQueuedAt FROM agent_jobs WHERE status='queued'").get(),
       recentJobs:this.db.prepare("SELECT job_id AS jobId,task,scope,model,status,error_code AS errorCode,created_at AS createdAt,updated_at AS updatedAt,lease_until AS leaseUntil,fence,attempts,snapshot_id AS snapshotId FROM agent_jobs ORDER BY CASE WHEN status IN ('running','waiting-model','validating') THEN 0 ELSE 1 END,updated_at DESC LIMIT 50").all(),
       publicationCount:this.db.prepare('SELECT count(*) AS count FROM agent_publications').get().count,
@@ -124,7 +129,7 @@ export class AgentRepository {
       workerHealth: this.workerHealth(),
       runs: this.db
         .prepare(
-          "SELECT run_id AS runId,job_id AS jobId,started_at AS startedAt,finished_at AS finishedAt,status,metadata_json FROM agent_runs ORDER BY started_at DESC LIMIT 20",
+          "SELECT run_id AS runId,job_id AS jobId,fence,started_at AS startedAt,finished_at AS finishedAt,status,metadata_json FROM agent_runs ORDER BY started_at DESC LIMIT 20",
         )
         .all()
         .map(({ metadata_json, ...r }) => ({
@@ -600,7 +605,7 @@ export class AgentRepository {
           .prepare(
             "UPDATE agent_jobs SET status='running',lease_owner=?,lease_until=?,fence=fence+1,attempts=attempts+1,updated_at=? WHERE job_id=?",
           )
-          .run(owner, this.now() + 90000, stamp(this.now()), r.job_id);
+          .run(owner, this.now() + AGENT_POLICY.leaseMs, stamp(this.now()), r.job_id);
         const job = this.job(r.job_id);
         this.db
           .prepare("INSERT INTO agent_runs VALUES(?,?,?,?,NULL,?,?)")
@@ -704,9 +709,32 @@ export class AgentRepository {
     return { resumed: true };
   }
   heartbeat(input) {
-    this.db.transaction(()=>{
+    return this.db.transaction(()=>{
+      const job = this.job(input.jobId);
+      if (job.lease_owner !== input.owner || job.fence !== input.fence)
+        throw agentError("AGENT_LEASE_LOST", 409);
+      if (job.status === "completed") {
+        const run = this.db.prepare("SELECT finished_at FROM agent_runs WHERE job_id=? AND fence=? AND status='completed'").get(input.jobId, input.fence);
+        const publication = job.task === "contextual_chat" || this.db.prepare("SELECT 1 FROM agent_publications WHERE job_id=? AND snapshot_id=?").get(input.jobId, job.snapshot_id);
+        if (run?.finished_at && publication) return { renewed: false, closed: true, status: "completed" };
+      }
+      const renewalId = input.renewalId;
+      if (renewalId !== undefined && !safeId(renewalId)) throw agentError("AGENT_INVALID_OPERATION");
+      const requestId = renewalId ? `heartbeat:${renewalId}` : null;
+      const inputHash = stableHash([input.jobId, input.owner, input.fence, input.progress || null]);
+      if (requestId) {
+        const previous = this.db.prepare("SELECT * FROM storage_commands WHERE request_id=?").get(requestId);
+        if (previous) {
+          if (previous.operation !== "agent.heartbeat" || previous.input_hash !== inputHash)
+            throw agentError("AGENT_IDEMPOTENCY_CONFLICT", 409);
+          // A replay acknowledges the original lease; it cannot resurrect it.
+          this.fenced(input);
+          return { ...parse(previous.result_json), replayed: true };
+        }
+      }
       this.fenced(input);
-      this.db.prepare("UPDATE agent_jobs SET lease_until=? WHERE job_id=?").run(this.now() + 90000, input.jobId);
+      const leaseUntil = this.now() + AGENT_POLICY.leaseMs;
+      this.db.prepare("UPDATE agent_jobs SET lease_until=? WHERE job_id=?").run(leaseUntil, input.jobId);
       if(input.progress && typeof input.progress==='object'){
         const p=input.progress,clean={};
         for(const key of ['elapsedMs','firstProgressMs','toolsCompleted','outputCharacters'])if(Number.isFinite(p[key])&&p[key]>=0)clean[key]=p[key];
@@ -714,8 +742,10 @@ export class AgentRepository {
         if(typeof p.lastProgressAt==='string' && Number.isFinite(Date.parse(p.lastProgressAt)))clean.lastProgressAt=p.lastProgressAt;
         this.db.prepare("UPDATE agent_runs SET metadata_json=json_patch(metadata_json,?) WHERE job_id=? AND fence=?").run(json(clean),input.jobId,input.fence);
       }
+      const result = { renewed: true, leaseUntil };
+      if (requestId) this.db.prepare("INSERT INTO storage_commands VALUES(?,?,?,?,?)").run(requestId, "agent.heartbeat", inputHash, json(result), stamp(this.now()));
+      return result;
     }).immediate();
-    return { renewed: true };
   }
   progress(input) {
     const job=this.job(input.jobId);
@@ -823,7 +853,7 @@ export class AgentRepository {
             ["running", "validating", "waiting-model"].includes(input.status)
               ? null
               : stamp(this.now()),
-            json(publicProjection(input.metadata || {})),
+            json(publicProjection({...input.metadata,errorCode:input.errorCode || null})),
             input.jobId,
             input.fence,
           );
@@ -933,7 +963,7 @@ export class AgentRepository {
         ]
           .map(
             (dateFilter) =>
-              `SELECT r.rowid,r.article_id,r.revision,r.observed_at FROM article_revisions r WHERE ${dateFilter} AND r.observed_at<=? AND NOT EXISTS(SELECT 1 FROM article_revisions n WHERE n.article_id=r.article_id AND n.revision>r.revision AND n.observed_at<=?) ${filter}`,
+              `SELECT r.rowid,r.article_id,r.revision,r.observed_at FROM article_revisions r WHERE ${dateFilter} AND r.observed_at<=? AND NOT EXISTS(SELECT 1 FROM article_revisions n INDEXED BY article_revisions_available WHERE n.article_id=r.article_id AND n.revision>r.revision AND n.observed_at<=?) ${filter}`,
           )
           .join(" UNION ALL ");
         const references=this.db.prepare(`SELECT * FROM (${sql}) LIMIT 100001`).all(...params);
@@ -1204,6 +1234,9 @@ export class AgentRepository {
       quality,
       publicationEligibility:{eligible:evidencePublicationCode({quality})===null,reason:evidencePublicationCode({quality})},
       data,
+      ...(['technical.get','indicators.calculate'].includes(row.domain) ? {numericCatalog:{...numericPaths(data),
+        snapshotId:row.snapshot_id,evidenceId:row.evidence_id,
+        continuation:{operationId:'agent.evidence.chunk',parameters:{snapshotId:row.snapshot_id,evidenceId:row.evidence_id,format:'utf8'}}}} : {}),
     };
   }
   evidence({ snapshotId, cursor = 0, limit = 20, domain }) {
@@ -1336,11 +1369,15 @@ export class AgentRepository {
     };
   }
   publish(input) {
+    const validationStarted=performance.now();
     input={...input,proposal:normalizePublicationEvidence(input.proposal)};
     const previous = this.db
       .prepare("SELECT * FROM agent_publications WHERE job_id=?")
       .get(input.jobId);
     if (previous) {
+      const completedJob = this.job(input.jobId);
+      if (completedJob.lease_owner !== input.owner || completedJob.fence !== input.fence)
+        throw agentError("AGENT_LEASE_LOST", 409);
       if (
         stableHash(parse(previous.payload_json).proposal) !==
         stableHash(input.proposal)
@@ -1365,7 +1402,9 @@ export class AgentRepository {
         ),
       now: this.now(),
     });
-    return this.db
+    this.runtime.lastValidationMs=performance.now()-validationStarted;
+    const transactionStarted=performance.now();
+    const committed=this.db
       .transaction(() => {
         // Validation can take longer than the lease on a cold database. Check
         // again at the commit boundary; serialized JS does not stop wall time.
@@ -1521,6 +1560,8 @@ export class AgentRepository {
         return { publicationId, status: "completed" };
       })
       .immediate();
+    this.runtime.lastCommitMs=performance.now()-transactionStarted;
+    return committed;
   }
   publications({
     task,

@@ -7,7 +7,7 @@ import Database from "better-sqlite3";
 import {migrate} from "../storage/migrate.js";
 import {SqlResearchStore,SqlEventLedger} from "../storage/sqlRepositories.js";
 import {loadSecSources} from "../services/research/secSourceCatalog.js";
-import {OfficialSourceService} from "../services/research/officialSources.js";
+import {OfficialSourceService,sourceFailureCode} from "../services/research/officialSources.js";
 import {SecSourceAgent} from "../services/research/secSourceAgent.js";
 import {getInstrumentByCanonicalSymbol} from "../services/market/instrumentRegistry.js";
 import {createAppServer} from "../server.js";
@@ -89,6 +89,23 @@ test("source deadlines cover stalled response bodies and retain the last stored 
   const result=await f.service.run({sourceIds:["sec-nvda-companyfacts"]});assert.equal(result.results[0].failureCode,"SOURCE_TIMEOUT");
   assert.equal(cancelled,true);assert.deepEqual(f.store.getRow("companyFacts",companyId).metrics,[{value:123}]);
  }finally{clearTimeout(keepAlive);f.close();}
+});
+test('typed source transport causes preserve DNS, TLS and connection distinctions',()=>{
+ for(const [code,expected] of [['ENOTFOUND','SOURCE_DNS_ERROR'],['EAI_AGAIN','SOURCE_DNS_ERROR'],['CERT_HAS_EXPIRED','SOURCE_TLS_ERROR'],['ERR_TLS_CERT_ALTNAME_INVALID','SOURCE_TLS_ERROR'],['ECONNRESET','SOURCE_CONNECTION_ERROR'],['UND_ERR_SOCKET','SOURCE_CONNECTION_ERROR'],['ETIMEDOUT','SOURCE_TIMEOUT']])
+  assert.equal(sourceFailureCode(new TypeError('fetch failed',{cause:{code}})),expected);
+});
+test('a SEC cycle without an eligible retry preserves degradation until that source really succeeds',async()=>{
+ let failing=true;
+ const f=fixture({fetchImpl:async url=>{
+  if(failing)throw new TypeError('fetch failed',{cause:{code:'ENOTFOUND'}});
+  return Response.json(url.includes('companyfacts')?facts:filing);
+ }});
+ try{
+  await f.agent.tick();assert.equal(f.agent.getStatus().status,'degraded');const calls=f.calls();
+  await f.agent.tick();assert.equal(f.calls(),calls);assert.equal(f.agent.getStatus().status,'degraded');
+  assert.equal(f.store.getRow('sourceStates','sec-nvda-submissions').failureCode,'SOURCE_DNS_ERROR');
+  failing=false;f.advance(3600000);await f.agent.tick();assert.equal(f.agent.getStatus().status,'completed');
+ }finally{await f.agent.stop();f.close();}
 });
 
 test("stopping the SEC agent cancels acquisition and drains accepted persistence",async()=>{
