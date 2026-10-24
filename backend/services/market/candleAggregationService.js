@@ -4,7 +4,7 @@ import { sessionPolicyResolver } from "./sessionPolicyResolver.js";
 export const CANDLE_ROLLUP_METHOD_VERSION = "candle-rollup-v2";
 export const MARKET_CONDITION_INTERVALS = Object.freeze({ 15: "5min", 60: "15min", 240: "1h", 1440: "1h" });
 
-const SUPPORTED_ROLLUPS = Object.freeze({ "5min:15min": 3, "15min:1h": 4 });
+const SUPPORTED_ROLLUPS = Object.freeze({ "5min:15min": 3, "15min:1h": 4, "5min:30min":6 });
 
 function finite(value) { return Number.isFinite(Number(value)); }
 function iso(value) { const date = new Date(value); return Number.isFinite(date.getTime()) ? date.toISOString() : null; }

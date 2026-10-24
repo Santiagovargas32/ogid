@@ -1,3 +1,4 @@
+import {transportCause} from '../shared/transportCause.js';
 import apiQuotaTracker from "../admin/apiQuotaTrackerService.js";
 import { createLogger } from "../../utils/logger.js";
 import { buildFinancialNewsQueryPacks, buildFinancialNewsQueryPlan, normalizeNewsQueryPacks } from "./newsQueryPackService.js";
@@ -695,7 +696,7 @@ export async function fetchAggregatedNews({
       });
       log.warn("news_provider_failed", {
         provider: providerName,
-        reason: error.message
+        reason: error.message,cause:transportCause(error)
       });
     }
   }

@@ -43,7 +43,7 @@ test("inventario: todas las rutas JSON montadas tienen contrato y permiso; rutas
   const agentSource=readFileSync(dir+'agentRoutes.js','utf8');
   const agentRoutes=[...agentSource.matchAll(/router\.(get|post|put|delete|patch)\s*\(\s*(["'`])([^"'`]+)\2/g)].map(m=>`${m[1].toUpperCase()} /api${m[3]}`);
   const mounted = new Set([...enumerate("index.js", "/api"),...agentRoutes]); const registered = new Set([...OGID_OPERATIONS.map(op => `${op.method} ${op.path}`),...AGENT_PRIVATE_ROUTES]);
-  assert.deepEqual([...mounted].sort(), [...registered].sort()); assert.equal(OPERATIONS_VERSION, "1.6.0");
+  assert.deepEqual([...mounted].sort(), [...registered].sort()); assert.equal(OPERATIONS_VERSION, "1.8.0");
   for (const operation of OGID_OPERATIONS) { assert.ok(operation.scope); assert.ok(operation.effects); assert.ok(operation.projection); assert.equal(operation.parameters.additionalProperties, false); assert.ok(["research", "operator"].includes(operation.profile)); }
 });
 test("todas las lecturas MCP sobre backend real: almacenadas, sin refresh/cuotas, identidades y separación operador", async () => {
@@ -70,6 +70,7 @@ test("todas las lecturas MCP sobre backend real: almacenadas, sin refresh/cuotas
       const params = operation.id === "signals.change" ? {changeId:change.changeId} : ["market.candles","market.indicators","market.technical-context"].includes(operation.id) ? { instrumentId: nvda } : operation.id === "etf.holdings" ? {instrumentId:getInstrumentByCanonicalSymbol("QQQ").instrumentId} : operation.id === "market.history.job" ? {jobId:runtime.app.locals.historicalAcquisitionService.create({requestId:"fixture",instrumentIds:[nvda]}).jobId} : operation.id === "research.companyfacts" ? {companyId:"unavailable-fixture"} : operation.id === "portfolio.context" ? { mode: "weekly", instrumentIds: [nvda] } : {};
       const path = operation.pathParameters ? { id: operation.id === "news.item" ? id : "fixture-stream" } : undefined;
       if(operation.id==='intel.bootstrap')params.profile='dashboard-v1';
+      if(operation.id==='intel.advanced.status'){await assert.rejects(()=>read.operation(operation.id,{jobId:'missing-job'}),e=>e.code==='ANALYSIS_JOB_UNKNOWN');continue;}
       const data = await read.operation(operation.id, params, undefined, path); assert.ok(data && typeof data === "object", operation.id);
       const output = JSON.stringify(projectOperation(operation, data)); assert.ok(!output.includes("/home/fedora"), operation.id);
     }

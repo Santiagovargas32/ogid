@@ -231,6 +231,16 @@ test("deployment validation reports unsupported names and rejects ambiguous valu
   validateDeploymentEnvironment({PORT:"3000",AI_MODE:"off",NEWS_PROVIDERS:"rss,gnews",ALLOW_LAN_ADMIN:"0"});
 });
 
+test('deployment warnings recognize agent typos and only accept internal OGID settings in managed children',()=>{
+  const unknown={AGENT_HEARTBEAT_MS:'5000',OGID_OPENCODE_TIMEOUT_MS:'1',AGENT_UNUSED_TOKEN:'private-secret',AGENT_MODE:'shadow'};
+  assert.deepEqual(unsupportedDeploymentVariables(unknown),['AGENT_HEARTBEAT_MS','OGID_OPENCODE_TIMEOUT_MS','AGENT_UNUSED_TOKEN']);
+  assert.doesNotMatch(JSON.stringify(unsupportedDeploymentVariables(unknown)),/private-secret/);
+  const internal={OGID_MANAGED_CHILD:'1',OGID_BASE_URL:'http://127.0.0.1:3000',OGID_PROFILE:'research',OGID_RESEARCH_SCOPE:'agent-evidence',OGID_INSTRUMENT_AUTH:'runtime',AGENT_TASK_MODES:'{}'};
+  assert.deepEqual(unsupportedDeploymentVariables(internal),[]);
+  assert.deepEqual(unsupportedDeploymentVariables({...internal,OGID_MISSPELLED:'ignored'}),['OGID_MISSPELLED']);
+  assert.deepEqual(unsupportedDeploymentVariables({OGID_BASE_URL:'http://127.0.0.1:3000'}),['OGID_BASE_URL']);
+});
+
 
 test("explicit tool deadlines override profiles while isolated workers inherit resolved application budgets",()=>{
   const tool=storageConfig({timeoutMs:17},{NODE_ENV:"test"});

@@ -54,6 +54,7 @@ import { StorageManager } from "./storage/StorageManager.js";
 import { EventLedger } from "./services/research/eventLedger.js";
 import { SecSourceAgent } from "./services/research/secSourceAgent.js";
 import { OfficialSourceService, loadResearchSources } from "./services/research/officialSources.js";
+import {SourceAcquisition} from './services/research/sourceAcquisition.js';
 import { HistoricalAcquisitionService } from "./services/market/historicalAcquisitionService.js";
 import { HistoricalImportService } from "./services/market/historicalImportService.js";
 import { TechnicalContextService } from "./services/market/technicalContextService.js";
@@ -712,8 +713,8 @@ export function createAppServer(overrides = {}) {
     tickers: config.market?.tickers || []
   });
   const mediaStreamService = new RetiredMediaService();
-  const dailyCandleService = new DailyCandleService({ store: dailyCandleStore, marketConfig: config.market });
-  const intradayCandleService = new IntradayCandleService({ store: dailyCandleStore, marketConfig: config.market });
+  const dailyCandleService = new DailyCandleService({ store: dailyCandleStore, marketConfig: config.market,history:business?.history });
+  const intradayCandleService = new IntradayCandleService({ store: dailyCandleStore, marketConfig: config.market,history:business?.history });
   const technicalIndicatorService = business?.indicators || new TechnicalIndicatorService({ store: dailyCandleStore });
   const newsPriceCouplingService = business?.coupling || new NewsPriceCouplingService({ store: dailyCandleStore });
 
@@ -828,6 +829,7 @@ export function createAppServer(overrides = {}) {
   app.locals.portfolioContextService = business?.portfolio || new PortfolioContextService({ stateManager, archive: newsArchive, alerts: materialAlertStore, awarenessService, watchlist: marketWatchlistService, scenarioService });
   app.locals.mcpOperatorCredentials = overrides.mcpOperatorCredentials || readOperatorCredentials(process.env.MCP_OPERATOR_CREDENTIALS_FILE);
   app.locals.mcpOperatorAudit = row => log.info("mcp_operator_authorized", row);
+  orchestrator.onSchedule=(id,schedule)=>monitor.schedule(id,schedule);
   app.locals.orchestrator = orchestrator;
   app.locals.manualRefreshService = manualRefreshService;
   app.locals.config = config;
@@ -873,7 +875,10 @@ export function createAppServer(overrides = {}) {
   let stopTask = null;
 
   businessContext = () => ({snapshot:stateManager.getAnalysisSnapshot(),newsFromStorage:true,awareness:awarenessService.getSnapshot({limit:100},{publicView:true}),selectedInstrumentIds:marketWatchlistService.selectedInstrumentIds,intradayMetrics:intradayCandleService.getMetrics()});
+  const sourceAcquisition=overrides.sourceAcquisition||new SourceAcquisition();
   storageManager.rpcHandler = (operation,input) => {
+    if(operation==='source.acquire')return sourceAcquisition.run(input);
+    if(operation==='source.cancel')return sourceAcquisition.cancel(input.attemptId);
     if(operation !== "market.fetch") throw new Error("Unknown provider bridge");
     return marketDataService.fetchYahooBars(input.symbol,input.options);
   };
@@ -1016,8 +1021,8 @@ export function createAppServer(overrides = {}) {
       // leave acquisition timers running and submitting more work during drain.
       const maintenanceStopped=drain(()=>app.locals.agentMaintenance.stop());
       const cyclesStopped=drain(()=>orchestrator.stop());
-      const rssStopped=drain(()=>rssAggregator.stop?.());
-      const sourcesStopped=Promise.all([drain(()=>awarenessService.stop()),drain(()=>secSourceAgent.stop())]);
+      const rssStopped=drain(()=>rssAggregator.stop?.(),'persistence.rss-drain');
+      const sourcesStopped=Promise.all([drain(()=>awarenessService.stop()),drain(()=>secSourceAgent.stop(),'persistence.source-cancellation'),drain(()=>intradayCandleService.stop(),'persistence.history-cancellation')]);
       await drain(()=>app.locals.agentModels.stop());
       await drain(()=>app.locals.agentRuntime.stop());
       // Stop accepting HTTP/upgrade work before draining owners of background jobs.
@@ -1034,6 +1039,7 @@ export function createAppServer(overrides = {}) {
       ]);
       await maintenanceStopped;
       await sourcesStopped;
+      await drain(()=>sourceAcquisition.close());
       await rssStopped;
       await cyclesStopped;
       await drain(()=>newsArchive.flush?.(),'persistence.archive');
@@ -1076,7 +1082,8 @@ export async function run(overrides = {}) {
   runtime.storageManager.on("failed", (error) => {
     const status=runtime.storageManager.getStatus();
       const worker=error.diagnostic?.worker === "analysis" ? status.analysis?.worker : error.diagnostic?.worker === "queries" ? status.queries?.worker : status.worker;
-    log.error("storage_worker_failed", { code: error.code,command:error.diagnostic,worker:worker?.lastCompletedCommand,activeCommands:worker?.activeCommands,heartbeatAt:worker?.heartbeatAt,news:worker?.news });
+    const failure=error.diagnostic?.worker==='analysis'?status.analysis?.failure:error.diagnostic?.worker==='queries'?status.queries?.failure:status.failure;
+    log.error("storage_worker_failed", { code: error.code,command:error.diagnostic,worker:worker?.lastCompletedCommand,activeCommands:worker?.activeCommands,heartbeatAt:worker?.heartbeatAt,sqlActivity:worker?.sqlActivity,nativeWait:failure?.nativeWait,walCheckpoint:status.walCheckpoint,news:worker?.news });
     if(["analysis","queries"].includes(error.diagnostic?.worker) && runtime.app.locals.runtimeMetrics.ready){
       void runtime.storageManager.recoverReader(error.diagnostic.worker).catch(reason=>log.warn("analysis_recovery_failed",{code:reason.code || "STORAGE_ANALYSIS_RECOVERY_FAILED"}));
       return;

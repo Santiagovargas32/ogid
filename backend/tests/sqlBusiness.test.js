@@ -88,7 +88,7 @@ test("SQL stale transitions preserve revisions without loading poll audits; snap
  }finally{db.close();}
 });
 
-test("event time windows probe membership by primary key instead of materializing instrument history",()=>{
+test("event windows resolve selective membership with a covering identity/time index",()=>{
  const db=new Database(':memory:');migrate(db);
  try{
   const insert=db.prepare('INSERT INTO events VALUES(?,?,?,?,?,?,?,?)');
@@ -103,9 +103,8 @@ test("event time windows probe membership by primary key instead of materializin
   const ledger=new SqlEventLedger({store:{db,state:{revision:1}}});
   const result=ledger.search({instrumentIds:[instrumentId],from:'2026-10-19T00:00:00.000Z'});
   assert.equal(result.total,1);assert.equal(result.events[0].eventId,'recent');
-  assert.ok(plans[0].some(p=>p.includes('SEARCH events USING COVERING INDEX events_by_time')));
-  assert.ok(plans[0].some(p=>p.startsWith('SEARCH ei ') && p.includes('COVERING INDEX') && p.includes('event_id=?')),JSON.stringify(plans[0]));
-  assert.ok(!plans[0].some(p=>p.includes('LIST SUBQUERY')));
+  assert.ok(plans[0].some(p=>p.includes('SEARCH events USING COVERING INDEX events_identity_time')));
+  assert.ok(plans[0].some(p=>p.includes('event_instruments')&&p.includes('COVERING INDEX')),JSON.stringify(plans[0]));
   const before=plans.length,preview=ledger.search({instrumentIds:[instrumentId],from:'2026-10-19T00:00:00.000Z',includeTotal:false});
   assert.deepEqual(preview.events,result.events);assert.equal(preview.total,null);assert.equal(plans.length,before);assert.equal(preview.coverage.totalsNotRequested,true);
  }finally{db.close();}

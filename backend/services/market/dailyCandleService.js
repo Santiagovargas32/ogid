@@ -19,7 +19,7 @@ export function resolveExpectedClosedDailyCandle(instrument, now = new Date(), {
 }
 
 export class DailyCandleService {
-  constructor({ store, marketConfig = {}, now = () => new Date(), fetchCandles = fetchDailyCandles } = {}) { this.fetchCandles=fetchCandles; this.store = store; this.marketConfig = marketConfig; this.now = now; this.inFlight = null; this.retryState = new Map(); }
+  constructor({ store, marketConfig = {}, now = () => new Date(), fetchCandles = fetchDailyCandles,history=null } = {}) { this.history=history;this.repairCursor=0;this.fetchCandles=fetchCandles; this.store = store; this.marketConfig = marketConfig; this.now = now; this.inFlight = null; this.retryState = new Map(); }
   enabledInstruments() { return this.marketConfig.watchlistService?.selectedInstruments?.() || resolveVerifiedInstrumentReferences(this.marketConfig.tickers || []).instruments; }
   async runScheduled() {
     if (this.inFlight) return this.inFlight;
@@ -27,6 +27,10 @@ export class DailyCandleService {
   }
   async #runScheduled() {
     if (this.store?.enabled === false) return { status: "disabled", requested: 0, inserted: 0, stale: [] };
+    if(this.history){
+      const selected=this.enabledInstruments(),instrument=selected[this.repairCursor++%Math.max(1,selected.length)];
+      if(instrument){const plan=await this.history.repairPlan({instrumentId:instrument.instrumentId});if(plan?.repair){const job=await this.history.create(plan.repair);if(!['completed','blocked','cancelled'].includes(job.status))await this.history.run({jobId:job.jobId,maxRequests:1});}}
+    }
     const now = this.now(); const adjustmentMode = this.marketConfig.dailyCandles?.adjustmentMode || "splits"; const due = [];
     const keys=new Map();let deferred=0;
     for (const instrument of this.enabledInstruments()) {

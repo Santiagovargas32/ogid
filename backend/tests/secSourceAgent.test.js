@@ -64,7 +64,7 @@ test("SEC rate limits stop the batch, honor Retry-After and survive an agent res
   await f.agent.tick();assert.equal(f.calls(),1);assert.equal(f.agent.getStatus().status,"degraded");
   const restarted=new SecSourceAgent({service:f.service,instruments:f.instruments,userAgent,now:f.now});await restarted.tick();
   assert.equal(f.calls(),1);assert.equal(restarted.getStatus().errorCode,"SEC_ACCESS_COOLDOWN");
-  assert.equal(Date.parse(restarted.getStatus().nextEligibleAt),f.now()+7200000);
+  assert.equal(Date.parse(restarted.getStatus().nextEligibleAt),f.now()+Math.max(7200000,f.sources.find(s=>s.sourceId==="sec-nvda-companyfacts").minPollIntervalMs));
   assert.deepEqual(f.store.getRow("companyFacts",companyId).metrics,[{value:123}]);
  }finally{await f.agent.stop();f.close();}
 });
@@ -74,7 +74,7 @@ test("a successful SEC retry clears the previous rate limit and allows other due
  const f=fixture({fetchImpl:async(url)=>limited?new Response("",{status:429}):Response.json(url.includes("companyfacts")?facts:filing)});
  try{
   await f.agent.tick();assert.equal(f.calls(),1);
-  limited=false;f.advance(3600000);await f.agent.tick();
+  limited=false;f.advance(Date.parse(f.store.getRow("sourceStates","sec-nvda-companyfacts").nextEligibleAt)-f.now());await f.agent.tick();
   assert.equal(f.calls(),3);assert.equal(f.agent.getStatus().status,"completed");
   assert.equal(f.store.getRow("sourceStates","sec-nvda-companyfacts").failureCode,null);
   f.advance(900000);await f.agent.tick();
@@ -104,7 +104,7 @@ test('a SEC cycle without an eligible retry preserves degradation until that sou
   await f.agent.tick();assert.equal(f.agent.getStatus().status,'degraded');const calls=f.calls();
   await f.agent.tick();assert.equal(f.calls(),calls);assert.equal(f.agent.getStatus().status,'degraded');
   assert.equal(f.store.getRow('sourceStates','sec-nvda-submissions').failureCode,'SOURCE_DNS_ERROR');
-  failing=false;f.advance(3600000);await f.agent.tick();assert.equal(f.agent.getStatus().status,'completed');
+  failing=false;f.advance(Math.max(...f.sources.filter(s=>s.companyId===companyId).map(s=>Date.parse(f.store.getRow('sourceStates',s.sourceId)?.nextEligibleAt||0)))-f.now());await f.agent.tick();assert.equal(f.agent.getStatus().status,'completed');
  }finally{await f.agent.stop();f.close();}
 });
 

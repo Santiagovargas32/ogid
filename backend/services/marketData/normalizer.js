@@ -1,3 +1,4 @@
+import {chartProvenance} from '../market/candleValidation.js';
 export const SUPPORTED_MARKET_DATA_PERIODS = Object.freeze(["1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y"]);
 export const SUPPORTED_MARKET_DATA_INTERVALS = Object.freeze(["1d", "1h", "30m", "15m", "5m", "1wk", "1mo"]);
 export const DEFAULT_MARKET_DATA_PERIOD = "1y";
@@ -156,9 +157,10 @@ export function normalizeYahooChart(result, { symbol } = {}) {
   const quotes = Array.isArray(result) ? result : result?.quotes;
   if (!Array.isArray(quotes)) return [];
   const byTimestamp = new Map();
+  const meta=chartProvenance(result?.meta);
   for (const quote of quotes) {
     const bar = normalizeYahooBar(quote, { symbol });
-    if (bar) byTimestamp.set(bar.timestamp, bar);
+    if (bar) byTimestamp.set(bar.timestamp, meta?{...bar,chartMeta:{...meta,tradingPeriods:meta.tradingPeriods.filter(p=>Date.parse(p.start)<=Date.parse(bar.timestamp)&&Date.parse(p.end)>Date.parse(bar.timestamp))}}:bar);
   }
   return [...byTimestamp.values()].sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp));
 }

@@ -520,17 +520,17 @@ export class AdvancedIntelligenceService {
     const selectedProvider = selectedNewsQuality.provider || stateSnapshot.meta?.sourceMeta?.provider || "selected-news";
     const aggregateProvider = aggregateNews.meta?.provider || "rss-aggregate";
     const quality = {
-      mode: selectedNewsQuality.mode || "fallback",
+      mode: selectedNewsQuality.mode || "unknown",
       modeScope: "selected-news-pipeline",
       provider: [...new Set([selectedProvider, aggregateProvider])].join("+"),
-      reason: selectedNewsQuality.reason || null,
+      reason: selectedNewsQuality.reason || (selectedNewsQuality.mode?null:'selected-news-quality-not-captured'),
       pipelineMode: aggregateNews.meta?.pipelineMode || null,
       sourceGeneratedAt: aggregateNews.generatedAt || null,
       providers: [
         {
           role: "selected-news-pipeline",
           provider: selectedProvider,
-          mode: selectedNewsQuality.mode || "fallback",
+          mode: selectedNewsQuality.mode || "unknown",
           sampleSize: signalCorpus.length,
           generatedAt: stateSnapshot.meta?.lastRefreshAt || null
         },

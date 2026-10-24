@@ -348,9 +348,11 @@ export async function getConditions(req, res, next) {
     }
 
     const countries = parseCountries(req.query.countries, res.app.locals.config.watchlistCountries);
+    const anchor=String(req.query.anchor||'live');
+    if(!['live','last-close'].includes(anchor))return res.status(400).json({ok:false,error:{code:'INVALID_MARKET_CONDITIONS_ANCHOR',message:'anchor must be live or last-close'}});
     const conditions = await res.app.locals.marketConditionsService.getSnapshot({
       windowMin: rawWindow,
-      countries
+      countries,anchor
     });
     return res.json(mapResponse(conditions));
   } catch (error) {

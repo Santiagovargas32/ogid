@@ -3,6 +3,7 @@ import { candleIdentity, candleIntervalMs } from "./canonicalCandle.js";
 import { isInstrumentSessionEligible, projectDailyCredits } from "./marketCreditScheduler.js";
 import { resolveVerifiedInstrumentReferences } from "./instrumentRegistry.js";
 import { sessionPolicyResolver } from "./sessionPolicyResolver.js";
+import {expectedPublicableCandle} from './candleValidation.js';
 
 const INTRADAY_BOOTSTRAP_OUTPUTSIZE = 500;
 const INTRADAY_BOOTSTRAP_MIN_CANDLES = 420;
@@ -99,7 +100,8 @@ export function projectCombinedIntradayBudget({ instruments = [], policy, dailyC
 }
 
 export class IntradayCandleService {
-  constructor({ store, marketConfig = {}, now = () => new Date() } = {}) {
+  constructor({ store, marketConfig = {}, now = () => new Date(),history=null } = {}) {
+    this.history=history;this.stopping=false;
     this.store = store; this.marketConfig = marketConfig; this.now = now; this.inFlight = null; this.lastRunAt = 0; this.openCandles = new Map(); this.bootstrappedInstruments = new Set();
     this.fairnessCursor = 0; this.instrumentStates = new Map(); this.stateRevision = 0;
     this.metrics = { candlesRequested: 0, candlesStored: 0, duplicateCandles: 0, invalidCandles: 0, intradayCredits: 0, deferredByQuota: 0, bootstrapInstruments: 0, lastSuccessfulCandleAt: null, candleLag: null };
@@ -115,6 +117,7 @@ export class IntradayCandleService {
     const enabledInstruments = this.enabledInstruments(); this.#syncUniverse(enabledInstruments); this.projection = this.#project(enabledInstruments);
     if (!this.projection.fits) { this.metrics.deferredByQuota += enabledInstruments.length; return { status: "deferred-projection", stale: await this.staleCandles(), metrics: this.getMetrics() }; }
     const now = this.now(); if (this.lastRunAt && now.getTime() - this.lastRunAt < this.projection.effectivePollIntervalMs) return { status: "cadence", metrics: this.getMetrics() };
+    if(this.history&&isYahooProvider(this.marketConfig))return this.#runDurableYahoo(enabledInstruments,now);
     const instruments = enabledInstruments.filter((instrument) => {
       const eligible = isInstrumentSessionEligible(instrument, now);
       if (!eligible) this.#setInstrumentState(instrument, { state: "session_closed" });
@@ -152,6 +155,45 @@ export class IntradayCandleService {
     const persistence = result.persistedByProvider ? result.persistence : await this.store.append(closed, { now }); this.metrics.candlesStored += persistence.inserted; this.metrics.duplicateCandles += persistence.duplicates;
     const latest = closed.sort((a, b) => Date.parse(b.closeTime) - Date.parse(a.closeTime))[0]; if (latest) { this.metrics.lastSuccessfulCandleAt = latest.closeTime; this.metrics.candleLag = Math.max(0, now.getTime() - Date.parse(latest.closeTime)); }
     return { status: result.creditRejections.length ? "deferred-quota" : result.errors.length ? "partial" : "ok", stored: persistence.inserted, open: this.openCandles.size, stale: result.errors.length || result.creditRejections.length ? await this.staleCandles() : [], errors: result.errors, creditRejections: result.creditRejections, metrics: this.getMetrics() };
+  }
+
+  stop(){
+    this.stopping=true;
+    return this.stopTask ||= (async()=>{
+      const cancellations=[...this.instrumentStates.values()].filter(state=>state.pendingJobId).map(state=>Promise.resolve().then(()=>this.history?.cancel?.({jobId:state.pendingJobId})));
+      const results=await Promise.allSettled([...cancellations,this.inFlight]);
+      const failure=results.find(result=>result.status==='rejected');if(failure)throw failure.reason;
+    })();
+  }
+  async #runDurableYahoo(instruments,now){
+    if(this.stopping)return {status:'stopped',metrics:this.getMetrics()};
+    const interval=this.marketConfig.intradayCandles.interval,adjustmentMode=this.marketConfig.intradayCandles.adjustmentMode||'splits';
+    const scopes=instruments.map(i=>({instrumentId:i.instrumentId,interval,adjustmentMode}));
+    const rows=this.store.coverageSummary?await this.store.coverageSummary({instrumentIds:instruments.map(i=>i.instrumentId),interval,adjustmentMode}):await Promise.all(instruments.map(async i=>({instrumentId:i.instrumentId,localCandleCount:(await this.store.query({instrumentId:i.instrumentId,interval,adjustmentMode,limit:500})).length,lastClosedCandleAt:(await this.store.latest(i.instrumentId,adjustmentMode,interval))?.closeTime||null})));
+    const summaries=new Map(rows.map(r=>[r.instrumentId,r])),states=new Map((await this.history.coverageStates(scopes)).map(r=>[r.instrumentId,r]));
+    const plans=[];
+    for(const instrument of this.#fairOrder(instruments)){
+      const summary=summaries.get(instrument.instrumentId),state=states.get(instrument.instrumentId),target=expectedPublicableCandle(instrument,interval,now,this.marketConfig.intradayCandles),session=sessionPolicyResolver.resolve(instrument,now);
+      const debt=target.expectedLatestCandleAt&&(!state.coverageThrough||Date.parse(state.coverageThrough)<Date.parse(target.expectedLatestCandleAt));
+      const pending=state.pendingJobId,eligible=!state.nextEligibleAt||Date.parse(state.nextEligibleAt)<=now.getTime();
+      this.#setInstrumentState(instrument,{...summary,...state,sessionState:session.sessionState,expectedLatestCandleAt:target.expectedLatestCandleAt,providerDelayMs:target.delayMs,sessionType:'regular',acquisitionPhase:!target.expectedLatestCandleAt?'unknown':debt?'catchup':'up-to-date',state:!target.expectedLatestCandleAt?'pending_bootstrap':debt?'queued':session.eligible?'ready':'session_closed',pendingWindows:debt?null:0,reason:!target.expectedLatestCandleAt?'calendar-or-publication-target-unknown':state.status==='blocked'?'provider-coverage-unavailable':null});
+      if(debt&&eligible&&state.status!=='blocked')plans.push({instrument,state,target,pending});
+    }
+    let requests=0;const errors=[];this.lastRunAt=now.getTime();
+    for(const {instrument,state,target} of plans.slice(0,this.marketConfig.intradayCandles.catchupWindowsPerCycle??2)){
+      if(this.stopping)break;
+      const bootstrap=resolveIntradayFetchRange({instrument,interval,now,latestCandle:state.coverageThrough?{openTime:state.coverageThrough}:null});
+      const job=await this.history.ensureCatchup({instrumentId:instrument.instrumentId,interval,adjustmentMode,from:bootstrap.from,to:target.expectedLatestCandleAt});
+      if(!job.jobId)continue;
+      this.#setInstrumentState(instrument,{pendingJobId:job.jobId,pendingWindows:job.chunks.length-job.cursor,lastAttemptAt:now.toISOString(),acquisitionPhase:'catchup'});
+      try{
+        const result=await this.history.run({jobId:job.jobId,maxRequests:1});requests+=result.requestsThisRun||0;
+        const confirmed=await this.history.coverageState({instrumentId:instrument.instrumentId,interval,adjustmentMode});
+        this.#setInstrumentState(instrument,{...confirmed,pendingWindows:result.chunks.length-result.cursor,acquisitionPhase:result.executionCompleted?'up-to-date':result.status,state:result.executionCompleted?'ready':result.status==='blocked'?'fetch_error':'queued'});
+      }catch(error){errors.push({instrumentId:instrument.instrumentId,code:error.code||'CATCHUP_FAILED'});}
+    }
+    this.metrics.candlesRequested+=requests;
+    return {status:errors.length?'partial':plans.length?'catchup':'up-to-date',requested:requests,errors,metrics:this.getMetrics()};
   }
 
   async #runYahoo(instruments, now) {

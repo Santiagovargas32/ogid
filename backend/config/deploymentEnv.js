@@ -64,9 +64,16 @@ export const DEPLOYMENT_ENV_KEYS = Object.freeze([
 ]);
 
 
-const applicationKey=/^(STORAGE_|NEWS_|NEWSAPI_|GNEWS_|MEDIA_|MEDIASTACK_|GDELT_|MARKET_|TWELVE_|TWELVEDATA_|YOUTUBE_|WATCHLIST_|REFRESH_|MANUAL_|WS_|IMPACT_|ADMIN_|AI_|NVIDIA_|LLAMACPP_|AWARENESS_|RESEARCH_|MCP_OPERATOR_|ALLOW_)/;
+// These belong to managed children/MCP, not to the backend's installation
+// settings. Recognize them only in that inherited execution context.
+const managedChildKeys=new Set([
+  'OGID_MANAGED_CHILD','OGID_BASE_URL','OGID_PROFILE','OGID_RESEARCH_SCOPE',
+  'OGID_INSTRUMENT_AUTH','OGID_INSTRUMENT_IDS','OGID_OPERATOR_CREDENTIAL_FILE',
+  'OGID_TIMEOUT_MS','OGID_MAX_RESPONSE_BYTES','OGID_MAX_OUTPUT_BYTES','OGID_MAX_CONCURRENT'
+]);
+const applicationKey=/^(AGENT_|OGID_|STORAGE_|NEWS_|NEWSAPI_|GNEWS_|MEDIA_|MEDIASTACK_|GDELT_|MARKET_|TWELVE_|TWELVEDATA_|YOUTUBE_|WATCHLIST_|REFRESH_|MANUAL_|WS_|IMPACT_|ADMIN_|AI_|NVIDIA_|LLAMACPP_|AWARENESS_|RESEARCH_|MCP_OPERATOR_|ALLOW_)/;
 export function unsupportedDeploymentVariables(env) {
-  return Object.keys(env).filter(key=>(applicationKey.test(key) || key === "DISABLE_BACKGROUND_REFRESH") && !DEPLOYMENT_ENV_KEYS.includes(key));
+  return Object.keys(env).filter(key=>(applicationKey.test(key) || key === "DISABLE_BACKGROUND_REFRESH") && !DEPLOYMENT_ENV_KEYS.includes(key) && !(env.OGID_MANAGED_CHILD==='1' && managedChildKeys.has(key)));
 }
 export function validateDeploymentEnvironment(env) {
   const invalid=key=>{throw Object.assign(new Error(`Invalid deployment setting: ${key}`),{code:"CONFIG_INVALID_DEPLOYMENT"});};

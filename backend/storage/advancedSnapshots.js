@@ -19,11 +19,28 @@ export class AdvancedSnapshots {
   peek(options={}) {
     const scope=advancedScope(options);
     const latest=this.db.prepare('SELECT analysis_id AS revision,as_of AS asOf FROM analysis_latest WHERE scope_key=?').get(scope);
-    const job=this.db.prepare("SELECT job_id AS jobId,status,error_code AS errorCode FROM analysis_jobs WHERE scope_key=? AND status IN ('queued','running') ORDER BY created_at LIMIT 1").get(scope);
-    return {revision:latest?.revision||null,asOf:latest?.asOf||null,lifecycle:{status:job?(latest?'refreshing':'preparing'):latest?'ready':'preparing',snapshotAvailable:Boolean(latest),jobId:job?.jobId||null,jobStatus:job?.status||null,retryAfterMs:job?2000:null,reason:!latest&&!job?'not-calculated':null}};
+    const job=this.db.prepare("SELECT job_id AS jobId,status,error_code AS errorCode,created_at AS queuedAt,input_json FROM analysis_jobs WHERE scope_key=? AND status IN ('queued','running') ORDER BY created_at LIMIT 1").get(scope);
+    return {revision:latest?.revision||null,asOf:latest?.asOf||null,lifecycle:{status:job?(latest?'refreshing':'preparing'):latest?'ready':'preparing',scope,phase:job?.status||null,requestedRevision:job?JSON.parse(job.input_json).revisions:null,availableRevision:latest?.revision||null,queuedAt:job?.queuedAt||null,waitAgeMs:job?.status==='queued'?Math.max(0,this.now()-Date.parse(job.queuedAt)):null,snapshotAvailable:Boolean(latest),jobId:job?.jobId||null,jobStatus:job?.status||null,retryAfterMs:job?2000:null,reason:!latest&&!job?'not-calculated':null}};
   }
+  status(jobId) {
+    const j=this.db.prepare('SELECT * FROM analysis_jobs WHERE job_id=?').get(jobId);
+    if(!j)throw new AppError('Trabajo desconocido.',404,'ANALYSIS_JOB_UNKNOWN');
+    const latest=this.db.prepare('SELECT analysis_id,as_of FROM analysis_latest WHERE scope_key=?').get(j.scope_key);
+    const id=j.status==='complete'?j.analysis_id:latest?.analysis_id;
+    const row=id?this.db.prepare('SELECT payload_json FROM analysis_runs WHERE analysis_id=?').get(id):null;
+    const value=row?JSON.parse(row.payload_json):{generatedAt:null};delete value.inputManifest;
+    return {...value,lifecycle:{status:j.status==='complete'?'ready':j.status==='failed'?'failed':id?'refreshing':'preparing',scope:j.scope_key,jobId:j.job_id,jobStatus:j.status,phase:j.status,requestedRevision:JSON.parse(j.input_json).revisions,availableRevision:id||null,asOf:j.status==='complete'?j.as_of:latest?.as_of||null,queuedAt:j.created_at,publishedAt:j.status==='complete'?j.updated_at:null,waitAgeMs:j.status==='queued'?Math.max(0,this.now()-Date.parse(j.created_at)):null,snapshotAvailable:Boolean(row),owner:j.owner,fence:j.fence,leaseUntil:j.lease_until,errorCode:j.error_code,retryAfterMs:['queued','running'].includes(j.status)?2000:null}};
+  }
+  renew({jobId,owner,fence}) {
+    const changed=this.db.prepare("UPDATE analysis_jobs SET lease_until=? WHERE job_id=? AND owner=? AND fence=? AND status='running' AND lease_until>?").run(this.now()+90000,jobId,owner,fence,this.now());
+    if(!changed.changes)throw new AppError('Lease perdido.',409,'ANALYSIS_LEASE_LOST');return {renewed:true};
+  }
+  assertOwner(job,{owner,fence}){if(job.owner!==owner||job.fence!==fence||job.lease_until<=this.now())throw new AppError('Lease perdido.',409,'ANALYSIS_LEASE_LOST');}
   recover() {
     this.db.prepare("UPDATE analysis_jobs SET status=CASE WHEN attempts<3 THEN 'queued' ELSE 'failed' END,error_code='STORAGE_RESTART_INTERRUPTED',updated_at=? WHERE status='running'").run(new Date(this.now()).toISOString());
+  }
+  recoverExpired(){
+    return this.db.prepare("UPDATE analysis_jobs SET status=CASE WHEN attempts<3 THEN 'queued' ELSE 'failed' END,error_code='ANALYSIS_LEASE_EXPIRED',updated_at=? WHERE job_id IN (SELECT job_id FROM analysis_jobs WHERE status='running' AND (lease_until IS NULL OR lease_until<=?) LIMIT 64)").run(new Date(this.now()).toISOString(),this.now()).changes;
   }
   pending() { return this.db.prepare("SELECT job_id AS jobId FROM analysis_jobs WHERE status='queued' AND attempts<3 ORDER BY created_at LIMIT 64").all(); }
   prepare({options = {}, context = {}} = {}) {
@@ -55,34 +72,40 @@ export class AdvancedSnapshots {
       const refreshing=job && ['queued','running'].includes(job.status);
       return { ...(snapshot || {schemaVersion:'advanced-intelligence-snapshot-v1',generatedAt:null,filters}),
         lifecycle:{status:refreshing ? (snapshot?'refreshing':'preparing') : job?.status==='failed'?'failed':'ready',
+          scope,phase:job?.status||null,requestedRevision:job?JSON.parse(job.input_json).revisions:revisions,availableRevision:latest?.analysis_id||null,queuedAt:job?.created_at||null,waitAgeMs:job?.status==='queued'?Math.max(0,now-Date.parse(job.created_at)):null,
           snapshotAvailable:Boolean(snapshot),stale:Boolean(stale),jobId:job?.job_id || null,jobStatus:job?.status || null,
           errorCode:job?.error_code || null,attempts:job?.attempts || 0,asOf:latest?.as_of || null,retryAfterMs:refreshing?2000:null,
           methodologyVersion:ADVANCED_INTELLIGENCE_METHODOLOGY.version},
         dispatchJobId:job?.status==='queued'?job.job_id:null };
     }).immediate();
   }
-  claim(jobId) {
+  claim({jobId,owner}) {
     return this.db.transaction(()=>{
-      const changed=this.db.prepare("UPDATE analysis_jobs SET status='running',attempts=attempts+1,updated_at=?,error_code=NULL WHERE job_id=? AND status='queued' AND attempts<3").run(new Date(this.now()).toISOString(),jobId);
+      const changed=this.db.prepare("UPDATE analysis_jobs SET status='running',attempts=attempts+1,updated_at=?,error_code=NULL,owner=?,fence=fence+1,lease_until=? WHERE job_id=? AND status='queued' AND attempts<3").run(new Date(this.now()).toISOString(),owner,this.now()+90000,jobId);
       if(!changed.changes)return null;
       const job=this.db.prepare('SELECT * FROM analysis_jobs WHERE job_id=?').get(jobId);
-      return {jobId,asOf:job.as_of,...JSON.parse(job.input_json)};
+      return {jobId,owner:job.owner,fence:job.fence,asOf:job.as_of,...JSON.parse(job.input_json)};
     }).immediate();
   }
-  fail({jobId,code}) {
+  fail({jobId,code,owner,fence}) {
+    const job=this.db.prepare("SELECT * FROM analysis_jobs WHERE job_id=?").get(jobId);
+    if(!job||job.status==='complete')return {persisted:true};
+    this.assertOwner(job,{owner,fence});
     this.db.prepare("UPDATE analysis_jobs SET status='failed',error_code=?,updated_at=? WHERE job_id=? AND status!='complete'").run(/^[A-Z0-9_]{1,64}$/.test(code)?code:'ANALYSIS_FAILED',new Date(this.now()).toISOString(),jobId);
     return {persisted:true};
   }
-  publish({jobId,result}) {
+  publish({jobId,result,owner,fence}) {
     const started=performance.now();
     const committed=this.db.transaction(()=>{
       const job=this.db.prepare('SELECT * FROM analysis_jobs WHERE job_id=?').get(jobId);
       if(!job)throw new AppError('Trabajo desconocido.',409,'ANALYSIS_JOB_UNKNOWN');
+      if(job.owner!==owner||job.fence!==fence)throw new AppError('Lease perdido.',409,'ANALYSIS_LEASE_LOST');
       if(job.status==='complete') {
         const saved=this.db.prepare('SELECT payload_json FROM analysis_runs WHERE analysis_id=?').get(job.analysis_id);
         if(stableHash(JSON.parse(saved.payload_json))!==stableHash(result))throw new AppError('Resultado distinto para el mismo trabajo.',409,'STORAGE_IDEMPOTENCY_CONFLICT');
         return {persisted:true,analysisId:job.analysis_id,replayed:true};
       }
+      this.assertOwner(job,{owner,fence});
       if(job.status!=='running')throw new AppError('Trabajo no publicable.',409,'ANALYSIS_JOB_STATE');
       if(result.methodology?.version!==job.method_version || result.inputsAsOf!==job.as_of)throw new AppError('Resultado incompatible.',409,'ANALYSIS_RESULT_MISMATCH');
       const id=this.runtime.recordAnalysis('advanced.getSnapshot',JSON.parse(job.input_json).options,result);
@@ -97,7 +120,7 @@ export class AdvancedSnapshots {
 // HTTP cancellation never owns these tasks. Only small job descriptors and
 // completed results cross workers; article inputs stay in the reader worker.
 export class AdvancedCoordinator {
-  constructor(manager) {this.manager=manager;this.tasks=new Map();this.accepting=true;}
+  constructor(manager) {this.manager=manager;this.owner=randomUUID();this.tasks=new Map();this.accepting=true;}
   async get(input) {
     if(!this.accepting)throw new AppError('Cierre en curso.',503,'STORAGE_NOT_READY');
     const value=await this.manager.localRequest('snapshot.prepare',{options:input.args?.[0] || {},context:input.context});
@@ -106,17 +129,23 @@ export class AdvancedCoordinator {
     return response;
   }
   dispatch(jobId) {
-    if(this.tasks.has(jobId))return;
+    if(!this.accepting||this.tasks.has(jobId))return;
+    let job,timer;
     const task=(async()=>{
-      const job=await this.manager.localRequest('snapshot.claim',{jobId});
+      job=await this.manager.localRequest('snapshot.claim',{jobId,owner:this.owner});
       if(!job)return;
+      timer=setInterval(()=>this.manager.localRequest('snapshot.renew',{jobId,owner:job.owner,fence:job.fence}).catch(()=>{}),20000);timer.unref();
       await this.manager.analysisManager.localRequest('domain.call',{service:'advanced',method:'getSnapshot',args:[{...job.options,force:true,asOf:job.asOf}],context:job.context,analysisJob:job});
     })().catch(async reason=>{
-      // A commit may have succeeded before a lost reply; fail() never demotes it.
-      try{await this.manager.localRequest('snapshot.fail',{jobId,code:reason.code || 'ANALYSIS_FAILED'});}catch{ /* durable running job is reconciled at restart */ }
-    }).finally(()=>this.tasks.delete(jobId));
+      if(job)try{await this.manager.localRequest('snapshot.fail',{jobId,owner:job.owner,fence:job.fence,code:reason.code || 'ANALYSIS_FAILED'});}catch{/* recovered durably */}
+    }).finally(()=>{clearInterval(timer);this.tasks.delete(jobId);});
     this.tasks.set(jobId,task);
   }
-  async recover() {for(const {jobId} of await this.manager.localRequest('snapshot.pending'))this.dispatch(jobId);}
-  async close() {this.accepting=false;await Promise.allSettled(this.tasks.values());}
+  async recover() {
+    if(!this.accepting)return;
+    await this.manager.localRequest('snapshot.recover');
+    for(const {jobId} of await this.manager.localRequest('snapshot.pending'))this.dispatch(jobId);
+    if(this.accepting&&!this.recoveryTimer){this.recoveryTimer=setInterval(()=>{if(this.manager.state==='ready')this.recover().then(()=>{this.lastRecoveryError=null;}).catch(error=>{this.lastRecoveryError={code:error.code||'ANALYSIS_RECOVERY_FAILED',at:new Date().toISOString()};});},20000);this.recoveryTimer.unref();}
+  }
+  async close() {this.accepting=false;clearInterval(this.recoveryTimer);await Promise.allSettled(this.tasks.values());}
 }

@@ -83,7 +83,8 @@ export function classifyMarketConditionsAvailability({
   pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
   automaticIngestionEnabled = true,
   acquisitionState = null,
-  outsideIntradayLimit = false
+  outsideIntradayLimit = false,
+  anchor='live'
 } = {}) {
   const asOfIso = iso(asOf);
   if (!asOfIso) throw new TypeError("invalid-market-conditions-availability-as-of");
@@ -111,7 +112,7 @@ export function classifyMarketConditionsAvailability({
   const noHistory = history.nonSyntheticCount === 0 || !history.lastCandleAt;
   const stale = !noHistory && (history.explicitlyStale || isExplicitlyStale(quote) || staleByRecency);
   const marketClosed = automaticIngestionSupported && sessionState === "closed";
-  const warmingUp = !noHistory && !stale && !marketClosed && availableClosedCandles < 2;
+  const warmingUp = !noHistory && !stale && (!marketClosed||anchor==='last-close') && availableClosedCandles < 2;
   const rollupGaps = Boolean(
     seriesQuality?.gapDetected
     || seriesGaps.length
@@ -122,7 +123,7 @@ export function classifyMarketConditionsAvailability({
   if (outsideIntradayLimit) blockingReason = "outside_intraday_limit";
   else if (noHistory) blockingReason = acquisitionLifecycle || "no_5m_history";
   else if (stale) blockingReason = "stale_local_data";
-  else if (marketClosed) blockingReason = "market_closed";
+  else if (marketClosed&&anchor==='live') blockingReason = "market_closed";
   else if (warmingUp) blockingReason = "warming_up";
   const primaryReason = blockingReason || acquisitionLifecycle || (sessionPolicyPartial ? "session_policy_partial" : null);
 
@@ -155,6 +156,7 @@ export function classifyMarketConditionsAvailability({
 
   return {
     analyzable: blockingReason == null,
+    ...(anchor==='last-close'?{anchor}:{}),
     primaryReason,
     reasonCodes,
     sessionState,

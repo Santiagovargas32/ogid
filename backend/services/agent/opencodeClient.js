@@ -1,3 +1,4 @@
+import {toolReceipt} from './toolReceipt.js';
 import { agentError } from "./contracts.js";
 import { localUrl } from "./config.js";
 import { createHash } from "node:crypto";
@@ -158,10 +159,14 @@ export class OpenCodeClient {
     // Its completed assistant error is authoritative; waiting for idle would
     // occupy a worker slot until the run deadline after recovery.
     const terminalError=Boolean(latest?.time?.completed && latest.finish === "error");
+    const userTime=boundary>=0?timeline[boundary]?.time?.created:null;
+    const inactive=Number.isFinite(userTime)&&[session.time?.idle,session.time?.archived].some(at=>Number.isFinite(at)&&at>=userTime);
     return {
+      inactive,
       idle: Boolean(
         terminalError || (latest?.time?.completed && session.time?.idle >= latest.time.completed),
       ),
+      boundaryFound:boundary>=0,
       outcome: terminalError ? "failed" : session.outcome,
       text:
         latest?.content
@@ -173,6 +178,7 @@ export class OpenCodeClient {
         (m.content || [])
           .filter((p) => p.type === "tool")
           .map((p, index) => ({
+            ...(toolReceipt(p.state?.error?.message||p.state?.output||p.state?.content)||{applicationOk:false}),
             callId: p.id || `${m.id}:${index}`,
             repeatKey: createHash("sha256")
               .update(

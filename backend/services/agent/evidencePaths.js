@@ -1,7 +1,9 @@
+import {numericDescriptor,NUMERIC_CONTRACT_VERSION} from './numericSemantics.js';
+export {NUMERIC_CONTRACT_VERSION} from './numericSemantics.js';
 const forbidden = new Set(['__proto__','prototype','constructor']);
 const typeOf = value => value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value;
 
-export function numericPaths(data, {maxPaths=64,maxDepth=8,maxNodes=1024,maxBytes=8192}={}) {
+function allNumericPaths(data, {maxPaths=64,maxDepth=8,maxNodes=1024,maxBytes=8192}={}) {
   const paths=[];
   const pending=[{value:data,path:'',depth:0}];
   let nodes=0,bytes=0,truncated=false;
@@ -24,12 +26,24 @@ export function numericPaths(data, {maxPaths=64,maxDepth=8,maxNodes=1024,maxByte
   return {paths,truncated,maxPaths,maxDepth};
 }
 
-export function numericFactProblem(fact, data) {
+export function numericPaths(data,{maxPaths=64,maxDepth=8,maxNodes=1024,maxBytes=8192}={}) {
+  const raw=allNumericPaths(data,{maxPaths:maxNodes,maxDepth,maxNodes,maxBytes:Math.max(maxBytes,maxNodes*256)});
+  const descriptors=raw.paths.map(p=>numericDescriptor(data,p.path)).filter(p=>p.role!=='unknown').sort((a,b)=>Number(b.eligible)-Number(a.eligible));
+  const paths=[],contextPaths=[];let bytes=0,truncated=raw.truncated;
+  for(const item of descriptors){const size=Buffer.byteLength(JSON.stringify(item));if(paths.length+contextPaths.length>=maxPaths||bytes+size>maxBytes){truncated=true;break;}(item.eligible?paths:contextPaths).push(item);bytes+=size;}
+  return {version:NUMERIC_CONTRACT_VERSION,paths,contextPaths,truncated,maxPaths,maxDepth};
+}
+export function numericFactProblem(fact, data,{requireUnit=false}={}) {
   const keys=fact.path.split('.');
   if(keys.some(key=>forbidden.has(key))) return {code:'AGENT_INVALID_TECHNICAL_FACT',evidenceId:fact.evidenceId,path:fact.path};
   let value=data;
   for(const key of keys) value=value && typeof value==='object' && Object.hasOwn(value,key) ? value[key] : undefined;
-  if(typeof value==='number' && Number.isFinite(value) && value===fact.value)return null;
+  if(typeof value==='number' && Number.isFinite(value) && value===fact.value){
+    const d=numericDescriptor(data,fact.path);
+    if(!d.eligible)return {code:'AGENT_INVALID_TECHNICAL_FACT',evidenceId:fact.evidenceId,path:fact.path,reason:d.reason};
+    if((requireUnit||fact.unit!==undefined)&&fact.unit!==d.unit)return {code:'AGENT_INVALID_TECHNICAL_FACT',evidenceId:fact.evidenceId,path:fact.path,reason:'numeric-unit-mismatch'};
+    return null;
+  }
   const suggestion=value && typeof value==='object' && Object.hasOwn(value,'value') && typeof value.value==='number' && Number.isFinite(value.value)
     ? `${fact.path}.value` : undefined;
   return {code:'AGENT_UNVERIFIED_NUMBER',evidenceId:fact.evidenceId,path:fact.path,providedValue:fact.value,

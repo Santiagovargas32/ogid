@@ -7,6 +7,33 @@ import { setTimeout as wait } from "node:timers/promises";
 import dotenv from "dotenv";
 
 const numeric = o => Object.fromEntries(Object.entries(o || {}).filter(([,v]) => typeof v === "number" && Number.isFinite(v)));
+const text=(value,max=128)=>typeof value==='string'?value.slice(0,max):null;
+const number=value=>typeof value==='number'&&Number.isFinite(value)?value:null;
+const boolean=value=>typeof value==='boolean'?value:null;
+const fields=(value,keys,project)=>Object.fromEntries(keys.map(key=>[key,project(value?.[key])]));
+const nativeWaitSample=value=>value?{
+  threadId:number(value.threadId),capturedAt:text(value.capturedAt),
+  ...Object.fromEntries(['waitChannel','stack','ioPressure'].map(key=>[key,value[key]?{
+    available:boolean(value[key].available),value:text(value[key].value,key==='waitChannel'?128:2048),code:text(value[key].code),truncated:boolean(value[key].truncated)
+  }:null]))
+}:null;
+const sqlActivitySample=value=>value?{
+  state:text(value.state),method:text(value.method),
+  sql:typeof value.sql==='string'?value.sql.replace(/'(?:''|[^'])*'/g,'?').replace(/\b\d+(?:\.\d+)?\b/g,'?').slice(0,240):null,
+  startedAt:text(value.startedAt),elapsedMs:number(value.elapsedMs),lastDurationMs:number(value.lastDurationMs),
+  transaction:value.transaction?{phase:text(value.transaction.phase),depth:number(value.transaction.depth),startedAt:text(value.transaction.startedAt),elapsedMs:number(value.transaction.elapsedMs)}:null
+}:null;
+const failureSample=value=>value?{code:text(value.code),causeCode:text(value.causeCode),at:text(value.at),sqlActivity:sqlActivitySample(value.sqlActivity),nativeWait:nativeWaitSample(value.nativeWait),
+  unconfirmedCount:Array.isArray(value.unconfirmedCommands)?value.unconfirmedCommands.length:null,undispatchedCount:Array.isArray(value.undispatchedCommands)?value.undispatchedCommands.length:null,undispatchedTruncated:boolean(value.undispatchedTruncated)}:null;
+const checkpointSample=value=>value?{
+  ...fields(value,['state','mode','limitScope','nextEligibleAt'],text),
+  ...fields(value,['walBytes','softLimitBytes','hardLimitBytes','completed','failures'],number),backpressure:boolean(value.backpressure),
+  confirmedGeneration:number(value.confirmedGeneration),dirtySince:text(value.dirtySince),commits:value.commits?fields(value.commits,['generation','bytes','at'],number):null,
+  connection:value.connection?{queryOnly:boolean(value.connection.queryOnly),synchronous:number(value.connection.synchronous)}:null,
+  active:value.active?{startedAt:text(value.active.startedAt),elapsedMs:number(value.active.elapsedMs)}:null,
+  lastResult:value.lastResult?{...fields(value.lastResult,['busy','log','checkpointed','pendingFrames','pendingBytes','durationMs'],number),completedAt:text(value.lastResult.completedAt)}:null,
+  lastError:value.lastError?{code:text(value.lastError.code),at:text(value.lastError.at),nativeWait:nativeWaitSample(value.lastError.nativeWait)}:null
+}:null;
 // Linux process metadata only; no argv, environments or private child output.
 function managedMemory(runtime) {
   const seen=new Set(),processes=[];
@@ -26,6 +53,7 @@ const workerSample = storage => {
   const heartbeatAt=storage?.worker?.heartbeatAt || null;
   const age=heartbeatAt ? Date.now()-Date.parse(heartbeatAt) : NaN;
   return { heartbeatAt, heartbeatAgeMs:Number.isFinite(age)?Math.max(0,age):null, failed:storage?.failed ?? null,
+    sqlActivity:sqlActivitySample(storage?.worker?.sqlActivity||storage?.failure?.sqlActivity),failure:failureSample(storage?.failure),
     activeCommands:(storage?.activeCommands || []).slice(0,16).map(c=>({operation:c.operation,service:c.service,method:c.method,phase:c.phase,elapsedMs:c.elapsedMs,executionMs:c.executionMs})),
     lastExpiredCommand:storage?.lastExpiredCommand ? {operation:storage.lastExpiredCommand.operation,service:storage.lastExpiredCommand.service,method:storage.lastExpiredCommand.method,phase:storage.lastExpiredCommand.phase,timeoutMs:storage.lastExpiredCommand.timeoutMs} : null };
 };
@@ -49,7 +77,10 @@ export async function shadowSample({ base = "http://127.0.0.1:3000", token = "",
     probeErrors:{health:health.error || null,ready:ready.error || null,agent:agent.error || null},
     probeLatencyMs: { health: health.latencyMs ?? null, ready: ready.latencyMs ?? null, agent: agent.latencyMs ?? null },
     status: h.status || null, uptimeSeconds: h.uptimeSeconds ?? null, pid: h.server?.pid ?? null, startedAt:h.server?.startedAt || null, build:h.build?.artifactHash || h.build?.buildCommit || null, rss: h.server?.memory?.rss ?? null,
+    diagnostics:h.diagnostics?{operational:h.diagnostics.operational?.status||null,quality:h.diagnostics.quality?.status||null,causes:(h.diagnostics.causes||[]).slice(0,32).map(c=>({dimension:text(c.dimension),origin:text(c.origin),code:text(c.code),observedAt:text(c.observedAt)}))}:null,
     storage: { state: h.storage?.state || null, queue: numeric(h.storage?.queue), analysisState: h.storage?.analysis?.state || null,queriesState:h.storage?.queries?.state || null,
+      walCheckpoint:checkpointSample(h.storage?.walCheckpoint),
+      marketPersistence:{pending:number(h.storage?.worker?.database?.marketPersistence?.pending),active:number(h.storage?.marketPersistence?.active),retries:number(h.storage?.marketPersistence?.retries),lastErrorCode:text(h.storage?.marketPersistence?.lastError?.code)},
       queryRecovery:{recovering:h.storage?.queryRecovery?.recovering===true,recoveries:h.storage?.queryRecovery?.recoveries ?? 0},
       analysisRecovery:{recovering:h.storage?.analysisRecovery?.recovering === true,recoveries:h.storage?.analysisRecovery?.recoveries ?? 0},
       eventIndex:h.storage?.worker?.eventIndex || null,writer:workerSample(h.storage),analysis:workerSample(h.storage?.analysis),queries:workerSample(h.storage?.queries) },
@@ -57,6 +88,15 @@ export async function shadowSample({ base = "http://127.0.0.1:3000", token = "",
     pipelines: Object.fromEntries(Object.entries(h.pipeline || {}).map(([k,v]) => [k,{ status: v.status || null }])),
     agent: { mode: a.mode || null,taskModes:a.taskModes || null, runtime: a.runtime || null, paused: a.paused ?? null, workerState: a.workerHealth?.state || null, workerError: a.workerHealth?.errorCode || null, jobs: (a.jobs || []).map(j=>({ status: j.status, count: j.count })),sinceCounts:a.sinceCounts || [],oldestQueuedAt:a.queueAge?.oldestQueuedAt || null,publicationCount:a.publicationCount??null, latestPublicationAt: a.latest?.publishedAt || null, recentRuns: (a.runs || []).slice(0,20).map(r=>({jobId:r.jobId,fence:r.fence, status: r.status, startedAt: r.startedAt, finishedAt: r.finishedAt,progress:{phase:r.metadata?.phase,toolsCompleted:r.metadata?.toolsCompleted,lastProgressAt:r.metadata?.lastProgressAt,firstProgressMs:r.metadata?.firstProgressMs} })) },
   };
+}
+
+export function recordStorageDiagnostics(summary,sample){
+  const checkpoint=sample.storage?.walCheckpoint;
+  summary.walBackpressureSamples=(summary.walBackpressureSamples||0)+(checkpoint?.backpressure===true?1:0);
+  summary.checkpointFailedSamples=(summary.checkpointFailedSamples||0)+(checkpoint?.state==='failed'?1:0);
+  summary.checkpointUnknownSamples=(summary.checkpointUnknownSamples||0)+(!checkpoint?.state?1:0);
+  for(const [key,value]of [['maxCheckpointPendingBytes',checkpoint?.lastResult?.pendingBytes],['maxCheckpointDurationMs',checkpoint?.lastResult?.durationMs],['maxCheckpointFailures',checkpoint?.failures]])
+    summary[key]=value==null?(summary[key]??null):Math.max(summary[key]??value,value);
 }
 
 export function recordContinuity(summary,sample,{gapMs=0}={}) {
@@ -110,6 +150,7 @@ async function main() {
       else if(sample.agent.workerState !== 'connected')summary.workerUnhealthySamples=(summary.workerUnhealthySamples||0)+1;
       if (sample.agent.workerState==='disconnected') summary.workerDisconnectedSamples++;
       recordContinuity(summary,sample,{gapMs:summary.lastSample?Date.parse(sample.at)-Date.parse(summary.lastSample.at):0});
+      recordStorageDiagnostics(summary,sample);
       if ([sample.storage.writer,sample.storage.analysis,sample.storage.queries].some(w=>w.heartbeatAgeMs>15000))summary.storageHeartbeatDelayedSamples++;
       summary.maxQueryRecoveries=Math.max(summary.maxQueryRecoveries,sample.storage.queryRecovery.recoveries);
       summary.maxAnalysisRecoveries=Math.max(summary.maxAnalysisRecoveries,sample.storage.analysisRecovery.recoveries);

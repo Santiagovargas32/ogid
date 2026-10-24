@@ -1,22 +1,16 @@
 import { RUNTIME_POLICY } from "../config/runtimePolicy.js";
+import { storageOperationContract } from '../contracts/storageOperations.js';
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 const backendDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const CONTROL_METHODS=new Set(['heartbeat','cancel','interruptClaim','cancelAcknowledged','progress','state','publish','link']);
 export function storageWorkClass(operation,input={}){
-  if(operation==='agent.call' && CONTROL_METHODS.has(input.method))return 'control';
-  if(['domain.indexPage','storage.checkpoint','storage.verify','storage.import'].includes(operation))return 'maintenance';
-  if(isAcquisitionWorkflow(operation,input))return 'acquisition';
-  if(operation==='analysis.persist' || operation==='runtime.save' || operation==='pipeline.record')return 'commit';
-  return isPureRead(operation,input)?'read':'calculation';
+  return storageOperationContract(operation,input).workClass;
 }
 export function isAcquisitionWorkflow(operation,input={}) {
-  return ["news.collect","news.supplemental","rss.fetch"].includes(operation) ||
-    (operation==="domain.call" && ((input.service==="rss" && input.method==="refresh") || (['sources','history'].includes(input.service) && input.method==='run')));
+  return storageOperationContract(operation,input).acquisition;
 }
 export function isPureRead(operation,input={}) {
-  if(['agent.read','scenarios.prepare','runtime.load','storage.status'].includes(operation))return true;
-  return operation==='domain.call' && ({news:['search','getItem','getHistory','coverage','getFeed','getLiveFeed'],candles:['query','latest','has','hasCandle'],awareness:['getSnapshot'],events:['search']}[input.service] || []).includes(input.method);
+  return storageOperationContract(operation,input).pureRead;
 }
 function integer(value, fallback, minimum) {
   const number = value === undefined ? fallback : Number(value);
@@ -46,6 +40,9 @@ export function storageConfig(overrides = {}, env = process.env) {
     startupTimeoutMs:integer(overrides.startupTimeoutMs,policy.startupTimeoutMs,1),
     shutdownTimeoutMs:integer(overrides.shutdownTimeoutMs,policy.shutdownTimeoutMs,1),
     busyTimeoutMs:integer(overrides.busyTimeoutMs,policy.busyTimeoutMs,0),
+    checkpointSoftBytes:integer(overrides.checkpointSoftBytes,policy.checkpointSoftBytes,1),
+    checkpointHardBytes:integer(overrides.checkpointHardBytes,policy.checkpointHardBytes,1),
+    checkpointTimeoutMs:integer(overrides.checkpointTimeoutMs,policy.maintenanceTimeoutMs,1),
     // A tool's explicit default deadline takes precedence over application
     // profiles; an inherited worker map retains the owner's resolved profiles.
     commandTimeouts:{...(overrides.timeoutMs === undefined?policy.commandTimeouts:{}),...overrides.commandTimeouts},

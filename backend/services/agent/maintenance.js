@@ -3,6 +3,8 @@ import { getInstrumentById } from '../market/instrumentRegistry.js';
 import { resolveExpectedClosedDailyCandle } from '../market/dailyCandleService.js';
 import { sessionPolicyResolver } from '../market/sessionPolicyResolver.js';
 import { candleIntervalMs } from '../market/canonicalCandle.js';
+import {CALENDAR_VERSION} from '../market/exchangeCalendar.js';
+import {expectedPublicableCandle,providerPublicationPolicy} from '../market/candleValidation.js';
 // Owns deterministic prerequisites and alerts independently of browser traffic.
 // Existing readers compute; all mutations continue through StorageManager.
 export class AgentMaintenance {
@@ -43,8 +45,10 @@ export class AgentMaintenance {
       const temporal=inputs.news?.hasRecentNews?Math.floor(now/60000):null;
       if(domain.startsWith('technical:')){
         const [,id,interval]=domain.split(':');const instrument=getInstrumentById(id);
-        const expected=interval==='1day'?resolveExpectedClosedDailyCandle(instrument,asOf)?.closeTime:sessionPolicyResolver.resolve(instrument,asOf,{intervalMs:candleIntervalMs(interval)}).expectedLatestCandleAt;
-        return stableHash([inputs.candles[`candles.revision:provider-yahoo:${id}:${interval}:splits`] || 0,expected]);
+        const policy=providerPublicationPolicy(instrument);
+        const expected=interval==='1day'?resolveExpectedClosedDailyCandle(instrument,asOf,{equityDelayMinutes:(policy.delayMs+policy.graceMs)/60000})?.closeTime:expectedPublicableCandle(instrument,interval,asOf).expectedLatestCandleAt;
+        const baseInterval=['15min','30min','1h'].includes(interval)?'5min':interval;
+        return stableHash([inputs.candles[`candles.revision:provider-yahoo:${id}:${baseInterval}:splits`] || 0,inputs.candles[`candles.revision:provider-yahoo:${id}:${interval}:splits`] || 0,expected,CALENDAR_VERSION,'shared-closed-series-v1']);
       }
       return stableHash(domain==='alerts'?[inputs.news?.revision,inputs.awareness,inputs.research]:domain==='evaluation'?[inputs.research,inputs.candles]:[inputs.news?.revision,inputs.awareness,inputs.market,inputs.signals,inputs.candles,temporal]);
     };

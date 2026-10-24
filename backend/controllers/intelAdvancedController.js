@@ -104,3 +104,10 @@ export async function getIntelAnomalies(req, res) {
     methodology: snapshot.methodology.anomaly
   }));
 }
+
+export async function getAdvancedJobStatus(req,res){
+  const jobId=String(req.query.jobId||'');
+  if(!/^[a-zA-Z0-9_-]{1,128}$/.test(jobId))throw new AppError('jobId requerido.',400,'INVALID_ANALYSIS_JOB');
+  if(res.app.locals.storageManager?.state==='disabled')throw new AppError('Trabajo desconocido.',404,'ANALYSIS_JOB_UNKNOWN');
+  res.json({ok:true,data:await res.app.locals.storageManager.request('runtime.load',{kind:'advanced-job',options:{jobId}})});
+}

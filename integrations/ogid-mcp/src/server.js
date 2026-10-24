@@ -4,7 +4,7 @@ import { createReadClient } from "./client.js";
 import { toolDefinitions, executeTool } from "./tools.js";
 import * as z from "zod/v4";
 
-const outputSchema = z.strictObject({ ok: z.boolean(), queriedAt: z.string(), origin: z.literal("OGID").optional(), data: z.record(z.string(), z.unknown()).optional(), warnings: z.array(z.string()).optional(), truncated: z.boolean().optional(), error: z.strictObject({ code: z.string(), message: z.string() }).optional() });
+const outputSchema = z.strictObject({ ok: z.boolean(), queriedAt: z.string(), origin: z.literal("OGID").optional(), data: z.record(z.string(), z.unknown()).optional(), warnings: z.array(z.string()).optional(), truncated: z.boolean().optional(), readReceipt:z.object({contractHash:z.string(),operationId:z.string(),snapshotId:z.string(),contentRead:z.boolean(),evidenceIds:z.array(z.string())}).optional(), error: z.strictObject({ code: z.string(), message: z.string(), details:z.object({stage:z.string(),issues:z.array(z.object({path:z.array(z.string()),code:z.string(),expected:z.string().optional()})).max(16)}).optional() }).optional() });
 
 export function createServer(config, read = createReadClient(config)) {
   const server = new McpServer({ name: "ogid-readonly", version: VERSION }, {

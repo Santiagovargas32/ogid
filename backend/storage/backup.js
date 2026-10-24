@@ -14,7 +14,12 @@ export async function createStorageBackup(sourcePath, destinationPath) {
     await db.backup(destination);
     const restored = new Database(destination, {readonly:true, fileMustExist:true});
     let integrity, foreignKeys;
-    try { integrity = restored.pragma("integrity_check"); foreignKeys = restored.pragma("foreign_key_check"); }
+    try {
+      // Offline verification visits indexes repeatedly. Bound its page cache
+      // explicitly instead of thrashing the default 2 MiB cache on a large DB.
+      restored.pragma('cache_size=-131072');
+      integrity = restored.pragma("integrity_check"); foreignKeys = restored.pragma("foreign_key_check");
+    }
     finally { restored.close(); }
     if (integrity.length !== 1 || integrity[0].integrity_check !== "ok" || foreignKeys.length) throw new Error("Backup inválido: falló integrity_check o foreign_key_check.");
     return {source, destination, verified:true, bytes:statSync(destination).size};

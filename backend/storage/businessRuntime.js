@@ -1,4 +1,6 @@
 import {beginEventIndex,eventIndexPage,eventIndexStatus,cleanEventIndex} from "./eventIndex.js";
+import { AdminHistoryProjection } from './adminHistoryProjection.js';
+import {RUNTIME_POLICY} from '../config/runtimePolicy.js';
 import { AdvancedSnapshots } from "./advancedSnapshots.js";
 import { calculateMarketProjection } from "../services/market/marketProjection.js";
 import { randomUUID } from "node:crypto";
@@ -34,7 +36,7 @@ import { AgentRepository } from "./agentRepository.js";
 import { SqlRssCanonicalState } from "./rssCanonicalState.js";
 import { checkOperation, committedOperationItems } from "../services/shared/operationContext.js";
 
-const METHODS={market:["analyze"],awareness:["parseSource","getSnapshot","reconcile","setSourceStale"],store:["view","getRow"],news:["ingest","recordContext","search","getItem","getHistory","coverage","getProjection","getFeed","getLiveFeed"],events:["ingest","search","replayAwareness"],alerts:["acknowledge","delta","getChange","acknowledgeChanges","recoverCheckpoint"],sources:["status","run","holdings","stop"],history:["create","get","run","coverage"],imports:["datasets","import"],technical:["get"],indicators:["calculate"],coupling:["calculate"],scenarios:["refresh","list","remove"],forecasts:["evaluate","record"],portfolio:["getContext"],rss:["getSnapshot","refresh"],conditions:["getSnapshot"],map:["getDashboardMapAssets","getLayerBundle","getConfig"],advanced:["getSnapshot"],signals:["recordSnapshot","getAnomalies"],candles:["query","append","upsert","latest","has","hasCandle","hydrate"]};
+const METHODS={market:["analyze"],awareness:["parseSource","getSnapshot","reconcile","setSourceStale"],store:["view","getRow"],news:["ingest","recordContext","search","getItem","getHistory","coverage","getProjection","getFeed","getLiveFeed"],events:["ingest","search","replayAwareness"],alerts:["acknowledge","delta","getChange","acknowledgeChanges","recoverCheckpoint"],sources:["status","run","holdings","stop"],history:["create","get","run","coverage","coverageState","coverageStates","ensureCatchup","repairPlan","cancel"],imports:["datasets","datasetsPage","import"],technical:["get"],indicators:["calculate"],coupling:["calculate"],scenarios:["refresh","list","remove"],forecasts:["evaluate","record"],portfolio:["getContext"],rss:["getSnapshot","refresh"],conditions:["getSnapshot"],map:["getDashboardMapAssets","getLayerBundle","getConfig"],advanced:["getSnapshot"],signals:["recordSnapshot","getAnomalies"],candles:["query","append","upsert","latest","has","hasCandle","hydrate","coverageSummary"]};
 export class BusinessRuntime {
   constructor(db,rpc,emitStage=()=>{}){Object.assign(this,{db,rpc,emitStage});this.stageStates=new Map();this.stageTimes=new Map();this.services=null;this.rssCursor=0;}
   progress(id,status,details={}) {
@@ -50,13 +52,30 @@ export class BusinessRuntime {
     if(this.analysisOnly)return {registered:listVerifiedInstruments().length};
     this.db.transaction(()=>{for(const i of listVerifiedInstruments())instrumentRow(this.db,i.instrumentId);}).immediate();
     this.registryDiagnostics=beginEventIndex(this.db);
+    this.maintenancePending=null;
     return {registered:listVerifiedInstruments().length,index:this.registryDiagnostics};
   }
-  indexPage(input){const started=performance.now();this.registryDiagnostics=eventIndexPage(this.db,input);if(this.registryDiagnostics.state==='ready')this.registryDiagnostics.cleanupPending=cleanEventIndex(this.db);this.registryDiagnostics.durationMs=performance.now()-started;return this.registryDiagnostics;}
+  indexPage(input={}){
+    const started=performance.now(),budgetMs=Math.min(RUNTIME_POLICY.storage.maintenancePageMs,input.budgetMs??RUNTIME_POLICY.storage.maintenancePageMs);
+    let state=eventIndexStatus(this.db),phase='events',details={};
+    if(state.state!=='ready')state=eventIndexPage(this.db,{...input,budgetMs});
+    else{
+      this.maintenancePending ||= {cleanup:true,candles:true,research:true};
+      const phases=Object.keys(this.maintenancePending),available=phases.filter(p=>this.maintenancePending[p]);
+      phase=available.includes(this.maintenanceNext)?this.maintenanceNext:available[0]||'idle';
+      if(phase==='cleanup')this.maintenancePending.cleanup=cleanEventIndex(this.db);
+      if(phase==='candles'){const page=this.services?.candles.validatePage({budgetMs});details.candleValidation=page;this.maintenancePending.candles=Boolean(page?.hasMore);}
+      if(phase==='research'){const page=this.services?.store.validateProjectionPage({budgetMs});details.researchProjection=page;this.maintenancePending.research=Boolean(page?.hasMore);}
+      this.maintenanceNext=phases[(phases.indexOf(phase)+1)%phases.length];
+    }
+    this.registryDiagnostics={...this.registryDiagnostics,...state,...details,cleanupPending:state.state!=='ready'||!this.maintenancePending||Object.values(this.maintenancePending).some(Boolean),maintenancePhase:phase,maintenanceBudgetMs:budgetMs,durationMs:performance.now()-started};
+    return this.registryDiagnostics;
+  }
   close(){this.newsCorpus?.close();this.services?.news.close();}
   restoreQuotas(){for(const [provider,saved]of Object.entries(this.load("provider-quota")?.providers || {})){apiQuotaTracker.ensureProvider(provider);Object.assign(apiQuotaTracker.providers[provider],saved);}}
   configure(input={}){
     this.analysisOnly=input.analysisOnly === true;
+    if(!this.analysisOnly)writeMeta(this.db,'source.configurationEpoch',readMeta(this.db,'source.configurationEpoch',0)+1);
     this.advancedSnapshots=new AdvancedSnapshots(this);
     if(!this.analysisOnly)this.advancedSnapshots.recover();
     if(input.requireImport&&!readMeta(this.db,"import.ready",false))throw new AppError("Ejecutar storage:migrate antes de activar el servicio SQL.",503,"STORAGE_IMPORT_REQUIRED");
@@ -133,7 +152,7 @@ export class BusinessRuntime {
     }
     const savedFeedStatus=this.load("rss-feeds");this.rssCursor=savedFeedStatus?.nextFeedOffset || 0;this.rssFeedStatuses=new Map(Object.entries(savedFeedStatus?.feeds || {}));
     this.services={market:{analyze:input=>this.analyzeMarket(input)},store,news,events,alerts,candles,imports,technical,scenarios,signals,rss,awareness:new SqlAwarenessStore(this.db),
-      sources:new OfficialSourceService({store,eventLedger:events,sources:input.researchSources || [],userAgent:process.env.RESEARCH_SEC_USER_AGENT || null}),
+      sources:new OfficialSourceService({store,eventLedger:events,sources:input.researchSources || [],userAgent:process.env.RESEARCH_SEC_USER_AGENT || null,acquire:input.analysisOnly?null:input=>this.rpc("source.acquire",input),cancelAcquire:attemptId=>this.rpc("source.cancel",{attemptId}),configurationVersion:()=>readMeta(this.db,"source.configurationEpoch",0)}),
       history:new HistoricalAcquisitionService({ledger:store,candleStore:candles,marketDataService:{fetchYahooBars:(symbol,options)=>this.rpc("market.fetch",{symbol,options})}}),
       indicators:new TechnicalIndicatorService({store:candles}),coupling:new NewsPriceCouplingService({store:candles}),forecasts:new ForecastEvaluationService({store,candleStore:candles}),
       portfolio:new PortfolioContextService({stateManager,archive:news,alerts,awarenessService,watchlist,scenarioService:scenarios}),
@@ -175,6 +194,7 @@ export class BusinessRuntime {
     }).immediate();
   }
   load(kind,options={}){
+    if(kind==='advanced-job')return this.advancedSnapshots.status(options.jobId);
     if(kind==='dashboard-analysis')return this.advancedSnapshots.peek(options);
     if(kind==="maintenance-inputs")return this.db.transaction(()=>({
       news:{...readMeta(this.db,"news.meta",{}),hasRecentNews:Boolean(this.db.prepare("SELECT 1 FROM articles INDEXED BY articles_projection_window WHERE published_at>=? AND published_at<=? LIMIT 1").get(new Date(Date.now()-48*3600000).toISOString(),new Date().toISOString()))},awareness:readMeta(this.db,"awareness.revision",0),
@@ -231,7 +251,7 @@ export class BusinessRuntime {
     // Portfolio queries read their requested archive window directly. Loading
     // the analytical corpus here duplicated historical I/O without using it.
     if(captured.newsFromStorage && ["conditions","map"].includes(service)){
-      const newsWindowHours=service==="advanced" ? Math.max(2,Number(args[0]?.windowHours || 24)*2) : service==="conditions" ? Math.max(1,Number(args[0]?.windowMin || 240)/60) : this.newsCorpus.config.candidateWindowHours || 36;
+      const newsWindowHours=service==="advanced" ? Math.max(2,Number(args[0]?.windowHours || 24)*2) : service==="conditions" ? args[0]?.anchor==="last-close"?168:Math.max(1,Number(args[0]?.windowMin || 240)/60) : this.newsCorpus.config.candidateWindowHours || 36;
       const corpus=service==='map'
         ? await this.newsCorpus.read({windowHours:newsWindowHours,awarenessMode:captured.awareness?.mode || "off"})
         : await this.newsCorpus.readAnalytical({windowHours:newsWindowHours,awarenessMode:captured.awareness?.mode || "off"});
@@ -303,7 +323,7 @@ export class BusinessRuntime {
           result.reproducibility={articles:'immutable article revisions',signals:'hash of persisted signal snapshot',context:'captured in durable job',complete:Boolean(analysisJob)&&!captured.newsCoverage.legacyAvailabilityCount,legacyAvailabilityCount:captured.newsCoverage.legacyAvailabilityCount || 0};
         }
         const record={kind:`${service}.${method}`,input:args,result};
-        if(analysisJob){await this.rpc("analysis.persist",{type:"advanced",jobId:analysisJob.jobId,result});return result;}
+        if(analysisJob){await this.rpc("analysis.persist",{type:"advanced",jobId:analysisJob.jobId,owner:analysisJob.owner,fence:analysisJob.fence,result});return result;}
         const identity=stableHash([record.kind,record.input,record.result?.semanticRevision || record.result]);
         this.persistedAnalyses ||= new Set();
         if(!this.persistedAnalyses.has(identity)){
@@ -332,13 +352,13 @@ export class BusinessRuntime {
     }).immediate();
     return id;
   }
-  persistDerived({type,record,checkpoint,jobId,result,candidates,input}={}){
+  persistDerived({owner,fence,type,record,checkpoint,jobId,result,candidates,input}={}){
     if(this.analysisOnly)throw new AppError("Persistencia reservada al worker principal.",503,"STORAGE_INVALID_COMMAND");
     if(type === "agent-snapshot"){
       this.agent ||= new AgentRepository(this);
       return this.agent.snapshotWrite(input);
     }
-    if(type === "advanced")return this.advancedSnapshots.publish({jobId,result});
+    if(type === "advanced")return this.advancedSnapshots.publish({jobId,result,owner,fence});
     if(type === "portfolio-material" && Array.isArray(candidates))return publicProjection(this.services.alerts.candidates(candidates),2);
     if(type === "analysis" && record && /^(market|indicators|technical|conditions|coupling|forecasts|advanced)\./.test(record.kind)){
       this.recordAnalysis(record.kind,record.input,record.result);return {persisted:true};
@@ -399,8 +419,6 @@ export class BusinessRuntime {
     }
   }
 
-  adminHistory(awareness){
-    const {store,history,imports}=this.services,events=Object.values(store.state.events);
-    return {instruments:listVerifiedInstruments().map(i=>({instrumentId:i.instrumentId,symbol:i.canonicalSymbol,currency:i.currency,missingIdentity:["companyId","calendarId","mic","isin"].filter(k=>!i[k]),coverage:history.coverage(i.instrumentId)})),jobs:Object.values(store.state.jobs).filter(j=>j.kind!=="csv-import").sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).slice(0,50).map(j=>history.get(j.jobId)),datasets:imports.datasets(),eventIdentity:{verified:events.filter(e=>e.identityVersion==="source-publication-v2").length,legacyRequiresReplay:events.filter(e=>e.identityVersion!=="source-publication-v2").slice(0,100).map(e=>({eventId:e.eventId,evidenceCount:e.evidence.length,reason:"legacy_identity_requires_replay; excluded from impacts"}))}};
-  }
+  adminHistory(input={}){this.historyProjection ||= new AdminHistoryProjection(this.db);return this.historyProjection.get(input);}
+  adminHistoryRevision(input={}){this.historyProjection ||= new AdminHistoryProjection(this.db);return this.historyProjection.revision(input);}
 }

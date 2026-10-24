@@ -28,12 +28,27 @@ function rows(text) {
 export class HistoricalImportService {
   constructor({ledger,rootDir,now=Date.now}={}) {Object.assign(this,{ledger,rootDir,now});this.stores=new Map();this.inFlight=new Map();}
   datasets() {
+    if(this.ledger.db)return this.datasetsPage().datasets;
     const byId=new Map();
     for(const job of Object.values(this.ledger.state.jobs).filter(j=>j.kind==="csv-import"&&j.status==="completed"))byId.set(job.datasetId,{datasetId:job.datasetId,...job.metadata,lastImportedAt:job.completedAt});
     return [...byId.values()];
   }
+  datasetMetadata(datasetId){
+    if(!this.ledger.db)return this.datasets().find(d=>d.datasetId===datasetId);
+    const row=this.ledger.db.prepare('SELECT dataset_id AS datasetId,metadata_json FROM market_datasets WHERE dataset_id=?').get(datasetId);
+    return row?{datasetId:row.datasetId,...JSON.parse(row.metadata_json)}:null;
+  }
+  datasetsPage({limit=100,cursor=null}={}){
+    if(!Number.isSafeInteger(Number(limit))||Number(limit)<1||Number(limit)>100)throw new AppError('Límite inválido.',400,'INVALID_HISTORY_ARGUMENTS');
+    const revision=this.ledger.state.revision||0;let after='';
+    if(cursor){let c;try{c=JSON.parse(Buffer.from(cursor,'base64url').toString());}catch{throw new AppError('Cursor inválido.',400,'INVALID_HISTORY_CURSOR');}if(c.revision!==revision)throw new AppError('La revisión cambió.',409,'HISTORY_REVISION_CHANGED');if(typeof c.after!=='string'||c.after.length>128)throw new AppError('Cursor inválido.',400,'INVALID_HISTORY_CURSOR');after=c.after;}
+    const rows=this.ledger.db?this.ledger.db.prepare("SELECT dataset_id AS datasetId,metadata_json FROM market_datasets WHERE dataset_id LIKE 'csv-%' AND dataset_id>? ORDER BY dataset_id LIMIT ?").all(after,Number(limit)+1).map(r=>({datasetId:r.datasetId,...JSON.parse(r.metadata_json)})):this.datasets().filter(d=>d.datasetId>after).sort((a,b)=>a.datasetId.localeCompare(b.datasetId)).slice(0,Number(limit)+1);
+    const datasets=[];let bytes=0;for(const row of rows.slice(0,Number(limit))){const size=Buffer.byteLength(JSON.stringify(row));if(bytes+size>131072)break;datasets.push(row);bytes+=size;}
+    const hasMore=rows.length>datasets.length;
+    return {datasets,pagination:{revision,limit:Number(limit),hasMore,nextCursor:hasMore&&datasets.length?Buffer.from(JSON.stringify({revision,after:datasets.at(-1).datasetId})).toString('base64url'):null,reason:hasMore&&!datasets.length?'byte-budget':null}};
+  }
   store(datasetId) {
-    if(!/^csv-[a-f0-9]{32}$/.test(datasetId)||!this.datasets().some(d=>d.datasetId===datasetId))throw new AppError("Dataset no disponible.",404,"HISTORY_DATASET_NOT_FOUND");
+    if(!/^csv-[a-f0-9]{32}$/.test(datasetId)||!this.datasetMetadata(datasetId))throw new AppError("Dataset no disponible.",404,"HISTORY_DATASET_NOT_FOUND");
     return this.open(datasetId);
   }
   open(datasetId) {
@@ -88,7 +103,7 @@ export class HistoricalImportService {
     } finally {this.inFlight.delete(jobId);}
   }
   candles({datasetId,instrumentId,adjustmentMode,...query}) {
-    const metadata=this.datasets().find(d=>d.datasetId===datasetId);
+    const metadata=this.datasetMetadata(datasetId);
     if(!metadata||metadata.instrumentId!==instrumentId||metadata.adjustmentMode!==adjustmentMode)throw new AppError("Dataset, instrumento o ajuste incompatibles.",400,"HISTORY_DATASET_MISMATCH");
     return this.store(datasetId).query({instrumentId,adjustmentMode,...query});
   }

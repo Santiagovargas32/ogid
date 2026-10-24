@@ -103,6 +103,7 @@ export const api = {
   getSyncChanges: (params = {}, options = {}) => request("/api/intel/changes", params, { ...options, cache: "no-store" }),
   getHealth: (options = {}) => request("/api/health", {}, options),
   getSnapshot: (params = {}, options = {}) => request("/api/intel/snapshot", params, options),
+  getAdvancedJobStatus:(params={},options={})=>request("/api/intel/advanced-snapshot/status",params,{...options,cache:"no-store"}),
   getAdvancedIntelligenceSnapshot: (params = {}, options = {}) => request("/api/intel/advanced-snapshot", params, { ...options, cache: "no-store" }),
   getAwarenessSnapshot: (params = {}, options = {}) => request("/api/intel/awareness-snapshot", params, { ...options, cache: "no-store" }),
   refreshIntel: (payload = {}) => request("/api/intel/refresh", {}, { method: "POST", body: payload }),

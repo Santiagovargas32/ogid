@@ -65,7 +65,7 @@ export class ManagedAgentRuntime {
     const c=this.config,d=c.managed.directory;
     const env={PATH:this.environment.PATH || "/usr/local/bin:/usr/bin:/bin",HOME:join(d,"home"),TMPDIR:join(d,"tmp"),LANG:this.environment.LANG || "C.UTF-8",NODE_ENV:"production",OGID_MANAGED_CHILD:"1",AGENT_MODEL_MANIFEST:this.manifestPath};
     if(name==="broker")return {...env,AGENT_BROKER_URL:c.brokerUrl,AGENT_BROKER_TOKEN:c.brokerToken,LLAMACPP_BASE_URL:this.environment.LLAMACPP_BASE_URL || "http://127.0.0.1:8080/v1",LLAMACPP_API_KEY:this.environment.LLAMACPP_API_KEY || ""};
-    if(name==="worker")return {...env,AGENT_MODE:c.mode,AGENT_BACKGROUND_MODEL:c.backgroundModel,AGENT_WORKER_TOKEN:c.internalToken,OGID_INTERNAL_URL:this.baseUrl,OGID_OPENCODE_URL:c.opencodeUrl,OGID_OPENCODE_PASSWORD:c.opencodePassword};
+    if(name==="worker")return {...env,AGENT_MODE:c.mode,AGENT_TASK_MODES:JSON.stringify(c.taskModes||{}),AGENT_BACKGROUND_MODEL:c.backgroundModel,AGENT_WORKER_TOKEN:c.internalToken,OGID_INTERNAL_URL:this.baseUrl,OGID_OPENCODE_URL:c.opencodeUrl,OGID_OPENCODE_PASSWORD:c.opencodePassword};
     return {...env,AGENT_BROKER_TOKEN:c.brokerToken,OPENCODE_PASSWORD:c.opencodePassword,OGID_BASE_URL:this.baseUrl,OPENCODE_CONFIG:this.configPath,OPENCODE_DISABLE_PROJECT_CONFIG:"1",OPENCODE_DISABLE_CLAUDE_CODE:"1",XDG_CONFIG_HOME:join(d,"config"),XDG_DATA_HOME:join(d,"data"),XDG_STATE_HOME:join(d,"state"),XDG_CACHE_HOME:join(d,"cache")};
   }
   async launchComponent(name){
@@ -105,7 +105,7 @@ export class ManagedAgentRuntime {
     });
     child.on('message',message=>{
       if(this.children.get(name)!==child || name!=='worker' || message?.type!=='agent-worker-health' || !['connected','degraded'].includes(message.state))return;
-      state.workerHealth={state:message.state,reportedAt:new Date().toISOString()};
+      state.workerHealth={state:message.state,reportedAt:new Date().toISOString(),contract:message.contract&&/^[a-f0-9]{64}$/.test(message.contract.hash||'')?{version:String(message.contract.version||'unknown').slice(0,32),hash:message.contract.hash,mcpHash:/^[a-f0-9]{64}$/.test(message.contract.mcpHash||'')?message.contract.mcpHash:null}:null};
       if(state.state!=='starting')state.state=message.state==='connected'?'running':'degraded';
       state.errorCode=message.state==='connected'?null:/^AGENT_[A-Z0-9_]{1,64}$/.test(message.errorCode || '')?message.errorCode:'AGENT_WORKER_UNAVAILABLE';
     });

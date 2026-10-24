@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { shadowSample } from "../scripts/agent-shadow-observe.js";
+import { shadowSample,recordStorageDiagnostics } from "../scripts/agent-shadow-observe.js";
 import { ensureShadowModel } from "../services/agent/shadowModel.js";
 
 test("shadow observer keeps operational evidence without credentials, devices or publication bodies", async () => {
@@ -35,6 +35,35 @@ test("shadow observer exposes stale SQLite heartbeats even when HTTP remains ava
   assert.equal(sample.storage.writer.activeCommands[0].operation,'news.supplemental');
   assert.equal(sample.storage.writer.failed,2);
   assert.doesNotMatch(JSON.stringify(sample),/secret-/);
+});
+
+test('observer captures WAL debt, SQL commit waits and original failures with bounded private projections',async()=>{
+  const sql={state:'idle',method:'idle',sql:"INSERT INTO fixture VALUES('secret-sql',123)",lastDurationMs:0.03,transaction:{phase:'commit',depth:1,elapsedMs:66000,private:'secret-tx'},bindings:['secret-binding']};
+  const native={threadId:12,waitChannel:{available:true,value:'io_schedule',private:'secret-channel'},stack:{available:true,value:'kernel_symbol\n'.repeat(1000)},ioPressure:{available:false,code:'EACCES'},private:'secret-native'};
+  const failure={code:'STORAGE_OUTCOME_UNKNOWN',causeCode:'STORAGE_DISPATCH_TIMEOUT',sqlActivity:sql,nativeWait:native,unconfirmedCommands:[{input:'secret-input'}],private:'secret-failure'};
+  const checkpoint={state:'ready',mode:'PASSIVE',walBytes:200000000,backpressure:true,limitScope:'uncheckpointed-pages-and-growth',softLimitBytes:4194304,hardLimitBytes:134217728,completed:8,failures:1,connection:{queryOnly:true,synchronous:2,private:'secret-connection'},active:{elapsedMs:1234},lastResult:{log:600,checkpointed:400,pendingFrames:200,pendingBytes:819200,durationMs:37,private:'secret-result'},lastError:{code:'STORAGE_CHECKPOINT_TIMEOUT',nativeWait:native,private:'secret-error'},private:'secret-checkpoint'};
+  const sample=await shadowSample({fetchImpl:async url=>Response.json({data:url.pathname==='/api/health'?{storage:{state:'failed',walCheckpoint:checkpoint,worker:{sqlActivity:sql},failure,queries:{failure}}}:{}})});
+  assert.equal(sample.storage.walCheckpoint.lastResult.pendingBytes,819200);
+  assert.equal(sample.storage.walCheckpoint.backpressure,true);
+  assert.equal(sample.storage.walCheckpoint.connection.queryOnly,true);
+  assert.equal(sample.storage.writer.sqlActivity.transaction.phase,'commit');
+  assert.equal(sample.storage.writer.failure.causeCode,'STORAGE_DISPATCH_TIMEOUT');
+  assert.equal(sample.storage.queries.failure.unconfirmedCount,1);
+  assert.equal(sample.storage.writer.failure.nativeWait.stack.value.length,2048);
+  assert.deepEqual(sample.storage.writer.failure.nativeWait.ioPressure,{available:false,value:null,code:'EACCES',truncated:null});
+  assert.doesNotMatch(JSON.stringify(sample),/secret-/);
+  assert.ok(JSON.stringify(sample).length<13000);
+  const summary={};recordStorageDiagnostics(summary,sample);
+  assert.equal(summary.walBackpressureSamples,1);assert.equal(summary.maxCheckpointPendingBytes,819200);assert.equal(summary.maxCheckpointDurationMs,37);assert.equal(summary.maxCheckpointFailures,1);
+  recordStorageDiagnostics(summary,{storage:{walCheckpoint:{state:'failed',backpressure:false,failures:2,lastResult:{pendingBytes:0,durationMs:5}}}});
+  assert.equal(summary.checkpointFailedSamples,1);assert.equal(summary.walBackpressureSamples,1);assert.equal(summary.maxCheckpointPendingBytes,819200);assert.equal(summary.maxCheckpointFailures,2);
+});
+
+test('observer keeps checkpoint diagnostics unknown for older or unavailable backends',async()=>{
+  const sample=await shadowSample({fetchImpl:async()=>Response.json({data:{}})});
+  assert.equal(sample.storage.walCheckpoint,null);assert.equal(sample.storage.writer.sqlActivity,null);assert.equal(sample.storage.writer.failure,null);
+  const summary={};recordStorageDiagnostics(summary,sample);
+  assert.equal(summary.checkpointUnknownSamples,1);assert.equal(summary.maxCheckpointPendingBytes,null);assert.equal(summary.maxCheckpointDurationMs,null);assert.equal(summary.maxCheckpointFailures,null);
 });
 
 test("shadow activation never evicts another model and deferred preparation cannot claim readiness", async () => {

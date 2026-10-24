@@ -1,3 +1,4 @@
+import {healthDiagnostics} from '../services/healthDiagnostics.js';
 import { BACKEND_BUILD } from "../utils/buildIdentity.js";
 import stateManager from "../state/stateManager.js";
 import { isAdminAuthorized } from "../middleware/sensitiveRouteAuth.js";
@@ -24,10 +25,11 @@ export function getHealth(req, res) {
     metrics:websocket.metrics, activeConnections:[], lastConnection:null, lastDisconnection:null };
   const persistence = orchestrator?.getMarketHistoryStatus?.() || null;
 
+  const diagnostics=healthDiagnostics(res.app.locals,meta);
   res.json({
     ok: true,
     data: {
-      status:(storage&&(!["ready","disabled"].includes(storage.state)||storage.reconciliation?.pending||storage.analysis?.state === "failed"||storage.analysisRecovery?.recovering||storage.queries?.state === "failed"||storage.queryRecovery?.recovering))||Object.values(res.app.locals.pipelineMonitor?.snapshot() || {}).some(s=>["degraded","blocked","failed","stale"].includes(s.status))?"degraded":"ok",
+      status:diagnostics.operational.status==='ok'&&diagnostics.quality.status==='ok'?'ok':'degraded',diagnostics,
       storage: administrative ? storage : storage && {state:storage.state,businessStorage:storage.businessStorage,lastErrorCode:storage.lastErrorCode,queue:storage.queue,queries:storage.queries&&{state:storage.queries.state,queue:storage.queries.queue,lastErrorCode:storage.queries.lastErrorCode},analysis:storage.analysis&&{state:storage.analysis.state,queue:storage.analysis.queue,lastErrorCode:storage.analysis.lastErrorCode}},
       pipeline: res.app.locals.pipelineMonitor?.snapshot() || {},
       server:{pid:process.pid,nodeVersion:process.version,startedAt:SERVER_STARTED_AT,memory:process.memoryUsage()},

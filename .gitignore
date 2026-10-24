@@ -42,6 +42,8 @@ docs/performance
 /docs/OGID — Production Hardening & Agentic .md
 # Local agent validation artifacts; keep outside backend's recursive test scan.
 /.agent-validation/
+/.agent-validation
+/backend/data/maintenance
 /backend/data/agent-runtime/
 # Auditoría solicitada: sólo informes redactados, sin bases, logs ni credenciales.
 !/docs/
@@ -59,3 +61,9 @@ docs/performance
 !/docs/audits/2026-10-23/
 !/docs/audits/2026-10-23/shadow-implementation.md
 !/docs/audits/2026-10-23/live-sec-etf-diagnosis.md
+docs/OGID-Prompt-Codex-GPT-6.1-xhigh.md
+!/docs/audits/2026-10-23/local-increment-implementation.md
+!/docs/audits/2026-10-23/writer-stall-correction.md
+# Diagnóstico y runbook de la siguiente prueba shadow.
+!/docs/audits/2026-10-24/
+!/docs/audits/2026-10-24/live-stability-diagnosis.md

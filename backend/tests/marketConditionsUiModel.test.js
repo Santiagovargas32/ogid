@@ -108,6 +108,13 @@ test("market conditions UI model preserves signed direction and creates exact do
   assert.equal(scoreDisplay(19, { signed: true }), "+19");
   assert.match(scoreAriaLabel("SPY direction", 19, "neutral", { signed: true }), /minus 100 to 100 scale/);
 });
+test('last-close UI preserves the explicit cut, delay and horizon while the session is closed',()=>{
+  const source=payload();source.anchor='last-close';
+  Object.assign(source.symbols[0],{sessionAsOf:'2026-07-31T20:00:00.000Z',dataAsOf:'2026-07-31T20:00:00.000Z',calculatedAt:source.generatedAt,providerDelayMs:900000,horizonMinutes:240});
+  Object.assign(source.symbols[0].availability,{anchor:'last-close',sessionState:'closed'});
+  const result=normalizeMarketConditions(source),symbol=result.symbols[0];
+  assert.equal(result.anchor,'last-close');assert.equal(symbol.availability.sessionState,'closed');assert.equal(symbol.operabilityScore,71);assert.equal(symbol.sessionAsOf,source.symbols[0].sessionAsOf);assert.equal(symbol.providerDelayMs,900000);assert.equal(symbol.horizonMinutes,240);
+});
 
 test("pressure normalization rounds deterministically and always sums to 100", () => {
   const pressure = normalizePressure({ positive: 1, neutral: 1, negative: 1 });

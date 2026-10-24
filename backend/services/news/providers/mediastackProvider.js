@@ -90,6 +90,7 @@ export async function fetchMediastack({
   if (!response.ok) {
     const body = await response.text();
     const error = new Error(`mediastack-upstream-${response.status}:${body.slice(0, 120)}`);
+    error.httpStatus = response.status;
     error.rateLimit = rateLimit;
     throw error;
   }

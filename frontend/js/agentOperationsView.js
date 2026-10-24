@@ -28,7 +28,7 @@ export function renderAgentOperations(data,{process,activity,publications,update
    const elapsed=Math.max(0,Date.parse(run?.finishedAt||data.sampledAt)-Date.parse(run?.startedAt||j.createdAt));
    const progress=`${m.toolsCompleted??"--"} herramientas · primera señal ${seconds(m.firstProgressMs)} · actividad ${date(m.lastProgressAt)}`;
    const repairs=m.validationAttempts?.length?` · reparación ${m.validationAttempts.length}`:'';
-   for(const text of [`${j.task} · ${j.scope}`,`${j.status}${m.phase?` · fase ${m.phase}`:''}${repairs}`,j.model,seconds(elapsed),progress,j.errorCode||'--',`${j.jobId} · fence ${j.fence} · ${j.snapshotId||'sin snapshot'}`])row.append(node('td',text));
+   for(const text of [`${j.task} · ${j.scope}`,`${j.status}${m.phase?` · fase ${m.phase}`:''}${repairs}`,j.model,seconds(elapsed),progress,m.lastToolFailure?`${m.lastToolFailure.operationId||'MCP'} · ${m.lastToolFailure.code} · ${(m.lastToolFailure.validation?.issues||[]).map(i=>i.path.join('.')+':'+i.code).join(', ')}`:j.errorCode||'--',`${j.jobId} · fence ${j.fence} · ${j.snapshotId||'sin snapshot'} · generación ${m.generation?.key||'desconocida'} · contrato MCP ${m.mcpContractHash||m.effectiveContract?.mcpHash||'desconocido'}`])row.append(node('td',text));
    body.append(row);
   }
   wrap.append(table);activity.append(wrap);

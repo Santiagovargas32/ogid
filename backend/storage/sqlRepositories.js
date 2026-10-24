@@ -7,6 +7,7 @@ import { storeIdentity, sameMarketValues, revise, mergeStoredSession } from "../
 import { AppError } from "../utils/error.js";
 import { getInstrumentById, listVerifiedInstruments } from "../services/market/instrumentRegistry.js";
 import { sanitizeSensitiveData } from "../utils/sanitize.js";
+import {assessClosedCandle,CANDLE_VALIDATION_VERSION} from '../services/market/candleValidation.js';
 
 export function readMeta(db, key, fallback) {
   const row = db.prepare("SELECT value_json FROM runtime_meta WHERE key=?").get(key);
@@ -49,6 +50,7 @@ export class SqlResearchStore {
   }
   transact(fn) {
     return this.db.transaction(() => {
+      const projectionTrusted=readMeta(this.db,'projection.events.status',null)==='ready'||(this.db.prepare("SELECT records FROM storage_counts WHERE name='events'").get()?.records===0&&!(this.db.prepare("SELECT records FROM storage_collection_counts WHERE collection='events'").get()?.records));
       const cache = new Map(), next = this.makeState(cache), result = fn(next);
       if (result?.then) throw new Error("SQL domain transactions must be synchronous");
       for (const [collection, rows] of cache) for (const [id, row] of rows) {
@@ -61,8 +63,28 @@ export class SqlResearchStore {
         }
       }
       writeMeta(this.db, "research.revision", next.revision + 1);
+      if(projectionTrusted)writeMeta(this.db,'projection.events.status','ready');
 
       return structuredClone(result ?? null);
+    }).immediate();
+  }
+  validateProjectionPage({limit=128,maxBytes=1048576,budgetMs=100}={}){
+    return this.db.transaction(()=>{
+      const started=performance.now();budgetMs=Math.min(250,Math.max(1,Number(budgetMs)||100));
+      const status=readMeta(this.db,'projection.events.status',null);if(status==='ready'||status==='blocked')return {hasMore:false,status};
+      const cursor=readMeta(this.db,'projection.events.cursor',0),refs=this.db.prepare("SELECT rowid FROM research_rows NOT INDEXED WHERE collection='events' AND rowid>? ORDER BY rowid LIMIT ?").all(cursor,Math.min(limit,128));
+      let bytes=0,through=cursor,processed=0;
+      for(const ref of refs){if(processed&&performance.now()-started>=budgetMs)break;
+        const r=this.db.prepare('SELECT entity_id,payload_json FROM research_rows WHERE rowid=?').get(ref.rowid),size=Buffer.byteLength(r.payload_json);if(processed&&bytes+size>maxBytes)break;bytes+=size;
+        const canonical=JSON.parse(r.payload_json),projection=this.db.prepare('SELECT revision,identity_version,payload_json FROM events WHERE event_id=?').get(r.entity_id);
+        if(!projection||projection.revision!==(canonical.revision||1)||projection.identity_version!==(canonical.identityVersion||'legacy')||projection.payload_json!==r.payload_json)this.project('events',r.entity_id,canonical);
+        through=ref.rowid;processed++;
+      }
+      writeMeta(this.db,'projection.events.cursor',through);
+      const more=Boolean(this.db.prepare("SELECT 1 FROM research_rows NOT INDEXED WHERE collection='events' AND rowid>? LIMIT 1").get(through));
+      const counts=this.db.prepare("SELECT (SELECT records FROM storage_counts WHERE name='events') AS projected,(SELECT records FROM storage_collection_counts WHERE collection='events') AS canonical").get();
+      const next=more?'building':(counts.projected||0)===(counts.canonical||0)?'ready':'blocked';writeMeta(this.db,'projection.events.status',next);
+      return {status:next,processed,bytes,cursor:through,hasMore:more};
     }).immediate();
   }
   project(collection, id, row) {
@@ -80,7 +102,7 @@ export class SqlResearchStore {
       sourceRow(this.db,id);
       this.db.prepare("INSERT INTO source_states VALUES(?,?,?) ON CONFLICT(source_id) DO UPDATE SET updated_at=excluded.updated_at,state_json=excluded.state_json").run(id,new Date().toISOString(),JSON.stringify(row));
     } else if (collection === "jobs") {
-      if(row.kind === "csv-import" && row.metadata)this.db.prepare("INSERT INTO market_datasets VALUES(?,?,?,?) ON CONFLICT(dataset_id) DO UPDATE SET source=excluded.source,adjustment_mode=excluded.adjustment_mode,metadata_json=excluded.metadata_json").run(row.datasetId,row.metadata.source,row.metadata.adjustmentMode,JSON.stringify(row.metadata));
+      if(row.kind === "csv-import" && row.metadata)this.db.prepare("INSERT INTO market_datasets VALUES(?,?,?,?) ON CONFLICT(dataset_id) DO UPDATE SET source=excluded.source,adjustment_mode=excluded.adjustment_mode,metadata_json=excluded.metadata_json").run(row.datasetId,row.metadata.source,row.metadata.adjustmentMode,JSON.stringify({...row.metadata,lastImportedAt:row.completedAt||null}));
       this.db.prepare("INSERT INTO acquisition_jobs VALUES(?,?,?,?,?,?,?) ON CONFLICT(job_id) DO UPDATE SET status=excluded.status,updated_at=excluded.updated_at,job_json=excluded.job_json").run(id,id,row.kind || "history",row.status || "pending",row.createdAt,new Date().toISOString(),JSON.stringify(row));
     }
   }
@@ -95,6 +117,32 @@ export class SqlCandleStore {
     if(!readOnly)this.db.prepare("INSERT OR IGNORE INTO market_datasets VALUES(?,?,?,?)").run(datasetId,"provider-observed","mixed", "{}");
   }
   hydrate() { return 0; }
+  coverageSummary({instrumentIds=[],interval='5min',adjustmentMode='splits'}={}){
+    const ids=[...new Set(instrumentIds)].slice(0,100);if(!ids.length)return [];
+    const rows=this.db.prepare(`SELECT c.instrument_id AS instrumentId,count(*) AS localCandleCount,max(c.close_time) AS lastClosedCandleAt,
+      sum(CASE WHEN v.eligible=1 THEN 1 ELSE 0 END) AS eligibleCandles,sum(CASE WHEN v.eligible=0 THEN 1 ELSE 0 END) AS rejectedCandles,sum(CASE WHEN v.method_version IS NULL THEN 1 ELSE 0 END) AS unknownCandles
+      FROM candles c INDEXED BY candles_coverage_metadata LEFT JOIN candle_validations v INDEXED BY candle_validations_coverage ON v.instrument_id=c.instrument_id AND v.interval=c.interval AND v.adjustment_mode=c.adjustment_mode AND v.dataset_id=c.dataset_id AND v.session_key=c.session_key AND v.candle_revision=c.revision AND v.method_version=?
+      WHERE c.dataset_id=? AND c.interval=? AND c.adjustment_mode=? AND c.instrument_id IN (${ids.map(()=>'?').join(',')}) GROUP BY c.instrument_id`).all(CANDLE_VALIDATION_VERSION,this.datasetId,interval,adjustmentMode,...ids);
+    const map=new Map(rows.map(r=>[r.instrumentId,r]));return ids.map(instrumentId=>{const row=map.get(instrumentId)||{localCandleCount:0,lastClosedCandleAt:null,eligibleCandles:0,rejectedCandles:0,unknownCandles:0};return {instrumentId,coverageStatus:'verified-storage',...row,quality:{status:row.unknownCandles?'unknown':row.rejectedCandles?'partial':'verified-grid',methodVersion:CANDLE_VALIDATION_VERSION}};});
+  }
+  validatePage({limit=128,maxBytes=1048576,budgetMs=100}={}){
+    return this.db.transaction(()=>{
+      const started=performance.now();budgetMs=Math.min(250,Math.max(1,Number(budgetMs)||100));
+      const cursor=readMeta(this.db,'candle.validationCursor',0),refs=this.db.prepare('SELECT rowid FROM candles WHERE rowid>? ORDER BY rowid LIMIT ?').all(cursor,Math.min(128,limit));
+      let bytes=0,through=cursor,processed=0;
+      for(const ref of refs){if(processed&&performance.now()-started>=budgetMs)break;
+        const row=this.db.prepare('SELECT * FROM candles WHERE rowid=?').get(ref.rowid),size=Buffer.byteLength(row.payload_json);if(processed&&bytes+size>maxBytes)break;bytes+=size;
+        this.recordValidation(JSON.parse(row.payload_json),[row.instrument_id,row.interval,row.adjustment_mode,row.dataset_id,row.session_key]);through=ref.rowid;processed++;
+      }
+      if(processed){writeMeta(this.db,'candle.validationCursor',through);writeMeta(this.db,'candle.validationRevision',readMeta(this.db,'candle.validationRevision',0)+1);}
+      return {processed,bytes,cursor:through,hasMore:Boolean(this.db.prepare('SELECT 1 FROM candles WHERE rowid>? LIMIT 1').get(through))};
+    }).immediate();
+  }
+  recordValidation(c,key){
+    const a=assessClosedCandle(c,getInstrumentById(c.instrumentId),new Date());
+    this.db.prepare('INSERT INTO candle_validations VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING').run(...key,c.revision||1,CANDLE_VALIDATION_VERSION,a.eligible?1:0,a.reason,new Date().toISOString());
+    return a;
+  }
   key(c) { return [c.instrumentId,c.interval,c.provenance?.adjustmentMode || (c.adjusted ? "splits" : "none"),this.datasetId,storeIdentity(c)]; }
   has(instrumentId, openTime, adjustmentMode = "splits") { return this.hasCandle(instrumentId,"1day",openTime,adjustmentMode); }
   hasCandle(instrumentId, interval, openTime, adjustmentMode = "splits") {
@@ -118,6 +166,7 @@ export class SqlCandleStore {
         instrumentRow(this.db,c.instrumentId,c);
         this.db.prepare("INSERT INTO candles VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(instrument_id,interval,adjustment_mode,dataset_id,session_key) DO UPDATE SET open_time=excluded.open_time,close_time=excluded.close_time,open=excluded.open,high=excluded.high,low=excluded.low,close=excluded.close,volume=excluded.volume,revision=excluded.revision,fetched_at=excluded.fetched_at,provenance_json=excluded.provenance_json,payload_json=excluded.payload_json").run(...key,c.openTime,c.closeTime,c.open,c.high,c.low,c.close,c.volume ?? null,c.revision || 1,c.fetchedAt || now.toISOString(),JSON.stringify(c.provenance || {}),JSON.stringify(c));
         this.db.prepare("INSERT OR IGNORE INTO candle_revisions VALUES(?,?,?,?,?,?,?,?)").run(...key,c.revision || 1,c.fetchedAt || now.toISOString(),JSON.stringify(c));
+        this.recordValidation(c,key);
         const revisionKey=`candles.revision:${this.datasetId}:${c.instrumentId}:${c.interval}:${key[2]}`;
         changedScopes.add(revisionKey);
       }
@@ -195,22 +244,23 @@ export class SqlEventLedger extends EventLedger {
     if(instrumentIds.some(id=>!listVerifiedInstruments().some(i=>i.instrumentId===id)))throw new AppError("Instrumento no resuelto.",400,"UNRESOLVED_INSTRUMENT");
     const view=eventIndexView(db),indexState=eventIndexStatus(db);
     const predicates=[],args=[];
-    for(const [values,column]of [[eventIds,"event_id"],[instrumentIds,"instrument_id"]])if(values.length){predicates.push(column==="event_id"?`event_id IN (${values.map(()=>"?").join(",")})`:`EXISTS (SELECT 1 FROM ${view.table} ei WHERE ${view.generation?"ei.generation=? AND ":""}ei.event_id=events.event_id AND ei.instrument_id IN (${values.map(()=>"?").join(",")}))`);if(column==="instrument_id"&&view.generation)args.push(view.generation);args.push(...values);}
+    if(eventIds.length){predicates.push(`event_id IN (${eventIds.map(()=>'?').join(',')})`);args.push(...eventIds);}
+    if(instrumentIds.length){
+      predicates.push(`event_id IN (SELECT event_id FROM ${view.table} WHERE ${view.generation?'generation=? AND ':''}instrument_id IN (${instrumentIds.map(()=>'?').join(',')}))`);
+      if(view.generation)args.push(view.generation);args.push(...instrumentIds);
+    }
     if(from){predicates.push("observed_at>=?");args.push(from);}if(to){predicates.push("observed_at<=?");args.push(to);}
     const where=predicates.length?`WHERE ${predicates.join(" AND ")}`:"";
-    // Narrow dates first, then probe membership by event ID. Building the
-    // complete instrument membership set defeats small incremental windows.
-    const index=instrumentIds.length && !eventIds.length && (from || to)?" INDEXED BY events_by_time":"";
+    const index=instrumentIds.length || eventIds.length?' INDEXED BY events_identity_time':'';
     const total=includeTotal?db.prepare(`SELECT count(*) AS n FROM events${index} ${where}`).get(...args).n:null;
-    // Resolve eligibility using the covering time index before touching large
-    // payload pages. The previous SELECT forced a table seek for every rejected
-    // candidate, including events belonging to unrelated instruments.
     const references=db.prepare(`SELECT rowid,event_id FROM events${index} ${where} ORDER BY observed_at DESC,event_id LIMIT ?`).all(...args,includeTotal?limit:limit+1);
     const rows=[...physicalPages(db,'events',references)];
     const more=includeTotal?total>limit:rows.length>limit;if(!includeTotal && more)rows.pop();
+    const impactRows=rows.length?db.prepare(`SELECT event_id,instrument_id,impact_json FROM ${view.table} WHERE ${view.generation?'generation=? AND ':''}event_id IN (SELECT value FROM json_each(?))`).all(...(view.generation?[view.generation]:[]),JSON.stringify(rows.map(r=>r.event_id))):[];
+    const byEvent=new Map();for(const r of impactRows){if(instrumentIds.length&&!instrumentIds.includes(r.instrument_id))continue;const list=byEvent.get(r.event_id)||[];list.push(JSON.parse(r.impact_json));byEvent.set(r.event_id,list);}
     const events=rows.map(row=>{
       const e=JSON.parse(row.payload_json),verified=e.identityVersion==="source-publication-v2"&&e.quality?.identityVerified!==false;
-      let impacts=db.prepare(`SELECT instrument_id,impact_json FROM ${view.table} WHERE ${view.generation?"generation=? AND ":""}event_id=? ORDER BY instrument_id`).all(...(view.generation?[view.generation]:[]),e.eventId).filter(r=>!instrumentIds.length||instrumentIds.includes(r.instrument_id)).map(r=>JSON.parse(r.impact_json));
+      let impacts=byEvent.get(e.eventId)||[];
       // Preserve registry order for impact consumers.
       const order=listVerifiedInstruments().map(i=>i.instrumentId);impacts.sort((a,b)=>order.indexOf(a.instrumentId)-order.indexOf(b.instrumentId));
       return {...e,quality:{...e.quality,identityVerified:verified,...(!verified?{identityReason:e.identityVersion!=="source-publication-v2"?"legacy_identity_requires_replay":"publication_identity_insufficient"}:{})},impacts};

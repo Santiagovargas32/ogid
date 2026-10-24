@@ -1,8 +1,8 @@
 # Inventario API → MCP
 
-Contrato 1.6.0. Generado desde backend/contracts/ogidOperations.js; no editar a mano.
+Contrato 1.8.0. Generado desde backend/contracts/ogidOperations.js; no editar a mano.
 
-82 rutas JSON con método; 58 operaciones de investigación y 33 de operador. Las variantes almacenadas/proveedor comparten algunas rutas.
+83 rutas JSON con método; 59 operaciones de investigación y 33 de operador. Las variantes almacenadas/proveedor comparten algunas rutas.
 
 Las cuatro herramientas compatibles se conservan. ogid_get_awareness_sources compone el catálogo local versionado y la salud pública Awareness, sin una ruta adicional. El inventario cubre las rutas de backend/routes montadas bajo /api; WebSocket, archivos estáticos y transporte del túnel tienen contratos independientes.
 
@@ -12,6 +12,7 @@ Las rutas privadas de chat, dispositivos y control agentivo son de primera parte
 
 | Operación | Método y ruta | Herramienta | Perfil / permiso | Proyección | Efectos / coste |
 | --- | --- | --- | --- | --- | --- |
+| intel.advanced.status | GET /api/intel/advanced-snapshot/status | ogid_query | research / read:stored | public | stored pure read; no job admission; no-provider |
 | agent.capabilities | GET /api/agent/v1/capabilities | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
 | agent.brief | GET /api/agent/v1/brief | ogid_query | research / read:stored | agent-bundle | stored/local-calculation; no-provider |
 | agent.geopolitical | GET /api/agent/v1/geopolitical | ogid_query | research / read:stored | agent-bundle | stored/local-calculation; no-provider |
@@ -65,7 +66,7 @@ Las rutas privadas de chat, dispositivos y control agentivo son de primera parte
 | market.history.job | GET /api/market/history/jobs | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
 | market.history.create | POST /api/market/history/jobs | ogid_operator | operator / candles:backfill | public | mutation; local job creation; run is explicit |
 | market.history.datasets | GET /api/market/history/datasets | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
-| admin.history.status | GET /api/admin/history | ogid_operator | operator / admin:read | public | stored/local-calculation; no-provider |
+| admin.history.status | GET /api/admin/history | ogid_operator | operator / admin:read | public | bounded stored projection; queries readonly; no-provider |
 | admin.history.create | POST /api/admin/history/jobs | ogid_operator | operator / candles:backfill | public | mutation; local job creation only |
 | admin.history.run | POST /api/admin/history/run | ogid_operator | operator / candles:backfill | public | mutation; max 4 Yahoo requests per explicit run |
 | admin.events.replay | POST /api/admin/events/replay | ogid_operator | operator / sources:ingest | public | mutation; local Awareness snapshot replay; dryRun defaults true; no providers; snapshotId required to commit |
@@ -109,6 +110,32 @@ Las rutas privadas de chat, dispositivos y control agentivo son de primera parte
 Los query arrays viajan como CSV tipado; no se permiten claves extra, cabeceras, URLs o rutas libres. fixed se añade exclusivamente en el cliente y se verifica en backend para operador. La API existente mantiene su autenticación sensible; el permiso MCP añade credenciales de alcance, sin retirarla.
 
 researchRoutes.integration.test.js compara todas las rutas montadas con este registro y ejecuta todas las lecturas contra backend real con proveedores bloqueados. operations.test.js verifica todas las operaciones operador mediante fixtures HTTP, métodos, permisos y cuerpos; no demuestra ejecución de proveedores reales. Las pruebas de archivo, protocolo y e2e comprueban los contratos especializados.
+
+### intel.advanced.status
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "jobId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      }
+    },
+    "required": [
+      "jobId"
+    ],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
 
 ### agent.capabilities
 
@@ -1796,6 +1823,13 @@ Retención: current snapshot; consult response coverage. Procedencia: OGID runti
         "type": "integer",
         "minimum": 30,
         "maximum": 2500
+      },
+      "anchor": {
+        "type": "string",
+        "enum": [
+          "live",
+          "last-close"
+        ]
       }
     },
     "required": [
@@ -2552,7 +2586,43 @@ Retención: current snapshot; consult response coverage. Procedencia: OGID runti
 {
   "parameters": {
     "type": "object",
-    "properties": {},
+    "properties": {
+      "jobsLimit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 50
+      },
+      "legacyLimit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      },
+      "datasetsLimit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      },
+      "jobsCursor": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2048
+      },
+      "legacyCursor": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2048
+      },
+      "datasetsCursor": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2048
+      },
+      "maxBytes": {
+        "type": "integer",
+        "minimum": 4096,
+        "maximum": 524288
+      }
+    },
     "required": [],
     "additionalProperties": false
   },
@@ -3019,6 +3089,13 @@ Retención: current snapshot; consult response coverage. Procedencia: OGID runti
         "minItems": 1,
         "maxItems": 50,
         "uniqueItems": true
+      },
+      "anchor": {
+        "type": "string",
+        "enum": [
+          "live",
+          "last-close"
+        ]
       }
     },
     "required": [],

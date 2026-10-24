@@ -191,6 +191,7 @@ export class MarketDataService {
     allowStale = true,
     providerRetries = undefined,
     maxCacheAgeMs = Infinity,
+    awaitPersistence = false,
   } = {}) {
     const normalizedSymbol = normalizeYahooSymbol(symbol);
     const range = resolveMarketDataRange({ period, interval, from, to, now: this.now() });
@@ -205,7 +206,8 @@ export class MarketDataService {
       range,
     });
     if (!force && stored.cached && !stored.stale && new Date(this.now()).getTime()-Date.parse(stored.storedAt)<=maxCacheAgeMs && coversRequestedRange(stored, range, normalizedSymbol)) {
-      return this.#dataset(normalizedSymbol, range, stored.bars, { cached: true, stale: false, fetchedAt: stored.storedAt });
+      const persistence=awaitPersistence?await this.store.waitForPersistence(stored.persistence):stored.persistence;
+      return this.#dataset(normalizedSymbol, range, stored.bars, { cached: true, stale: false, fetchedAt: stored.storedAt,persistence });
     }
 
     try {
@@ -237,6 +239,7 @@ export class MarketDataService {
         range,
         complete,
       });
+      if(awaitPersistence)upsert.persistence=await this.store.waitForPersistence(upsert.persistence);
       const inRange = upsert.bars.filter((bar) => {
         const timestamp = Date.parse(bar.timestamp);
         return timestamp >= fromMs && timestamp <= toMs;

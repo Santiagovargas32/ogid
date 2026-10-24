@@ -120,6 +120,7 @@ export async function fetchGdelt({
       response.status === 429 ? "rate-limited" : `gdelt-upstream-${response.status}`,
       `gdelt-upstream-${response.status}:${body.slice(0, 120)}`
     );
+    error.httpStatus = response.status;
     error.rateLimit = rateLimit;
     error.nextAllowedAt = new Date(nextAllowedAtMs).toISOString();
     throw error;

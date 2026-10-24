@@ -75,6 +75,22 @@ test("managed child environments do not inherit backend/admin/provider secrets o
     assert.equal(opencode.AGENT_WORKER_TOKEN,undefined);assert.equal(broker.OGID_OPENCODE_PASSWORD,undefined);
   }finally{f.close();}
 });
+test('managed workers receive the resolved per-task modes rather than ambient environment overrides',()=>{
+  const f=fixture();try{
+    for(const mode of ['off','shadow','visible']){
+      const config=loadAgentConfig({}, {mode,manifest:f.config.manifest,taskModes:{contextual_chat:'visible',instrument_outlook:'off'}});
+      const rt=new ManagedAgentRuntime({config:{...f.config,...config,managed:f.config.managed},environment:{AGENT_TASK_MODES:'invalid ambient JSON'}});
+      rt.baseUrl='http://127.0.0.1:3000';rt.manifestPath=join(f.directory,'models.runtime.json');
+      const env=rt.childEnvironment('worker');
+      assert.deepEqual(JSON.parse(env.AGENT_TASK_MODES),config.taskModes);
+      const child=loadAgentConfig(env,{manifest:config.manifest});
+      assert.deepEqual(child.taskModes,config.taskModes);
+      assert.equal(child.taskModes.instrument_outlook,'off');
+      assert.equal(child.taskModes.contextual_chat,mode==='off'?'off':'visible');
+      assert.equal(rt.childEnvironment('broker').AGENT_TASK_MODES,undefined);
+    }
+  }finally{f.close();}
+});
 test("a foreign listener is never killed or adopted and pending restarts stop cleanly",async()=>{
   const s=createServer();s.listen(0,"127.0.0.1");await once(s,"listening");const f=fixture();f.config.brokerUrl=`http://127.0.0.1:${s.address().port}`;
   const rt=new ManagedAgentRuntime({config:f.config,environment:{LLAMACPP_API_KEY:"fixture"},spawnImpl:()=>assert.fail("port is owned by someone else")});

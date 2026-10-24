@@ -61,6 +61,7 @@ export async function fetchGnews({ apiKey, baseUrl, query, language, pageSize, t
   if (!response.ok) {
     const body = await response.text();
     const error = new Error(`gnews-upstream-${response.status}:${body.slice(0, 120)}`);
+    error.httpStatus = response.status;
     error.rateLimit = rateLimit;
     throw error;
   }

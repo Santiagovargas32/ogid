@@ -1,3 +1,4 @@
+import {OPERATIONS_HASH} from '../../../backend/contracts/ogidOperations.js';
 import * as z from "zod/v4";
 import { BASELINE_COUNTRIES } from "../../../backend/utils/countryCatalog.js";
 import { AWARENESS_SOURCES, AWARENESS_SOURCE_CATALOG_VERSION } from "../../../backend/services/awareness/awarenessCatalog.js";
@@ -167,6 +168,10 @@ export async function executeTool(tool, input, config) {
     const args = tool.schema.parse(input);
     const result = await tool.run(args);
     const payload = { ok: true, queriedAt: new Date().toISOString(), origin: "OGID", ...result, truncated: false };
+    if(input.operationId?.startsWith('agent.evidence')&&typeof payload.data?.snapshotId==='string'){
+      const d=payload.data,chunk=input.operationId==='agent.evidence.chunk';
+      payload.readReceipt={contractHash:OPERATIONS_HASH,operationId:input.operationId,snapshotId:d.snapshotId,contentRead:chunk?typeof d.chunk==='string'&&d.chunk.length>0:(d.items||[]).some(i=>i.data!=null),evidenceIds:chunk?[d.evidenceId]:(d.items||[]).filter(i=>i.data!=null).map(i=>i.evidenceId)};
+    }
     let truncated = false;
     const response = () => ({ structuredContent: payload, content: [{ type: "text", text: JSON.stringify(payload) }] });
     const size = () => Buffer.byteLength(JSON.stringify(response()));
@@ -188,7 +193,8 @@ export async function executeTool(tool, input, config) {
     // Nunca reflejar cuerpos, URLs, tokens ni valores de argumentos en los errores.
     const payload = { ok: false, queriedAt: new Date().toISOString(), error: {
       code: error instanceof ReadError ? error.code : error instanceof z.ZodError ? "INVALID_ARGUMENTS" : "ADAPTER_ERROR",
-      message: error instanceof ReadError ? error.message : error instanceof z.ZodError ? "Argumentos inválidos o no permitidos." : "No se pudo completar la lectura segura."
+      message: error instanceof ReadError ? error.message : error instanceof z.ZodError ? "Argumentos inválidos o no permitidos." : "No se pudo completar la lectura segura.",
+      ...(error instanceof z.ZodError?{details:{stage:error.validationStage||"tool-envelope",issues:error.issues.slice(0,16).map(i=>({path:i.path.map(x=>String(x).slice(0,64)),code:i.code,...(typeof i.expected==="string"?{expected:i.expected}:{})}))}}:{})
     } };
     return { isError: true, structuredContent: payload, content: [{ type: "text", text: JSON.stringify(payload) }] };
   }

@@ -1,3 +1,5 @@
+import {createLogger} from '../utils/logger.js';
+const log=createLogger('backend/pipeline');
 import { performance } from 'node:perf_hooks';
 const RECOVERABLE=new Set(['SQLITE_BUSY','STORAGE_BACKPRESSURE','STORAGE_QUEUE_TIMEOUT','STORAGE_READ_TIMEOUT','STORAGE_ANALYSIS_UNAVAILABLE','YAHOO_TIMEOUT','REQUEST_TIMEOUT']);
 export class PipelineMonitor {
@@ -8,7 +10,10 @@ export class PipelineMonitor {
   }
   update(id,patch){
     const previous=this.stages.get(id)||{enabled:true,status:'queued',lastRunAt:null,lastSuccessAt:null,durationMs:null,queue:0,processed:0,discarded:0,errorCode:null,reason:null,revision:null};
-    const stage={...previous,...patch};this.stages.set(id,stage);this.publish(id,stage);
+    const stage={...previous,...patch,observedAt:new Date().toISOString()};
+    if(patch.reason==='data-stale')stage.quality={status:'stale',reason:patch.reason,observedAt:stage.observedAt};
+    else if(patch.status==='completed')stage.quality=null;
+    if(previous.status!==stage.status)log.info('pipeline_transition',{pipeline:id,status:stage.status,previousStatus:previous.status,code:stage.errorCode,reason:stage.reason,quality:stage.quality||null});this.stages.set(id,stage);this.publish(id,stage);
     if(this.persist){
       const persistenceId=`${id}.persistence`;
       const publishPersistence=patch=>{const value={...stage,...patch};this.stages.set(persistenceId,value);this.publish(persistenceId,value);};
@@ -33,10 +38,13 @@ export class PipelineMonitor {
       }catch(error){this.update(id,{status:RECOVERABLE.has(error.code)?'degraded':/STORAGE_|SQLITE_|RESEARCH_CAPACITY/.test(error.code || '')?'blocked':'failed',durationMs:performance.now()-started,errorCode:error.code || 'PIPELINE_FAILED',reason:RECOVERABLE.has(error.code)?'recoverable; next scheduled run':'requires recovery'});throw error;}
     }).finally(()=>this.tasks.delete(id));this.tasks.set(id,task);return task;
   }
+  schedule(id,{nextRunAt,intervalMs}){
+    const previous=this.policies.get(id)||{kind:'periodic',staleMs:600000};this.policies.set(id,{...previous,nextRunAt,intervalMs});
+  }
   snapshot({staleMs=600000}={}) {
     return Object.fromEntries([...this.stages].map(([id,s])=>{
       const policy=this.policies.get(id) || this.policies.get(id.replace(/\.persistence$/,'')) || {kind:'periodic',staleMs};
-      const expired=policy.kind==='periodic' && s.status==='completed' && Date.now()-Date.parse(s.lastSuccessAt)>(policy.staleMs || staleMs);
+      const expired=policy.kind==='periodic' && s.status==='completed' && (policy.nextRunAt?Date.now()>Date.parse(policy.nextRunAt)+Math.min(60000,policy.intervalMs||60000):Date.now()-Date.parse(s.lastSuccessAt)>(policy.staleMs || staleMs));
       return [id,{...s,freshness:policy,...(expired?{status:'stale'}:{})}];
     }));
   }

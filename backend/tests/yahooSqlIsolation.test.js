@@ -88,8 +88,9 @@ test("Market Quotes reads Nvidia directly and later archives candles and technic
   const runtime=createAppServer({port:0,host:"127.0.0.1",disableBackgroundRefresh:true,storage:{enabled:true,businessEnabled:true,databasePath:join(directory,"test.sqlite")},news:{providers:[],rssFeeds:[]},market:{provider:"yahoo",enabled:true,dailyCandles:{enabled:true},initialTickers:[],tickers:[],historyDir:directory,historyPersist:false},yahooClient:{chart:async()=>{charts++;return {quotes:[{...bar(105),date:recent}]};}}});
   try{
     await runtime.start();
-    const archive=runtime.app.locals.dailyCandleStore.upsert.bind(runtime.app.locals.dailyCandleStore);
-    runtime.app.locals.dailyCandleStore.upsert=async(...args)=>{await gate;return archive(...args);};
+    const manager=runtime.app.locals.storageManager;
+    const dispatch=manager.localRequest.bind(manager);
+    manager.localRequest=async(...args)=>{if(args[0]==='market.persist.page')await gate;return dispatch(...args);};
     const base=`http://127.0.0.1:${runtime.server.address().port}`;
     const response=await fetch(`${base}/api/market/candles?instrumentId=us-equity-nvidia&interval=1day&source=yahoo&limit=240`);
     assert.equal(response.status,200);

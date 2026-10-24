@@ -11,9 +11,13 @@ export async function ingestNewsBatches(archive,articles,options,onCommitted=()=
       if(offset>start && bytes+size>RUNTIME_POLICY.storage.commitBatchBytes)break;
       bytes+=size;offset++;
     }
-    const revision=archive.revision;
+    const candidates=articles.slice(start,offset),revision=archive.revision;
     const started=performance.now();
-    accepted+=archive.ingest(articles.slice(start,offset),options).accepted || 0;
+    const result=archive.ingestPage?archive.ingestPage(candidates,options,{budgetMs:RUNTIME_POLICY.storage.commitBatchMs}):archive.ingest(candidates,options);
+    const processed=result.processed??candidates.length;
+    if(!Number.isSafeInteger(processed)||processed<1||processed>candidates.length)throw Object.assign(Error('Invalid committed page'),{code:'STORAGE_INVALID_COMMIT_PAGE'});
+    offset=start+processed;bytes=candidates.slice(0,processed).reduce((n,item)=>n+Buffer.byteLength(JSON.stringify(item)),0);
+    accepted+=result.accepted||0;
     committedOperationItems(offset-start);
     onCommitted(offset,{changed:archive.revision!==revision,committedAt:archive.lastIngestAt || null,commitMs:performance.now()-started,rows:offset-start,bytes});
     await new Promise(resolve=>setImmediate(resolve));

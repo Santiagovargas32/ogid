@@ -131,7 +131,7 @@ test('ASML/SPCX/EUNL/AMD/ORCL/AAPL equivalent candidates preserve identity and r
     assert.throws(()=>assertPublication({...value,invalidation:[]},context),{code:'AGENT_INVALIDATION_REQUIRED'});
     assert.throws(()=>assertPublication({...value,alertAssessments:[{alertId:'foreign',revision:1,summary:'No corresponde',evidenceIds:[evidenceId]}]},context),{code:'AGENT_TASK_FIELD_MISMATCH'});
     assert.throws(()=>assertPublication({...value,technicalFacts:[{...value.technicalFacts[0],path:'indicators.sma'}]},context),error=>error.details.suggestedPath==='indicators.sma.value');
-    item.data.quality.reason='insufficient-bars';assert.throws(()=>assertPublication(value,context),{code:'AGENT_TECHNICAL_DATA_REQUIRED'});
+    item.data.quality.reason='insufficient-bars';assert.throws(()=>assertPublication(value,context),{code:'AGENT_INVALID_TECHNICAL_FACT'});
   }
 });
 test('new reservations cannot displace accepted downloads and expiry remains absolute under changes',()=>{
@@ -160,7 +160,7 @@ test('one shared repair yields one durable publication or none, including missin
       if(messageId.startsWith('msg_repair_')){repairs++;if(kind.startsWith('missing-tool'))assert.match(text,/EXCLUSIVAMENTE un objeto JSON/);}
     },progress:async(_session,_signal,messageId)=>{
       const repaired=messageId.startsWith('msg_repair_');
-      return {text:kind==='invalid'||kind==='repair'&&!repaired?'{} garbage':JSON.stringify(proposal),idle:true,outcome:'succeeded',finish:'stop',messageId:'answer',usage:[],tools:kind.startsWith('missing-tool')&&(!repaired||kind==='missing-tool-repeated')?[]:[{name:'ogid_query',status:'completed',operationId:'agent.evidence',snapshotId:'snapshot-fixture'}]};
+      return {text:kind==='invalid'||kind==='repair'&&!repaired?'{} garbage':JSON.stringify(proposal),idle:true,outcome:'succeeded',finish:'stop',messageId:'answer',usage:[],tools:kind.startsWith('missing-tool')&&(!repaired||kind==='missing-tool-repeated')?[]:[{name:'ogid_query',status:'completed',operationId:'agent.evidence',snapshotId:'snapshot-fixture',applicationOk:true,contentRead:true,returnedSnapshotId:'snapshot-fixture'}]};
     }}});
     await worker.execute({jobId:'job-fixture',fence:1,task:'global_intelligence_brief',scope:'global',model:'llamacpp/fixture',createdAt:new Date().toISOString()});
     const success=!['invalid','missing-tool-repeated'].includes(kind);

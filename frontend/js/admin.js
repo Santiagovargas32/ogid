@@ -364,13 +364,16 @@ function renderStorageDiagnostics(storage={},health={}) {
   const mib=value=>Number.isFinite(value)?`${(value/1048576).toFixed(1)} MiB`:"--";
   const card=(title,lines)=>`<article class="diagnostic-item"><div class="diagnostic-item-header"><strong>${escapeHtml(title)}</strong></div>${lines.map(line=>`<div class="diagnostic-item-meta">${escapeHtml(line)}</div>`).join("")}</article>`;
   const heartbeatAge=worker.heartbeatAt?Math.max(0,Date.now()-Date.parse(worker.heartbeatAt)):null;
-  const commands=(storage.activeCommands || []).map(command=>`${[command.operation,command.service,command.method,command.kind].filter(Boolean).join(" / ")} | ${command.phase} | ${formatDurationMs(command.elapsedMs)} / ${formatDurationMs(command.timeoutMs)}`);
+  const commands=(storage.activeCommands || []).map(command=>`${[command.operation,command.service,command.method,command.kind].filter(Boolean).join(" / ")} | ${command.phase} | queued ${formatDurationMs(command.queueMs)} | executing ${formatDurationMs(command.executionMs)} | progress ${formatDate(command.lastProgressAt)} (${command.completedItems??"--"}) | ${formatDurationMs(command.elapsedMs)} / ${formatDurationMs(command.timeoutMs)}`);
   const expired=storage.lastExpiredCommand;
   elements.storageDiagnosticsBody.innerHTML=[
     card("Server",[`PID ${health.server?.pid || "--"} | ${health.server?.nodeVersion || "--"} | uptime ${health.uptimeSeconds || 0}s`,`Process RSS ${mib(health.server?.memory?.rss)} | HTTP heap ${mib(health.server?.memory?.heapUsed)} | worker heap ${mib(worker.memory?.heapUsed)}`]),
     card("SQLite",[`${storage.databasePath || "--"} | SQLite ${storage.sqliteVersion || "--"} | ${storage.businessStorage || "--"}`,`DB ${mib(storage.databaseBytes)} | WAL ${mib(storage.walBytes)} | migrations ${(storage.migrations || []).length}`,`Row counts sampled ${formatDate(db.sampledAt)} (cache, up to 30s): ${Object.entries(db.counts || {}).map(([table,n])=>`${table}: ${n}`).join(" | ") || "waiting for worker"}`]),
     card("Worker & queue",[`State ${storage.state || "--"} | thread ${worker.threadId || "--"} | heartbeat ${heartbeatAge===null?"--":formatDurationMs(heartbeatAge)} ago${heartbeatAge>15000?" (delayed; worker may be busy)":""}`,`Queued ${queue.pending || 0} | active ${queue.inFlight || 0} | CPU ${queue.cpuInFlight || 0} / ${queue.maxCpuInFlight || "--"} | capacity ${queue.maxItems || 0} | bytes ${mib(queue.bytes)} / ${mib(queue.maxBytes)}`,`Completed ${storage.completed || 0} | failed ${storage.failed || 0} | rejected ${storage.rejected || 0} | historical error ${storage.lastErrorCode || "--"} at ${formatDate(storage.lastErrorAt)} (${storage.lastErrorCategory || "--"}) | last success ${formatDate(storage.lastSuccessAt)}`,...(commands.length?commands:["No active commands"]),...(expired?[`Last timeout: ${[expired.operation,expired.service,expired.method,expired.kind].filter(Boolean).join(" / ")} | ${expired.phase} | ${formatDurationMs(expired.elapsedMs)}`]:[])]),
     card("Event index",[`State ${(storage.eventIndex||worker.eventIndex)?.state||"--"} | processed ${(storage.eventIndex||worker.eventIndex)?.processed??"--"} | page ${formatDurationMs((storage.eventIndex||worker.eventIndex)?.durationMs)} | cleanup ${(storage.eventIndex||worker.eventIndex)?.cleanupPending?"pending":"idle"}`]),
+    card("WAL checkpoint",[`State ${storage.walCheckpoint?.state||"--"} | generation ${storage.walCheckpoint?.confirmedGeneration??"--"} | pending ${mib(storage.walCheckpoint?.lastResult?.pendingBytes)} | last result ${formatDate(storage.walCheckpoint?.lastResult?.completedAt)} | next eligible ${formatDate(storage.walCheckpoint?.nextEligibleAt)}`]),
+    card("Durable candle persistence",[`Source ${storage.marketPersistence?.source||"acquisition_jobs"} | pending ${db.marketPersistence?.pending??"unknown"} (sampled ${formatDate(db.sampledAt)}) | oldest ${formatDate(db.marketPersistence?.oldestPendingAt)} | active ${storage.marketPersistence?.active??0} | retrying ${storage.marketPersistence?.retries??0} | last failure ${storage.marketPersistence?.lastError?.code||"--"} | job ${storage.marketPersistence?.lastError?.jobId||"--"}`]),
+    card("SQL activity",[worker.sqlActivity?.sql||"No active SQL statement",`State ${worker.sqlActivity?.state||"--"} | SQL ${formatDurationMs(worker.sqlActivity?.elapsedMs??worker.sqlActivity?.lastDurationMs)} | transaction ${worker.sqlActivity?.transaction?.phase||"none"} (${formatDurationMs(worker.sqlActivity?.transaction?.elapsedMs)})`]),
     card("Confirmed pipeline writes",(db.checkpoints || []).map(row=>`${row.pipelineId} | ${row.kind || "--"} | committed ${formatDate(row.updatedAt)} | revision ${row.revision || "--"}`)),
     card("SQL news corpus",worker.news?.corpus ? [`As of ${formatDate(worker.news.corpus.asOf)} | last ingest ${formatDate(worker.news.corpus.lastIngestAt)} | revision ${worker.news.corpus.revision}`,`Scanned ${worker.news.corpus.scannedCount} | valid ${worker.news.corpus.eligibleCount} | daily candidates ${worker.news.corpus.dailyCandidateCount} | sources ${worker.news.corpus.sourceCount}`,`Displayed ${worker.news.corpus.displayCount} | analysis ${worker.news.corpus.analysisCount} | market analysis ${worker.news.corpus.marketAnalysisCount} | analysis capped: ${worker.news.corpus.analysisTruncated ? "yes" : "no"} | risk uses all daily candidates`, `Window ${worker.news.corpus.windowHours}h | day ${worker.news.corpus.dayTimeZone} | read/rank ${worker.news.corpus.durationMs}ms`, `Collector ${worker.news.collection?.stage || "idle"} | completed ${formatDate(worker.news.collection?.completedAt)}`] : ["Waiting for SQL corpus evaluation"]),
     card("SQL pipeline runs",(db.pipelines || []).map(row=>`${row.pipelineId}: ${row.status || (row.lastPersistedAt?"persisted (checkpoint)":"no recorded run")} | start ${formatDate(row.startedAt)} | end ${formatDate(row.completedAt)} | last commit ${formatDate(row.lastPersistedAt)} | ${row.errorCode || "--"}`))
@@ -489,7 +492,7 @@ function renderPipelineStatus(payload = {}) {
     )
     .join("");
 
-  renderPipelineDiagnostics(news, market);
+  renderPipelineDiagnostics(news, market,payload.diagnostics,payload.stages);
   renderAwarenessDiagnostics(awareness);
   renderRecentCycleErrors(payload.recentCycleErrors || []);
 }
@@ -762,7 +765,9 @@ function renderMarketTransportDiagnostics(market = {}) {
   ].join("");
 }
 
-function renderPipelineDiagnostics(news = {}, market = {}) {
+function renderPipelineDiagnostics(news = {}, market = {}, health={}, stages={}) {
+  const quality=news.corpus||{};
+  const qualityHtml=`<article class="diagnostic-item"><strong>Calidad de noticias: ${escapeHtml(quality.sourceMode||'unknown')}</strong><div>${escapeHtml((quality.staleReasons||[]).join(' · ')||'Sin causas registradas')}</div><div class="diagnostic-item-meta">Contenido: ${escapeHtml(formatDate(quality.latestGeopoliticalPublishedAt))} · Comprobación: ${escapeHtml(formatDate(quality.lastSuccessfulCheckAt))} · Proyección: ${escapeHtml(formatDate(quality.projectionGeneratedAt))}</div></article>`;
   const diagnostics = buildNewsProviderDiagnostics(news);
   if (!diagnostics.length) {
     elements.pipelineDiagnosticsBody.innerHTML =
@@ -789,6 +794,7 @@ function renderPipelineDiagnostics(news = {}, market = {}) {
       .join("");
   }
 
+  elements.pipelineDiagnosticsBody.innerHTML=qualityHtml+`<article class="diagnostic-item"><strong>Operación: ${escapeHtml(health?.operational?.status||'unknown')} · Calidad: ${escapeHtml(health?.quality?.status||'unknown')}</strong>${(health?.causes||[]).slice(0,32).map(c=>`<div>${escapeHtml(c.origin)}: ${escapeHtml(c.code)} · ${escapeHtml(c.dimension)}</div>`).join('')}</article>`+Object.entries(stages||{}).slice(0,32).map(([id,s])=>`<article class="diagnostic-item"><strong>${escapeHtml(id)}: ${escapeHtml(s.status||'unknown')}</strong><div>${escapeHtml(s.errorCode||s.reason||'')} · Último éxito ${escapeHtml(formatDate(s.lastSuccessAt))}</div><div>Calidad: ${escapeHtml(s.quality?.status||'unknown')} · Próximo ciclo ${escapeHtml(formatDate(s.freshness?.nextRunAt))}</div></article>`).join('')+elements.pipelineDiagnosticsBody.innerHTML;
   const acquired=news.rssAcquisition || {},rss=news.rss || {};
   const rssOverview=`<article class="diagnostic-item"><div class="diagnostic-item-header"><strong>RSS acquisition</strong></div><div class="diagnostic-item-meta">Configured ${Number(rss.catalogSize || 0)} | available ${Number(rss.availableFeedCount ?? rss.catalogSize ?? 0)} | execution: ${escapeHtml(rss.execution || "--")} | rotating batch ${Number(acquired.queriedFeedCount || rss.maxFeedsPerCycle || 0)} / ${Number(acquired.catalogSize || rss.catalogSize || 0)} | concurrency ${Number(rss.concurrency || 0)} | network deadline ${escapeHtml(formatDurationMs(rss.deadlineMs))}</div><div class="diagnostic-item-meta">Collected ${Number(acquired.collectedCount || 0)} | returned to dashboard ${Number(acquired.returnedCount || 0)} | acquired ${escapeHtml(formatDate(news.acquiredAt))} | stage ${escapeHtml(news.stage || "idle")}</div></article>`;
   const feedStatus = rss.catalog || news.rssFeedStatus || [];

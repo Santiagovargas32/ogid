@@ -2,7 +2,7 @@ import { randomUUID, createHash, randomBytes } from "node:crypto";
 import { performance } from 'node:perf_hooks';
 import { stableHash } from "../utils/stableHash.js";
 import { AGENT_POLICY } from "../services/agent/config.js";
-import { numericPaths } from '../services/agent/evidencePaths.js';
+import { numericPaths, NUMERIC_CONTRACT_VERSION } from '../services/agent/evidencePaths.js';
 import { summarizeProposals } from '../services/agent/proposalMetrics.js';
 import { physicalPages } from "./sqlNewsCorpus.js";
 import {
@@ -740,6 +740,11 @@ export class AgentRepository {
         for(const key of ['elapsedMs','firstProgressMs','toolsCompleted','outputCharacters'])if(Number.isFinite(p[key])&&p[key]>=0)clean[key]=p[key];
         if(['snapshot','inference','validating','repair'].includes(p.phase))clean.phase=p.phase;
         if(typeof p.lastProgressAt==='string' && Number.isFinite(Date.parse(p.lastProgressAt)))clean.lastProgressAt=p.lastProgressAt;
+        if(p.lastToolFailure){
+          const f=p.lastToolFailure;
+          if(/^[A-Z_]{2,80}$/.test(f.code||''))clean.lastToolFailure={code:f.code,operationId:/^[a-zA-Z0-9.]{1,128}$/.test(f.operationId||'')?f.operationId:null,callId:safeId(f.callId)?f.callId:null,validation:f.validation?{stage:String(f.validation.stage||'unknown').slice(0,64),issues:(Array.isArray(f.validation.issues)?f.validation.issues:[]).slice(0,16).map(i=>({path:(Array.isArray(i.path)?i.path:[]).slice(0,16).map(p=>String(p).slice(0,64)),code:String(i.code||'unknown').slice(0,64),expected:typeof i.expected==='string'?i.expected.slice(0,64):null}))}:null};
+        }
+        if(typeof p.mcpContractHash==='string'&&/^[a-f0-9]{64}$/.test(p.mcpContractHash))clean.mcpContractHash=p.mcpContractHash;
         this.db.prepare("UPDATE agent_runs SET metadata_json=json_patch(metadata_json,?) WHERE job_id=? AND fence=?").run(json(clean),input.jobId,input.fence);
       }
       const result = { renewed: true, leaseUntil };
@@ -756,16 +761,29 @@ export class AgentRepository {
     return {sessionId:job.session_id};
   }
   link(input) {
-    const r = this.fenced(input);
-    if (!safeId(input.opencodeId)) throw agentError("AGENT_INVALID_LINK");
-    this.db
-      .prepare("UPDATE agent_jobs SET opencode_id=? WHERE job_id=?")
-      .run(input.opencodeId, r.job_id);
-    if (r.session_id)
-      this.db
-        .prepare("UPDATE agent_sessions SET opencode_id=? WHERE session_id=?")
-        .run(input.opencodeId, r.session_id);
-    return { linked: true };
+    return this.db.transaction(()=>{
+      const r=this.fenced(input);
+      if(!safeId(input.opencodeId))throw agentError('AGENT_INVALID_LINK');
+      if(input.generation){
+        const g=input.generation,key=stableHash([r.job_id,input.fence,r.snapshot_id,r.model,r.prompt_version,g.inputHash]);
+        if(g.key!==key||g.snapshotId!==r.snapshot_id||g.fence!==input.fence||g.model!==r.model||g.promptVersion!==r.prompt_version||!safeId(g.messageId)||!safeId(g.sessionId)||g.sessionId!==input.opencodeId||!/^[a-f0-9]{64}$/.test(g.inputHash||''))throw agentError('AGENT_INVALID_GENERATION');
+        const run=this.db.prepare('SELECT metadata_json FROM agent_runs WHERE job_id=? AND fence=?').get(r.job_id,input.fence);
+        const previous=run?parse(run.metadata_json).generation:null;
+        if(previous&&stableHash(previous)!==stableHash(g))throw agentError('AGENT_GENERATION_CONFLICT',409);
+        this.db.prepare('UPDATE agent_runs SET metadata_json=json_patch(metadata_json,?) WHERE job_id=? AND fence=?').run(json({generation:g}),r.job_id,input.fence);
+        if(input.message){
+          const m=input.message;
+          if(!['initial','repair'].includes(m.kind)||m.id!==(m.kind==='initial'?g.messageId:g.repairMessageId)||!/^[a-f0-9]{64}$/.test(m.hash||''))throw agentError('AGENT_INVALID_GENERATION');
+          const messages=run?parse(run.metadata_json).generationMessages||[]:[];
+          if(messages.some(old=>old.id===m.id&&old.hash!==m.hash))throw agentError('AGENT_GENERATION_CONFLICT',409);
+          if(!messages.some(old=>old.id===m.id))messages.push({id:m.id,kind:m.kind,hash:m.hash});
+          this.db.prepare('UPDATE agent_runs SET metadata_json=json_patch(metadata_json,?) WHERE job_id=? AND fence=?').run(json({generationMessages:messages}),r.job_id,input.fence);
+        }
+      }
+      this.db.prepare('UPDATE agent_jobs SET opencode_id=? WHERE job_id=?').run(input.opencodeId,r.job_id);
+      if(r.session_id)this.db.prepare('UPDATE agent_sessions SET opencode_id=? WHERE session_id=?').run(input.opencodeId,r.session_id);
+      return {linked:true};
+    }).immediate();
   }
   state(input) {
     this.fenced(input);
@@ -846,7 +864,7 @@ export class AgentRepository {
           );
         this.db
           .prepare(
-            "UPDATE agent_runs SET status=?,finished_at=?,metadata_json=? WHERE job_id=? AND fence=?",
+            "UPDATE agent_runs SET status=?,finished_at=?,metadata_json=json_patch(metadata_json,?) WHERE job_id=? AND fence=?",
           )
           .run(
             input.status,
@@ -937,6 +955,7 @@ export class AgentRepository {
         const add=(id,domain,at,data,articleId=null,articleRevision=null,articlePayload=null)=>{
           if(performance.now()-preparationStarted>maxPreparationMs)throw agentError('AGENT_SNAPSHOT_PREPARATION_TIMEOUT',503);
           if(seen.has(id))return;
+          if(data&&['technical.get','indicators.calculate'].includes(domain))data={...data,numericSemantics:{version:NUMERIC_CONTRACT_VERSION,methodVersion:data.methodVersion,seriesRevision:data.seriesRevision||null}};
           seen.add(id);const payload=data===null?null:json(data);
           evidence.push([id,domain,at,articleId,articleRevision,payload]);
           digest.update(json([id,domain,at,payload || articlePayload]));
@@ -1390,7 +1409,7 @@ export class AgentRepository {
     if (!["shadow", "visible"].includes(input.mode))
       throw agentError("AGENT_INVALID_MODE");
     const proposal = assertPublication(input.proposal, {
-      job: { task: job.task, scope: job.scope },
+      job: { task: job.task, scope: job.scope,promptVersion:job.prompt_version },
       snapshot,
       lookup: (id) =>
         this.item(
@@ -1549,7 +1568,7 @@ export class AgentRepository {
           .run(at, job.job_id);
         this.db
           .prepare(
-            "UPDATE agent_runs SET status='completed',finished_at=?,metadata_json=? WHERE job_id=? AND fence=?",
+            "UPDATE agent_runs SET status='completed',finished_at=?,metadata_json=json_patch(metadata_json,?) WHERE job_id=? AND fence=?",
           )
           .run(
             at,

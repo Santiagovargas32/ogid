@@ -339,6 +339,7 @@ class RefreshOrchestratorService {
       ? baseIntervalMs
       : baseIntervalMs + Math.min(this.newsBackoffMs, Math.max(0, backoffCapMs - baseIntervalMs));
     this.nextNewsRunAt=new Date(Date.now()+delayMs).toISOString();
+    this.onSchedule?.("news",{nextRunAt:this.nextNewsRunAt,intervalMs:delayMs});
     this.newsTimerHandle = setTimeout(async () => {
       this.nextNewsRunAt=null;
       try { await this.runNewsCycle(trigger, { allowExhaustedProviders: false }); }
@@ -354,7 +355,10 @@ class RefreshOrchestratorService {
 
     clearTimeout(this.marketTimerHandle);
     const delayMs = this.resolveNextMarketDelayMs();
+    this.nextMarketRunAt=new Date(Date.now()+delayMs).toISOString();
+    for(const id of ["market","market.analysis"])this.onSchedule?.(id,{nextRunAt:this.nextMarketRunAt,intervalMs:delayMs});
     this.marketTimerHandle = setTimeout(async () => {
+      this.nextMarketRunAt=null;
       try { await this.runMarketCycle(trigger); }
       catch (error) { log.error("market_scheduler_failed", { message: error.message }); }
       finally { this.scheduleNextMarketCycle("interval-market"); }
@@ -605,6 +609,8 @@ class RefreshOrchestratorService {
       log.info("news_cycle_completed", {
         trigger,
         sourceMode: snapshot.meta.sourceMode,
+        qualityReasons:snapshot.meta.sourceMeta?.corpus?.staleReasons||[],
+        lastSuccessfulCheckAt:snapshot.meta.sourceMeta?.corpus?.lastSuccessfulCheckAt||null,
         providerUsed: newsResult.sourceMeta?.provider || "unknown",
         attempts: newsResult.sourceMeta?.attempts || [],
         quotaBand: policy.band,

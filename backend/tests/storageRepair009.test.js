@@ -16,7 +16,7 @@ const migrations = new URL("../storage/migrations/",import.meta.url);
 const checksum = text => createHash("sha256").update(text).digest("hex");
 const oldChecksum = "9a6457bd9e00ceab72bddcab93fa8a236aedef75da20af636942608f1753b732";
 const tables = ["articles","article_revisions","article_sources","signal_changes","research_rows","analysis_runs","analysis_jobs","analysis_latest","derived_observations","consumer_checkpoints"];
-const facts = db => Object.fromEntries(tables.map(table => [table,db.prepare(`SELECT * FROM ${table}`).all()]));
+const facts = db => Object.fromEntries(tables.map(table => [table,db.prepare(`SELECT * FROM ${table}`).all().map(row=>{if(table==="analysis_jobs"){const {owner:_owner,fence:_fence,lease_until:_lease,...original}=row;return original;}return row;})]));
 function fixture() {
   const dir = mkdtempSync(join(tmpdir(),"ogid-repair-009-")),file = join(dir,"db.sqlite"),backup = join(dir,"backup.sqlite");
   const db = new Database(file);
@@ -62,12 +62,12 @@ test("009 check is read-only; explicit repair backs up WAL facts and permits res
     const fullSql = readFileSync(new URL("009_durable_analysis.sql",migrations),"utf8");
     assert.equal(f.db.prepare("SELECT checksum FROM schema_migrations WHERE version=9").get().checksum,checksum(fullSql));
     assert.equal(f.db.prepare("SELECT applied_at FROM schema_migrations WHERE version=9").get().applied_at,"2026-10-16T16:13:49.288Z");
-    assert.equal(migrate(f.db).length,19);
+    assert.equal(migrate(f.db).length,22);
     for(const name of result.changes)assert.ok(f.db.prepare("SELECT 1 FROM sqlite_schema WHERE name=?").get(name));
     assert.deepEqual(f.db.pragma("foreign_key_check"),[]);
     assert.equal(f.db.pragma("integrity_check",{simple:true}),"ok");
     f.db.close();manager = new StorageManager({enabled:true,databasePath:f.file});
-    await manager.start();assert.equal((await manager.request("storage.status")).migrations.length,19);
+    await manager.start();assert.equal((await manager.request("storage.status")).migrations.length,22);
     await manager.close();manager = null;
     const reopened = new Database(f.file,{readonly:true});
     try {assert.deepEqual(facts(reopened),f.before);} finally {reopened.close();}

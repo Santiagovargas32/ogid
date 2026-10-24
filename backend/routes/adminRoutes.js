@@ -1,3 +1,5 @@
+import {healthDiagnostics} from '../services/healthDiagnostics.js';
+import stateManager from '../state/stateManager.js';
 import { Router } from "express";
 import { getAiEnrichments, getApiLimits, getNewsRaw, getPipelineStatus } from "../controllers/adminController.js";
 import { historyStatus, createAdminHistory, runAdminHistory, importAdminHistory, replayAdminEvents } from "../controllers/historyAdminController.js";
@@ -8,7 +10,7 @@ router.get("/api-limits", getApiLimits);
 router.get("/news-raw", getNewsRaw);
 router.get("/pipeline-status", getPipelineStatus);
 router.get("/runtime", (_req,res) => res.json({ ok: true, data: {
-  sampledAt: new Date().toISOString(),
+  sampledAt: new Date().toISOString(),diagnostics:healthDiagnostics(res.app.locals,stateManager.getMeta()),
   storage: res.app.locals.storageManager?.getStatus?.() || null,
   runtime: res.app.locals.runtimeMetrics.snapshot(),
   websocket: res.app.locals.socketServer.getHealth(),

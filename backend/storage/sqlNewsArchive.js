@@ -17,7 +17,7 @@ const wireSize=data=>{const p={ok:true,queriedAt:new Date().toISOString(),origin
 
 export class SqlNewsArchive extends NewsArchive {
   constructor(db, options={}) {
-    super({...options,persistencePath:null}); this.db=db;this.analysisOnly=options.analysisOnly === true;
+    super({...options,persistencePath:null}); this.db=db;this.analysisOnly=options.analysisOnly === true;this.featureCache=new Map();this.featureCacheBytes=0;
     this.reader=new Database(db.name,{readonly:true});this.reader.pragma("query_only=ON");cacheStatements(this.reader);
     Object.assign(this,readMeta(db,"news.meta",{})); this.recoveryStatus=db.prepare("SELECT 1 FROM articles LIMIT 1").get()?"restored":"new";
     this.records={get:id=>this.getRecord(id),set:(_id,article)=>this.save(article),values:()=>this.values(),get size(){return db.prepare("SELECT count(*) AS n FROM articles").get().n;}};
@@ -30,10 +30,10 @@ export class SqlNewsArchive extends NewsArchive {
   getRecord(id){const row=this.db.prepare("SELECT payload_json FROM articles WHERE article_id=?").get(id);return row?JSON.parse(row.payload_json):undefined;}
   *values(){for(const row of this.db.prepare("SELECT payload_json FROM articles").iterate())yield JSON.parse(row.payload_json);}
   save(article){
-    const previous=this.db.prepare("SELECT revision FROM articles WHERE article_id=?").get(article.id);
+    const previous=this.db.prepare("SELECT revision,payload_json FROM articles WHERE article_id=?").get(article.id);
     if(previous?.revision===article.revision){
-      this.db.prepare("UPDATE articles SET last_seen_at=?,payload_json=? WHERE article_id=?").run(article.archiveLastSeenAt,JSON.stringify(article),article.id);
-      for(const alias of article.originalIds || [])this.db.prepare("INSERT OR IGNORE INTO article_aliases VALUES(?,?)").run(alias,article.id);return;
+      this.db.prepare("UPDATE articles SET last_seen_at=?,payload_json=? WHERE article_id=? AND (last_seen_at IS NOT ? OR payload_json!=?)").run(article.archiveLastSeenAt,JSON.stringify(article),article.id,article.archiveLastSeenAt,JSON.stringify(article));
+      for(const alias of article.originalIds || [])this.db.prepare("INSERT OR IGNORE INTO article_aliases VALUES(?,?)").run(alias,article.id);this.saveSources(article);return;
     }
     const policy=typeof article.usagePolicy==="string"?article.usagePolicy:article.usagePolicy?.contentPolicy || "headline-only-link-out";
     this.db.prepare("INSERT INTO articles VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(article_id) DO UPDATE SET title=excluded.title,excerpt=excluded.excerpt,canonical_url=excluded.canonical_url,published_at=excluded.published_at,last_seen_at=excluded.last_seen_at,revision=excluded.revision,usage_policy=excluded.usage_policy,payload_json=excluded.payload_json").run(article.id,article.title,article.excerpt || null,article.url || null,article.publishedAt || null,article.receivedAt,article.archiveLastSeenAt,article.revision || 1,policy,JSON.stringify(article));
@@ -43,12 +43,17 @@ export class SqlNewsArchive extends NewsArchive {
     const excerpt=this.pendingExcerpts?.get(article.id);
     if(excerpt!==undefined&&article.permittedExcerptHash)this.db.prepare('INSERT OR IGNORE INTO article_permitted_excerpts VALUES(?,?,?,?,?)').run(article.id,article.revision,article.permittedExcerptHash,excerpt,article.archiveLastSeenAt);
     for(const alias of article.originalIds || [])this.db.prepare("INSERT OR IGNORE INTO article_aliases VALUES(?,?)").run(alias,article.id);
-    for(const table of ["article_instruments","article_countries","article_topics","article_sources"])this.db.prepare(`DELETE FROM ${table} WHERE article_id=?`).run(article.id);
-    for(const i of listVerifiedInstruments()) {const reason=matchInstrument(article,i);if(reason){instrumentRow(this.db,i.instrumentId);this.db.prepare("INSERT INTO article_instruments VALUES(?,?,?)").run(article.id,i.instrumentId,JSON.stringify(reason));}}
-    for(const country of article.countryMentions || [])this.db.prepare("INSERT OR IGNORE INTO article_countries VALUES(?,?)").run(article.id,country);
-    for(const topic of article.topics || [])this.db.prepare("INSERT OR IGNORE INTO article_topics VALUES(?,?)").run(article.id,topic);
-    for(const p of article.provenances || []) {const sid=p.sourceId || `publisher:${p.publisher || p.provider || "unknown"}`;sourceRow(this.db,sid,p);this.db.prepare("INSERT INTO article_sources VALUES(?,?,?,?) ON CONFLICT(article_id,source_id) DO UPDATE SET observed_at=excluded.observed_at,provenance_json=excluded.provenance_json").run(article.id,sid,article.archiveLastSeenAt,JSON.stringify(p));}
+    const prior=previous?JSON.parse(previous.payload_json):null;
+    const inputs=v=>[v.title,v.excerpt,v.instrumentIds||[],v.countryMentions||[],v.topics||[]];
+    if(!prior||hash(inputs(prior))!==hash(inputs(article))){
+      for(const table of ["article_instruments","article_countries","article_topics"])this.db.prepare(`DELETE FROM ${table} WHERE article_id=?`).run(article.id);
+      for(const i of listVerifiedInstruments()) {const reason=matchInstrument(article,i);if(reason){instrumentRow(this.db,i.instrumentId);this.db.prepare("INSERT INTO article_instruments VALUES(?,?,?)").run(article.id,i.instrumentId,JSON.stringify(reason));}}
+      for(const country of article.countryMentions || [])this.db.prepare("INSERT OR IGNORE INTO article_countries VALUES(?,?)").run(article.id,country);
+      for(const topic of article.topics || [])this.db.prepare("INSERT OR IGNORE INTO article_topics VALUES(?,?)").run(article.id,topic);
+    }
+    this.saveSources(article);
   }
+  saveSources(article){for(const p of article.provenances||[]){const sid=p.sourceId||`publisher:${p.publisher||p.provider||'unknown'}`;sourceRow(this.db,sid,p);this.db.prepare('INSERT INTO article_sources VALUES(?,?,?,?) ON CONFLICT(article_id,source_id) DO UPDATE SET observed_at=excluded.observed_at,provenance_json=excluded.provenance_json WHERE observed_at IS NOT excluded.observed_at OR provenance_json!=excluded.provenance_json').run(article.id,sid,article.archiveLastSeenAt,JSON.stringify(p));}}
   persist(){if(this.db)writeMeta(this.db,"news.meta",Object.fromEntries(["revision","startedAt","lastIngestAt","capacityPrunedAt"].map(k=>[k,this[k]])));}
   prune(){
     if(!this.db || this.analysisOnly)return;
@@ -63,15 +68,32 @@ export class SqlNewsArchive extends NewsArchive {
     // storing restricted provider bodies. Old rows use permitted metadata until
     // their source is fetched again; no missing historical text is invented.
     const enriched=(values || []).map(raw=>{
+      const {archiveLastSeenAt:_lastSeen,fetchedAt:_fetched,receivedAt:_received,firstSeenAt:_first,...semantic}=raw;
+      if(semantic.provenance){const {fetchedAt:_polled,observedAt:_observed,checkedAt:_checked,...provenance}=semantic.provenance;semantic.provenance=provenance;}
+      const key=hash(semantic),cached=this.featureCache.get(key);
+      if(cached)return {...raw,countryMentions:cached.countryMentions,analysisFeatures:cached.analysisFeatures};
       const normalized=normalizeArticles([raw],raw.provider)[0];
       if(!normalized)return raw;
       const classified=classifyFinancialArticle(normalized);
       classified.financial.importance=scoreFinancialImportance(normalized);
-      return {...raw,countryMentions:[...new Set([...(raw.countryMentions || []),...normalized.countryMentions])],analysisFeatures:{methodVersion:"news-features-v1",sentiment:normalized.sentiment,conflict:normalized.conflict,financial:classified.financial}};
+      const features={countryMentions:[...new Set([...(raw.countryMentions || []),...normalized.countryMentions])],analysisFeatures:{methodVersion:"news-features-v1",sentiment:normalized.sentiment,conflict:normalized.conflict,financial:classified.financial}};
+      const bytes=Buffer.byteLength(JSON.stringify(features));
+      while(this.featureCache.size&&(this.featureCache.size>=2048||this.featureCacheBytes+bytes>4194304)){const old=this.featureCache.keys().next().value;this.featureCacheBytes-=this.featureCache.get(old).bytes;this.featureCache.delete(old);}
+      if(bytes>4194304)return {...raw,...features};
+      this.featureCacheBytes+=bytes;
+      this.featureCache.set(key,{...features,bytes});return {...raw,...features};
     });
     const before=Object.fromEntries(["revision","startedAt","lastIngestAt","capacityPrunedAt"].map(k=>[k,this[k]]));
     this.pendingExcerpts=new Map();
     try{return this.db.transaction(()=>super.ingest(enriched,options)).immediate();}catch(error){Object.assign(this,readMeta(this.db,"news.meta",before));throw error;}finally{this.pendingExcerpts=null;}
+  }
+  ingestPage(values,options,{budgetMs=100}={}){
+    const before=Object.fromEntries(["revision","startedAt","lastIngestAt","capacityPrunedAt"].map(k=>[k,this[k]]));
+    try{return this.db.transaction(()=>{
+      const started=performance.now();let processed=0,accepted=0;
+      for(const article of values){accepted+=this.ingest([article],options).accepted||0;processed++;if(performance.now()-started>=budgetMs)break;}
+      return {processed,accepted,revision:this.revision};
+    }).immediate();}catch(error){Object.assign(this,readMeta(this.db,'news.meta',before));throw error;}
   }
   preparePermittedExcerpt(raw,record,previous){
     if(!this.pendingExcerpts)return;

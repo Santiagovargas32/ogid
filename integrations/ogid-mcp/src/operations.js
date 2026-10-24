@@ -1,5 +1,5 @@
 import * as z from "zod/v4";
-import { OGID_OPERATIONS, OPERATIONS_VERSION, getOperation, operationPath, validIsoDate } from "../../../backend/contracts/ogidOperations.js";
+import { OGID_OPERATIONS, OPERATIONS_VERSION, OPERATIONS_HASH, getOperation, operationPath, validIsoDate } from "../../../backend/contracts/ogidOperations.js";
 import { projectOperation } from "../../../backend/utils/researchProjection.js";
 import { ReadError } from "./client.js";
 import { VERSION, ADAPTER_BUILD, allowsResearchOperation } from "./config.js";
@@ -51,12 +51,14 @@ function compactWeeklyHistory(data) {
 export function extendedToolDefinitions(config, read) {
   const research = OGID_OPERATIONS.filter(operation => operation.profile === "research" && allowsResearchOperation(config, operation.id));
   const operator = OGID_OPERATIONS.filter(operation => operation.profile === "operator" && config.operatorCredential?.scopes.includes(operation.scope));
-  const operatorBodies = operator.filter(operation => operation.body).map(operation => zodSchema(operation.body).describe(operation.id));
   const researchPaths = research.some(operation=>operation.pathParameters)
     ? {pathParameters:z.strictObject({id:z.string().regex(/^[A-Za-z0-9._:-]{1,128}$/)}).optional()} : {};
   async function execute(operation, params, body, pathParams) {
     if (!allowsResearchOperation(config, operation.id)) throw new ReadError("FORBIDDEN_REQUEST", "Lectura fuera de la evidencia congelada del analista.");
-    const values = clean(zodSchema(operation.parameters).parse(params));
+    let values;
+    try{values=clean(zodSchema(operation.parameters).parse(params));}catch(error){error.validationStage="operation-parameters";throw error;}
+    if(operation.body){try{body=zodSchema(operation.body).parse(body||{});}catch(error){error.validationStage='operation-body';throw error;}}
+    else if(body!==undefined)throw new ReadError('INVALID_ARGUMENTS','Esta operación no admite un cuerpo.');
     if (values.from && values.to && Date.parse(values.from) > Date.parse(values.to)) throw new ReadError("INVALID_WINDOW", "from debe ser anterior o igual a to.");
     if (operation.profile === "research" && operation.id !== "instruments.resolve") await authorizeInstruments(config, read, [...(values.instrumentIds || []), ...(values.symbols || []), ...(values.tickers || []), ...(values.instrumentId ? [values.instrumentId] : []), ...(values.benchmarkInstrumentId ? [values.benchmarkInstrumentId] : [])]);
     if (["news.search","signals.delta","signals.change"].includes(operation.id)) values.maxBytes = Math.min(values.maxBytes || config.maxOutputBytes, config.maxOutputBytes);
@@ -68,7 +70,7 @@ export function extendedToolDefinitions(config, read) {
   const tools = [
     { name: "ogid_get_capabilities", description: "Descubre versión, cobertura, permisos y contratos de las operaciones OGID disponibles. No acredita la identidad del proceso por el commit del checkout.", schema: z.strictObject({}), async run() {
       const runtime = await callOperation(read, getOperation("capabilities"));
-      return { data: { adapterVersion: VERSION, adapterBuild: ADAPTER_BUILD, contractVersion: OPERATIONS_VERSION, profile: config.profile, instrumentAuthorization: config.instrumentAuth, checkoutCommit: config.commit, runningCommitVerified: false,
+      return { data: { adapterVersion: VERSION, adapterBuild: ADAPTER_BUILD, contractVersion: OPERATIONS_VERSION, contractHash:OPERATIONS_HASH, profile: config.profile, instrumentAuthorization: config.instrumentAuth, checkoutCommit: config.commit, runningCommitVerified: false,
         operations: [...research, ...(config.profile === "operator" ? operator : [])].map(describe), runtime: { contractVersion: runtime.contractVersion, generatedAt: runtime.generatedAt, newsCoverage: runtime.newsCoverage, build: runtime.build || null, researchPipeline:runtime.researchPipeline || null } }, warnings: ["Datos disponibles y cuota no equivalen a cobertura completa o hechos corroborados."] };
     } },
     { name: "ogid_search_news", description: "Busca todo el archivo autorizado anterior al recorte editorial, por país, empresa verificada, texto, temas y fechas. País omitido incluye noticias corporativas sin país. Recorre nextCursor de la misma revisión; conservar cobertura parcial y fechas desconocidas.", schema: zodSchema(getOperation("news.search").parameters), run: args => execute(getOperation("news.search"), args) },
@@ -78,7 +80,7 @@ export function extendedToolDefinitions(config, read) {
     { name: "ogid_query", description: config.researchScope === "agent-evidence"
       ? "Lee el snapshot durable indicado en la tarea mediante agent.evidence, agent.evidence.chunk y agent.clusters. Usa snapshotId exacto y recorre nextCursor/nextOffset. Datos ausentes permanecen ausentes: no hay lecturas vivas de precios ni búsqueda externa. Descubre parámetros con ogid_get_capabilities."
       : "Consulta operaciones de lectura enumeradas: watchlist, precios, velas, indicadores/contexto técnico, eventos, escenarios, cambios por consumidor, holdings fechados, evaluación, condiciones, impactos, inteligencia, mapas, medios y diagnóstico seguro. Parámetros según operationId; stored impide consumo de proveedores. Descubrir contratos con ogid_get_capabilities.",
-      schema: z.strictObject({ operationId: z.enum(research.filter(op => op.tool === "ogid_query").map(op => op.id)), parameters: z.union(research.filter(op => op.tool === "ogid_query").map(op => zodSchema(op.parameters).describe(op.id))).default({}), ...researchPaths }),
+      schema: z.strictObject({ operationId: z.enum(research.filter(op => op.tool === "ogid_query").map(op => op.id)), parameters: z.record(z.string(), z.unknown()).default({}), ...researchPaths }),
       async run({ operationId, parameters, pathParameters }) {
         const operation = getOperation(operationId);
         if (operation.pathParameters) zodSchema(operation.pathParameters).parse(pathParameters); else if (pathParameters) throw new ReadError("INVALID_ARGUMENTS", "Esta operación no admite parámetros de ruta.");
@@ -87,7 +89,7 @@ export function extendedToolDefinitions(config, read) {
   ];
   if (config.profile === "operator" && operator.length) tools.push({ name: "ogid_operator", description: "OPERADOR: operaciones administrativas, proveedor y mutaciones enumeradas. Requiere credencial local de alcance, verificada también por el backend. No usar en tareas de cartera; los cuerpos internos se proyectan como métricas.",
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
-    schema: z.strictObject({ operationId: z.enum(operator.map(op => op.id)), parameters: z.union(operator.map(op => zodSchema(op.parameters).describe(op.id))).default({}), body: (operatorBodies.length ? z.union(operatorBodies) : z.strictObject({})).optional(), pathParameters: z.strictObject({ id: z.string().regex(/^[A-Za-z0-9._:-]{1,128}$/) }).optional() }),
+    schema: z.strictObject({ operationId: z.enum(operator.map(op => op.id)), parameters: z.record(z.string(),z.unknown()).default({}), body:z.record(z.string(),z.unknown()).optional(), pathParameters: z.strictObject({ id: z.string().regex(/^[A-Za-z0-9._:-]{1,128}$/) }).optional() }),
     async run({ operationId, parameters, body, pathParameters }) {
       const operation = getOperation(operationId);
       if (!operator.includes(operation)) throw new ReadError("FORBIDDEN_REQUEST", "Operación no autorizada.");

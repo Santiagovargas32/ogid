@@ -2,9 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { atr, bollingerBands, calculateTechnicalIndicators, ema, logarithmicReturn, macd, realizedVolatility, rsi, simpleReturn, sma, volumeChange } from "../services/market/technicalIndicators.js";
 import { TechnicalIndicatorService } from "../services/market/technicalIndicatorService.js";
+import {tradingDay,addDate} from '../services/market/exchangeCalendar.js';
+import {getInstrumentById} from '../services/market/instrumentRegistry.js';
 
 function candles(closes, { interval = "1day", source = "fixture", volume = true, start = "2026-01-01T14:30:00.000Z" } = {}) {
   const step = interval === "15min" ? 900_000 : 86_400_000; return closes.map((close, index) => ({ instrumentId: "us-equity-general-dynamics", interval, openTime: new Date(Date.parse(start) + index * step).toISOString(), closeTime: new Date(Date.parse(start) + (index + 1) * step).toISOString(), open: close, high: close + 1, low: close - 1, close, volume: volume ? 100 + index : null, currency: "USD", source, adjusted: true, dataMode: "observed", provenance: { provider: source, adjustmentMode: "splits" } }));
+}
+function regularCandles(closes,start='2026-01-02') {
+  const values=candles(closes),instrument=getInstrumentById(values[0].instrumentId),result=[];
+  for(let date=start;result.length<values.length;date=addDate(date,1)){const session=tradingDay(instrument,date);if(!session.closed)result.push({...values[result.length],openTime:session.openTime,closeTime:session.closeTime});}
+  return result;
 }
 
 test("golden constant series produces neutral deterministic values", () => {
@@ -25,6 +32,6 @@ test("calculations have no look-ahead and are reproducible", () => { const prefi
 
 test("cache is reused until the relevant series latest candle changes and performs zero HTTP", () => {
   const originalFetch = globalThis.fetch; globalThis.fetch = async () => { throw new Error("unexpected-http"); };
-  try { let series = candles(Array.from({ length: 40 }, (_, index) => index + 1)); const store = { query: () => series }; let tick = 0; const service = new TechnicalIndicatorService({ store, now: () => new Date(Date.UTC(2026, 5, 1, 0, 0, tick++)) }); const first = service.calculate({ instrumentId: series[0].instrumentId }); const cached = service.calculate({ instrumentId: series[0].instrumentId }); assert.strictEqual(cached, first); series = [...series, ...candles([41], { start: new Date(Date.parse(series.at(-1).openTime) + 86_400_000).toISOString() })]; const invalidated = service.calculate({ instrumentId: series[0].instrumentId }); assert.notStrictEqual(invalidated, first); assert.notEqual(invalidated.lastCandleAt, first.lastCandleAt); }
+  try { let series = regularCandles(Array.from({ length: 40 }, (_, index) => index + 1)); const store = { query: () => series }; let tick = 0; const service = new TechnicalIndicatorService({ store, now: () => new Date(Date.UTC(2026, 5, 1, 0, 0, tick++)) }); const first = service.calculate({ instrumentId: series[0].instrumentId }); const cached = service.calculate({ instrumentId: series[0].instrumentId }); assert.strictEqual(cached, first); series = [...series, ...regularCandles([41],addDate(series.at(-1).openTime.slice(0,10),1))]; const invalidated = service.calculate({ instrumentId: series[0].instrumentId }); assert.notStrictEqual(invalidated, first); assert.notEqual(invalidated.lastCandleAt, first.lastCandleAt); }
   finally { globalThis.fetch = originalFetch; }
 });

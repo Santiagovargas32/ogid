@@ -126,14 +126,14 @@ test('a calculation exceeding 12 seconds does not block reads or cancel its shar
 test('failed result commit never publishes; completed publication is idempotent and rejects conflicting content',async()=>{
  const f=sqlFixture(),runtime=new BusinessRuntime(f.db,()=>{});try{
   runtime.configure(config(f.dir));const snapshots=runtime.advancedSnapshots;
-  const pending=snapshots.prepare({options:{countries:['RU']}}),job=snapshots.claim(pending.dispatchJobId);
+  const pending=snapshots.prepare({options:{countries:['RU']}}),job=snapshots.claim({jobId:pending.dispatchJobId,owner:'test-owner'});
   const result={methodology:{version:'advanced-intelligence-v3'},generatedAt:job.asOf,inputsAsOf:job.asOf,inputHash:'fixture',inputRevisions:job.revisions};
   f.db.exec("CREATE TRIGGER fail_publish BEFORE INSERT ON analysis_latest BEGIN SELECT RAISE(ABORT,'injected disk failure'); END");
-  assert.throws(()=>snapshots.publish({jobId:job.jobId,result}),/injected/);
+  assert.throws(()=>snapshots.publish({owner:'test-owner',fence:1,jobId:job.jobId,result}),/injected/);
   assert.equal(f.db.prepare('SELECT count(*) AS n FROM analysis_runs').get().n,0);assert.equal(f.db.prepare('SELECT status FROM analysis_jobs').get().status,'running');
-  f.db.exec('DROP TRIGGER fail_publish');snapshots.recover();assert.equal(f.db.prepare('SELECT status FROM analysis_jobs').get().status,'queued');snapshots.claim(job.jobId);
-  assert.equal(snapshots.publish({jobId:job.jobId,result}).persisted,true);assert.equal(snapshots.publish({jobId:job.jobId,result}).replayed,true);
-  assert.throws(()=>snapshots.publish({jobId:job.jobId,result:{...result,inputHash:'conflict'}}),{code:'STORAGE_IDEMPOTENCY_CONFLICT'});
+  f.db.exec('DROP TRIGGER fail_publish');snapshots.recover();assert.equal(f.db.prepare('SELECT status FROM analysis_jobs').get().status,'queued');const resumed=snapshots.claim({jobId:job.jobId,owner:'test-owner'});
+  assert.equal(snapshots.publish({...resumed,result}).persisted,true);assert.equal(snapshots.publish({...resumed,result}).replayed,true);
+  assert.throws(()=>snapshots.publish({...resumed,result:{...result,inputHash:'conflict'}}),{code:'STORAGE_IDEMPOTENCY_CONFLICT'});
  }finally{runtime.close();f.close();}
 });
 
@@ -221,8 +221,8 @@ test('real SQLITE_FULL and SQLITE_BUSY leave journal state consistent and retrya
 test('interrupted durable jobs stop retrying after three starts',()=>{
  const f=sqlFixture(),runtime=new BusinessRuntime(f.db,()=>{});try{
   runtime.configure(config(f.dir));const snapshots=runtime.advancedSnapshots;const first=snapshots.prepare({});
-  for(let i=0;i<3;i++){assert.ok(snapshots.claim(first.dispatchJobId));snapshots.recover();}
-  assert.equal(snapshots.claim(first.dispatchJobId),null);const status=snapshots.prepare({});assert.equal(status.lifecycle.status,'failed');assert.equal(status.lifecycle.attempts,3);
+  for(let i=0;i<3;i++){assert.ok(snapshots.claim({jobId:first.dispatchJobId,owner:'test-owner'}));snapshots.recover();}
+  assert.equal(snapshots.claim({jobId:first.dispatchJobId,owner:'test-owner'}),null);const status=snapshots.prepare({});assert.equal(status.lifecycle.status,'failed');assert.equal(status.lifecycle.attempts,3);
  }finally{runtime.close();f.close();}
 });
 

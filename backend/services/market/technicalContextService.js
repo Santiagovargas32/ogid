@@ -6,6 +6,8 @@ import { stableHash } from "../../utils/stableHash.js";
 import { CALENDAR_VERSION, addDate, tradingDay, localDate, zonedBoundary, expectedDailyGaps } from "./exchangeCalendar.js";
 import { candleIntervalMs } from "./canonicalCandle.js";
 import { AppError } from "../../utils/error.js";
+import {resolveClosedSeries} from './closedSeries.js';
+import {expectedPublicableCandle,providerPublicationPolicy,lastPublicableSessionClose} from './candleValidation.js';
 const nd=(reason,sampleSize=0)=>({value:null,reason,sampleSize});
 const ok=(value,sampleSize)=>({value,reason:null,sampleSize});
 const mean=v=>v.reduce((a,b)=>a+b,0)/v.length;
@@ -58,20 +60,22 @@ function relativeVolume(bars,instrument,interval) {
 }
 export class TechnicalContextService {
   constructor({store,imports=null,now=()=>new Date()}={}){this.store=store;this.imports=imports;this.now=now;this.cache=new Map();this.metrics={calculations:0,cacheHits:0};}
-  get({instrumentId,interval="1day",adjusted="splits",package:packageId="standard-v1",benchmarkInstrumentId,limit=500,datasetId=null}={}) {
+  get({instrumentId,interval="1day",adjusted="splits",package:packageId="standard-v1",benchmarkInstrumentId,limit=500,datasetId=null,anchor='live'}={}) {
     const instrument=getInstrumentById(instrumentId);if(!instrument||instrument.verificationStatus!=="verified")throw new AppError("Instrumento no verificado.",400,"UNRESOLVED_INSTRUMENT");
-    if(packageId!=="standard-v1"||!["1day","1wk","1h","30min","15min","5min"].includes(interval)||!["splits","none"].includes(adjusted))throw new AppError("Paquete técnico inválido.",400,"INVALID_TECHNICAL_PARAMETERS");
+    if(packageId!=="standard-v1"||!["1day","1wk","1h","30min","15min","5min"].includes(interval)||!["splits","none"].includes(adjusted)||!['live','last-close'].includes(anchor))throw new AppError("Paquete técnico inválido.",400,"INVALID_TECHNICAL_PARAMETERS");
     if(datasetId&&(!this.imports||!["1day","1wk"].includes(interval)||benchmarkInstrumentId))throw new AppError("Dataset importado admite técnica diaria/semanal sin benchmark externo.",400,"HISTORY_DATASET_MISMATCH");
-    const asOf=this.now().toISOString();const query=(id)=>{const args={instrumentId:id,interval:interval==="1wk"?"1day":interval,adjustmentMode:adjusted,limit:interval==="1wk"?Math.min(10000,limit*7):limit};return (datasetId?this.imports.candles({datasetId,...args}):this.store.query(args)).filter(c=>Date.parse(c.closeTime)<=Date.parse(asOf));};
+    const calculatedAt=this.now().toISOString(),publicationPolicy=providerPublicationPolicy(instrument),sessionCut=anchor==='last-close'?lastPublicableSessionClose(instrument,calculatedAt).expectedLatestCandleAt:null;
+    if(anchor==='last-close'&&!sessionCut)throw new AppError('Cierre de sesión no acreditado.',409,'SESSION_CLOSE_UNKNOWN');
+    const asOf=sessionCut||calculatedAt,expectedAsOf=sessionCut?new Date(Date.parse(sessionCut)+publicationPolicy.delayMs+publicationPolicy.graceMs).toISOString():asOf,lineages=[];const query=(id)=>{const args={instrumentId:id,interval:interval==="1wk"?"1day":interval,adjustmentMode:adjusted,limit:interval==="1wk"?Math.min(10000,limit*7):limit};if(!datasetId){const resolved=resolveClosedSeries(this.store,{instrument:getInstrumentById(id),interval:args.interval,adjustmentMode:adjusted,limit:args.limit,asOf});lineages.push(resolved);return resolved.candles;}return this.imports.candles({datasetId,...args}).filter(c=>Date.parse(c.closeTime)<=Date.parse(asOf));};
     const daily=query(instrumentId);const bars=interval==="1wk"?aggregateWeekly(daily,instrument,asOf).slice(-limit):daily;
-    const expected = interval === "1day" ? resolveExpectedClosedDailyCandle(instrument,new Date(asOf))?.closeTime : interval==="1wk"?latestWeeklyClose(instrument,asOf):sessionPolicyResolver.resolve(instrument,asOf,{intervalMs:candleIntervalMs(interval)}).expectedLatestCandleAt;
+    const expected = interval === "1day" ? resolveExpectedClosedDailyCandle(instrument,new Date(expectedAsOf),{equityDelayMinutes:(publicationPolicy.delayMs+publicationPolicy.graceMs)/60000})?.closeTime : interval==="1wk"?latestWeeklyClose(instrument,expectedAsOf):expectedPublicableCandle(instrument,interval,expectedAsOf).expectedLatestCandleAt;
     const benchmarkBars=benchmarkInstrumentId?query(benchmarkInstrumentId):[];
-    const semanticRevision=stableHash([instrumentId,datasetId,benchmarkInstrumentId,interval,adjusted,packageId,limit,bars,benchmarkBars,expected,CALENDAR_VERSION]);
+    const semanticRevision=stableHash([instrumentId,datasetId,benchmarkInstrumentId,interval,adjusted,packageId,anchor,sessionCut,limit,bars,benchmarkBars,expected,CALENDAR_VERSION,lineages.map(s=>[s.lineage,s.quality])]);
     const cached=this.cache.get(semanticRevision);
-    if(cached){this.metrics.cacheHits++;return {...structuredClone(cached),queriedAt:asOf};}
+    if(cached){this.metrics.cacheHits++;return {...structuredClone(cached),queriedAt:calculatedAt};}
     this.metrics.calculations++;
     const base=calculateTechnicalIndicators(bars,{interval,instrument:interval!=="1wk"?instrument:null,calculatedAt:asOf});
-    const invalid=base.quality.reason||base.quality.gapDetected&&"gaps_detected"||bars.some(c=>c.quality==="partial")&&"partial_series";
+    const invalid=base.quality.reason||base.quality.gapDetected&&"gaps_detected"||lineages.some(s=>s.quality.gapDetected)&&'unverified_series'||bars.some(c=>c.quality==="partial")&&"partial_series";
     const protect=value=>invalid?nd(invalid,bars.length):value;const last=bars.at(-1);
     let benchmark=[];let benchmarkReason=null;
     if(benchmarkInstrumentId){const b=getInstrumentById(benchmarkInstrumentId);if(!b||b.verificationStatus!=="verified")throw new AppError("Benchmark no verificado.",400,"UNRESOLVED_INSTRUMENT");benchmark=benchmarkBars;if(interval==="1wk")benchmark=aggregateWeekly(benchmark,b,asOf);const bBase=calculateTechnicalIndicators(benchmark,{interval,instrument:interval!=="1wk"?b:null,calculatedAt:asOf});benchmarkReason=b.currency!==instrument.currency?"benchmark_currency_mismatch":bars.length&&benchmark.length&&(bars[0].source!==benchmark[0].source||bars[0].adjusted!==benchmark[0].adjusted)?"incompatible_benchmark_series":bBase.quality.reason||bBase.quality.gapDetected&&"benchmark_gaps";}
@@ -86,8 +90,9 @@ export class TechnicalContextService {
       relativeReturn:protect(benchmarkReason?nd(benchmarkReason,benchmark.length):relativeStrength(bars,benchmark,1)),relativeStrength:protect(benchmarkReason?nd(benchmarkReason,benchmark.length):relativeStrength(bars,benchmark)),relativeVolume:protect(relativeVolume(bars,instrument,interval)),levels:protect(levels(bars)),vwapApprox:{...protect(vwap),method:"typical-price-times-bar-volume-v1",approximate:true,unit:instrument.currency,coverage:sessionBars.length?{from:sessionBars[0].openTime,sessionOpenObserved:sessionBars[0].openTime===zonedBoundary(localDate(last.openTime,instrument.timezone),tradingDay(instrument,localDate(last.openTime,instrument.timezone)).openMinute,instrument.timezone)}:null}},
       quality:{...base.quality,expectedLatestCandleAt:expected || null,reason:invalid||null,stale:staleByTime||bars.some(c=>c.dataMode==="stale"||c.provenance?.stale),calendarPartial:daily.some(c=>c.calendar?.partial||c.calendar==null),synthetic:bars.some(c=>c.synthetic||["synthetic","fallback","seeded"].includes(c.dataMode)),provider: [...new Set(bars.map(c=>c.source))],provenanceVerification:datasetId?"operator-declared; not independently verified":"provider-observed",delay:"web-delayed-or-provider-history",currency:instrument.currency},
       coverage:{from:bars[0]?.openTime||null,to:last?.closeTime||null,gaps:interval==="1day"?expectedDailyGaps(bars,instrument).slice(0,100):[]},warnings:["Correlated indicators are not independent confirmations.","Relative strength aligns exact closes, without timezone or FX interpolation.","Weekly frames derive from complete daily sessions; historical exceptional calendars may be partial."]};
+    result.seriesLineage=lineages.map(s=>s.lineage);result.seriesCoverage=lineages.map(s=>s.quality);result.dataAsOf=result.lastClosedCandleAt;result.sessionAsOf=sessionCut||result.lastClosedCandleAt;result.calculatedAt=calculatedAt;result.sessionType='regular';result.anchor=anchor;result.providerDelayMs=publicationPolicy.delayMs;
     this.cache.set(semanticRevision,structuredClone(result));
     while(this.cache.size>64)this.cache.delete(this.cache.keys().next().value);
-    return {...result,queriedAt:asOf};
+    return {...result,queriedAt:calculatedAt};
   }
 }

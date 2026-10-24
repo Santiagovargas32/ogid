@@ -58,7 +58,7 @@ test('slash fact paths normalize deterministically while exact values and unsafe
   assertPublication(normalized,{job:{task:normalized.task},snapshot:{asOf:at},lookup:()=>item});
   normalized.technicalFacts[0].value=57.33;assert.throws(()=>assertPublication(normalized,{job:{task:normalized.task},snapshot:{asOf:at},lookup:()=>item}),{code:'AGENT_UNVERIFIED_NUMBER'});
  }
- for(const [path,value,code]of [['data/samples/0/close',123,null],['data/constructor/prototype/value',1,'AGENT_INVALID_TECHNICAL_FACT'],['data/missing/value',1,'AGENT_UNVERIFIED_NUMBER']]){
+ for(const [path,value,code]of [['data/samples/0/close',123,'AGENT_INVALID_TECHNICAL_FACT'],['data/constructor/prototype/value',1,'AGENT_INVALID_TECHNICAL_FACT'],['data/missing/value',1,'AGENT_UNVERIFIED_NUMBER']]){
   const normalized=normalizePublicationEvidence({...proposal(['technical-fixture']),technicalFacts:[{evidenceId:'technical-fixture',path,value}]});
   const check=()=>assertPublication(normalized,{job:{task:normalized.task},snapshot:{asOf:at},lookup:()=>item});if(code)assert.throws(check,{code});else check();
  }
@@ -187,7 +187,7 @@ test("worker stops completed duplicate tool calls while allowing pagination and 
                 name: "ogid_read_ogid_query",
                 status: kind === "pending" && !done ? "running" : "completed",
                 operationId: "agent.evidence",
-                snapshotId: row.snapshotId,
+                snapshotId: row.snapshotId,applicationOk:true,contentRead:true,returnedSnapshotId:row.snapshotId,
               },
             ],
             usage: [],
@@ -1013,7 +1013,7 @@ test("worker reconciles admitted IDs, repairs at most once and publishes no trun
       const remote = {
         session: async (id) => ({ id }),
         messages: async () => ({
-          data: [...admitted].map((id) => ({ id, type: "user" })),
+          data: [...admitted,...(kind==="reconciled"?[JSON.parse(f.db.prepare("SELECT metadata_json FROM agent_runs WHERE job_id=? AND fence=?").get(j.jobId,j.fence).metadata_json).generation.messageId]:[])].map((id) => ({ id, type: "user" })),
         }),
         cancel: async () => {},
         prompt: async (_, { messageId }) => {
@@ -1039,7 +1039,7 @@ test("worker reconciles admitted IDs, repairs at most once and publishes no trun
                 name: "ogid_read_ogid_query",
                 status: "completed",
                 operationId: "agent.evidence",
-                snapshotId: row.snapshotId,
+                snapshotId: row.snapshotId,applicationOk:true,contentRead:true,returnedSnapshotId:row.snapshotId,
               },
             ],
             usage: [],
@@ -1091,7 +1091,7 @@ test("chat repairs unknown citations from frozen coverage once and never stores 
    const claim={...f.repo.claim({owner:'owner'}),owner:'owner'};let prompts=0,coverageReads=0;const texts=[];
    const worker=new IntelligenceWorker({model:manifest.defaultModel,call:async(method,args)=>{if(method==='evidence'){if(args.domain==='coverage')coverageReads++;else assert.equal(args.limit,20);assert.equal(args.snapshotId,f.repo.run({jobId:sent.jobId,internal:true}).snapshotId);}return f.repo.call(method,args);},opencode:{
     session:async id=>({id}),messages:async()=>({data:[]}),cancel:async()=>{},prompt:async(_id,input)=>{prompts++;texts.push(input.text);},
-    progress:async(_session,_signal,id)=>{const row=f.repo.run({jobId:sent.jobId,internal:true}),item=f.repo.evidence({snapshotId:row.snapshotId,domain:'coverage'}).items[0];return {idle:true,messageId:'answer',finish:'stop',outcome:'succeeded',text:id.startsWith('msg_repair_')&&repairSucceeds?`Cobertura parcial [evidence:${item.evidenceId}]`:`Snapshot [evidence:${row.snapshotId}]. Cobertura [evidence:${item.evidenceId}].`,tools:[{name:'ogid_query',status:'completed',operationId:'agent.evidence',snapshotId:row.snapshotId}],usage:[]};}
+    progress:async(_session,_signal,id)=>{const row=f.repo.run({jobId:sent.jobId,internal:true}),item=f.repo.evidence({snapshotId:row.snapshotId,domain:'coverage'}).items[0];return {idle:true,messageId:'answer',finish:'stop',outcome:'succeeded',text:id.startsWith('msg_repair_')&&repairSucceeds?`Cobertura parcial [evidence:${item.evidenceId}]`:`Snapshot [evidence:${row.snapshotId}]. Cobertura [evidence:${item.evidenceId}].`,tools:[{name:'ogid_query',status:'completed',operationId:'agent.evidence',snapshotId:row.snapshotId,applicationOk:true,contentRead:true,returnedSnapshotId:row.snapshotId}],usage:[]};}
    },policy:{pollMs:1,runDeadlineMs:10000}});worker.owner='owner';await worker.execute(claim);
    assert.equal(prompts,2);assert.equal(coverageReads,2);
    const snapshotId=f.repo.run({jobId:sent.jobId,internal:true}).snapshotId;
@@ -1115,7 +1115,7 @@ test('a chat with no evidence tool call uses at most one contract repair and sti
     prompt:async(_s,input)=>{prompts++;if(prompts===2){assert.match(input.text,/agent.evidence/);assert.match(input.text,/snapshotId/);}},
     progress:async(_s,_signal,id)=>{
      const row=f.repo.run({jobId:j.jobId,internal:true}),coverage=f.repo.evidence({snapshotId:row.snapshotId,domain:'coverage'}).items[0];
-     return {idle:true,messageId:'answer',finish:'stop',outcome:'succeeded',text:`Cobertura parcial [evidence:${coverage.evidenceId}]`,tools:id.startsWith('msg_repair_')&&repairsEvidence?[{name:'ogid_query',status:'completed',operationId:'agent.evidence',snapshotId:row.snapshotId}]:[],usage:[]};
+     return {idle:true,messageId:'answer',finish:'stop',outcome:'succeeded',text:`Cobertura parcial [evidence:${coverage.evidenceId}]`,tools:id.startsWith('msg_repair_')&&repairsEvidence?[{name:'ogid_query',status:'completed',operationId:'agent.evidence',snapshotId:row.snapshotId,applicationOk:true,contentRead:true,returnedSnapshotId:row.snapshotId}]:[],usage:[]};
     }
    },policy:{pollMs:1,runDeadlineMs:10000}});worker.owner='owner';await worker.execute(j);
    assert.equal(prompts,2);assert.equal(f.repo.run({jobId:sent.jobId,internal:true}).status,repairsEvidence?'completed':'failed');
@@ -1486,6 +1486,7 @@ test("agent forecast registration is prospective, probability-free and rolls bac
           evidenceId: context.evidenceId,
           path: "observed.close",
           value: technical.observed.close,
+          unit:technical.quality.currency,
         },
       ],
       drivers: [

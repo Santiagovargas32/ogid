@@ -59,7 +59,10 @@ test("diagnostic counters follow commit, rollback, upsert, collection moves and 
   db.prepare("UPDATE research_rows SET collection='jobs' WHERE entity_id='one'").run();
   const prepare=db.prepare.bind(db),queries=[];db.prepare=sql=>{queries.push(sql);return prepare(sql);};
   const state=readDatabaseDiagnostics(db);assert.equal(state.counts.articles,1);assert.deepEqual(state.researchTables,[{collection:'jobs',records:1,bytes:null}]);
-  assert.ok(!queries.some(sql=>/count\(\*\)/i.test(sql)));
+  const pending=queries.filter(sql=>sql.includes("kind='market-persistence' AND status='pending'"));
+  assert.equal(pending.length,1);
+  assert.ok(!queries.filter(sql=>!pending.includes(sql)).some(sql=>/count\(\*\)/i.test(sql)));
+  assert.ok(db.prepare('EXPLAIN QUERY PLAN '+pending[0]).all().some(r=>r.detail.includes('COVERING INDEX acquisition_jobs_kind_status')));
   db.prepare("DELETE FROM articles").run();db.prepare("DELETE FROM research_rows").run();
   const empty=readDatabaseDiagnostics(db);assert.equal(empty.counts.articles,0);assert.deepEqual(empty.researchTables,[]);
  }finally{db.close();}

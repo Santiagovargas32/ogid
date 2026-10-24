@@ -1,3 +1,6 @@
+import {CandleWriteJobs} from './candleWriteJobs.js';
+import {CommitActivity} from "./commitActivity.js";
+import {storageOperationContract} from '../contracts/storageOperations.js';
 import { FrozenRows } from "./frozenRows.js";
 import { RUNTIME_POLICY } from "../config/runtimePolicy.js";
 import { assertWriterAvailable, acquireWriter, releaseWriter } from "./writerOwnership.js";
@@ -12,6 +15,7 @@ const log=createLogger("backend/storage/worker");
 import { migrate } from "./migrate.js";
 import { readMeta } from "./sqlRepositories.js";
 import { cacheStatements } from "./statementCache.js";
+import {SqlActivity,trackTransactions} from './sqlActivity.js';
 import { BusinessRuntime } from "./businessRuntime.js";
 import { AgentRepository, AGENT_READER_METHODS } from "./agentRepository.js";
 import { importLegacy } from "./importLegacy.js";
@@ -19,6 +23,9 @@ import { randomUUID } from "node:crypto";
 import { operationContext, checkOperation } from "../services/shared/operationContext.js";
 import { isAcquisitionWorkflow } from "./config.js";
 import {assertStorageVolume} from './volumeGuard.js';
+import {storageExecutionContext,walWriteGuard} from './walPressure.js';
+import {nativeThreadId} from './nativeWait.js';
+const nativeId=nativeThreadId();
 let database, migrations, version, runtime;
 let diagnostics,lastDiagnosticsCompletedAt=0,lastCompletedCommand,lastFailedCommand;
 const activeCommands=new Map();
@@ -27,7 +34,7 @@ const workflows=new Map();
 function telemetry(){
   if(!workerData.businessEnabled && !diagnostics){diagnostics=readDatabaseDiagnostics(database);lastDiagnosticsCompletedAt=Date.now();}
   const memory=process.memoryUsage();
-  parentPort.postMessage({type:"telemetry",worker:{threadId,heartbeatAt:new Date().toISOString(),memory:{heapUsed:memory.heapUsed,heapTotal:memory.heapTotal,external:memory.external},activeCommands:[...activeCommands.values()],lastCompletedCommand,lastFailedCommand,database:diagnostics,rss:runtime?.rssDiagnostics || null,eventIndex:runtime?.registryDiagnostics || null,news:{corpus:runtime?.newsCorpus?.lastDiagnostics ? {...runtime.newsCorpus.lastDiagnostics,payloadCache:runtime.newsCorpus.payloadCache.status()} : null,collection:runtime?.newsPipeline?.diagnostics || null,projection:runtime?.newsPipeline?.projectionDiagnostics || null,supplemental:runtime?.newsPipeline?.supplementalDiagnostics || null}}});
+  parentPort.postMessage({type:"telemetry",worker:{threadId,walBytes:size(`${workerData.databasePath}-wal`),heartbeatAt:new Date().toISOString(),memory:{heapUsed:memory.heapUsed,heapTotal:memory.heapTotal,external:memory.external},activeCommands:[...activeCommands.values()],lastCompletedCommand,lastFailedCommand,database:diagnostics,rss:runtime?.rssDiagnostics || null,eventIndex:runtime?.registryDiagnostics || null,news:{corpus:runtime?.newsCorpus?.lastDiagnostics ? {...runtime.newsCorpus.lastDiagnostics,payloadCache:runtime.newsCorpus.payloadCache.status()} : null,collection:runtime?.newsPipeline?.diagnostics || null,projection:runtime?.newsPipeline?.projectionDiagnostics || null,supplemental:runtime?.newsPipeline?.supplementalDiagnostics || null}}});
   // Historical counts are read work, never part of the business writer's
   // heartbeat. Sample only an idle reader, and schedule from completion: a cold
   // sample taking longer than the interval must not trigger continuous rescans.
@@ -41,7 +48,7 @@ function rpc(operation,input){return new Promise((resolve,reject)=>{const id=ran
 const fail = code => { throw Object.assign(new Error(code), { code }); };
 function size(file) { try { return statSync(file).size; } catch (error) { if (error.code === "ENOENT") return 0; throw error; } }
 function status() {
-  return { readOnlyConnection:database.readonly,queryOnly:database.pragma("query_only",{simple:true}) === 1,sqliteVersion: version, migrations, databaseBytes: size(workerData.databasePath), walBytes: size(`${workerData.databasePath}-wal`), businessStorage: readMeta(database,"businessStorage",workerData.businessEnabled ? "sqlite" : "legacy-json"), storagePhase: readMeta(database,"businessStorage",workerData.businessEnabled ? "sqlite" : "legacy-json") === "sqlite" ? "repositories" : "infrastructure" };
+  return { nativeThreadId:nativeId,readOnlyConnection:database.readonly,queryOnly:database.pragma("query_only",{simple:true}) === 1,sqliteVersion: version, synchronous:database.pragma("synchronous",{simple:true}),autoCheckpoint:database.pragma("wal_autocheckpoint",{simple:true}),migrations, databaseBytes: size(workerData.databasePath), walBytes: size(`${workerData.databasePath}-wal`), businessStorage: readMeta(database,"businessStorage",workerData.businessEnabled ? "sqlite" : "legacy-json"), storagePhase: readMeta(database,"businessStorage",workerData.businessEnabled ? "sqlite" : "legacy-json") === "sqlite" ? "repositories" : "infrastructure" };
 }
 function pipelineRecord(input) {
   if (!input || !/^[A-Za-z0-9._:-]{1,128}$/.test(input.runId || "") || !/^[a-z-]{1,64}$/.test(input.pipelineId || "")) fail("STORAGE_INVALID_COMMAND");
@@ -67,11 +74,17 @@ function execute(operation, input, requestId, commandId) {
     runtime.agent ||= new AgentRepository(runtime);
     return runtime.agent.call(input.method,input.args);
   }
+  if(operation.startsWith("market.persist.")){
+    if(workerData.analysisWorker && !["market.persist.status","market.persist.pending"].includes(operation))fail("STORAGE_READ_ONLY");
+    runtime.candleWriteJobs ||= new CandleWriteJobs(runtime);return runtime.candleWriteJobs[operation.split(".").at(-1)](input);
+  }
   if(operation.startsWith("snapshot.")) {
     if(workerData.analysisWorker)fail("STORAGE_READ_ONLY");
     const method=operation.slice(9);
     if(method==="prepare")return runtime.advancedSnapshots.prepare(input);
-    if(method==="claim")return runtime.advancedSnapshots.claim(input.jobId);
+    if(method==="claim")return runtime.advancedSnapshots.claim(input);
+    if(method==="renew")return runtime.advancedSnapshots.renew(input);
+    if(method==="recover")return runtime.advancedSnapshots.recoverExpired();
     if(method==="fail")return runtime.advancedSnapshots.fail(input);
     if(method==="pending")return runtime.advancedSnapshots.pending();
     fail("STORAGE_UNKNOWN_OPERATION");
@@ -89,7 +102,9 @@ function execute(operation, input, requestId, commandId) {
     return result;
   }
   if(operation === "domain.call") {
-    if(input.service === "admin" && input.method === "history") return runtime.adminHistory();
+    if(workerData.analysisWorker&&workerData.readerRole==='queries'&&!storageOperationContract(operation,input).pureRead)fail("STORAGE_READ_ONLY");
+    if(input.service === "admin" && input.method === "history") return runtime.adminHistory(input.args?.[0]);
+    if(input.service === "admin" && input.method === "historyRevision") return runtime.adminHistoryRevision(input.args?.[0]);
     return runtime.call({...input,requestId});
   }
   if(operation === "storage.import") return importLegacy(database,runtime,input);
@@ -100,7 +115,7 @@ function execute(operation, input, requestId, commandId) {
   if(operation === "news.supplemental") return runtime.newsPipeline.collectSupplemental();
   if (operation === "storage.status") return { ...status(), checkpoints:database.prepare("SELECT pipeline_id AS pipelineId,updated_at AS updatedAt,revision FROM pipeline_checkpoints ORDER BY pipeline_id").all(), pipelines: database.prepare("SELECT pipeline_id AS pipelineId,storage_backend AS storageBackend FROM pipeline_definitions ORDER BY pipeline_id").all() };
   if (operation === "storage.verify") return { integrity: database.pragma("integrity_check"), foreignKeys: database.pragma("foreign_key_check") };
-  if (operation === "storage.checkpoint") return database.pragma("wal_checkpoint(PASSIVE)");
+  if (operation === "storage.checkpoint") fail('STORAGE_CHECKPOINT_ISOLATED');
   if (operation === "pipeline.record") return pipelineRecord(input);
   fail("STORAGE_UNKNOWN_OPERATION");
 }
@@ -149,9 +164,14 @@ try {
   if (major < 3 || (major === 3 && (minor < 51 || (minor === 51 && patch < 3)))) fail("STORAGE_SQLITE_VERSION");
   if (database.pragma(workerData.analysisWorker ? "journal_mode" : "journal_mode=WAL", { simple: true }) !== "wal") fail("STORAGE_WAL_UNAVAILABLE");
   database.pragma("synchronous=FULL"); database.pragma("foreign_keys=ON");
+  if(!workerData.analysisWorker)database.pragma('wal_autocheckpoint=0');
   if(workerData.analysisWorker){database.pragma("query_only=ON");migrations=database.prepare("SELECT version,name,applied_at AS appliedAt FROM schema_migrations ORDER BY version").all();}
   else {assertWriterAvailable(database);migrations = migrate(database, workerData.migrationsDir);acquireWriter(database,workerData.writerToken);}
-  cacheStatements(database,256,{onSlow:(sql,durationMs)=>log.warn("storage_slow_sql",{threadId,readOnly:workerData.analysisWorker,durationMs:Math.round(durationMs),sql:sql.replace(/'(?:''|[^'])*'/g,"?").slice(0,240)})});
+  const activity=workerData.analysisWorker?null:new SqlActivity(workerData.sqlActivityBuffer);
+  if(activity && workerData.commitBuffer)activity.commits=new CommitActivity(workerData.commitBuffer);
+  const beforeWrite=workerData.analysisWorker?null:walWriteGuard(database,workerData.walPressureBuffer);
+  cacheStatements(database,256,{activity,beforeWrite,onSlow:(sql,durationMs)=>log.warn("storage_slow_sql",{threadId,readOnly:workerData.analysisWorker,durationMs:Math.round(durationMs),sql:sql.replace(/'(?:''|[^'])*'/g,"?").slice(0,240)})});
+  if(activity)trackTransactions(database,activity,{beforeBegin:beforeWrite,onSlowCommit:durationMs=>log.warn('storage_slow_commit',{threadId,durationMs:Math.round(durationMs),synchronous:'FULL',autoCheckpoint:0})});
   runtime=new BusinessRuntime(database,rpc,(id,stage)=>parentPort.postMessage({type:"stage",id,stage}));
   parentPort.postMessage({ type: "ready", status: status() });
   telemetry();const heartbeat=setInterval(()=>{try{telemetry();}catch(error){log.warn("storage_diagnostics_failed",{code:error.code});}},5000);heartbeat.unref();
@@ -168,7 +188,7 @@ try {
     message.id = envelope.id;
     if (message.operation === "storage.close") {
       clearInterval(heartbeat);
-      try { runtime?.close(); if(!workerData.analysisWorker)releaseWriter(database,workerData.writerToken); database.close(); parentPort.postMessage({ id: message.id, result: { closed: true } }); parentPort.close(); }
+      try { storageExecutionContext.run({control:true},()=>{runtime?.close(); if(!workerData.analysisWorker)releaseWriter(database,workerData.writerToken); database.close();}); parentPort.postMessage({ id: message.id, result: { closed: true } }); parentPort.close(); }
       catch { parentPort.postMessage({ id: message.id, error: { code: "STORAGE_CLOSE_FAILED" } }); }
       return;
     }
@@ -185,6 +205,7 @@ try {
         jobId:typeof agentInput?.jobId==='string'?agentInput.jobId.slice(0,128):null,fence:Number.isSafeInteger(agentInput?.fence)?agentInput.fence:null,startedAt:new Date().toISOString()};
       activeCommands.set(message.id,command);parentPort.postMessage({type:"command-started",id:message.id,startedAt:Date.now()});
       let result;runtime.lastCommitMs=null;runtime.lastValidationMs=null;
+      await storageExecutionContext.run({control:storageOperationContract(message.operation,message.input).workClass==='control'},async()=>{
       if (["pipeline.record","runtime.save"].includes(message.operation)) {
         const requestId = message.requestId;
         if (!/^[A-Za-z0-9._:-]{1,128}$/.test(requestId || "")) fail("STORAGE_INVALID_REQUEST_ID");
@@ -202,6 +223,7 @@ try {
           completed+=count;parentPort.postMessage({type:"command-progress",id:message.id,completed,at:Date.now()});
         }},async()=>{const value=await execute(message.operation,message.input,message.requestId,message.id);checkOperation();return value;});
       } else { result = await execute(message.operation,message.input,message.requestId,message.id); }
+      });
       const cpu = cpuStart && epoch===commandEpoch ? process.threadCpuUsage(cpuStart) : null;
       const cpuMs = cpu ? (cpu.user + cpu.system) / 1000 : null;
       parentPort.postMessage({ id: message.id, result, durationMs: performance.now() - start, cpuMs, outputBytes:Buffer.byteLength(JSON.stringify(result ?? null)),commitMs:runtime.lastCommitMs ?? null,validationMs:runtime.lastValidationMs ?? null, status: status() });

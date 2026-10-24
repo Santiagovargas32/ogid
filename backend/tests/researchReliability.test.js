@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { tradingDay, cashCalendarSchedule, expectedIntradayGapCount, expectedDailyGaps } from "../services/market/exchangeCalendar.js";
+import { tradingDay, addDate, cashCalendarSchedule, expectedIntradayGapCount, expectedDailyGaps } from "../services/market/exchangeCalendar.js";
 import { normalizeCanonicalCandle } from "../services/market/canonicalCandle.js";
 import { TechnicalIndicatorService } from "../services/market/technicalIndicatorService.js";
 import { simpleReturn, calculateTechnicalIndicators } from "../services/market/technicalIndicators.js";
@@ -44,7 +44,7 @@ test("calendars: US holiday, early close, DST divergence and European venue hour
   assert.deepEqual(expectedDailyGaps([candle("2026-10-02T00:00:00Z"),candle("2026-10-05T00:00:00Z")],{timezone:"UTC",sessionPolicy:"24x7"}),["2026-10-03","2026-10-04"]);
   const cryptoBars=bars().slice(0,2).map((c,i)=>({...c,interval:"5min",openTime:i?"2026-10-08T00:05:00Z":"2026-10-07T23:55:00Z"}));assert.equal(calculateTechnicalIndicators(cryptoBars,{interval:"5min",instrument:{timezone:"UTC",sessionPolicy:"24x7"}}).quality.gapDetected,true);
 });
-function bars(){ return Array.from({length:30},(_,i)=>({ instrumentId:us.instrumentId, interval:"1day", openTime:new Date(Date.UTC(2026,0,i+1,14,30)).toISOString(),closeTime:new Date(Date.UTC(2026,0,i+1,21)).toISOString(),open:100+i,high:110+i,low:90+i,close:101+i,volume:100,source:"fixture",currency:"USD",adjusted:true,dataMode:"observed" })); }
+function bars(){ const rows=[];for(let date='2026-01-02';rows.length<30;date=addDate(date,1)){const session=tradingDay(us,date);if(session.closed)continue;const i=rows.length;rows.push({ instrumentId:us.instrumentId, interval:"1day", openTime:session.openTime,closeTime:session.closeTime,open:100+i,high:110+i,low:90+i,close:101+i,volume:100,source:"fixture",currency:"USD",adjusted:true,dataMode:"observed" });}return rows; }
 test("correction/backfill with identical last timestamp invalidates full-series cache; limits and memory bounded",()=>{
   let series=bars();const service=new TechnicalIndicatorService({store:{query:({limit})=>series.slice(-limit)},now:()=>new Date("2026-06-01"),maxCacheEntries:2});
   const a=service.calculate({instrumentId:us.instrumentId});

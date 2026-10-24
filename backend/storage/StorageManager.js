@@ -1,3 +1,4 @@
+import {CandleWriteCoordinator} from './candleWriteJobs.js';
 import { releaseTerminatedWriter } from "./writerOwnership.js";
 import { AdvancedCoordinator } from "./advancedSnapshots.js";
 import { EventEmitter } from "node:events";
@@ -8,18 +9,24 @@ import { setTimeout as wait } from "node:timers/promises";
 import { AGENT_READER_METHODS } from "./agentRepository.js";
 import { stableHash } from "../utils/stableHash.js";
 import { ScopedWork } from './scopedWork.js';
+import { storageOperationContract } from '../contracts/storageOperations.js';
+import {RUNTIME_POLICY} from '../config/runtimePolicy.js';
+import {createSqlActivityBuffer,readSqlActivity} from './sqlActivity.js';
+import {createCommitBuffer} from './commitActivity.js';
+import {WalCheckpoint} from './walCheckpoint.js';
+import {readNativeWait} from './nativeWait.js';
 const error = code => Object.assign(new Error(code), { code, statusCode: 503 });
 const commandLabel = value => typeof value === "string" ? value.slice(0,128) : null;
-const OPERATIONS = new Set(["agent.call", "agent.snapshot", "agent.read", "storage.status", "storage.verify", "storage.checkpoint", "pipeline.record", "domain.configure", "domain.registry", "domain.indexPage", "domain.call", "scenarios.prepare", "storage.import", "runtime.save", "runtime.load", "rss.fetch", "news.collect", "news.supplemental", "analysis.persist", "snapshot.prepare", "snapshot.claim", "snapshot.fail", "snapshot.pending"]);
-const ISOLATED_SERVICES = new Set(["market","technical","indicators","conditions","advanced","map","coupling","portfolio"]);
+const OPERATIONS = new Set(["agent.call", "agent.snapshot", "agent.read", "storage.status", "storage.verify", "storage.checkpoint", "pipeline.record", "domain.configure", "domain.registry", "domain.indexPage", "domain.call", "scenarios.prepare", "storage.import", "runtime.save", "runtime.load", "rss.fetch", "news.collect", "news.supplemental", "analysis.persist", "snapshot.prepare", "snapshot.claim", "snapshot.fail", "snapshot.pending", "snapshot.renew","snapshot.recover","market.persist.admit","market.persist.page","market.persist.pending","market.persist.status"]);
 const ISOLATED_NEWS_METHODS = new Set(["getProjection","getFeed","getLiveFeed","search","getItem","getHistory","coverage"]);
-const ISOLATED_METHODS = {events:new Set(["search"]),forecasts:new Set(["evaluate"]),awareness:new Set(["getSnapshot"]),candles:new Set(["query","latest","has","hasCandle"])};
 const CPU_SERVICES = new Set(["market","technical","indicators","conditions","advanced","map","portfolio","scenarios","forecasts","coupling","signals"]);
 
 export class StorageManager extends EventEmitter {
   constructor(options = {}) {
     super();
     this.options = {...storageConfig(options),writerToken:randomUUID()};
+    this.sqlActivityBuffer=createSqlActivityBuffer();this.commitBuffer=createCommitBuffer();
+    this.walPressureBuffer=new SharedArrayBuffer(4);
     this.state = this.options.enabled ? "new" : "disabled";
     this.queue = []; this.active = new Map(); this.pendingBytes = 0; this.metadata = {};
     this.recentCommands = [];this.activeErrors=new Map();
@@ -37,13 +44,14 @@ export class StorageManager extends EventEmitter {
       reconciliation: { pending: this.reconciliations.size > 0, ...this.reconciliationMetrics,
         commands: [...this.reconciliations.values()].map(entry => this.describeCommand(entry, "reconciling")) },
       failure:this.failureContext || null,
-      databasePath:this.options.databasePath, worker:this.workerDiagnostics ? {...this.workerDiagnostics,database} : null, lastExpiredCommand:this.lastExpiredCommand || null,
-      eventIndex:{...(this.eventIndexState||this.workerDiagnostics?.eventIndex||{}),...(this.eventIndexError?{state:"failed",errorCode:this.eventIndexError}:{})},
+      walCheckpoint:this.checkpoint?.status() || null,
+      databasePath:this.options.databasePath, worker:this.workerDiagnostics ? {...this.workerDiagnostics,database,sqlActivity:this.failureContext?.sqlActivity||readSqlActivity(this.sqlActivityBuffer)} : null, lastExpiredCommand:this.lastExpiredCommand || null,
+      eventIndex:{...(this.eventIndexState||this.workerDiagnostics?.eventIndex||{}),scheduling:this.eventIndexScheduling||null,...(this.eventIndexError?{state:"failed",errorCode:this.eventIndexError}:{})},
       activeCommands:[...this.active.values()].map(entry=>this.describeCommand(entry)),
       queuedCommands:this.queue.slice(0,50).map(entry=>this.describeCommand(entry,"queued")),
       queuedCommandsTruncated:this.queue.length>50,
       recentCommands:this.recentCommands.map(entry=>({...entry})),lastRejectedCommand:this.lastRejectedCommand ? {...this.lastRejectedCommand} : null,
-      activeErrors:[...this.activeErrors.values()],jobs:{active:this.advancedCoordinator?.tasks.size || 0},
+      activeErrors:[...this.activeErrors.values()],jobs:{active:this.advancedCoordinator?.tasks.size || 0,recoveryError:this.advancedCoordinator?.lastRecoveryError||null},marketPersistence:this.marketWrites?.status()||null,
       calculations:{active:this.calculations?.scopes.size || 0,pending:[...(this.calculations?.scopes.values() || [])].filter(scope=>scope.pending).length,bytes:this.calculations?.bytes || 0,maxBytes:this.options.queueMaxBytes,...this.calculations?.metrics},
       queue: { pending: this.queue.length, inFlight: this.active.size, cpuInFlight:[...this.active.values()].filter(entry=>entry.cpu).length,maxCpuInFlight:this.options.maxCpuInFlight,bytes: this.pendingBytes, maxItems: this.options.queueMaxItems, maxBytes: this.options.queueMaxBytes, maxCommandBytes: this.options.maxCommandBytes }, ...this.metrics };
   }
@@ -81,7 +89,7 @@ export class StorageManager extends EventEmitter {
     this.startPromise = new Promise((resolve, reject) => { this.readyResolve = resolve; this.readyReject = reject; });
     this.startTimer = setTimeout(() => this.fail(error("STORAGE_START_TIMEOUT")), this.options.startupTimeoutMs);
     try {
-      this.worker = new Worker(new URL("./storageWorker.js", import.meta.url), { workerData: this.options, execArgv: [] });
+      this.worker = new Worker(new URL("./storageWorker.js", import.meta.url), { workerData: {...this.options,sqlActivityBuffer:this.sqlActivityBuffer,commitBuffer:this.commitBuffer,walPressureBuffer:this.walPressureBuffer}, execArgv: [] });
       this.worker.on("message", message => this.handleMessage(message));
       this.worker.on("error", () => this.fail(error("STORAGE_WORKER_FAILED")));
       this.worker.on("exit", code => {
@@ -91,6 +99,12 @@ export class StorageManager extends EventEmitter {
       });
     } catch { this.fail(error("STORAGE_START_FAILED")); }
     await this.startPromise;
+    if(!this.options.analysisWorker){
+      this.checkpoint=new WalCheckpoint(this.options,{pressureBuffer:this.walPressureBuffer,commitBuffer:this.commitBuffer});
+      try{await this.checkpoint.start();this.checkpoint.observe(this.metadata.walBytes);await this.checkpoint.request();}
+      catch(reason){this.fail(reason);throw reason;}
+    }
+    if(this.options.businessEnabled&&!this.options.analysisWorker)this.marketWrites=new CandleWriteCoordinator(this);
     if(this.options.businessEnabled && this.options.isolateAnalysis && !this.options.analysisWorker) {
       this.analysisManager = this.createAnalysisManager();
       await this.analysisManager.start();
@@ -147,7 +161,7 @@ export class StorageManager extends EventEmitter {
     })().finally(()=>{this[recoveryKey]=null;});
     return this[recoveryKey];
   }
-  request(operation, input = {}, { requestId = randomUUID(), timeoutMs = storageCommandTimeout(this.options,operation,input), queueTimeoutMs = this.options.queueTimeoutMs } = {}) {
+  request(operation, input = {}, { requestId = randomUUID(), timeoutMs = storageCommandTimeout(this.options,operation,input), queueTimeoutMs = this.options.queueTimeoutMs, signal } = {}) {
     if(this.closingRequested)return Promise.reject(error("STORAGE_NOT_READY"));
     if(operation==='agent.call' && input.method==='claim' && this.reconciliations.size)return Promise.reject(error('STORAGE_CONTROL_RECONCILING'));
     if (this.state !== "ready") return this.localRequest(operation,input,{requestId,timeoutMs,queueTimeoutMs});
@@ -157,10 +171,9 @@ export class StorageManager extends EventEmitter {
       return Promise.reject(Object.assign(error("STORAGE_ANALYSIS_UNAVAILABLE"),{causeCode:this.analysisManager.metrics.lastErrorCode,diagnostic:{worker:"analysis",state:this.analysisManager.state}}));
     if(operation==="agent.call" && input.method==="claim" && this.queryManager && this.queryManager.state!=="ready")
       return Promise.reject(Object.assign(error("STORAGE_QUERIES_UNAVAILABLE"),{diagnostic:{worker:"queries",state:this.queryManager.state}}));
-    if(this.analysisManager && operation==="runtime.load" && ["awareness","maintenance-inputs","dashboard-analysis"].includes(input.kind))return this.queryManager.coalescedRead(operation,input,{requestId,timeoutMs,queueTimeoutMs});
     if(this.analysisManager && operation==="agent.call" && input.method==="snapshot")return this.analysisManager.request("agent.snapshot",input.args,{requestId,timeoutMs:storageCommandTimeout(this.options,"agent.snapshot"),queueTimeoutMs});
     if(this.queryManager && operation==="agent.call" && AGENT_READER_METHODS.has(input.method))return this.queryManager.coalescedRead("agent.read",input,{requestId,timeoutMs:storageCommandTimeout(this.options,"agent.read"),queueTimeoutMs});
-    if(this.queryManager && operation==="domain.call" && ((input.service==="news" && ISOLATED_NEWS_METHODS.has(input.method) && input.method!=="getProjection") || ISOLATED_METHODS[input.service]?.has(input.method) && input.service!=="forecasts"))return this.queryManager.coalescedRead(operation,input,{requestId,timeoutMs,queueTimeoutMs});
+    if(this.queryManager && storageOperationContract(operation,input).pureRead && storageOperationContract(operation,input).role==='queries')return this.queryManager.coalescedRead(operation,input,{requestId,timeoutMs,queueTimeoutMs,signal});
     if (this.advancedCoordinator && operation === "domain.call" && input.service === "advanced" && input.method === "getSnapshot") return this.advancedCoordinator.get(input);
     if(this.analysisManager && operation === "domain.call" && input.service === "scenarios" && input.method === "refresh") {
       // Prepare historical reads/calculations on the existing read-only worker.
@@ -168,7 +181,7 @@ export class StorageManager extends EventEmitter {
       return this.analysisManager.request("scenarios.prepare",input.args?.[0] || {},{requestId,timeoutMs:Math.min(timeoutMs,storageCommandTimeout(this.options,"scenarios.prepare")),queueTimeoutMs})
         .then(preparedScenarios=>this.localRequest(operation,{...input,preparedScenarios},{requestId,timeoutMs,queueTimeoutMs}));
     }
-    if (this.analysisManager && operation === "domain.call" && (ISOLATED_SERVICES.has(input.service) || ISOLATED_METHODS[input.service]?.has(input.method) || (input.service === "news" && ISOLATED_NEWS_METHODS.has(input.method)))) {
+    if (this.analysisManager && operation === "domain.call" && storageOperationContract(operation,input).role==='analysis') {
       let bytes;try{bytes=Buffer.byteLength(JSON.stringify({operation,input,requestId}));}catch{return Promise.reject(error('STORAGE_INVALID_COMMAND'));}
       if(bytes>this.options.maxCommandBytes)return Promise.reject(error('STORAGE_COMMAND_TOO_LARGE'));
       this.calculations ||= new ScopedWork({maxScopes:this.options.queueMaxItems,maxBytes:this.options.queueMaxBytes});
@@ -181,7 +194,7 @@ export class StorageManager extends EventEmitter {
         else if(this.analysisConfig)this.analysisConfig={...this.analysisConfig,instruments:input.instruments};
         await this.analysisManager.request(operation,{...input,analysisOnly:true},{requestId,timeoutMs,queueTimeoutMs});
         await this.queryManager?.request(operation,{...input,analysisOnly:true},{requestId,timeoutMs,queueTimeoutMs});
-        if(operation==="domain.configure")await this.advancedCoordinator?.recover();this.resumeEventIndex();return result;
+        if(operation==="domain.configure")await this.advancedCoordinator?.recover();if(operation==="domain.configure")await this.marketWrites?.recover();this.resumeEventIndex();return result;
       });
     }
     if(!this.options.analysisWorker && ['domain.configure','domain.registry'].includes(operation))return this.localRequest(operation,input,{requestId,timeoutMs,queueTimeoutMs}).then(result=>{this.resumeEventIndex();return result;});
@@ -196,20 +209,45 @@ export class StorageManager extends EventEmitter {
     this.eventIndexError=null;this.eventIndexAbort=new AbortController();
     this.eventIndexTask=(async()=>{
       while(this.state==='ready'&&!this.closingRequested&&!this.eventIndexDeferred){
+        if(this.active.size||this.queue.length){
+          this.eventIndexScheduling={state:'waiting',reason:'business-active'};
+          await wait(RUNTIME_POLICY.storage.maintenanceIdlePollMs,undefined,{signal:this.eventIndexAbort.signal});continue;
+        }
         this.eventIndexRequested=false;
-        const result=await this.localRequest('domain.indexPage',{});
+        this.eventIndexScheduling={state:'running'};
+        let result;
+        try{result=await this.localRequest('domain.indexPage',{});}
+        catch(reason){
+          if(reason.code!=='STORAGE_WAL_BACKPRESSURE')throw reason;
+          this.eventIndexScheduling={state:'waiting',reason:'wal-checkpoint'};
+          await wait(RUNTIME_POLICY.storage.maintenanceIntervalMs,undefined,{signal:this.eventIndexAbort.signal});continue;
+        }
         this.eventIndexState=result;
-        if(result.state==='ready'&&!result.cleanupPending&&!this.eventIndexRequested)break;
-        await wait(25,undefined,{signal:this.eventIndexAbort.signal});
+        if(result.state==='ready'&&!result.cleanupPending&&!this.eventIndexRequested){this.eventIndexScheduling={state:'idle'};break;}
+        const delay=Math.max(RUNTIME_POLICY.storage.maintenanceIntervalMs,Math.ceil((result.durationMs||0)*9));
+        this.eventIndexScheduling={state:'waiting',reason:'io-budget',nextEligibleAt:new Date(Date.now()+delay).toISOString()};
+        await wait(delay,undefined,{signal:this.eventIndexAbort.signal});
       }
     })().catch(reason=>{if(!this.closingRequested){this.eventIndexError=reason.code||'STORAGE_INDEX_BUILD_FAILED';this.emit('index-failed',{code:this.eventIndexError});}}).finally(()=>{this.eventIndexTask=null;if(this.eventIndexRequested&&!this.closingRequested&&this.state==='ready')this.resumeEventIndex();});
   }
-  coalescedRead(operation,input,options){
+  coalescedRead(operation,input,options={}){
     this.sharedReads ||= new Map();
     const key=stableHash([operation,input,options.timeoutMs,options.queueTimeoutMs]);
-    if(this.sharedReads.has(key))return this.sharedReads.get(key).then(value=>structuredClone(value));
-    const task=this.request(operation,input,options).finally(()=>this.sharedReads.delete(key));
-    this.sharedReads.set(key,task);return task.then(value=>structuredClone(value));
+    if(options.signal?.aborted)return Promise.reject(options.signal.reason || error('STORAGE_READ_CANCELLED'));
+    let shared=this.sharedReads.get(key);
+    if(!shared){
+      shared={consumers:0};
+      shared.task=this.request(operation,input,{...options,signal:undefined}).finally(()=>this.sharedReads.delete(key));
+      this.sharedReads.set(key,shared);
+    }
+    shared.consumers++;
+    return new Promise((resolve,reject)=>{
+      let done=false;
+      const finish=(fn,value)=>{if(done)return;done=true;shared.consumers--;options.signal?.removeEventListener('abort',abort);fn(value);};
+      const abort=()=>finish(reject,options.signal.reason || error('STORAGE_READ_CANCELLED'));
+      options.signal?.addEventListener('abort',abort,{once:true});
+      shared.task.then(value=>{if(!done)finish(resolve,structuredClone(value));},reason=>finish(reject,reason));
+    });
   }
   localRequest(operation, input = {}, { requestId = randomUUID(), timeoutMs = storageCommandTimeout(this.options,operation,input), queueTimeoutMs = this.options.queueTimeoutMs } = {}) {
     const workClass=storageWorkClass(operation,input),control=workClass==='control';
@@ -219,6 +257,9 @@ export class StorageManager extends EventEmitter {
       causeCode: this.metrics.lastErrorCode,
       diagnostic: {state: this.state, worker: this.options.analysisWorker ? "analysis" : "writer", lastErrorCode: this.metrics.lastErrorCode}
     }));
+    if(operation==='storage.checkpoint' && !this.options.analysisWorker)return this.checkpoint?.request() || Promise.reject(error('STORAGE_CHECKPOINT_UNAVAILABLE'));
+    if(!this.options.analysisWorker && Atomics.load(new Int32Array(this.walPressureBuffer),0)===1 && !control && !isPureRead(operation,input))
+      return Promise.reject(error('STORAGE_WAL_BACKPRESSURE'));
     let encoded;
     try { encoded = JSON.stringify({ operation, input, requestId }); } catch { return Promise.reject(error("STORAGE_INVALID_COMMAND")); }
     const bytes = Buffer.byteLength(encoded);
@@ -265,7 +306,7 @@ export class StorageManager extends EventEmitter {
       // must not consume the two legacy slow slots and starve other sources.
       // Four cooperative acquisitions still leave room for commits and control.
       const acquisitionLimit=Math.min(4,Math.max(1,this.options.maxInFlight-2));
-      const eligible=e=>(!e.workflow || acquisitionCount<acquisitionLimit)&&
+      const eligible=e=>(e.diagnostic.workClass!=='maintenance'||!this.active.size&&!this.queue.some(other=>other!==e&&other.diagnostic.workClass!=='maintenance'))&&(!e.workflow || acquisitionCount<acquisitionLimit)&&
         (!this.options.analysisWorker || ((!e.capture || cpuCount===0) && (!e.cpu || !captureActive)))&&
         (!e.slow || e.workflow || slowCount<Math.min(2,this.options.maxInFlight))&&
         (e.control || this.options.maxInFlight<=2 || this.active.size<this.options.maxInFlight-1)&&
@@ -288,7 +329,7 @@ export class StorageManager extends EventEmitter {
   handleMessage(message) {
     if (["failed", "closed"].includes(this.state)) return;
     if(message.type==="stage"){this.emit("stage",message.id,message.stage);return;}
-    if(message.type==="telemetry"){this.workerDiagnostics=message.worker;return;}
+    if(message.type==="telemetry"){this.workerDiagnostics=message.worker;this.checkpoint?.observe(message.worker.walBytes);return;}
     if(message.type==='command-phase'){
       const entry=this.active.get(message.id);
       if(entry && message.phase==='capture-completed'){entry.capture=false;entry.captureMs=message.captureMs;this.pump();}
@@ -348,6 +389,7 @@ export class StorageManager extends EventEmitter {
       this.activeErrors.delete(operationKey);
       if(['domain.call','agent.snapshot','scenarios.prepare'].includes(entry.diagnostic.operation))this.emit('productive');
       this.metrics.lastQueueMs = (entry.startedAt || Date.now()) - entry.queuedAt; this.metrics.lastExecutionMs=message.durationMs;this.metrics.lastTotalMs=Date.now()-entry.queuedAt;this.metrics.lastCpuMs=message.cpuMs ?? null; this.metadata = message.status; this.metrics.completed++; this.metrics.lastDurationMs = message.durationMs; entry.resolve(message.result); }
+    this.checkpoint?.observe(message.status?.walBytes);
     this.pump();
   }
   expire(entry) {
@@ -394,7 +436,7 @@ export class StorageManager extends EventEmitter {
   }
   fail(reason) {
     if (["closed", "failed"].includes(this.state)) return;
-    this.failureContext={code:reason.code,causeCode:reason.causeCode || null,at:new Date().toISOString(),
+    this.failureContext={code:reason.code,causeCode:reason.causeCode || null,at:new Date().toISOString(),sqlActivity:readSqlActivity(this.sqlActivityBuffer),nativeWait:readNativeWait(this.metadata.nativeThreadId),walCheckpoint:this.checkpoint?.status() || null,
       unconfirmedCommands:[...this.active.values()].filter(entry=>!entry.pureRead).map(entry=>this.describeCommand(entry)),
       undispatchedCommands:this.queue.slice(0,50).map(entry=>this.describeCommand(entry,'queued')),
       undispatchedTruncated:this.queue.length>50};
@@ -407,7 +449,7 @@ export class StorageManager extends EventEmitter {
     this.reconciliations.clear();
     for (const entry of this.queue.splice(0)) { clearTimeout(entry.timer); this.recordCommand(entry,"failed","STORAGE_WORKER_FAILED");entry.reject(Object.assign(error("STORAGE_WORKER_FAILED"),{causeCode:reason.causeCode || reason.code,diagnostic:reason.diagnostic})); }
     this.pendingBytes = 0;
-    this.termination = this.worker?.terminate().then(()=>{
+    this.termination = Promise.all([this.worker?.terminate(),this.checkpoint?.close()]).then(()=>{
       if(!this.options.analysisWorker){try{releaseTerminatedWriter(this.options.databasePath,this.options.writerToken);}catch(error){this.metrics.ownershipCleanupError=error.code || 'STORAGE_LEASE_RELEASE_FAILED';}}
     });
     // An analysis waiting for its persistence RPC cannot finish after the
@@ -426,11 +468,12 @@ export class StorageManager extends EventEmitter {
     if(this.queryRecovery)await this.queryRecovery.catch(()=>{});
     if(this.analysisRecovery)await this.analysisRecovery.catch(()=>{});
     if(this.initializing){try{await this.startTask;}catch{/* Release whichever workers started. */}}
-    if(!this.analysisManager)return this.closeLocal();
+    if(!this.analysisManager){await this.checkpoint?.close();return this.closeLocal();}
+    await this.marketWrites?.close();
     await this.advancedCoordinator?.close();
     // Accepted analyses may still need the primary writer to commit their result.
     try { await Promise.all([this.analysisManager?.close(),this.queryManager?.close()]); }
-    finally { await this.closeLocal(); }
+    finally { await this.checkpoint?.close();await this.closeLocal(); }
   }
   async closeLocal() {
     if (["disabled", "closed", "new"].includes(this.state)) { if (this.state === "new") this.state = "closed"; return; }

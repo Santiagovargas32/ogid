@@ -65,7 +65,7 @@ test('known quality and intraday validation failures share one repair and remain
    if(method==='publish'){publications++;if(publications===1||repeated)throw Object.assign(new Error('stale'),{code,details:{evidenceId:'stale-fixture'}});terminal='completed';}
    if(method==='state'&&['completed','failed','incomplete'].includes(input.status))terminal=input.status;
    return {};
-  },opencode:{session:async()=>({id:'session-fixture'}),messages:async()=>({data:[]}),prompt:async(_id,{messageId})=>{if(messageId.startsWith('msg_repair_'))repairs++;},progress:async()=>({text:JSON.stringify(proposal),idle:true,outcome:'succeeded',finish:'stop',messageId:'answer',tools:[{name:'ogid_query',status:'completed',operationId:'agent.evidence',snapshotId:'snap-fixture'}],usage:[]}),cancel:async()=>{}}});
+  },opencode:{session:async()=>({id:'session-fixture'}),messages:async()=>({data:[]}),prompt:async(_id,{messageId})=>{if(messageId.startsWith('msg_repair_'))repairs++;},progress:async()=>({text:JSON.stringify(proposal),idle:true,outcome:'succeeded',finish:'stop',messageId:'answer',tools:[{name:'ogid_query',status:'completed',operationId:'agent.evidence',snapshotId:'snap-fixture',applicationOk:true,contentRead:true,returnedSnapshotId:'snap-fixture'}],usage:[]}),cancel:async()=>{}}});
   await worker.execute({jobId:'job-fixture',owner:'owner',fence:1,task:'global_intelligence_brief',scope:'global',model:'llamacpp/fixture',createdAt:new Date().toISOString()});
   assert.equal(repairs,1);assert.equal(publications,2);assert.equal(terminal,repeated?'failed':'completed');
  }

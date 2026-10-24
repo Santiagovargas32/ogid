@@ -19,7 +19,7 @@ test("SQLite migrations, idempotency, rollback and reopen preserve committed row
   const f=fixture();
   try {
     await f.manager.start();
-    const status=await f.manager.request("storage.status");assert.equal(status.migrations.length,19);assert.equal(status.businessStorage,"legacy-json");
+    const status=await f.manager.request("storage.status");assert.equal(status.migrations.length,22);assert.equal(status.businessStorage,"legacy-json");
     const row=run(),requestId=randomUUID();
     const first=await f.manager.request("pipeline.record",row,{requestId});
     assert.deepEqual(await f.manager.request("pipeline.record",{counts:row.counts,status:row.status,completedAt:row.completedAt,startedAt:row.startedAt,pipelineId:row.pipelineId,runId:row.runId},{requestId}),first);
@@ -28,7 +28,7 @@ test("SQLite migrations, idempotency, rollback and reopen preserve committed row
     const integrity=await f.manager.request("storage.verify");assert.deepEqual(integrity.foreignKeys,[]);assert.equal(integrity.integrity[0].integrity_check,"ok");
     await f.manager.close();
     const db=new Database(f.databasePath,{readonly:true});assert.equal(db.prepare("select count(*) as n from pipeline_runs").get().n,1);assert.equal(db.prepare("select count(*) as n from storage_commands").get().n,1);db.close();
-    f.manager=new StorageManager({enabled:true,databasePath:f.databasePath});await f.manager.start();assert.equal((await f.manager.request("storage.status")).migrations.length,19);
+    f.manager=new StorageManager({enabled:true,databasePath:f.databasePath});await f.manager.start();assert.equal((await f.manager.request("storage.status")).migrations.length,22);
   } finally {await f.close();}
 });
 
@@ -178,11 +178,13 @@ test('writer failure keeps its primary cause, reports unconfirmed persistence an
     agent:{mode:'off'},news:{providers:[],rssFeeds:[]},market:{enabled:false,historyPersist:false,historyDir:f.directory,initialTickers:[],tickers:[]}});
   try{
     await runtime.start();await runtime.app.locals.pipelineMonitor.flush();
+    runtime.app.locals.intradayCandleService.instrumentStates.set('fixture',{pendingJobId:'fixture-interrupted-catchup'});
     f.manager.fail(Object.assign(Error('fixture timeout'),{code:'STORAGE_OUTCOME_UNKNOWN',causeCode:'STORAGE_EXECUTION_TIMEOUT'}));
     const closing=runtime.stop();assert.equal(runtime.stop(),closing);await closing;
     assert.equal(runtime.app.locals.shutdownReport.primaryCause.code,'STORAGE_OUTCOME_UNKNOWN');
     assert.equal(runtime.app.locals.shutdownReport.primaryCause.causeCode,'STORAGE_EXECUTION_TIMEOUT');
     assert.deepEqual(runtime.app.locals.shutdownReport.cleanupErrors,[]);
+    assert.ok(runtime.app.locals.shutdownReport.unconfirmedPersistence.some(row=>row.phase==='persistence.history-cancellation'));
     assert.equal(runtime.server.listening,false);assert.equal(f.manager.analysisManager.state,'failed');
     assert.equal(runtime.app.locals.runtimeMetrics.ready,false);
   }finally{await runtime.stop().catch(()=>{});await f.close();}

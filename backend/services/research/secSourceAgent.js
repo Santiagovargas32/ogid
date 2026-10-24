@@ -49,13 +49,16 @@ export class SecSourceAgent {
     const due=sources.filter(s=>!s.runtime.nextEligibleAt || Date.parse(s.runtime.nextEligibleAt)<=this.now())
       .sort((a,b)=>(Date.parse(a.runtime.lastAttemptAt)||0)-(Date.parse(b.runtime.lastAttemptAt)||0) || a.sourceId.localeCompare(b.sourceId))
       .slice(0,this.policy.maxRequestsPerCycle);
+    const pendingSources=sources.filter(s=>s.runtime.failureCode).map(s=>s.sourceId);
+    const nextDates=sources.map(s=>Date.parse(s.runtime.nextEligibleAt||'')).filter(t=>Number.isFinite(t)&&t>this.now());
+    this.update({pendingSources,nextEligibleAt:nextDates.length?new Date(Math.min(...nextDates)).toISOString():null});
     if(!due.length){
       const failed=sources.filter(source=>source.runtime.failureCode);
       this.update({...coverage,status:failed.length?'degraded':'idle',errorCode:failed.length?'SEC_SOURCE_UNAVAILABLE':null,
         reason:failed.length?'Source recovery awaits its next eligible attempt':sources.length?'No SEC source is due':'No selected equity has a verified SEC mapping'});
       return this.getStatus();
     }
-    this.update({...coverage,status:"running",lastRunAt:new Date(this.now()).toISOString(),errorCode:null,reason:null,nextEligibleAt:null});
+    this.update({...coverage,status:"running",lastRunAt:new Date(this.now()).toISOString(),reason:null});
     const result=await this.service.run({sourceIds:due.map(s=>s.sourceId),maxRequests:due.length});
     const healthy=result.results.filter(row=>row.status === "healthy");
     const outcomes=new Map(result.results.map(row=>[row.sourceId,row]));
@@ -63,7 +66,11 @@ export class SecSourceAgent {
       const current=outcomes.get(source.sourceId) || source.runtime;
       return current.failureCode || !['healthy','cooldown','not-validated'].includes(current.status);
     });
+    const currentCatalog=await this.service.status(),selectedIds=new Set(sources.map(s=>s.sourceId));
+    const currentSources=currentCatalog.sources.filter(s=>selectedIds.has(s.sourceId));
+    const currentNext=currentSources.map(s=>Date.parse(s.runtime.nextEligibleAt||'')).filter(t=>Number.isFinite(t)&&t>this.now());
     this.update({status:degraded?"degraded":"completed",processed:healthy.reduce((sum,row)=>sum+(row.accepted || 0),0),
+      pendingSources:currentSources.filter(s=>s.runtime.failureCode).map(s=>s.sourceId),nextEligibleAt:currentNext.length?new Date(Math.min(...currentNext)).toISOString():null,
       lastSuccessAt:healthy.length?new Date(this.now()).toISOString():this.state.lastSuccessAt,
       errorCode:degraded?"SEC_SOURCE_UNAVAILABLE":null,reason:degraded?"Some SEC sources are unavailable; stored data is retained":null});
     return this.getStatus();

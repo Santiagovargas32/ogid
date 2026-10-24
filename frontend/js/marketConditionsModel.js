@@ -182,6 +182,7 @@ export function normalizeAvailability(value, { quality = {}, symbol = {} } = {})
   const availableClosedCandles = finiteNumber(source.availableClosedCandles ?? source.availableCandles ?? source.closedCandleCount, { minimum: 0 });
   return {
     analyzable,
+    ...(source.anchor==='last-close'?{anchor:'last-close'}:{}),
     primaryReason: analyzable && !primaryReason ? null : primaryReason,
     reasonCodes,
     sessionState: normalizeEnum(source.sessionState ?? source.session, {
@@ -363,7 +364,7 @@ function normalizeSymbol(value, index, marketQualityStatus) {
   const hasAvailabilityContract = isRecord(symbol.availability);
   const legacyScoresEligible = !hasAvailabilityContract && resolvedQuality.status !== "insufficient";
   const retainedStaleScores = availability.primaryReason === "stale_local_data";
-  const marketClosed = hasAvailabilityContract && (
+  const marketClosed = hasAvailabilityContract && availability.anchor!=='last-close' && (
     availability.primaryReason === "market_closed" || availability.reasonCodes.includes("market_closed")
   );
   const scoreContextEligible = legacyScoresEligible || availability.analyzable || retainedStaleScores;
@@ -378,6 +379,7 @@ function normalizeSymbol(value, index, marketQualityStatus) {
 
   return {
     instrumentId: text(symbol.instrumentId, ticker),
+    ...(symbol.sessionAsOf?{sessionAsOf:isoTimestamp(symbol.sessionAsOf),dataAsOf:isoTimestamp(symbol.dataAsOf),calculatedAt:isoTimestamp(symbol.calculatedAt),providerDelayMs:finiteNumber(symbol.providerDelayMs,{minimum:0}),horizonMinutes:finiteNumber(symbol.horizonMinutes,{minimum:0})}:{}),
     ticker,
     displayName: text(symbol.displayName || symbol.name, ticker),
     assetType: text(symbol.assetType, "unknown").toLowerCase(),
@@ -446,6 +448,7 @@ export function normalizeMarketConditions(payload = {}) {
     schemaVersion: text(source.schemaVersion, "market-conditions-snapshot-v1"),
     methodVersion: text(source.methodVersion, "market-conditions-v1.2"),
     generatedAt,
+    ...(source.anchor==='last-close'?{anchor:'last-close'}:{}),
     revisions: isRecord(source.revisions) ? { ...source.revisions } : {},
     window: {
       minutes: windowMinutes,

@@ -44,8 +44,8 @@ function formatGeneratedAt(value) {
 }
 
 function qualityMode(value) {
-  const mode = String(value || "fallback").toLowerCase();
-  return ["live", "mixed", "fallback"].includes(mode) ? mode : "fallback";
+  const mode = String(value || "unknown").toLowerCase();
+  return ["live", "mixed", "fallback","unknown"].includes(mode) ? mode : "unknown";
 }
 
 function countryParam(value) {
@@ -85,7 +85,7 @@ function setPanelQuality(panel, mode) {
     return;
   }
   panel.classList.remove("panel-fallback", "panel-mixed");
-  if (mode === "fallback") {
+  if (mode === "fallback"||mode==='unknown') {
     panel.classList.add("panel-fallback");
   } else if (mode === "mixed") {
     panel.classList.add("panel-mixed");
@@ -112,6 +112,7 @@ export function startAdvancedIntelligence({
   let lastSnapshot = null;
   let lastSnapshotContext = "";
   let pendingPollMs = null;
+  let pendingJobId=null,pendingJobCountries=null;
   let pendingAttempts = 0;
   let interest=null;
 
@@ -177,7 +178,7 @@ export function startAdvancedIntelligence({
     const token = ++requestToken;
     const countries = currentCountries();
     try {
-      const payload = await api.getAdvancedIntelligenceSnapshot({ countries },{signal});
+      const payload = await (pendingJobId&&pendingJobCountries===countries?api.getAdvancedJobStatus({jobId:pendingJobId},{signal}):api.getAdvancedIntelligenceSnapshot({ countries },{signal}));
       if (stopped || token !== requestToken) {
         return null;
       }
@@ -188,6 +189,7 @@ export function startAdvancedIntelligence({
       const lifecycle=payload?.lifecycle;
       if(lifecycle) {
         const pending=["preparing","refreshing"].includes(lifecycle.status);
+        pendingJobId=pending?lifecycle.jobId:null;pendingJobCountries=countries;
         pendingAttempts=pending?pendingAttempts+1:0;
         pendingPollMs=pending?Math.min(15000,Math.max(2000,Number(lifecycle.retryAfterMs)||2000)*1.4**Math.min(6,pendingAttempts-1)):null;
         if(payload.generatedAt)renderSnapshot(payload,countries);
@@ -197,7 +199,7 @@ export function startAdvancedIntelligence({
         }
         if(lifecycle.status==="failed")renderFailure(new Error(lifecycle.errorCode || "Calculation failed"),countries);
         else if(pending){
-          if(metaRoot){metaRoot.className="intel-panel-meta";metaRoot.innerHTML=`<span>${payload.generatedAt?"Updating snapshot":"Preparing snapshot"}: ${escapeHtml(lifecycle.jobStatus || "queued")}</span>${lastSnapshot?buildAdvancedMetaHtml(lastSnapshot):""}`;}
+          if(metaRoot){metaRoot.className="intel-panel-meta";metaRoot.innerHTML=`<span>${payload.generatedAt?"Updating snapshot":"Preparing snapshot"}: ${escapeHtml(lifecycle.jobStatus || "queued")}${Number.isFinite(lifecycle.waitAgeMs)?` · Espera ${Math.floor(lifecycle.waitAgeMs/1000)} s`:''}</span>${lastSnapshot?buildAdvancedMetaHtml(lastSnapshot):""}`;}
           if(panel)panel.dataset.advancedRefresh=payload.generatedAt?"refreshing":"preparing";
         } else if(lifecycle.stale && panel)panel.dataset.advancedRefresh="stale";
       } else {pendingPollMs=null;pendingAttempts=0;renderSnapshot(payload || {}, countries);}

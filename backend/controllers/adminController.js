@@ -1,3 +1,4 @@
+import {healthDiagnostics} from '../services/healthDiagnostics.js';
 import apiQuotaTracker, { MINUTE_WINDOW_MS, WINDOW_MS } from "../services/admin/apiQuotaTrackerService.js";
 import { providerRuntime } from "../services/providers/providerRuntime.js";
 import { buildCoverageByMode } from "../services/market/quoteMetadata.js";
@@ -337,6 +338,7 @@ export function getPipelineStatus(_req, res) {
     ok: true,
     data: {
       generatedAt: new Date().toISOString(),
+      diagnostics:healthDiagnostics(res.app.locals,stateManager.getMeta()),
       stages: res.app.locals.pipelineMonitor?.snapshot() || {},
       runtime: res.app.locals.runtimeMetrics?.snapshot?.() || null,
       storage: res.app.locals.storageManager?.getStatus?.() || null,
@@ -347,7 +349,7 @@ export function getPipelineStatus(_req, res) {
         offHoursStrategy: marketEnabled ? config.market?.offHoursStrategy || "keep" : null,
         nextDelayMs: marketEnabled ? marketDelayMs : null,
         nextRecommendedRunAt:
-          marketEnabled && Number.isFinite(marketDelayMs) ? new Date(Date.now() + marketDelayMs).toISOString() : null,
+          marketEnabled ? orchestrator?.nextMarketRunAt || null : null,
         lastStartedAt: marketCycle.lastStartedAt || null,
         lastCompletedAt: marketCycle.lastCompletedAt || null,
         lastDurationMs: marketCycle.lastDurationMs ?? null,

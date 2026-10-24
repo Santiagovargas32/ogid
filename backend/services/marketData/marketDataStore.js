@@ -2,6 +2,8 @@ import { CANDLE_SCHEMA_VERSION, normalizeCanonicalCandle } from "../market/canon
 import { DailyCandleStore } from "../market/dailyCandleStore.js";
 import { getInstrumentByProviderSymbol } from "../market/instrumentRegistry.js";
 import { normalizeYahooInstrument, normalizeYahooSymbol } from "./normalizer.js";
+import {randomUUID} from 'node:crypto';
+import {chartProvenance,assessClosedCandle} from '../market/candleValidation.js';
 
 const CANONICAL_INTERVAL = Object.freeze({ "1d": "1day", "1h": "1h", "30m": "30min", "15m": "15min", "5m": "5min", "1wk": "1wk", "1mo": "1mo" });
 
@@ -43,6 +45,8 @@ export class MarketDataStoreAdapter {
     Object.assign(this, {readThrough,persistAsync,onPersistenceError,onPersisted});
     this.pendingPersistence = new Set();
     this.persistenceChains = new Map();
+    this.persistenceReceipts=new Map();
+    this.pendingProjections=new Set();
     this.persistenceStatus = {completed:0,failed:0,lastError:null,lastCompletedAt:null};
   }
 
@@ -98,16 +102,20 @@ export class MarketDataStoreAdapter {
 
       const incomingTimestamps = new Set(bars.map((bar) => bar?.timestamp).filter(Boolean));
       const candles = merged.filter((bar) => incomingTimestamps.has(bar.timestamp)).map((bar) => this.toCanonicalCandle(bar, interval)).filter(Boolean);
+      const admission=this.persistAsync&&this.candleStore.persistDeferred?await this.candleStore.persistDeferred(candles,{now:observationTime}):null;
       const persist = async () => {
-        const result = typeof this.candleStore.upsert === "function"
+        const result = admission?await this.candleStore.waitForPersistence(admission):typeof this.candleStore.upsert === "function"
           ? await this.candleStore.upsert(candles, { now: observationTime })
           : await this.candleStore.append(candles, { now: observationTime });
-        await this.onPersisted?.({candles,persistence:result});
+        const projection=Promise.resolve().then(()=>this.onPersisted?.({candles,persistence:result}));
+        this.pendingProjections.add(projection);
+        projection.catch(this.onPersistenceError).finally(()=>this.pendingProjections.delete(projection));
         return result;
       };
       const persistence = this.persistAsync
-        ? this.#persistLater(`${normalizedSymbol}|${interval}`,persist,candles.length)
+        ? this.#persistLater(`${normalizedSymbol}|${interval}`,persist,candles.length,admission||{})
         : await persist();
+      nextEntry.persistence=persistence;
       const relatedPrefix = `${normalizedSymbol}|${interval}|`;
       for (const cachedKey of this.cache.keys()) if (cachedKey.startsWith(relatedPrefix)) this.cache.delete(cachedKey);
       this.#setCachedEntry(key, nextEntry);
@@ -131,7 +139,7 @@ export class MarketDataStoreAdapter {
       if(!entry)return {bars:[],cached:false,stale:true,storedAt:null,from:null,to:null};
       const fromMs=from?Date.parse(from):-Infinity,toMs=to?Date.parse(to):Infinity;
       const bars=entry.bars.filter(bar=>Date.parse(bar.timestamp)>=fromMs&&Date.parse(bar.timestamp)<=toMs).slice(-Math.max(1,Number(limit)||10000));
-      return {bars,cached:true,stale:Date.parse(entry.expiresAt)<=instant(this.now()).getTime(),storedAt:entry.storedAt,from:bars[0]?.timestamp || null,to:bars.at(-1)?.timestamp || null};
+      return {bars,cached:true,stale:Date.parse(entry.expiresAt)<=instant(this.now()).getTime(),storedAt:entry.storedAt,from:bars[0]?.timestamp || null,to:bars.at(-1)?.timestamp || null,persistence:entry.persistence||null};
     };
     if(this.#cachedEntry(key) || !this.readThrough)return finish([]);
     const records=this.candleStore.query({instrumentId:dynamicInstrument(normalizedSymbol).instrumentId,interval:CANONICAL_INTERVAL[interval] || interval,adjustmentMode:"splits",from,to,limit});
@@ -159,13 +167,19 @@ export class MarketDataStoreAdapter {
       session: instrument.sessionPolicy,
     };
     if (["1day", "1h", "30min", "15min", "5min"].includes(canonicalInterval)) {
-      const normalized = normalizeCanonicalCandle(raw, {
+      let normalized = normalizeCanonicalCandle(raw, {
         instrument,
         fetchedAt,
         source: "yahoo",
         providerSymbol: bar.symbol,
         adjustmentMode: "splits",
       }).candle;
+      if(normalized){
+        const chart=chartProvenance(bar.chartMeta);
+        if(chart)normalized={...normalized,provenance:{...normalized.provenance,chart}};
+        const assessment=assessClosedCandle(normalized,instrument,this.now());
+        normalized={...normalized,validation:assessment,...(!assessment.eligible?{quality:'partial',eligibilityReason:assessment.reason}:{})};
+      }
       return normalized && bar.providerAdjustedClose != null ? {...normalized,providerAdjustedClose:bar.providerAdjustedClose,adjustmentQuality:{ohlcv:"provider-split-adjusted",separateAdjustedClose:"provider-adjusted-close; split/dividend basis not independently reconciled",totalReturnVerified:false}} : normalized;
     }
     return {
@@ -197,27 +211,41 @@ export class MarketDataStoreAdapter {
     };
   }
 
-  #persistLater(key, persist, requested) {
+  #persistLater(key, persist, requested, admission={}) {
     const prior = this.persistenceChains.get(key) || Promise.resolve();
-    const task = prior.catch(() => {}).then(persist);
+    const task = prior.catch(() => {}).then(persist),commitId=admission.commitId||randomUUID();
+    const receipt={...admission,pending:true,commitId,requested,inserted:0,duplicates:0};
+    this.persistenceReceipts.set(commitId,task);
     this.pendingPersistence.add(task);
     this.persistenceChains.set(key,task);
-    task.then(() => {
+    task.then(result => {
+      Object.assign(receipt,result,{pending:false,committed:true});
       this.persistenceStatus.completed++;
       this.persistenceStatus.lastCompletedAt=new Date().toISOString();
     }, error => {
+      Object.assign(receipt,{pending:false,committed:false,errorCode:error.code||'MARKET_PERSISTENCE_FAILED'});
       this.persistenceStatus.failed++;
       this.persistenceStatus.lastError=error.code || "MARKET_PERSISTENCE_FAILED";
       this.onPersistenceError(error);
     }).finally(() => {
       this.pendingPersistence.delete(task);
       if(this.persistenceChains.get(key)===task)this.persistenceChains.delete(key);
+      for(const [id,value]of this.persistenceReceipts){if(this.persistenceReceipts.size<=256)break;if(!this.pendingPersistence.has(value))this.persistenceReceipts.delete(id);}
     }).catch(() => {});
-    return {pending:true,requested,inserted:0,duplicates:0};
+    return receipt;
+  }
+
+  async waitForPersistence(receipt) {
+    if(!receipt?.commitId)return receipt;
+    const task=this.persistenceReceipts.get(receipt.commitId);
+    if(task){try{return {...await task,pending:false,committed:true,commitId:receipt.commitId};}finally{this.persistenceReceipts.delete(receipt.commitId);}}
+    if(receipt.committed)return receipt;
+    if(receipt.durable&&receipt.jobIds&&this.candleStore.waitForPersistence)return this.candleStore.waitForPersistence(receipt);
+    throw Object.assign(Error('Durable market ACK unavailable'),{code:receipt.errorCode||'MARKET_COMMIT_ACK_UNKNOWN'});
   }
 
   getPersistenceStatus() { return {...this.persistenceStatus,pending:this.pendingPersistence.size,readThrough:this.readThrough,asynchronous:this.persistAsync}; }
-  async flushPersistence() { while(this.pendingPersistence.size)await Promise.allSettled([...this.pendingPersistence]); }
+  async flushPersistence() { while(this.pendingPersistence.size||this.pendingProjections.size)await Promise.allSettled([...this.pendingPersistence,...this.pendingProjections]); }
 
   #cachedEntry(key) {
     const entry = this.cache.get(key);

@@ -1,6 +1,9 @@
 import { buildArticleInstrumentLinks } from "./impactEngineService.js";
 import { buildMarketConditionSeries } from "./candleAggregationService.js";
 import { classifyMarketConditionsAvailability } from "./marketConditionsAvailability.js";
+import {resolveClosedSeries} from './closedSeries.js';
+import {lastPublicableSessionClose} from './candleValidation.js';
+import {sessionPolicyResolver} from './sessionPolicyResolver.js';
 import { calculateNewsPriceCouplingV2 } from "./newsPriceCoupling.js";
 import { calculateTechnicalIndicators } from "./technicalIndicators.js";
 import { createHash } from "node:crypto";
@@ -395,7 +398,8 @@ export function buildMarketConditionsSnapshot({
   revisions = {},
   sourceQuality = {},
   pollIntervalMs = 900_000,
-  intradayCandlesEnabled = false
+  intradayCandlesEnabled = false,
+  anchor='live'
 } = {}) {
   const resolvedWindow = normalizeMarketConditionsWindow(windowMin);
   const generatedAt = iso(asOf);
@@ -433,10 +437,11 @@ export function buildMarketConditionsSnapshot({
       automaticIngestionEnabled: intradayCandlesEnabled,
       acquisitionState,
       quote
+      ,anchor
     });
     const syntheticMarket = closedCandles.some(isSynthetic) || isSynthetic(quote);
     const technical = !syntheticMarket && interval
-      ? calculateTechnicalIndicators(closedCandles, { interval, calculatedAt: generatedAt })
+      ? calculateTechnicalIndicators(closedCandles, { interval,instrument, calculatedAt: generatedAt })
       : { indicators: {}, quality: { reason: syntheticMarket ? "synthetic" : "insufficient_data", gapDetected: false }, sampleSize: closedCandles.length, lastCandleAt: closedCandles.at(-1)?.closeTime || null };
     const returnValue = syntheticMarket ? null : windowReturn(closedCandles, resolvedWindow, generatedAt);
     const lastClose = closedCandles.at(-1)?.close;
@@ -452,7 +457,7 @@ export function buildMarketConditionsSnapshot({
   }
 
   const newsRisk = newsPressure(prepared.articles, generatedAt, resolvedWindow);
-  const currentSessionInternals = symbolInternals.filter((item) => !item.availability.reasonCodes.includes("market_closed"));
+  const currentSessionInternals = symbolInternals.filter((item) => anchor==='last-close'?item.availability.analyzable:!item.availability.reasonCodes.includes("market_closed"));
   const priceRisks = currentSessionInternals.map((item) => item.risk).filter(finite);
   const priceStability = priceRisks.length ? round(100 - clamp(average(priceRisks))) : null;
   const events = eventStability(prepared.activeEvents, prepared.activeSourceCount, generatedAt, resolvedWindow);
@@ -491,7 +496,7 @@ export function buildMarketConditionsSnapshot({
     ];
     let operabilityScore = round(weightedAverage(operabilityEntries));
     if (item.candles.some(isSynthetic) || isSynthetic(item.quote) || !finite(item.returnValue)) operabilityScore = null;
-    if (item.availability.reasonCodes.includes("market_closed")) operabilityScore = null;
+    if (anchor==='live'&&item.availability.reasonCodes.includes("market_closed")) operabilityScore = null;
     const quality = symbolQuality({ candles: item.candles, technical: item.technical, quote: item.quote, linkedArticles: item.linkedArticles, directionScore: item.directionScore, operabilityScore, availability: item.availability, seriesQuality: item.seriesQuality, seriesGaps: item.seriesGaps, incompleteBuckets: item.incompleteBuckets });
     const metrics = {
       windowReturnPct: finite(item.returnValue) ? round(Number(item.returnValue) * 100, 3) : null,
@@ -648,11 +653,13 @@ export class MarketConditionsService {
   #resolveSeries(instrument, windowMin, asOf) {
     const resolved = this.seriesResolver?.({ instrument, windowMin, asOf, store: this.candleStore });
     if (resolved) return resolved;
-    const base = this.candleStore?.query?.({ instrumentId: instrument.instrumentId, interval: "5min", adjustmentMode: "splits", limit: 500 }) || [];
+    const shared=this.candleStore?resolveClosedSeries(this.candleStore,{instrument,interval:'5min',limit:Math.max(500,Math.ceil(windowMin/5)+60),asOf}):null;
+    const base = shared?.candles || [];
     const inputRevision=createHash("sha256").update(JSON.stringify([instrument,base])).digest("hex");
     const cacheKey=`${instrument.instrumentId}:${windowMin}:${Math.floor(Date.parse(asOf)/60000)}:${inputRevision}`;
     if(this.seriesCache.has(cacheKey))return this.seriesCache.get(cacheKey);
     const series = deriveMarketConditionsSeries(base, windowMin, asOf, instrument);
+    if(shared?.quality.rejectedCandles){series.quality.status='partial';series.quality.rejectedCandles=shared.quality.rejectedCandles;}
     const nonSynthetic = base.filter((candle) => !isSynthetic(candle));
     const result = {
       ...series,
@@ -700,7 +707,9 @@ export class MarketConditionsService {
     return results;
   }
 
-  getSnapshot({ windowMin = 240, countries = [] } = {}) {
+  getSnapshot({ windowMin = 240, countries = [],anchor='live' } = {}) {
+    if(!['live','last-close'].includes(anchor))throw Object.assign(Error('Invalid conditions anchor'),{code:'INVALID_MARKET_CONDITIONS_ANCHOR',statusCode:400});
+    if(anchor==='last-close')return this.lastCloseSnapshot({windowMin,countries});
     const resolvedWindow = normalizeMarketConditionsWindow(windowMin);
     const nowValue = this.now();
     const asOf = new Date(nowValue).toISOString();
@@ -749,5 +758,27 @@ export class MarketConditionsService {
     this.cache.set(cacheKey, result);
     while (this.cache.size > MAX_CACHE_ENTRIES) this.cache.delete(this.cache.keys().next().value);
     return structuredClone(result);
+  }
+  lastCloseSnapshot({windowMin,countries}){
+    const calculatedAt=new Date(this.now()).toISOString(),snapshot=this.stateManager?.getSnapshot?.()||{},instruments=selectedInstrumentsFrom({marketWatchlistService:this.marketWatchlistService,snapshot});
+    const rows=[],cuts=[],entries=[];let template=null;
+    for(const instrument of instruments){
+      const target=lastPublicableSessionClose(instrument,calculatedAt),cut=target.expectedLatestCandleAt;
+      if(!cut)continue;
+      const series=this.#resolveSeries(instrument,windowMin,cut);
+      const articles=(this.stateManager?.getMarketSignalCorpus?.()||[]).filter(a=>Date.parse(a.receivedAt||a.availableAt||a.observedAt||'')<=Date.parse(cut));
+      const value=buildMarketConditionsSnapshot({windowMin,asOf:cut,countries,articles,instruments:[instrument],quotes:{},seriesByInstrument:{[instrument.instrumentId]:series},intradayCandlesEnabled:this.intradayCandlesEnabled,anchor:'last-close'});
+      entries.push({instrument,cut,series,articles});
+      template ||= value;cuts.push(cut);
+      rows.push(...value.symbols.map(row=>({...row,sessionAsOf:cut,dataAsOf:row.quality.lastCandleAt,calculatedAt,sessionType:'regular',providerDelayMs:target.delayMs,horizonMinutes:windowMin,availability:{...row.availability,sessionState:sessionPolicyResolver.resolve(instrument,calculatedAt).sessionState}})));
+    }
+    const comparable=cuts.length>0&&new Set(cuts).size===1;
+    const result=comparable?buildMarketConditionsSnapshot({windowMin,asOf:cuts[0],countries,articles:entries[0].articles,instruments:entries.map(e=>e.instrument),seriesByInstrument:Object.fromEntries(entries.map(e=>[e.instrument.instrumentId,e.series])),intradayCandlesEnabled:this.intradayCandlesEnabled,anchor:'last-close'}):template||buildMarketConditionsSnapshot({windowMin,asOf:calculatedAt,countries,anchor:'last-close'});
+    result.symbols=comparable?result.symbols.map(row=>({...row,...Object.fromEntries(Object.entries(rows.find(r=>r.instrumentId===row.instrumentId)||{}).filter(([k])=>['sessionAsOf','dataAsOf','calculatedAt','sessionType','providerDelayMs','horizonMinutes'].includes(k))),availability:{...row.availability,sessionState:sessionPolicyResolver.resolve(entries.find(e=>e.instrument.instrumentId===row.instrumentId).instrument,calculatedAt).sessionState}})):rows;
+    result.generatedAt=calculatedAt;result.calculatedAt=calculatedAt;result.anchor='last-close';result.anchorVersion=1;
+    result.window={...result.window,anchor:'last-close',perInstrument:true,from:comparable?result.window.from:null,to:comparable?cuts[0]:null};
+    if(!comparable)result.market={...result.market,stabilityScore:null,band:'unavailable',components:[],drivers:[],reason:'incomparable-session-cuts'};
+    result.limitations.push('Each instrument uses its own confirmed regular-session cut; market-wide scores require comparable cuts.');
+    return result;
   }
 }

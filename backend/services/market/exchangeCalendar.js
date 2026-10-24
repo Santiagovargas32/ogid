@@ -1,7 +1,9 @@
 // Versionado desde fuentes oficiales; reglas recurrentes fuera de 2026 son parciales.
 import { dateTimeFormatter } from "../../utils/dateTimeFormat.js";
 const tradingDays=new Map();
-export const CALENDAR_VERSION = "exchange-calendar-2026.2";
+export const CALENDAR_VERSION = "exchange-calendar-2026.3";
+const VERIFIED_CASH_YEARS={XETR:[2024,2025,2026],XAMS:[2024,2025,2026],XMIL:[2024,2025,2026]};
+const XETRA_HISTORICAL_SOURCES={2024:'https://cashmarket.deutsche-boerse.com/resource/blob/3559262/98ebe1fde231df56c9f116bc766533b2/data/xetra-trading-calendar-2024.pdf',2025:'https://www.cashmarket.deutsche-boerse.com/resource/blob/4064968/4079a2d5a9fec324905942b807b398ed/data/xetra-trading-calendar-2025.pdf'};
 export const CALENDAR_SOURCES = Object.freeze({
   US: "https://www.nyse.com/trade/hours-calendars", XNAS: "https://www.nasdaqtrader.com/Trader.aspx?id=Calendar",
   XETR: "https://www.cashmarket.deutsche-boerse.com/cash-en/trading/trading-calendar-and-trading-hours",
@@ -49,18 +51,20 @@ function buildTradingDay(instrument, date) {
   const zone=us?"America/New_York":id==="XETR"?"Europe/Berlin":id==="XAMS"?"Europe/Amsterdam":id==="XMIL"?"Europe/Rome":instrument.timezone || "UTC";
   const holidays=us?[observed(`${y}-01-01`),nth(y,1,1,3),nth(y,2,1,3),addDate(e,-2),last(y,5,1),...(y>=2022?[observed(`${y}-06-19`)]:[]),observed(`${y}-07-04`),nth(y,9,1,1),nth(y,11,4,4),observed(`${y}-12-25`)]:[`${y}-01-01`,addDate(e,-2),addDate(e,1),`${y}-05-01`,`${y}-12-25`,`${y}-12-26`,...(["XETR","XMIL"].includes(id)?[`${y}-12-24`,`${y}-12-31`]:[])];
   const openMinute=us||!id?570:540; let closeMinute=us||!id?960:1050;
-  const early=us && (date===addDate(nth(y,11,4,4),1) || (date===`${y}-12-24` && weekday(date)>=1 && weekday(date)<=4) || (date===`${y}-07-03` && weekday(date)>=1 && weekday(date)<=4));
+  const early=us && (date===addDate(nth(y,11,4,4),1) || (date===`${y}-12-24` && weekday(date)>=1 && weekday(date)<=4) || (date===`${y}-07-03` && weekday(date)>=1 && weekday(date)<=4)) || id==='XETR'&&date==='2025-12-30';
   if(early) closeMinute=780;
-  const halfDayPending=id==="XAMS" && [`${y}-12-24`,`${y}-12-31`].includes(date) && ![0,6].includes(weekday(date));
-  const partial=!id || y!==2026 || halfDayPending;
+  if(id==='XETR'&&date==='2025-12-30')closeMinute=840;
+  const halfDayPending=(id==="XAMS" && [`${y}-12-24`,`${y}-12-31`].includes(date) || id==='XETR'&&date===`${y}-12-30`&&y!==2025) && ![0,6].includes(weekday(date));
+  const yearVerified=y===2026||VERIFIED_CASH_YEARS[id]?.includes(y);
+  const partial=!id || !yearVerified || halfDayPending;
   const historicalClosure=HISTORICAL_CLOSURES[us?"US":id]?.[date]||null;
   const closed=[0,6].includes(weekday(date)) || holidays.includes(date) || Boolean(historicalClosure);
   return { calendarId:id, methodVersion:CALENDAR_VERSION, date, timezone:zone, closed, earlyClose:Boolean(early), halfDayPending,
     openMinute, closeMinute, openTime:closed||halfDayPending?null:zonedBoundary(date,openMinute,zone), closeTime:closed||halfDayPending?null:zonedBoundary(date,closeMinute,zone),
     premarket:us ? (id==="XNAS"||id==="ARCX"?{openMinute:240,closeMinute:570}:null):null,
     afterHours:us && id!=="XNYS" ? {openMinute:closeMinute,closeMinute:early?1020:1200}:null,
-    partial, historicalClosure:historicalClosure?{reason:historicalClosure.reason}:null,sources: id?[CALENDAR_SOURCES[id] || CALENDAR_SOURCES.US,...(historicalClosure?.sources||[])]:[],
-    warnings:[...(!id?["Unknown venue; weekday cash approximation."]:[]),...(y!==2026?["Recurring rules plus listed historical exceptions; other exceptional closures not verified."]:[]),...(halfDayPending?["Official half day; closing time pending appendix. No closed candle inferred."]:[])] };
+    partial, historicalClosure:historicalClosure?{reason:historicalClosure.reason}:null,sources: id?[CALENDAR_SOURCES[id] || CALENDAR_SOURCES.US,...(id==='XETR'&&XETRA_HISTORICAL_SOURCES[y]?[XETRA_HISTORICAL_SOURCES[y]]:[]),...(historicalClosure?.sources||[])]:[],
+    warnings:[...(!id?["Unknown venue; weekday cash approximation."]:[]),...(!yearVerified?["Recurring rules plus listed historical exceptions; other exceptional closures not verified."]:[]),...(halfDayPending?["Exceptional close pending official appendix. No closed candle inferred."]:[])] };
 }
 export function adjacentTradingDay(instrument,date,direction) { for(let n=1;n<=370;n++) { const day=tradingDay(instrument,addDate(date,n*direction)); if(!day.closed&&!day.halfDayPending) return day; } return null; }
 export function expectedDailyGaps(candles,instrument) {

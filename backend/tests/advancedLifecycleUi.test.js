@@ -18,3 +18,15 @@ test('UI distinguishes preparation, keeps old data during refresh and never appl
   task=ui.refresh();pending.shift()(snapshot('2026-10-16T12:00:00Z'));await task;assert.equal(nodes.get('panel-advanced-intel').dataset.advancedRefresh,'ok');assert.equal(maxActive,1);
  }finally{ui.stop();globalThis.document=before;}
 });
+
+test('polling follows its job through long calculations without another admission',async()=>{
+ const before=globalThis.document,{document,nodes}=dom();globalThis.document=document;let admissions=0,polls=0,complete=false;
+ const old=snapshot('2026-10-16T10:00:00Z');
+ const api={getAdvancedIntelligenceSnapshot:async()=>{admissions++;return {...old,lifecycle:{status:'refreshing',jobId:'job-long',jobStatus:'queued'}};},getAdvancedJobStatus:async({jobId})=>{assert.equal(jobId,'job-long');polls++;return complete?snapshot('2026-10-16T12:00:00Z'):{...old,lifecycle:{status:'refreshing',jobId,jobStatus:'running'}};}};
+ const ui=startAdvancedIntelligence({api,getCountries:()=> 'US'});
+ try{
+  await flush();for(let n=0;n<4;n++)await ui.refresh();assert.equal(admissions,1);assert.equal(polls,4);
+  assert.equal(nodes.get('panel-advanced-intel').dataset.advancedRefresh,'refreshing');assert.match(nodes.get('advanced-intel-meta').innerHTML,/Updating snapshot/);
+  complete=true;await ui.refresh();assert.equal(admissions,1);assert.equal(nodes.get('panel-advanced-intel').dataset.advancedRefresh,'ok');
+ }finally{ui.stop();globalThis.document=before;}
+});

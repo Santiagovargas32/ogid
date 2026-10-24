@@ -65,6 +65,7 @@ let latestMarketConditionsError = "";
 let marketConditionsRequestToken = 0;
 let marketConditionsTask=null,marketConditionsTaskKey=null,marketConditionsController=null;
 let selectedMarketConditionsWindowMin = DEFAULT_MARKET_CONDITIONS_WINDOW_MIN;
+let selectedMarketConditionsAnchor='live';
 let marketQuotesPoller = null;
 let marketQuotesPollerStarted = false;
 let manualRefreshPendingId = null;
@@ -243,6 +244,9 @@ function renderMarketConditionsWindowSelector() {
   }
 
   elements.marketConditionsWindowSelector.innerHTML = `
+    <div class="chart-selector-chips" role="group" aria-label="Corte del análisis">
+      ${[['live','En vivo'],['last-close','Último cierre']].map(([anchor,label])=>`<button class="chart-selector-chip ${anchor===selectedMarketConditionsAnchor?'active':''}" type="button" data-action="set-market-conditions-anchor" data-anchor="${anchor}" aria-pressed="${anchor===selectedMarketConditionsAnchor}">${label}</button>`).join('')}
+    </div>
     <div class="chart-selector-help small text-light-emphasis">Analysis window</div>
     <div class="chart-selector-chips" role="group" aria-label="Market conditions analysis window">
       ${MARKET_CONDITIONS_WINDOWS.map((option) => {
@@ -851,6 +855,9 @@ function handleActionClick(event) {
       refreshMarketConditions();
     }
   }
+  if(trigger.dataset.action==='set-market-conditions-anchor'&&['live','last-close'].includes(trigger.dataset.anchor)){
+    event.preventDefault();selectedMarketConditionsAnchor=trigger.dataset.anchor;renderMarketConditionsWindowSelector();void refreshMarketConditions();
+  }
 }
 
 const dashboardController = new AbortController();
@@ -1220,6 +1227,7 @@ function renderMarketConditionSymbol(symbol) {
         </div>
       </div>
       <div class="market-condition-metric-grid">
+        ${symbol.sessionAsOf?`<span>Último cierre: ${escapeHtml(formatDate(symbol.sessionAsOf))}</span><span>Datos: ${escapeHtml(formatDate(symbol.dataAsOf))}</span><span>Calculado: ${escapeHtml(formatDate(symbol.calculatedAt))}</span><span>Retraso del proveedor: ${escapeHtml(symbol.providerDelayMs==null?'desconocido':`${symbol.providerDelayMs/60000} min`)}</span><span>Horizonte: ${escapeHtml(symbol.horizonMinutes==null?'desconocido':`${symbol.horizonMinutes} min`)}</span>`:''}
         <span>Return ${escapeHtml(formatConditionMetric(symbol.metrics.windowReturnPct, { digits: 2, suffix: "%", signed: true }))}</span>
         <span>RSI ${escapeHtml(formatConditionMetric(symbol.metrics.rsi))}</span>
         <span>ATR ${escapeHtml(formatConditionMetric(symbol.metrics.atrPct, { suffix: "%" }))}</span>
@@ -1697,7 +1705,7 @@ function selectedCountryQueryValue() {
 }
 
 function marketConditionsContextKey() {
-  return `${selectedCountryQueryValue()}|${selectedMarketConditionsWindowMin}|${[...selectedMarketSymbols].sort().join(",")}`;
+  return `${selectedCountryQueryValue()}|${selectedMarketConditionsWindowMin}|${selectedMarketConditionsAnchor}|${[...selectedMarketSymbols].sort().join(",")}`;
 }
 
 function marketConditionsMatchesCurrentContext() {
@@ -1722,7 +1730,7 @@ async function loadMarketConditions(signal) {
   try {
     const payload = await api.getMarketConditions({
       countries: countryKey,
-      windowMin: selectedMarketConditionsWindowMin
+      windowMin: selectedMarketConditionsWindowMin,anchor:selectedMarketConditionsAnchor
     },{signal});
     if (requestToken !== marketConditionsRequestToken) {
       return;

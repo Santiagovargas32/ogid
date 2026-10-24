@@ -74,6 +74,7 @@ export async function fetchNewsApi({
   if (!response.ok) {
     const body = await response.text();
     const error = new Error(`newsapi-upstream-${response.status}:${body.slice(0, 120)}`);
+    error.httpStatus = response.status;
     error.rateLimit = rateLimit;
     throw error;
   }

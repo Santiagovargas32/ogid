@@ -56,3 +56,19 @@ test("MCP stdio real: catálogo ampliado, cuatro herramientas compatibles e inpu
     await new Promise(resolve => server.close(resolve));
   }
 });
+
+test('agent evidence chunk traverses real stdio with selected validation and an application receipt',async()=>{
+  const requests=[];
+  const server=createServer((req,res)=>{requests.push(req.url);res.setHeader('content-type','application/json');res.end(JSON.stringify({ok:true,data:{snapshotId:'snapshot-fixture',evidenceId:'technical-fixture',encoding:'utf8',chunk:'{"data":{"rsi":42}}',sha256:'0'.repeat(64),bytes:19,nextOffset:19,hasMore:false}}));});
+  await new Promise(r=>server.listen(0,'127.0.0.1',r));
+  const transport=new StdioClientTransport({command:process.execPath,args:[fileURLToPath(new URL('../src/index.js',import.meta.url))],env:{PATH:process.env.PATH,OGID_BASE_URL:`http://127.0.0.1:${server.address().port}`,OGID_RESEARCH_SCOPE:'agent-evidence'},stderr:'pipe'});
+  transport.stderr.on('data',()=>{});const client=new Client({name:'chunk-regression',version:'1'});
+  try{
+    await client.connect(transport);
+    const good=await client.callTool({name:'ogid_query',arguments:{operationId:'agent.evidence.chunk',parameters:{snapshotId:'snapshot-fixture',evidenceId:'technical-fixture',format:'utf8'}}});
+    assert.equal(good.isError,undefined);assert.equal(good.structuredContent.readReceipt.contentRead,true);assert.equal(good.structuredContent.readReceipt.contractHash.length,64);
+    assert.equal(requests.length,1);assert.match(requests[0],/^\/api\/agent\/v1\/evidence\/chunk\?/);
+    const bad=await client.callTool({name:'ogid_query',arguments:{operationId:'agent.evidence.chunk',parameters:{snapshotId:'snapshot-fixture',evidenceId:42,secret:'PRIVATE'}}});
+    assert.equal(bad.isError,true);assert.equal(bad.structuredContent.error.details.stage,'operation-parameters');assert.ok(bad.structuredContent.error.details.issues.length<=16);assert.ok(!JSON.stringify(bad).includes('PRIVATE'));assert.equal(requests.length,1);
+  }finally{await client.close();server.closeAllConnections();await new Promise(r=>server.close(r));}
+});
