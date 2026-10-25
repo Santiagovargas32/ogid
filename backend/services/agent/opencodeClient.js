@@ -1,4 +1,6 @@
 import {toolReceipt} from './toolReceipt.js';
+import {terminalFailure,transportFailure} from './failures.js';
+import {agentToolCall} from '../../contracts/ogidOperations.js';
 import { agentError } from "./contracts.js";
 import { localUrl } from "./config.js";
 import { createHash } from "node:crypto";
@@ -27,7 +29,8 @@ export class OpenCodeClient {
       ...(signal ? [signal] : []),
       AbortSignal.timeout(30000),
     ]);
-    const r = await this.fetch(this.baseUrl + path, {
+    let r;
+    try { r = await this.fetch(this.baseUrl + path, {
       method,
       signal,
       redirect: "error",
@@ -38,10 +41,13 @@ export class OpenCodeClient {
         "Content-Type": "application/json",
       },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-    });
+    }); } catch(error) {
+      const failure=transportFailure(error);
+      throw agentError(failure.causeCode,502,{terminalError:failure});
+    }
     if (!r.ok) {
       await r.body?.cancel();
-      throw agentError(`OPENCODE_HTTP_${r.status}`, 502);
+      throw agentError(`OPENCODE_HTTP_${r.status}`, 502,{terminalError:{causeCode:`OPENCODE_HTTP_${r.status}`,phase:'opencode-http',httpStatus:r.status,observedAt:new Date().toISOString()}});
     }
     if (r.status === 204) return null;
     const reader = r.body.getReader(),
@@ -57,6 +63,10 @@ export class OpenCodeClient {
       }
       try { return JSON.parse(Buffer.concat(parts).toString()); }
       catch { throw agentError('OPENCODE_INVALID_RESPONSE', 502); }
+    } catch(error) {
+      if(error.code?.startsWith?.('OPENCODE_'))throw error;
+      const failure=transportFailure(error);
+      throw agentError(failure.causeCode,502,{terminalError:failure});
     } finally {
       await reader.cancel().catch(()=>{});reader.releaseLock();
     }
@@ -72,7 +82,7 @@ export class OpenCodeClient {
       )
     )
       throw agentError("OPENCODE_MCP_NOT_READY", 503);
-    return { version: info.version, ready: true };
+    return { version: info.version, ready: true, checkedAt:new Date().toISOString(), mcp:{state:'connected',name:'ogid_read',profile:'agent-evidence'} };
   }
   models(signal) {
     return this.request("/api/model", { signal });
@@ -158,7 +168,12 @@ export class OpenCodeClient {
     // v2 may finish an errored turn without assigning session.time.idle.
     // Its completed assistant error is authoritative; waiting for idle would
     // occupy a worker slot until the run deadline after recovery.
-    const terminalError=Boolean(latest?.time?.completed && latest.finish === "error");
+    const retryFailure=latest?.retry?.error?terminalFailure(latest.retry.error):null;
+    // V2 retries provider.internal inside a still-open assistant turn. A known
+    // format rejection or an incomplete stream cannot become valid by waiting
+    // on that same attempt: report it now so the owner interrupts and ACKs it.
+    const rejectedRetry=Boolean(retryFailure&&['LLAMACPP_OUTPUT_FORMAT','BROKER_INCOMPLETE_STREAM'].includes(retryFailure.causeCode));
+    const terminalError=Boolean(rejectedRetry || latest?.time?.completed && latest.finish === "error");
     const userTime=boundary>=0?timeline[boundary]?.time?.created:null;
     const inactive=Number.isFinite(userTime)&&[session.time?.idle,session.time?.archived].some(at=>Number.isFinite(at)&&at>=userTime);
     return {
@@ -173,7 +188,9 @@ export class OpenCodeClient {
           ?.filter((p) => p.type === "text")
           .map((p) => p.text)
           .join("") || "",
-      finish: latest?.finish,
+      finish: rejectedRetry?'error':latest?.finish,
+      terminalError: terminalError ? rejectedRetry?retryFailure:terminalFailure(latest.error) : null,
+      requiresInterruption:rejectedRetry,
       tools: assistants.flatMap((m) =>
         (m.content || [])
           .filter((p) => p.type === "tool")
@@ -187,8 +204,7 @@ export class OpenCodeClient {
               .digest("hex"),
             name: p.name,
             status: p.state?.status || "running",
-            operationId: p.state?.input?.operationId,
-            snapshotId: p.state?.input?.parameters?.snapshotId,
+            ...agentToolCall(p.name,p.state?.input),
             durationMs:Number.isFinite(p.time?.ran) && Number.isFinite(p.time?.completed) && p.time.completed>=p.time.ran ? p.time.completed-p.time.ran : null,
           })),
       ),

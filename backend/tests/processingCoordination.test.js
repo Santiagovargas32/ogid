@@ -39,7 +39,7 @@ test('supplemental RSS failures cannot refresh an old nonempty corpus', async ()
   assert.equal(pipeline.diagnostics.lastSuccessfulCheckAt,old);
 });
 
-test('a failed acquisition invalidates live projection freshness within the same cache bucket',async()=>{
+test('a failed attempt updates diagnostics without expiring a recent successful acquisition',async()=>{
   const originalNow=Date.now,now=originalNow();Date.now=()=>now;
   let diagnostics={lastAttemptAt:new Date(now-2000).toISOString(),lastSuccessfulCheckAt:new Date(now-1000).toISOString()};
   const runtime={load:()=>diagnostics,context:{snapshot:{}},progress(){},persistDerived(){}};
@@ -48,7 +48,9 @@ test('a failed acquisition invalidates live projection freshness within the same
   try{
     assert.equal((await pipeline.getProjection()).sourceMode,'live');
     diagnostics={...diagnostics,lastAttemptAt:new Date(now).toISOString()};
-    const failed=await pipeline.getProjection();assert.equal(failed.sourceMode,'stale');
+    const failed=await pipeline.getProjection();assert.equal(failed.sourceMode,'live');
+    assert.equal(failed.meta.lastAcquisitionAttemptAt,diagnostics.lastAttemptAt);
+    assert.equal(failed.meta.freshness.acquisitionStatus,'current');
     assert.equal(failed.meta.lastSuccessfulCheckAt,diagnostics.lastSuccessfulCheckAt);
   }finally{Date.now=originalNow;}
 });

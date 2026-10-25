@@ -1,3 +1,4 @@
+import {projectNewsMeta} from './news/newsFreshness.js';
 import { createLogger } from "../utils/logger.js";
 import apiQuotaTracker from "./admin/apiQuotaTrackerService.js";
 import { calculateMarketProjection } from "./market/marketProjection.js";
@@ -180,7 +181,7 @@ class RefreshOrchestratorService {
 
   buildUpdatePayload(snapshot) {
     return {
-      meta: snapshot.meta,
+      meta: projectNewsMeta(snapshot.meta),
       news: snapshot.news,
       hotspots: snapshot.hotspots,
       countries: snapshot.countries,

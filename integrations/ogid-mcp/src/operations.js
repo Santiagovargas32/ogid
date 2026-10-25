@@ -1,5 +1,5 @@
 import * as z from "zod/v4";
-import { OGID_OPERATIONS, OPERATIONS_VERSION, OPERATIONS_HASH, getOperation, operationPath, validIsoDate } from "../../../backend/contracts/ogidOperations.js";
+import { OGID_OPERATIONS, OPERATIONS_VERSION, OPERATIONS_HASH, AGENT_EVIDENCE_TOOLS, getOperation, operationPath, validIsoDate } from "../../../backend/contracts/ogidOperations.js";
 import { projectOperation } from "../../../backend/utils/researchProjection.js";
 import { ReadError } from "./client.js";
 import { VERSION, ADAPTER_BUILD, allowsResearchOperation } from "./config.js";
@@ -87,6 +87,12 @@ export function extendedToolDefinitions(config, read) {
         return execute(operation, parameters, undefined, pathParameters);
       } }
   ];
+  if (config.researchScope === 'agent-evidence') for (const [name, operationId] of Object.entries(AGENT_EVIDENCE_TOOLS)) {
+    const operation = getOperation(operationId);
+    tools.push({ name, operationId, schema: zodSchema(operation.parameters),
+      description: `${operationId}: lee exclusivamente el snapshot congelado. Los IDs y domain son cadenas literales; offset y limit son enteros. No envíes objetos $ref/$type/$oid. Usa nextCursor/nextOffset para continuar.`,
+      run: parameters => execute(operation, parameters) });
+  }
   if (config.profile === "operator" && operator.length) tools.push({ name: "ogid_operator", description: "OPERADOR: operaciones administrativas, proveedor y mutaciones enumeradas. Requiere credencial local de alcance, verificada también por el backend. No usar en tareas de cartera; los cuerpos internos se proyectan como métricas.",
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     schema: z.strictObject({ operationId: z.enum(operator.map(op => op.id)), parameters: z.record(z.string(),z.unknown()).default({}), body:z.record(z.string(),z.unknown()).optional(), pathParameters: z.strictObject({ id: z.string().regex(/^[A-Za-z0-9._:-]{1,128}$/) }).optional() }),

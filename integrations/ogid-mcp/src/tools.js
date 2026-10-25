@@ -1,4 +1,4 @@
-import {OPERATIONS_HASH} from '../../../backend/contracts/ogidOperations.js';
+import {OPERATIONS_HASH,OPERATIONS_VERSION} from '../../../backend/contracts/ogidOperations.js';
 import * as z from "zod/v4";
 import { BASELINE_COUNTRIES } from "../../../backend/utils/countryCatalog.js";
 import { AWARENESS_SOURCES, AWARENESS_SOURCE_CATALOG_VERSION } from "../../../backend/services/awareness/awarenessCatalog.js";
@@ -159,18 +159,21 @@ export function toolDefinitions(config, read) {
     }
     , ...extendedToolDefinitions(config, read)
   ].filter(t => config.researchScope !== "agent-evidence" ||
-    ["ogid_query", "ogid_get_capabilities", "ogid_health"].includes(t.name))
+    ["ogid_query", "ogid_get_capabilities", "ogid_health", "ogid_agent_evidence", "ogid_agent_evidence_chunk", "ogid_agent_clusters"].includes(t.name))
     .map(t => ({ ...t, annotations: t.annotations || ANNOTATIONS }));
 }
 
 export async function executeTool(tool, input, config) {
+  const identity = { version: OPERATIONS_VERSION, hash: OPERATIONS_HASH, adapterVersion: VERSION,
+    pid: process.pid, startedAt: ADAPTER_BUILD.capturedAt, profile: config.researchScope || 'all' };
   try {
     const args = tool.schema.parse(input);
     const result = await tool.run(args);
-    const payload = { ok: true, queriedAt: new Date().toISOString(), origin: "OGID", ...result, truncated: false };
-    if(input.operationId?.startsWith('agent.evidence')&&typeof payload.data?.snapshotId==='string'){
-      const d=payload.data,chunk=input.operationId==='agent.evidence.chunk';
-      payload.readReceipt={contractHash:OPERATIONS_HASH,operationId:input.operationId,snapshotId:d.snapshotId,contentRead:chunk?typeof d.chunk==='string'&&d.chunk.length>0:(d.items||[]).some(i=>i.data!=null),evidenceIds:chunk?[d.evidenceId]:(d.items||[]).filter(i=>i.data!=null).map(i=>i.evidenceId)};
+    const payload = { ok: true, queriedAt: new Date().toISOString(), origin: "OGID", identity, ...result, truncated: false };
+    const operationId = tool.operationId || input.operationId;
+    if(operationId?.startsWith('agent.evidence')&&typeof payload.data?.snapshotId==='string'){
+      const d=payload.data,chunk=operationId==='agent.evidence.chunk';
+      payload.readReceipt={contractHash:OPERATIONS_HASH,operationId,snapshotId:d.snapshotId,contentRead:chunk?typeof d.chunk==='string'&&d.chunk.length>0:(d.items||[]).some(i=>i.data!=null),evidenceIds:chunk?[d.evidenceId]:(d.items||[]).filter(i=>i.data!=null).map(i=>i.evidenceId)};
     }
     let truncated = false;
     const response = () => ({ structuredContent: payload, content: [{ type: "text", text: JSON.stringify(payload) }] });
@@ -191,7 +194,7 @@ export async function executeTool(tool, input, config) {
     return response();
   } catch (error) {
     // Nunca reflejar cuerpos, URLs, tokens ni valores de argumentos en los errores.
-    const payload = { ok: false, queriedAt: new Date().toISOString(), error: {
+    const payload = { ok: false, queriedAt: new Date().toISOString(), identity, error: {
       code: error instanceof ReadError ? error.code : error instanceof z.ZodError ? "INVALID_ARGUMENTS" : "ADAPTER_ERROR",
       message: error instanceof ReadError ? error.message : error instanceof z.ZodError ? "Argumentos inválidos o no permitidos." : "No se pudo completar la lectura segura.",
       ...(error instanceof z.ZodError?{details:{stage:error.validationStage||"tool-envelope",issues:error.issues.slice(0,16).map(i=>({path:i.path.map(x=>String(x).slice(0,64)),code:i.code,...(typeof i.expected==="string"?{expected:i.expected}:{})}))}}:{})

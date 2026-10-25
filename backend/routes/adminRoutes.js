@@ -1,3 +1,4 @@
+import {currentNewsCorpus} from '../services/news/newsFreshness.js';
 import {healthDiagnostics} from '../services/healthDiagnostics.js';
 import stateManager from '../state/stateManager.js';
 import { Router } from "express";
@@ -10,6 +11,8 @@ router.get("/api-limits", getApiLimits);
 router.get("/news-raw", getNewsRaw);
 router.get("/pipeline-status", getPipelineStatus);
 router.get("/runtime", (_req,res) => res.json({ ok: true, data: {
+  news:currentNewsCorpus(stateManager.getMeta().sourceMeta?.corpus)||null,
+  agent:res.app.locals.agentRuntime?.status?.()||null,
   sampledAt: new Date().toISOString(),diagnostics:healthDiagnostics(res.app.locals,stateManager.getMeta()),
   storage: res.app.locals.storageManager?.getStatus?.() || null,
   runtime: res.app.locals.runtimeMetrics.snapshot(),

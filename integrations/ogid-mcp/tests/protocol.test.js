@@ -70,5 +70,24 @@ test('agent evidence chunk traverses real stdio with selected validation and an 
     assert.equal(requests.length,1);assert.match(requests[0],/^\/api\/agent\/v1\/evidence\/chunk\?/);
     const bad=await client.callTool({name:'ogid_query',arguments:{operationId:'agent.evidence.chunk',parameters:{snapshotId:'snapshot-fixture',evidenceId:42,secret:'PRIVATE'}}});
     assert.equal(bad.isError,true);assert.equal(bad.structuredContent.error.details.stage,'operation-parameters');assert.ok(bad.structuredContent.error.details.issues.length<=16);assert.ok(!JSON.stringify(bad).includes('PRIVATE'));assert.equal(requests.length,1);
+    const typed=await client.callTool({name:'ogid_agent_evidence_chunk',arguments:{snapshotId:'snapshot-fixture',evidenceId:'technical-fixture',format:'utf8'}});
+    assert.equal(typed.structuredContent.readReceipt.operationId,'agent.evidence.chunk');assert.equal(typed.structuredContent.readReceipt.contentRead,true);
+    const listed=(await client.listTools()).tools.find(t=>t.name==='ogid_agent_evidence_chunk');assert.equal(listed.inputSchema.properties.snapshotId.type,'string');
+    for(const snapshotId of [{'$ref':'PRIVATE'},{'$type':'string',value:'PRIVATE'},{'$oid':'PRIVATE'},{},42]){
+      const rejected=await client.callTool({name:'ogid_agent_evidence_chunk',arguments:{snapshotId,evidenceId:'technical-fixture'}});
+      assert.equal(rejected.isError,true);assert.equal(rejected.structuredContent.error.code,'INVALID_ARGUMENTS');assert.equal(rejected.structuredContent.identity.hash,typed.structuredContent.identity.hash);assert.ok(!JSON.stringify(rejected).includes('PRIVATE'));
+    }
+    assert.equal(requests.length,2);
+    for(const input of [
+      {snapshotId:'snapshot-fixture',evidenceId:'technical-fixture',offset:'0'},
+      {snapshotId:'snapshot-fixture',evidenceId:'technical-fixture',offset:.5},
+      {snapshotId:'snapshot-fixture',evidenceId:'technical-fixture',format:'json'},
+      {snapshotId:'snapshot-fixture',evidenceId:'technical-fixture',operationId:'agent.evidence',secret:'PRIVATE'},
+    ]){
+      const rejected=await client.callTool({name:'ogid_agent_evidence_chunk',arguments:input});assert.equal(rejected.isError,true);assert.ok(!JSON.stringify(rejected).includes('PRIVATE'));
+    }
+    for(const input of [{snapshotId:'snapshot-fixture',domain:{$type:'string'}},{snapshotId:'snapshot-fixture',domain:'coverage',limit:'10'},{snapshotId:'snapshot-fixture',limit:1.5}])assert.equal((await client.callTool({name:'ogid_agent_evidence',arguments:input})).isError,true);
+    assert.equal((await client.callTool({name:'ogid_agent_clusters',arguments:{snapshotId:'snapshot-fixture',domain:'coverage'}})).isError,true);
+    assert.equal(requests.length,2,'all typed rejections happen before HTTP');
   }finally{await client.close();server.closeAllConnections();await new Promise(r=>server.close(r));}
 });

@@ -1,5 +1,6 @@
 // Application policy lives in code. Environment variables select deployment
 // endpoints, credentials and access; tests and tools may pass explicit overrides.
+import {NEWS_FRESHNESS_POLICY} from '../services/news/newsFreshness.js';
 function freeze(value) {
   if(value && typeof value === "object") { for(const child of Object.values(value))freeze(child);Object.freeze(value); }
   return value;
@@ -52,7 +53,8 @@ export const RUNTIME_POLICY = freeze({
     projectionIntervalMs: 60000,
     rssPollIntervalMs: 60000,
     rssFeedsPerCycle: 18,
-    freshnessMs: 600000,
+    freshnessMs: NEWS_FRESHNESS_POLICY.publicationMs,
+    acquisitionFreshnessMs: NEWS_FRESHNESS_POLICY.acquisitionMs,
     dayTimeZone: "Europe/Madrid",
     candidateWindowHours: 48,
     maxPerSource: 3,

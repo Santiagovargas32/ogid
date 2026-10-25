@@ -4,6 +4,9 @@ import { stableHash } from "../utils/stableHash.js";
 import { AGENT_POLICY } from "../services/agent/config.js";
 import { numericPaths, NUMERIC_CONTRACT_VERSION } from '../services/agent/evidencePaths.js';
 import { summarizeProposals } from '../services/agent/proposalMetrics.js';
+import {NEWS_FRESHNESS_POLICY} from '../services/news/newsFreshness.js';
+import { recoveryAfter } from '../services/agent/recovery.js';
+import { OPERATIONS_HASH } from '../contracts/ogidOperations.js';
 import { physicalPages } from "./sqlNewsCorpus.js";
 import {
   permittedArticle,
@@ -87,8 +90,21 @@ export const AGENT_METHODS = [
   "interruptClaim",
 ];
 export class AgentRepository {
-  constructor(runtime, { now = Date.now, debounceMs = 30000 } = {}) {
-    Object.assign(this, { runtime, db: runtime.db, now, debounceMs });
+  constructor(runtime, { now = Date.now, debounceMs = 30000, random = Math.random } = {}) {
+    Object.assign(this, { runtime, db: runtime.db, now, debounceMs, random });
+  }
+  recovery(model) {
+    return (this.runtime.load('agent-recovery-v1')||[]).find(e=>e.model===model&&e.contractHash===OPERATIONS_HASH)||{model,contractHash:OPERATIONS_HASH,consecutiveFailures:0};
+  }
+  saveRecovery(model, value) {
+    const entries=(this.runtime.load('agent-recovery-v1')||[]).filter(e=>!(e.model===model&&e.contractHash===OPERATIONS_HASH));
+    entries.push({...value,model,contractHash:OPERATIONS_HASH});
+    this.runtime.save('agent-recovery-v1',entries.slice(-16));
+  }
+  recordRecovery(job,input) {
+    const m=input.metadata||{};
+    const causeCode=m.terminalError?.causeCode || (m.lastToolFailure?.code==='INVALID_ARGUMENTS'?'MCP_INVALID_ARGUMENTS':null);
+    this.saveRecovery(job.model,recoveryAfter(this.recovery(job.model),{status:input.status,causeCode,jobId:job.job_id,fence:input.fence,now:this.now(),random:this.random}));
   }
   call(method, input = {}) {
     if (!AGENT_METHODS.includes(method))
@@ -117,21 +133,27 @@ export class AgentRepository {
   }
   status({since=null}={}) {
     const validSince=typeof since==='string' && Number.isFinite(Date.parse(since)) ? since : stamp(this.now());
-    return {
+    const recentJobs=this.db.prepare("SELECT job_id AS jobId,task,scope,model,status,error_code AS errorCode,created_at AS createdAt,updated_at AS updatedAt,lease_until AS leaseUntil,fence,attempts,snapshot_id AS snapshotId FROM agent_jobs ORDER BY CASE WHEN status IN ('running','waiting-model','validating') THEN 0 ELSE 1 END,updated_at DESC,job_id LIMIT 50").all();
+    const current=this.db.prepare("SELECT count(*) AS executions,coalesce(sum(status='completed'),0) AS completed,coalesce(sum(status='failed'),0) AS failed,coalesce(sum(status IN ('running','waiting-model','validating')),0) AS active,coalesce(sum(json_extract(metadata_json,'$.validation.candidateAttempts')),0) AS candidates,coalesce(sum(json_extract(metadata_json,'$.validation.repairAttempted')=1),0) AS repairs,coalesce(sum(json_extract(metadata_json,'$.evidenceReads')>0),0) AS evidenceReads,coalesce(sum(json_type(metadata_json,'$.evidenceReads') IS NULL),0) AS evidenceReadUnknown,max(CASE WHEN status='completed' THEN finished_at END) AS lastSuccessAt,max(CASE WHEN status='failed' THEN finished_at END) AS lastFailureAt FROM agent_runs WHERE started_at>=?").get(validSince);
+    current.publications=this.db.prepare('SELECT count(*) AS n FROM agent_publications WHERE published_at>=?').get(validSince).n;
+    current.failures=this.db.prepare("SELECT coalesce(json_extract(metadata_json,'$.terminalError.causeCode'),CASE WHEN json_extract(metadata_json,'$.lastToolFailure.code')='INVALID_ARGUMENTS' THEN 'MCP_INVALID_ARGUMENTS' END,json_extract(metadata_json,'$.errorCode'),'UNKNOWN') AS causeCode,count(*) AS count FROM agent_runs WHERE started_at>=? AND status='failed' GROUP BY causeCode ORDER BY count DESC LIMIT 16").all(validSince);
+    const result = {
       sampledAt:stamp(this.now()),
       since:validSince,
+      current,
+      recovery:(this.runtime.load('agent-recovery-v1')||[]).filter(e=>e.contractHash===OPERATIONS_HASH),
       sinceCounts:this.db.prepare('SELECT status,count(*) AS count FROM agent_runs WHERE started_at>=? GROUP BY status').all(validSince),
       proposalMetrics:summarizeProposals(this.db.prepare("SELECT j.task,j.model,json_extract(r.metadata_json,'$.validation') AS validation FROM (SELECT job_id,metadata_json FROM agent_runs WHERE started_at>=? ORDER BY started_at DESC LIMIT 1001) r JOIN agent_jobs j ON j.job_id=r.job_id").all(validSince),{since:validSince}),
       queueAge:this.db.prepare("SELECT min(created_at) AS oldestQueuedAt FROM agent_jobs WHERE status='queued'").get(),
-      recentJobs:this.db.prepare("SELECT job_id AS jobId,task,scope,model,status,error_code AS errorCode,created_at AS createdAt,updated_at AS updatedAt,lease_until AS leaseUntil,fence,attempts,snapshot_id AS snapshotId FROM agent_jobs ORDER BY CASE WHEN status IN ('running','waiting-model','validating') THEN 0 ELSE 1 END,updated_at DESC LIMIT 50").all(),
+      recentJobs,
       publicationCount:this.db.prepare('SELECT count(*) AS count FROM agent_publications').get().count,
-      recentPublications:this.db.prepare('SELECT mode,payload_json FROM agent_publications ORDER BY published_at DESC,rowid DESC LIMIT 5').all().map(({mode,payload_json})=>({mode,...parse(payload_json)})),
+      recentPublications:this.db.prepare(`SELECT mode,CASE WHEN length(CAST(payload_json AS BLOB))<=65536 THEN payload_json ELSE json_object('publicationId',publication_id,'jobId',job_id,'snapshotId',snapshot_id,'publishedAt',published_at,'truncated',json('true'),'proposal',json_object('task',task,'summary','Respuesta archivada; cuerpo omitido por límite del diagnóstico.')) END AS payload_json FROM agent_publications ORDER BY published_at DESC,rowid DESC LIMIT 5`).all().map(({mode,payload_json})=>({mode,...parse(payload_json)})),
       workerHealth: this.workerHealth(),
       runs: this.db
         .prepare(
-          "SELECT run_id AS runId,job_id AS jobId,fence,started_at AS startedAt,finished_at AS finishedAt,status,metadata_json FROM agent_runs ORDER BY started_at DESC LIMIT 20",
+          "SELECT r.run_id AS runId,r.job_id AS jobId,r.fence,r.started_at AS startedAt,r.finished_at AS finishedAt,r.status,CASE WHEN length(CAST(r.metadata_json AS BLOB))<=32768 THEN r.metadata_json ELSE json_object('truncated',json('true'),'phase',json_extract(r.metadata_json,'$.phase'),'errorCode',json_extract(r.metadata_json,'$.errorCode'),'toolsCompleted',json_extract(r.metadata_json,'$.toolsCompleted'),'evidenceReads',json_extract(r.metadata_json,'$.evidenceReads')) END AS metadata_json FROM agent_runs r JOIN agent_jobs j ON j.job_id=r.job_id AND j.fence=r.fence WHERE j.job_id IN (SELECT value FROM json_each(?)) ORDER BY r.started_at DESC LIMIT 50",
         )
-        .all()
+        .all(json(recentJobs.map(j=>j.jobId)))
         .map(({ metadata_json, ...r }) => ({
           ...r,
           metadata: parse(metadata_json),
@@ -148,10 +170,20 @@ export class AgentRepository {
         .get(),
       devices: this.db
         .prepare(
-          "SELECT device_id AS deviceId,label,created_at AS createdAt,revoked_at AS revokedAt FROM agent_devices",
+          "SELECT device_id AS deviceId,label,created_at AS createdAt,revoked_at AS revokedAt FROM agent_devices ORDER BY created_at DESC LIMIT 100",
         )
         .all(),
     };
+    result.limits={jobs:50,issues:16,maxBytes:1048576};
+    while(Buffer.byteLength(json(result))>1048576){
+      result.truncated=true;
+      const publication=result.recentPublications.find(p=>!p.truncated);
+      if(publication){publication.truncated=true;publication.proposal={task:publication.proposal?.task,summary:'Cuerpo omitido por límite del diagnóstico.'};continue;}
+      const run=result.runs.find(r=>!r.metadata.truncated);
+      if(run){run.metadata={truncated:true,phase:run.metadata.phase,errorCode:run.metadata.errorCode};continue;}
+      break;
+    }
+    return result;
   }
   workerReport({
     owner,
@@ -178,7 +210,7 @@ export class AgentRepository {
       verifiedAt,
       reportedAt: stamp(this.now()),
     });
-    return { accepted: true };
+    return { accepted: true, recovery:this.recovery(model) };
   }
   workerHealth() {
     const value = this.runtime.load("agent-worker-health");
@@ -576,7 +608,7 @@ export class AgentRepository {
     return this.db
       .transaction(() => {
         // A crashed/in-doubt attempt is reconciled; never replay its POST blindly.
-        const outdated=this.db.prepare("SELECT * FROM agent_jobs WHERE status='queued' AND opencode_id IS NULL AND prompt_version!=?").all(PROMPT_VERSION);
+        const outdated=this.db.prepare("SELECT * FROM agent_jobs WHERE status='queued' AND opencode_id IS NULL AND prompt_version!=? LIMIT 128").all(PROMPT_VERSION);
         for(const old of outdated){
           this.db.prepare("UPDATE agent_jobs SET status='superseded',updated_at=?,error_code='AGENT_PROMPT_UPDATED' WHERE job_id=?").run(stamp(this.now()),old.job_id);
           this.enqueue({task:old.task,scope:old.scope,model:old.model,key:stableHash(['prompt-upgrade',old.job_id,PROMPT_VERSION]),sessionId:old.session_id,messageId:old.message_id,input:parse(old.input_json),priority:old.priority});
@@ -586,15 +618,22 @@ export class AgentRepository {
             "UPDATE agent_jobs SET status='incomplete',error_code='AGENT_LEASE_EXPIRED',updated_at=? WHERE status IN ('running','validating','waiting-model') AND lease_owner IS NOT NULL AND lease_until<=?",
           )
           .run(stamp(this.now()), this.now());
-        const r = this.db
+        const candidates = this.db
           .prepare(
-            "SELECT * FROM agent_jobs WHERE (status='queued' OR (status='waiting-model' AND lease_owner IS NULL)) AND task IN (SELECT value FROM json_each(?)) AND attempts<3 AND (priority<20 OR created_at<=?) AND (session_id IS NULL OR NOT EXISTS(SELECT 1 FROM agent_jobs other WHERE other.session_id=agent_jobs.session_id AND (other.status IN ('running','validating','waiting-model') OR (other.opencode_id IS NOT NULL AND ((other.status='cancelled' AND coalesce(json_extract(other.input_json,'$.cancellationAcknowledged'),0)=0) OR (other.status='incomplete' AND coalesce(json_extract(other.input_json,'$.interruptAcknowledged'),0)=0)))))) ORDER BY priority - ((?-julianday(created_at))*24*60),created_at LIMIT 1",
+            "SELECT * FROM agent_jobs WHERE (status='queued' OR (status='waiting-model' AND lease_owner IS NULL)) AND task IN (SELECT value FROM json_each(?)) AND attempts<3 AND (priority<20 OR created_at<=?) AND (session_id IS NULL OR NOT EXISTS(SELECT 1 FROM agent_jobs other WHERE other.session_id=agent_jobs.session_id AND (other.status IN ('running','validating','waiting-model') OR (other.opencode_id IS NOT NULL AND ((other.status='cancelled' AND coalesce(json_extract(other.input_json,'$.cancellationAcknowledged'),0)=0) OR (other.status='incomplete' AND coalesce(json_extract(other.input_json,'$.interruptAcknowledged'),0)=0)))))) ORDER BY priority - ((?-julianday(created_at))*24*60),created_at LIMIT 128",
           )
-          .get(
+          .all(
             json(enabledTasks),
             stamp(this.now() - this.debounceMs),
             this.now() / 86400000 + 2440587.5,
           );
+        const recoveryEntries=this.runtime.load('agent-recovery-v1')||[];
+        const r = candidates.find(candidate=>{
+          const recovery=recoveryEntries.find(e=>e.model===candidate.model&&e.contractHash===OPERATIONS_HASH)||{};
+          if(recovery.nextEligibleAt && Date.parse(recovery.nextEligibleAt)>this.now())return false;
+          if(recovery.probe){const probe=this.db.prepare('SELECT status FROM agent_jobs WHERE job_id=?').get(recovery.probe.jobId);if(probe && ['running','validating','waiting-model','incomplete'].includes(probe.status))return false;}
+          return true;
+        });
         this.db
           .prepare(
             "UPDATE agent_runs SET status='incomplete',finished_at=? WHERE finished_at IS NULL AND EXISTS(SELECT 1 FROM agent_jobs j WHERE j.job_id=agent_runs.job_id AND j.fence=agent_runs.fence AND j.status='incomplete')",
@@ -607,6 +646,8 @@ export class AgentRepository {
           )
           .run(owner, this.now() + AGENT_POLICY.leaseMs, stamp(this.now()), r.job_id);
         const job = this.job(r.job_id);
+        const recovery=this.recovery(job.model);
+        if(recovery.nextEligibleAt)this.saveRecovery(job.model,{...recovery,probe:{jobId:job.job_id,fence:job.fence}});
         this.db
           .prepare("INSERT INTO agent_runs VALUES(?,?,?,?,NULL,?,?)")
           .run(
@@ -701,6 +742,14 @@ export class AgentRepository {
     // unlinked attempt can safely rebuild its snapshot/session under a new fence.
     if (row.status !== "incomplete" || row.attempts >= 3)
       throw agentError("AGENT_RECONCILIATION_DENIED", 409);
+    if(row.prompt_version!==PROMPT_VERSION){
+      if(row.opencode_id&&!interruption.interruptAcknowledged)throw agentError("AGENT_RECONCILIATION_DENIED",409);
+      return this.db.transaction(()=>{
+        this.db.prepare("UPDATE agent_jobs SET status='superseded',updated_at=?,error_code='AGENT_PROMPT_UPDATED' WHERE job_id=?").run(stamp(this.now()),row.job_id);
+        const input={...interruption};for(const key of ["interruptId","interruptUntil","interruptAcknowledged","cancellationAcknowledged"])delete input[key];
+        return {...this.enqueue({task:row.task,scope:row.scope,model:row.model,key:stableHash(["prompt-upgrade",row.job_id,PROMPT_VERSION]),sessionId:row.session_id,messageId:row.message_id,input,priority:row.priority}),upgraded:true};
+      }).immediate();
+    }
     this.db
       .prepare(
         "UPDATE agent_jobs SET status='queued',lease_owner=NULL,lease_until=NULL,error_code=NULL WHERE job_id=? AND status='incomplete'",
@@ -737,7 +786,7 @@ export class AgentRepository {
       this.db.prepare("UPDATE agent_jobs SET lease_until=? WHERE job_id=?").run(leaseUntil, input.jobId);
       if(input.progress && typeof input.progress==='object'){
         const p=input.progress,clean={};
-        for(const key of ['elapsedMs','firstProgressMs','toolsCompleted','outputCharacters'])if(Number.isFinite(p[key])&&p[key]>=0)clean[key]=p[key];
+        for(const key of ['elapsedMs','firstProgressMs','toolsCompleted','evidenceReads','outputCharacters'])if(Number.isFinite(p[key])&&p[key]>=0)clean[key]=p[key];
         if(['snapshot','inference','validating','repair'].includes(p.phase))clean.phase=p.phase;
         if(typeof p.lastProgressAt==='string' && Number.isFinite(Date.parse(p.lastProgressAt)))clean.lastProgressAt=p.lastProgressAt;
         if(p.lastToolFailure){
@@ -875,6 +924,7 @@ export class AgentRepository {
             input.jobId,
             input.fence,
           );
+        if(["completed","failed","incomplete"].includes(input.status))this.recordRecovery(job,input);
         return { status: input.status };
       })
       .immediate();
@@ -947,6 +997,7 @@ export class AgentRepository {
             reasonCodes: ["collected-sources-only"],
             domains: {},
             windowHours: 24,
+            newsFreshnessPolicy:{...NEWS_FRESHNESS_POLICY},
             selectedInstrumentIds:
               parse(job.input_json).selectedInstrumentIds || [],
           };
@@ -1576,6 +1627,7 @@ export class AgentRepository {
             job.job_id,
             job.fence,
           );
+        this.recordRecovery(job,{...input,status:"completed"});
         return { publicationId, status: "completed" };
       })
       .immediate();

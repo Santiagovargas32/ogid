@@ -110,7 +110,7 @@ test('evidence receipt requires application success and content, not transport c
   assert.equal(toolReceipt('ordinary tool text'),null);
   const failed=toolReceipt({isError:true,structuredContent:{ok:false,error:{code:'INVALID_ARGUMENTS',details:{stage:'operation-parameters',issues:[{path:['evidenceId'],code:'invalid_type',expected:'string'}]}}}});
   assert.equal(failed.applicationCode,'INVALID_ARGUMENTS');assert.equal(failed.validation.issues[0].expected,'string');
-  const r=toolReceipt({content:[{type:'text',text:JSON.stringify({ok:true,origin:'OGID',readReceipt:{snapshotId:'s',contentRead:true,evidenceIds:['e']}})}]});
+  const r=toolReceipt({content:[{type:'text',text:JSON.stringify({ok:true,origin:'OGID',readReceipt:{contractHash:'a'.repeat(64),snapshotId:'s',contentRead:true,evidenceIds:['e']}})}]});
   assert.equal(r.applicationOk,true);assert.equal(r.returnedSnapshotId,'s');assert.equal(r.contentRead,true);
 });
 test('idle without a current assistant is explicit and historical idle cannot finish a new turn',async()=>{

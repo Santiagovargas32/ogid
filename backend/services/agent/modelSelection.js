@@ -7,6 +7,12 @@ import { agentError } from "./contracts.js";
 export class AgentModelSelection {
   constructor({config,opencode,call,now=Date.now,activate,brokerInventory,onVerified}){Object.assign(this,{config,opencode,call,now,activate,brokerInventory,onVerified});this.controller=new AbortController();}
   stop(){this.controller.abort();return this.activationTask?.catch(()=>{});}
+  peek(){
+    const fresh=this.cached && this.now()-this.cachedAt<=90000;
+    const value=this.cached || {source:'cached-manifest',state:'not-collected',backgroundModel:this.config.backgroundModel,models:this.config.manifest.models.map(m=>({id:`llamacpp/${m.alias}`,alias:m.alias,verified:readyModel(m),ready:false,available:null,state:'unknown',context:m.context,selectable:false}))};
+    return {...value,observedAt:this.cachedAt?new Date(this.cachedAt).toISOString():null,availabilityKnown:Boolean(fresh),activation:this.activation||null,
+      models:value.models.map(m=>({...m,ready:Boolean(fresh&&m.ready),selectable:Boolean(fresh&&m.selectable)}))};
+  }
   async list({refresh=false}={}){
     if(!refresh && this.cached && this.now()-this.cachedAt<10000)return this.cached;
     if(this.loading)return this.loading;

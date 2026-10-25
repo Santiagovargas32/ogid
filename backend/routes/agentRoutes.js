@@ -355,6 +355,7 @@ router.get("/admin/agent", admin, async (req, res) =>
   res.json({
     ...publicCapabilities(req.app.locals.agentConfig),
     runtime: req.app.locals.agentRuntime?.status(),
+    modelCatalog:req.app.locals.agentModels?.peek?.()||null,
     paused: Boolean(req.app.locals.agentPaused),
     ...(await call(req, "status", {since:req.app.locals.agentObservationSince})),
     worker: req.app.locals.agentMaintenance?.status || null,

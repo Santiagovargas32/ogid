@@ -10,6 +10,8 @@ import { setTimeout as wait } from "node:timers/promises";
 import { generateOpenCodeConfig } from "./opencodeConfig.js";
 import { OpenCodeClient } from "./opencodeClient.js";
 import { readyModel } from "./config.js";
+import {runtimeTelemetry} from './runtimeTelemetry.js';
+import {AGENT_EVIDENCE_TOOLS,OPERATIONS_HASH,OPERATIONS_VERSION} from '../../contracts/ogidOperations.js';
 
 const backend=fileURLToPath(new URL("../../",import.meta.url));
 const binaryHash="2df936a20cf74af5706020342164628f9a31978c50c2b0ad306b42b614fe245d";
@@ -38,7 +40,15 @@ export class ManagedAgentRuntime {
     const components=structuredClone(this.components),worker=components.worker;
     if(worker.state==='running' && Date.now()-Date.parse(worker.workerHealth?.reportedAt)>90000)
       Object.assign(worker,{state:'degraded',errorCode:'AGENT_WORKER_HEARTBEAT_STALE'});
-    return {mode:"terminal",components};
+    const w=this.workerTelemetry||{},identity=w.mcpIdentity;
+    const connected=components.worker.state==='running'&&w.controlPlane?.mcp?.state==='connected';
+    const services={mcp:{state:w.mcpContractMismatch||identity&&identity.hash!==OPERATIONS_HASH?'degraded':connected?(identity?'ready':'unverified'):'unknown',
+      expectedContract:{version:OPERATIONS_VERSION,hash:OPERATIONS_HASH},identity:identity||null,permittedTools:[...Object.keys(AGENT_EVIDENCE_TOOLS),'ogid_get_capabilities','ogid_health'],rejections:w.mcpRejections||0,lastFailure:w.lastMcpFailure||null,checkedAt:w.controlPlane?.checkedAt||null,profile:'agent-evidence'},
+      llamacpp:this.brokerTelemetry?.upstream?{...this.brokerTelemetry.upstream,...(Date.now()-Date.parse(this.brokerTelemetry.upstream.observedAt)>90000?{state:'unknown'}:{})}:{state:'unknown',observedAt:null}};
+    if(components.broker)components.broker.telemetry=this.brokerTelemetry||null;
+    if(components.opencode)components.opencode.telemetry={...w.controlPlane,apiState:connected?'available':'unknown',lastFailure:w.lastFailure||null,lastSuccess:w.lastSuccess||null,generations:w.generations||[]};
+    if(worker)worker.telemetry={checkedAt:worker.workerHealth?.reportedAt||null,generations:w.generations||[],lastFailure:w.lastFailure||null,lastSuccess:w.lastSuccess||null};
+    return {mode:"terminal",components,services,recovery:w.recovery||null,generations:w.generations||[],lastFailure:w.lastFailure||null,lastSuccess:w.lastSuccess||null};
   }
   start(baseUrl){
     if(this.boot)return this.boot;
@@ -58,7 +68,7 @@ export class ManagedAgentRuntime {
     }
     this.manifestPath=join(directory,"models.runtime.json");save(this.manifestPath,this.config.manifest);
     this.configPath=join(directory,"opencode.json");
-    save(this.configPath,generateOpenCodeConfig({manifest:this.config.manifest,defaultModel:this.config.backgroundModel,brokerUrl:this.config.brokerUrl,mcpCommand:[process.execPath,resolve(backend,"../integrations/ogid-mcp/src/index.js")],toolNames:["ogid_read_ogid_query","ogid_read_ogid_get_capabilities","ogid_read_ogid_health"]}));
+    save(this.configPath,generateOpenCodeConfig({manifest:this.config.manifest,defaultModel:this.config.backgroundModel,brokerUrl:this.config.brokerUrl,mcpCommand:[process.execPath,resolve(backend,"../integrations/ogid-mcp/src/index.js")],toolNames:["ogid_read_ogid_agent_evidence","ogid_read_ogid_agent_evidence_chunk","ogid_read_ogid_agent_clusters","ogid_read_ogid_get_capabilities","ogid_read_ogid_health"]}));
     for(const name of ["broker","opencode","worker"])if(this.components[name].enabled){try{await this.launchComponent(name);}catch(error){this.failed(name,error);}}
   }
   childEnvironment(name){
@@ -93,9 +103,19 @@ export class ManagedAgentRuntime {
     // cross into the backend log. Rotation remains the existing logger's job.
     state.diagnostics={stdoutBytes:0,stderrBytes:0,lastCode:null,suppressedCodes:0};
     let lastDiagnosticAt=0;
+    const buffers={stdout:'',stderr:''};
     for(const stream of ['stdout','stderr'])child[stream]?.on('data',chunk=>{
       if(this.children.get(name)!==child)return;
       state.diagnostics[`${stream}Bytes`]+=chunk.length;
+      const raw=buffers[stream]+chunk.subarray(0,65536).toString();
+      const lines=raw.split('\n');buffers[stream]=lines.pop().slice(-65536);
+      for(const line of lines.slice(0,64))try{
+        const event=JSON.parse(line);
+        if(name==='worker'&&event.scope==='backend/agent/generation'&&['agent_generation_admitted','agent_generation_failed','agent_tool_application_failed'].includes(event.message)){
+          const {key,...details}=runtimeTelemetry(event);
+          this.logger[event.message==='agent_generation_admitted'?'info':'warn'](event.message,{component:name,...details,...(key?{generation:key}:{})});
+        }
+      }catch{/* Unstructured child text is counted, never forwarded. */}
       const code=chunk.subarray(0,4096).toString().match(/\b(?:AGENT|BROKER|OPENCODE|MCP|SQLITE)_[A-Z][A-Z0-9_]{1,63}\b|\b(?:EACCES|ENOENT|ENOMEM|EADDRINUSE)\b/)?.[0];
       if(code && code!==state.diagnostics.lastCode){
         state.diagnostics.lastCode=code;
@@ -104,7 +124,10 @@ export class ManagedAgentRuntime {
       }
     });
     child.on('message',message=>{
+      if(this.children.get(name)!==child)return;
+      if(name==='broker'&&message?.type==='agent-broker-health'){this.brokerTelemetry=runtimeTelemetry(message.telemetry);return;}
       if(this.children.get(name)!==child || name!=='worker' || message?.type!=='agent-worker-health' || !['connected','degraded'].includes(message.state))return;
+      this.workerTelemetry=runtimeTelemetry(message.telemetry||{});
       state.workerHealth={state:message.state,reportedAt:new Date().toISOString(),contract:message.contract&&/^[a-f0-9]{64}$/.test(message.contract.hash||'')?{version:String(message.contract.version||'unknown').slice(0,32),hash:message.contract.hash,mcpHash:/^[a-f0-9]{64}$/.test(message.contract.mcpHash||'')?message.contract.mcpHash:null}:null};
       if(state.state!=='starting')state.state=message.state==='connected'?'running':'degraded';
       state.errorCode=message.state==='connected'?null:/^AGENT_[A-Z0-9_]{1,64}$/.test(message.errorCode || '')?message.errorCode:'AGENT_WORKER_UNAVAILABLE';

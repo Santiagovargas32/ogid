@@ -30,6 +30,8 @@ jobs:
       - run: npm test
       - run: npm --prefix ../integrations/ogid-mcp test
       - run: npm run build
-      # Keep reporting lower-severity advisories without failing CI on
-      # transitive issues that do not yet have a compatible upstream fix.
-      - run: npm audit --omit=dev --audit-level=high
+      # Check both runtime dependency graphs without lowering the security gate.
+      - name: Audit backend runtime dependencies
+        run: npm audit --omit=dev --audit-level=high
+      - name: Audit MCP runtime dependencies
+        run: npm --prefix ../integrations/ogid-mcp audit --omit=dev --audit-level=high

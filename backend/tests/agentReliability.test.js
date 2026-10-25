@@ -33,8 +33,30 @@ async function brokerFixture(t, handler, policy = {}) {
   const request = (body = input) => fetch(`http://127.0.0.1:${broker.address().port}/v1/chat/completions`, {
     method: 'POST', headers: { Authorization: 'Bearer fixture', 'Content-Type': 'application/json' },
     body: typeof body === 'string' ? body : JSON.stringify(body), signal: AbortSignal.timeout(2000) });
-  return { request, queue };
+  const health=async()=>{const r=await fetch(`http://127.0.0.1:${broker.address().port}/health`,{headers:{Authorization:'Bearer fixture'}});return r.json();};
+  return { request, queue, health };
 }
+test('HTTP 200 model format errors and incomplete SSE release capacity and preserve the last failure after recovery',async t=>{
+ let calls=0;
+ const f=await brokerFixture(t,(_req,res)=>{
+  calls++;res.writeHead(200,{'Content-Type':'text/event-stream'});
+  res.write('data: {"choices":[{"delta":{"content":"partial"},"finish_reason":null}]}\n\n');
+  if(calls===1)res.end('data: {"error":{"message":"The model produced output that does not match the expected peg-native format","status":200}}\n\n');
+  else if(calls===2)res.end();
+  else res.end('data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n');
+ });
+ for(const cause of ['LLAMACPP_OUTPUT_FORMAT','BROKER_INCOMPLETE_STREAM']){
+  try{await(await f.request({...input,stream:true})).text();}catch{/* stream is deliberately terminated */}
+  await wait(10);
+  const state=(await f.health()).telemetry;
+  assert.equal(state.lastFailure.causeCode,cause);assert.equal(state.active,null);assert.equal(f.queue.running,false);
+  assert.equal(state.completed,0,'partial outputs never count as success');
+ }
+ await(await f.request({...input,stream:true})).text();
+ const state=(await f.health()).telemetry;
+ assert.equal(state.completed,1);assert.equal(state.failed,2);assert.equal(state.lastFailure.causeCode,'BROKER_INCOMPLETE_STREAM');assert.ok(state.lastSuccess);
+ assert.ok(!JSON.stringify(state).includes('partial'));
+});
 test('broker releases the serial lane when upstream accepts but sends no headers', async t => {
   let calls = 0, closed = false;
   const f = await brokerFixture(t, (req, res) => {
@@ -153,9 +175,9 @@ test('total inference budget bounds an upstream that keeps sending progress fore
 test('stream chunk budget does not cap accumulated response length',async t=>{
  const f=await brokerFixture(t,async(_req,res)=>{
   res.writeHead(200,{'Content-Type':'text/event-stream'});
-  for(let n=0;n<20;n++){res.write('x'.repeat(64));await wait(4);}res.end();
+  for(let n=0;n<20;n++){res.write('x'.repeat(64));await wait(4);}res.end('\n\ndata: {"choices":[{"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n');
  },{maxChunkBytes:256});
- const r=await f.request({...input,stream:true});assert.equal((await r.text()).length,1280);
+ const r=await f.request({...input,stream:true});assert.ok((await r.text()).length>1280);
 });
 test('client disconnect aborts upstream and releases the active lane',async t=>{
  let closed=false;

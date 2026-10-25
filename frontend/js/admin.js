@@ -1,3 +1,5 @@
+import {renderAgentRuntime} from './agentOperationsView.js';
+import {renderNewsQuality} from './newsQualityView.js';
 import { mountAgentAdmin } from "./agentAdmin.js";
 import { api } from "./api.js";
 import { SectionRefresh } from "./adminRefresh.js";
@@ -12,9 +14,13 @@ let pollHandle = null;
 let pollFailures = 0;
 let retryUntilMs = 0;
 let workerPollHandle = null;
+let lastAgentRuntime = null;
+let lastRuntimeSample = 0;
+let lastCommonDiagnostics = null;
 const workerSections = new SectionRefresh({onStatus(key,status,error,retained,dataAt){
   const label=byId("worker-operations-status");
   if(label)label.textContent=error ? `${retained?"Últimos datos conservados · ":""}${error.message}` : status==="loading" ? "Comprobando…" : `Actualizado ${formatShortTime(dataAt || new Date())}`;
+  if(error)renderAgentRuntime({...lastAgentRuntime,observationLost:true},byId("agent-process-body"));
 }});
 const sections = new SectionRefresh({ onStatus(key, status, error, retained, dataAt) {
   const anchor = document.getElementById(key);
@@ -765,9 +771,16 @@ function renderMarketTransportDiagnostics(market = {}) {
   ].join("");
 }
 
+function renderCommonDiagnostics(candidate){
+  if(candidate&&Number.isFinite(Date.parse(candidate.sampledAt))&&(!lastCommonDiagnostics||Date.parse(candidate.sampledAt)>=Date.parse(lastCommonDiagnostics.sampledAt)))lastCommonDiagnostics=candidate;
+  const target=byId('pipeline-diagnostics-current'),health=lastCommonDiagnostics;if(!target)return;
+  if(!health){target.textContent='Diagnóstico sin observación disponible.';return;}
+  target.innerHTML=`<strong>Operación: ${escapeHtml(health.operational?.status||'unknown')} · Calidad: ${escapeHtml(health.quality?.status||'unknown')}</strong>${(health.causes||[]).slice(0,32).map(c=>`<div>${escapeHtml(c.origin)}: ${escapeHtml(c.code)} · ${escapeHtml(c.dimension)}</div>`).join('')}<p>Evaluación ${escapeHtml(formatDate(health.sampledAt))}</p>`;
+}
+
 function renderPipelineDiagnostics(news = {}, market = {}, health={}, stages={}) {
   const quality=news.corpus||{};
-  const qualityHtml=`<article class="diagnostic-item"><strong>Calidad de noticias: ${escapeHtml(quality.sourceMode||'unknown')}</strong><div>${escapeHtml((quality.staleReasons||[]).join(' · ')||'Sin causas registradas')}</div><div class="diagnostic-item-meta">Contenido: ${escapeHtml(formatDate(quality.latestGeopoliticalPublishedAt))} · Comprobación: ${escapeHtml(formatDate(quality.lastSuccessfulCheckAt))} · Proyección: ${escapeHtml(formatDate(quality.projectionGeneratedAt))}</div></article>`;
+  const qualityHtml='<article class="diagnostic-item" id="news-quality-current"></article>';
   const diagnostics = buildNewsProviderDiagnostics(news);
   if (!diagnostics.length) {
     elements.pipelineDiagnosticsBody.innerHTML =
@@ -794,7 +807,9 @@ function renderPipelineDiagnostics(news = {}, market = {}, health={}, stages={})
       .join("");
   }
 
-  elements.pipelineDiagnosticsBody.innerHTML=qualityHtml+`<article class="diagnostic-item"><strong>Operación: ${escapeHtml(health?.operational?.status||'unknown')} · Calidad: ${escapeHtml(health?.quality?.status||'unknown')}</strong>${(health?.causes||[]).slice(0,32).map(c=>`<div>${escapeHtml(c.origin)}: ${escapeHtml(c.code)} · ${escapeHtml(c.dimension)}</div>`).join('')}</article>`+Object.entries(stages||{}).slice(0,32).map(([id,s])=>`<article class="diagnostic-item"><strong>${escapeHtml(id)}: ${escapeHtml(s.status||'unknown')}</strong><div>${escapeHtml(s.errorCode||s.reason||'')} · Último éxito ${escapeHtml(formatDate(s.lastSuccessAt))}</div><div>Calidad: ${escapeHtml(s.quality?.status||'unknown')} · Próximo ciclo ${escapeHtml(formatDate(s.freshness?.nextRunAt))}</div></article>`).join('')+elements.pipelineDiagnosticsBody.innerHTML;
+  elements.pipelineDiagnosticsBody.innerHTML=qualityHtml+'<article class="diagnostic-item" id="pipeline-diagnostics-current"></article>'+Object.entries(stages||{}).slice(0,32).map(([id,s])=>`<article class="diagnostic-item"><strong>${escapeHtml(id)}: ${escapeHtml(s.status||'unknown')}</strong><div>${escapeHtml(s.errorCode||s.reason||'')} · Último éxito ${escapeHtml(formatDate(s.lastSuccessAt))}</div><div>Calidad del último ciclo: ${escapeHtml(s.quality?.status||'unknown')} · Próximo ciclo ${escapeHtml(formatDate(s.freshness?.nextRunAt))}</div></article>`).join('')+elements.pipelineDiagnosticsBody.innerHTML;
+  renderCommonDiagnostics(health);
+  renderNewsQuality(document.getElementById('news-quality-current'),quality);
   const acquired=news.rssAcquisition || {},rss=news.rss || {};
   const rssOverview=`<article class="diagnostic-item"><div class="diagnostic-item-header"><strong>RSS acquisition</strong></div><div class="diagnostic-item-meta">Configured ${Number(rss.catalogSize || 0)} | available ${Number(rss.availableFeedCount ?? rss.catalogSize ?? 0)} | execution: ${escapeHtml(rss.execution || "--")} | rotating batch ${Number(acquired.queriedFeedCount || rss.maxFeedsPerCycle || 0)} / ${Number(acquired.catalogSize || rss.catalogSize || 0)} | concurrency ${Number(rss.concurrency || 0)} | network deadline ${escapeHtml(formatDurationMs(rss.deadlineMs))}</div><div class="diagnostic-item-meta">Collected ${Number(acquired.collectedCount || 0)} | returned to dashboard ${Number(acquired.returnedCount || 0)} | acquired ${escapeHtml(formatDate(news.acquiredAt))} | stage ${escapeHtml(news.stage || "idle")}</div></article>`;
   const feedStatus = rss.catalog || news.rssFeedStatus || [];
@@ -1058,10 +1073,15 @@ async function bootstrap() {
     sections.stop();
   },{once:true});
   const refreshWorkers=()=>workerSections.refresh([{key:"worker-operations-body",load:signal=>api.getAdminRuntime({signal}),render:value=>{
+    const sample=Date.parse(value.sampledAt)||0;if(sample<lastRuntimeSample)return;
+    lastRuntimeSample=sample;lastAgentRuntime=value.agent;
     byId("worker-operations-body").innerHTML=renderWorkerOperations(value.storage,{sampledAt:value.sampledAt});
+    renderAgentRuntime(value.agent,byId("agent-process-body"));
+    renderNewsQuality(byId("news-quality-current"),value.news);
+    renderCommonDiagnostics(value.diagnostics);
   }}]);
   byId("refresh-worker-operations")?.addEventListener("click",refreshWorkers);
-  workerPollHandle=new SmartPollLoop({intervalMs:5000,hiddenIntervalMs:60000,task:refreshWorkers});
+  workerPollHandle=new SmartPollLoop({intervalMs:5000,hiddenIntervalMs:30000,task:refreshWorkers});
   workerPollHandle.start();
   elements.refreshMediaStreamsBtn?.addEventListener("click", async () => {
     elements.refreshMediaStreamsBtn.disabled = true;

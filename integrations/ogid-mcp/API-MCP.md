@@ -1,12 +1,12 @@
 # Inventario API → MCP
 
-Contrato 1.8.0. Generado desde backend/contracts/ogidOperations.js; no editar a mano.
+Contrato 1.9.0. Generado desde backend/contracts/ogidOperations.js; no editar a mano.
 
 83 rutas JSON con método; 59 operaciones de investigación y 33 de operador. Las variantes almacenadas/proveedor comparten algunas rutas.
 
 Las cuatro herramientas compatibles se conservan. ogid_get_awareness_sources compone el catálogo local versionado y la salud pública Awareness, sin una ruta adicional. El inventario cubre las rutas de backend/routes montadas bajo /api; WebSocket, archivos estáticos y transporte del túnel tienen contratos independientes.
 
-El research general conserva diez herramientas. El servicio OpenCode dedicado usa OGID_RESEARCH_SCOPE=agent-evidence: sólo ogid_query, ogid_get_capabilities y ogid_health; sus consultas quedan limitadas a evidencia congelada, clusters y metadata operativa. El alcance se verifica también al ejecutar la lectura, no sólo en el schema.
+El research general conserva diez herramientas. El servicio OpenCode dedicado usa OGID_RESEARCH_SCOPE=agent-evidence: ogid_agent_evidence, ogid_agent_evidence_chunk, ogid_agent_clusters, ogid_get_capabilities y ogid_health; ogid_query se conserva para compatibilidad y se excluye de los permisos del analista v1.9; sus consultas quedan limitadas a evidencia congelada, clusters y metadata operativa. El alcance se verifica también al ejecutar la lectura, no sólo en el schema.
 
 Las rutas privadas de chat, dispositivos y control agentivo son de primera parte y no se exportan como herramientas MCP. Las rutas de medios retiradas responden MEDIA_RETIRED / HTTP 410 sin adquisición ni llamadas upstream; los consumidores deben dejar de consultarlas.
 

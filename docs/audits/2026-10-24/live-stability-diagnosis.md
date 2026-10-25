@@ -517,3 +517,386 @@ y `git diff --check` sin errores. La regresión con binario OpenCode 2.0.31 acep
 los IDs reales de generación, acredita el chunk válido y rechaza el inválido.
 Comprobación final de procesos: backend, observer, OpenCode y broker operativos
 detenidos; únicamente llama.cpp conserva su puerto habitual entre esos servicios.
+
+## Seguimiento de la nueva prueba shadow: corte del 24/10 a las 19:19
+
+Este apartado corresponde al arranque posterior a la entrega anterior. **Backend
+y observer están ejecutándose y no se han detenido, reiniciado ni reconfigurado
+durante esta inspección.** Es un diagnóstico y un plan pendiente de implementación.
+Las horas de las tablas son de Madrid (UTC+2); los artefactos usan UTC.
+
+### Identidad, alcance y evidencia
+
+- Rama `feat/agentic-intelligence`, commit local
+  `3ac9a1abf7b0bccd731d6c9b96776fc4aae07eea`. No se ha creado otro commit ni
+  publicado nada durante este seguimiento.
+- Backend PID **271599**, iniciado el **24/10 a las 15:48:56**.
+  Log examinado: `.agent-validation/shadow-backend-20261024-154856.log`.
+- Observer existente: `.agent-validation/shadow-24h-20261024-155002/`, iniciado
+  a las **15:50:03**. Sus archivos originales sólo se han leído.
+- El proceso arrancó sobre un checkout sucio que aún declaraba `fcd1ca5`.
+  El hash de archivos capturado al iniciar coincide con el calculado ahora sobre
+  los archivos incluidos por `buildIdentity.js` del commit `3ac9a1a`:
+  `bebaf9fa5dc1ecafd450ab79b2ecd033242e25082eb014da92894ee7aae9bd87`.
+  Esto acredita coincidencia de esos archivos; no constituye una atestación de
+  todo el entorno ni de las variables del proceso.
+- SQLite consultado: `/home/fedora/.local/share/ogid/db/ogid.sqlite`, abierto con
+  `readonly`, `fileMustExist` y `query_only=1`. Consultas limitadas a registros del
+  agente y cuatro proyecciones de noticias mediante índice por tipo y fecha.
+  No se ha consultado `admin/history`, ejecutado verificaciones integrales de la
+  base ni provocado adquisiciones, cálculos, trabajos o inferencias.
+- Se consultaron readiness/runtime y cuatro conversaciones **ya terminadas** de
+  OpenCode mediante GET acotados. No se exportaron prompts, razonamientos,
+  respuestas, argumentos completos, cuerpos de noticias ni credenciales.
+- Evidencia saneada con cortes explícitos:
+  `.agent-validation/live-followup-20261024-191921/evidence.json`.
+  El prefijo fijo del log analizado contiene **15.781.594 bytes**, SHA256
+  `6c26b3f70264a17b6a027a5234b55deaf88f89ac3ee777722c5fa99889569b49`.
+  El log continúa creciendo; el hash identifica sólo ese prefijo.
+
+### Noticias: causa exacta del registro de Admin
+
+La alerta es reproducible en los registros persistidos. La política efectiva
+`news.freshnessMs` es **600.000 ms (10 minutos)**, en
+`backend/config/runtimePolicy.js`. `SqlNewsPipeline.getProjection` compara ese
+umbral con **la publicación geopolítica elegible más reciente**, y comprueba por
+separado la antigüedad del último chequeo satisfactorio al proveedor. No usa la
+fecha de proyección ni la última ingesta como sustituto de la publicación.
+
+| Proyección persistida | Último contenido geopolítico | Comprobación | Revisión | Calidad |
+|---|---|---|---:|---|
+| 19:03:51.283 | 18:43:13 | 19:03:33.071 | 282522 | stale |
+| **19:04:07.099** | **18:43:13** | **19:03:33.071** | **282522** | **stale** |
+| 19:05:12.403 | 18:43:13 | 19:05:11.937 | 282631 | stale |
+| 19:06:33.863 | **18:58:40** | 19:06:15.133 | 282675 | **live** |
+
+El segundo registro reproduce exactamente las fechas aportadas por el usuario.
+El contenido tenía **20 min 54 s** y el chequeo sólo **34 s**. La causa era
+`content-publication-expired`, sin `acquisition-check-expired`. Hubo ingestas y
+nuevas revisiones sin una publicación geopolítica suficientemente reciente.
+`SqlNewsCorpus.scan` calcula ese reloj antes de la selección editorial, sobre la
+rama geopolítica con países reconocidos; no representa toda noticia financiera
+ni la novedad de los artículos que finalmente aparecen en pantalla.
+
+El log termina correctamente ciclos a las **19:04:03**, **19:04:15** y
+**19:05:35**, conservando `stale`. A las **19:06:41.387** termina el primer ciclo
+`live` de esta recuperación: ya se había incorporado contenido de las 18:58:40,
+con menos de ocho minutos de antigüedad al calcularlo. La desaparición de la
+alerta corresponde a ese cambio de contenido; la evidencia no permite
+atribuirla al WebSocket. Una comprobación HTTP o un 304 satisfactorios no cambian
+por sí solos la fecha de publicación.
+
+`DATA_STALE`, `content-publication-expired` y `provider-data-stale` describen aquí
+la misma condición desde el monitor de pipeline, el corpus y `dataQuality`.
+No son tres averías distintas. **Operación `ok` y calidad `degraded` son
+compatibles**: la pipeline acaba su trabajo y devuelve datos cuya publicación
+supera el umbral. Las muestras de las 19:05 y 19:06 conservan la causa incluso
+con la etapa `running`; el nuevo ciclo no rejuvenece automáticamente los datos.
+
+En el prefijo examinado hay **318 ciclos terminados: 163 stale y 155 live**.
+Son conteos de ciclos, no porcentajes de tiempo ni una prueba de errores de
+adquisición. La inspección de las 19:15:10 muestra operación/calidad `ok`, y la
+última proyección leída a las 19:16:41 usa contenido de las 19:10:49 y es `live`.
+
+### Agente: resultados de esta ejecución, separados del histórico
+
+El corte SQL es **24/10/2026 19:19:21.519**, desde el arranque del backend.
+Los estados se leyeron en una transacción de lectura corta. Se cuentan
+ejecuciones por `(job_id, fence)` y publicaciones durables por fecha; no líneas
+de log ni herramientas simplemente marcadas como terminadas.
+
+| Medida | Resultado al corte |
+|---|---:|
+| Ejecuciones iniciadas | **111** |
+| Ejecuciones completadas válidas | **0** |
+| Publicaciones nuevas aceptadas | **0** |
+| Ejecuciones fallidas | **110** |
+| Ejecución activa (`waiting-model`, fase `inference`) | **1** |
+| Trabajos nuevos todavía en cola | **22** |
+| Respuestas de chat completadas en este arranque | **0** |
+| Publicaciones históricas conservadas | **99** |
+
+La última publicación histórica es del **23/10 a las 18:28:30.656**. Ninguna de
+esas 99 corresponde a esta prueba. Los 110 fallos se distribuyen en **95**
+`instrument_outlook`, **5** `global_intelligence_brief`, **5**
+`geopolitical_alert_assessment` y **5** `market_outlook_global`.
+No hay ejecuciones nuevas de trabajos creados antes del arranque. El observer
+comenzó unos tres segundos después del primer run, por lo que su `sinceCounts`
+puede omitir ese primer intento; aquí el límite es el arranque del backend.
+
+| Código final | Ejecuciones | Interpretación |
+|---|---:|---|
+| `AGENT_NO_PROGRESS` | **106** | Repetición de llamadas con los mismos argumentos hasta la guardia de tres repeticiones. No significa timeout de SQLite. |
+| `AGENT_TOOL_EVIDENCE_REQUIRED` | **3** | La propuesta inicial y la única reparación no acreditaron una lectura válida de evidencia; publicación rechazada. |
+| `AGENT_OPENCODE_TURN_FAILED` | **1** | Turno terminal fallido de OpenCode; error `provider.internal`, con estado HTTP registrado 200. El detalle saneado no permite identificar una causa de red o del modelo más precisa. |
+
+Las **110 ejecuciones fallidas tienen cero herramientas acreditadas como
+satisfactorias**. En todas consta un último fallo MCP `INVALID_ARGUMENTS`, en
+validación de parámetros de `agent.evidence` o `agent.evidence.chunk`.
+Dieciocho ejecuciones alcanzaron la reparación; se registran 21 candidatos
+presentados a validación en total. Estos candidatos no son respuestas válidas.
+
+La inspección de cuatro conversaciones terminadas confirma el defecto de forma:
+`snapshotId` llega como objeto con claves `$type/value`, `$ref`, `$oid`, un
+objeto vacío o un objeto anidado; `domain` y `limit` también aparecen como objetos.
+Sus contratos requieren una cadena para los dos primeros y un número para el
+último. Se observó además `evidenceId` en `agent.evidence`, donde no se admite;
+su lectura individual pertenece a `agent.evidence.chunk`.
+Se registraron sólo nombres de campos y tipos, sin sus valores.
+
+El esquema expuesto por `ogid_query` usa
+`parameters: z.record(z.string(), z.unknown())`: su JSON Schema termina en
+`additionalProperties: {}`. El ejecutor sí selecciona el contrato de la
+operación antes de validar; esa corrección previa funciona y rechaza los datos
+mal formados. **Falta expresar los tipos concretos de cada operación al modelo**.
+El registro prueba dónde falla la llamada; atribuir el origen exacto de cada
+objeto al modelo, la conversión de herramientas o el transporte requiere una
+reproducción aislada que capture esos límites.
+
+Todas las ejecuciones fallidas declaran prompt **v1.8**, contrato **1.8.0** y
+hash `15793c865cd56650021fc745df7a32d7b9ae3b7e08369205fbd0b2d77d779bd9`.
+El worker aún no acredita un hash MCP a partir de una lectura válida. El conector
+externo de esta sesión anuncia contrato 1.6.0 y otro arranque; es un proceso
+distinto del MCP gestionado por OpenCode y no prueba que éste esté desactualizado.
+No se ha reiniciado ninguno.
+
+La ausencia de publicaciones demuestra que las guardias están impidiendo
+publicar sin evidencia. **No demuestra que el agente funcione correctamente**:
+en esta pasada todavía no ha conseguido emitir una respuesta válida.
+
+### Estabilidad operativa observada y límites
+
+- En el corte del observer de las **19:16:34**: **207 muestras**, aproximadamente
+  **3 h 26 min**, cero muestras indisponibles, cero cambios de backend, cero
+  desconexiones del worker y cero recuperaciones de lectores. Sigue `observing`;
+  `completedObservation=false`.
+- Las 207 muestras mantienen operación `ok`; 115 indican calidad `degraded` y
+  92 calidad `ok`. No equivalen a una prueba continua de todos los endpoints.
+- Readiness y runtime respondieron 200 a las 19:15:10; escritor, análisis y
+  consultas estaban `ready`, con **cero operaciones fallidas** de almacenamiento.
+  WAL retenido: 90.046.752 bytes; última deuda pendiente cero, sin backpressure
+  y sin fallos de checkpoint. Su tamaño físico no es deuda por sí solo.
+- Hay una muestra con heartbeat de **consultas** demorado **16.383 ms**, a las
+  19:11:32, con `awareness.getSnapshot` ejecutando y un `agent.read/run` esperando.
+  No produjo recuperación ni caída observada. El contador agregado del observer
+  incluye los tres workers, aunque se llame `storageHeartbeatDelayedSamples`.
+- El log contiene 21 avisos de SQL lento (máximo **5.202 ms**) y siete commits
+  lentos (máximo **6.840 ms**). No se ha medido aquí un p95 ni reproducido carga:
+  estos avisos impiden declarar satisfecho un SLO de latencia sólo por readiness.
+- RSS máximo muestreado del backend: **1,72 GiB**; de hijos gestionados, **535 MiB**.
+  Son máximos observados, no una prueba de fuga ni una garantía para 24 horas.
+- Hay un fallo de fuente `awareness-fed-releases` con HTTP 404 y tres rechazos
+  de acceso `AGENT_DEVICE_REQUIRED`, independientes de la caducidad de noticias.
+- El diagnóstico común actual informa disponibilidad y calidad de sus dominios,
+  pero no convierte la falta de publicaciones del agente en una causa explícita.
+  Un worker conectado y un health global `ok` no acreditan su productividad.
+
+### Plan de corrección posterior, sin aplicarlo durante esta observación
+
+1. **Reproducir el fallo MCP con el transporte completo.** Usar fixtures saneados
+   de las formas detectadas y OpenCode 2.0.31 en una instancia aislada. Capturar
+   esquema ofrecido al modelo, forma/tipos de argumentos al entrar en OpenCode,
+   al salir hacia MCP y resultado del validador. Comparar con llamadas primitivas
+   correctas. Separar transporte simulado de una evaluación posterior del modelo
+   real. Un test con argumentos correctos prefabricados no verifica que el modelo
+   pueda generarlos.
+2. **Tipar las herramientas del perfil `agent-evidence`.** Exponer herramientas
+   concretas para catálogo, chunk y clusters, generadas desde los contratos
+   compartidos y con sus campos tipados en el esquema visible. Reutilizar el mismo
+   ejecutor, autorización y proyección. Conservar `ogid_query` para compatibilidad
+   general, pero evitar el mapa de valores desconocidos como interfaz principal
+   de este perfil. Actualizar allowlist, prompt versionado, capabilities e
+   inventario juntos. No reintroducir la unión ambigua de parámetros ni convertir
+   automáticamente `$ref`/objetos en IDs, cadenas o números.
+3. **Acreditar contrato y progreso, conservando las guardias.** Verificar identidad
+   de backend/worker/MCP antes de inferir, también en respuestas de error, sin
+   depender del primer recibo satisfactorio. Conservar snapshot, fence, identidad
+   de generación, mensajes idempotentes, la única reparación y el rechazo sin
+   lectura real. Clasificar repetición de argumentos inválidos como causa MCP
+   concreta, además de la terminación por falta de progreso. Introducir una
+   espera acotada y visible por modelo/contrato ante fallos sistemáticos, con
+   recuperación verificable y sin borrar cola, evidencia ni historial. No elevar
+   `maxToolRepeat`, deadlines o leases para ocultar el problema.
+4. **Hacer visible el resultado funcional del agente.** Publicar en Admin un corte
+   explícito por arranque/intervalo, intentos por fence, candidatos iniciales y de
+   reparación, lecturas acreditadas, publicaciones nuevas, fallos por causa y
+   antigüedad de la última publicación. Separar sus 99 publicaciones históricas.
+   Conservar disponibilidad del proceso como dimensión operativa y mostrar su
+   calidad/productividad por separado, aunque siga conectado.
+5. **Aclarar noticias sin falsear frescura.** Mostrar «última publicación
+   geopolítica elegible», antigüedad, umbral de 10 min, ámbito y `evaluatedAt`, junto
+   al último chequeo/commit/ciclo y la revisión de la proyección. Agrupar las tres
+   etiquetas actuales bajo una causa canónica con sus procedencias. Mantener
+   separados estado de ejecución, disponibilidad y calidad. Mantener la causa
+   durante `running` y hasta contenido nuevo elegible. Un 304, una ingesta, un
+   recálculo o una entrega WS no pueden rejuvenecer publicaciones.
+6. **Verificar coherencia temporal de Admin y WS.** Consumir un mismo corte y
+   revisión para causas, contenido y pipeline, rechazando respuestas anteriores.
+   Probar el paso por el umbral sin contenido nuevo, chequeos 304, contenido nuevo
+   financiero sin novedad geopolítica, ingesta tardía, ciclos concurrentes y
+   reconexión WS. No se ha demostrado una carrera WS en esta incidencia. Evaluar
+   una política diferenciada por ámbito/horizonte sólo con evidencia posterior;
+   no aumentar globalmente el TTL para conseguir un indicador verde.
+7. **Conservar trazabilidad y vigilar las latencias residuales.** El lifecycle de
+   hijos resume ahora stdout/stderr en códigos y suprime repeticiones; por eso el
+   log principal no contiene cada `agent_generation_failed` ni cada fallo MCP.
+   Reenviar únicamente eventos estructurados permitidos, acotados y correlacionados
+   por job/fence/generación/snapshot/contrato, sin textos ni argumentos. Correlacionar
+   también SQL/commit lento con comando y worker. Reproducir fuera de esta prueba
+   `awareness.getSnapshot` y commits demorados sobre copia consistente en SSD,
+   midiendo frío/caliente y heartbeats. Mantener un escritor, lectores readonly,
+   WAL/FULL y las guardias existentes.
+
+Criterios de aceptación: argumentos primitivos correctos aceptados por transporte
+completo; todas las formas inválidas detectadas rechazadas sin HTTP innecesario;
+una lectura válida acreditada antes de cualquier publicación; cero publicaciones
+si fallan la propuesta y su única reparación; aislamiento entre generaciones;
+identidades de contrato verificables; calidad de noticias coherente con edad,
+ámbito y revisión; ninguna lectura administrativa inicia adquisición ni inferencia.
+Después, checks/tests de backend, MCP/inventario y frontend afectado en instancias
+temporales. La evaluación del modelo real y una nueva continuidad de 24 h son
+validaciones distintas de esos tests deterministas.
+
+Este seguimiento sólo añade documentación y evidencia. La prueba actual continúa
+para conservar contexto operativo; no se considera superada por disponer de HTTP
+200 ni por mantener el proceso vivo, y todavía no acredita calidad del agente.
+
+Comprobación de continuidad al terminar: muestra del observer de las
+**19:22:36.164**, **213 muestras**, mismo PID 271599 y misma identidad, cero
+indisponibilidades y cero fallos de los tres workers de almacenamiento. Sigue
+`observing`, con 24 h incompletas. La calidad de noticias ha vuelto a `degraded`
+por `content-publication-expired`; esto confirma que el indicador puede alternar
+al cruzar el umbral entre publicaciones, aun con operación `ok`.
+
+## Implementación local v1.9 — cierre de la revisión
+
+La implementación posterior al diagnóstico se ha dejado en
+`feat/agentic-intelligence`, conservando el trabajo local. Esta sección describe
+las correcciones y las pruebas aisladas; los resultados operativos anteriores
+permanecen arriba con sus cortes originales. No se ha iniciado otra observación
+de 24 horas ni se ha habilitado publicación visible.
+
+### Cambios y evidencia
+
+| Requisito | Implementación | Comprobación |
+|---|---|---|
+| Argumentos MCP concretos | `ogid_agent_evidence`, `ogid_agent_evidence_chunk` y `ogid_agent_clusters` se generan desde el contrato compartido. Cadenas, enteros y enums estrictos; sin coerciones ni campos adicionales. `ogid_query` conserva su compatibilidad, pero queda fuera de los permisos del analista. | Stdio real: `$ref`, `$type`, `$oid`, tipos equivocados, offsets fraccionarios, formatos y campos desconocidos se rechazan antes de HTTP. |
+| Identidad y acreditación | Descriptor canónico compartido para operación, snapshot, progreso y recibo. Identidad del adaptador también en errores. Un resultado `completed`, catálogo sin datos, `isError` o recibo sin contrato válido no acredita lectura. Los contratos incompatibles detienen nuevas admisiones. | Pruebas de recibos, contratos discordantes, snapshots ajenos, error final junto al último fallo MCP y cero publicaciones sin lectura. |
+| Versionado y trabajos anteriores | Prompt `ogid-analyst-v1.9`, contrato `1.9.0`, hash `88cbdc5e72c9b0a05256bc81cc4dafc29b5510557075296fb2df58d45ebbe9e1`. Sustitución transaccional y acotada de trabajos antiguos sin iniciar; una generación interrumpida exige ACK con su fence antes de sustituirse. | Reconciliación, historial preservado, idempotencia, nuevo snapshot y rechazo del owner/fence anterior. Los trabajos fallidos históricos no se relanzan en bloque. |
+| Razonamiento privado | GPT-OSS usa el proveedor nativo V2 `@opencode/ai/providers/openai-compatible` y `compatibility.reasoningField: "reasoning_content"`. Se conserva OpenCode 2.0.31 y su verificación de binario. | Transporte completo con el binario real, broker y MCP: dos turnos de herramientas conservan el campo privado. No se vuelca razonamiento ni argumentos en Admin o logs. |
+| Error terminal y capacidad | El broker conserva el error SSE observado dentro de HTTP 200 y convierte un EOF incompleto en error explícito. El cliente detecta `peg-native` y EOF incluso en `assistant.retry.error`, sin esperar a que termine el retry interno de OpenCode. El owner interrumpe y confirma; un ACK perdido conserva estado incompleto y cancelación durable. | Errores inyectados atravesando el binario real: `LLAMACPP_OUTPUT_FORMAT` y `BROKER_INCOMPLETE_STREAM`, con liberación de capacidad y sin salida parcial válida. DNS, TLS, conexión, HTTP, timeout y cancelación conservan causas diferenciadas cuando hay evidencia. |
+| Espera por fallos sistemáticos | Tras tres generaciones fallidas por argumentos MCP o formato, control durable por modelo y contrato en `runtime_kv`: 60 segundos iniciales, exponencial, máximo 15 minutos y jitter inyectable de ±20 %. Una comprobación al vencer la espera; reset por resultado validado. | Reinicio del repositorio, una sola comprobación, jitter, conservación de incertidumbre y reset tras publicación aceptada. |
+| Admin verificable | Tarjetas de Broker, OpenCode, MCP, Worker y llama.cpp; fase, cola, observación, contrato esperado/observado, rechazos, último éxito y último fallo separados. Resumen desde el arranque y hasta 50 trabajos unidos a su run por job y fence. Máximo 16 problemas de validación saneados y respuesta acotada. | Chromium a 1440 y 390 píxeles: sin desbordamiento de página, fallos final/MCP simultáneos, contrato desconocido, pérdida de observación y conservación de actividad cuando falla almacenamiento. |
+| Lecturas de Admin | Runtime consume telemetría del lifecycle; actividad usa el lector existente. El catálogo de modelos procede de una proyección en memoria, sin refrescar proveedores al abrir Admin. Sondeo de 5 segundos visible y 30 oculto, coalescido y con rechazo de respuestas antiguas. | La prueba de navegador sólo solicita `/api/admin/agent`; no solicita catálogo remoto, adquisición ni inferencia. Runtime mantiene sus componentes aunque falle la consulta de actividad. |
+| Frescura de noticias | Política compartida `news-freshness-v2`: publicación geopolítica elegible 30 minutos; comprobación satisfactoria 10 minutos. Proyección, health, Admin y entrega WS usan el mismo cálculo. Un intento fallido posterior no vence un chequeo reciente. | Reloj controlado en ambos límites, fechas desconocidas/futuras, comprobación sin contenido nuevo, reinicio y orden de respuestas. Se mantienen las pruebas de adquisición condicional existentes. |
+| Calidad e historial | Se separan captura, publicación y proyección, con edad, umbral, revisión y momento de evaluación. Las etiquetas redundantes se agrupan; publicación y adquisición vencidas siguen siendo causas distintas, también durante `running`. Snapshots nuevos congelan la política; los históricos no se reescriben. | Guardias numéricas y temporales intactas, política congelada comprobada y readiness independiente de la calidad stale. |
+
+La configuración de razonamiento sigue la
+[documentación de modelos de OpenCode V2](https://opencode.ai/v2/docs/models/#reasoning).
+La hipótesis del diagnóstico sobre pérdida de razonamiento se contrasta además
+con la [incidencia de llama.cpp sobre GPT-OSS](https://github.com/ggml-org/llama.cpp/issues/27720).
+La evidencia local confirma el intercambio privado y la clasificación de errores;
+no implica que el modelo no pueda volver a producir un formato inválido.
+
+### Resultados de las pruebas
+
+- Backend: `npm run check` y `npm test`, **1.035 pruebas correctas**.
+- MCP: check, **30 pruebas correctas** e `inventory:check`, **83 rutas y 92 operaciones**.
+- Frontend afectado: comprobación de sintaxis y navegador real, escritorio/móvil.
+- `git diff --check`: correcto.
+- Transporte fijado, cohorte final de **cinco instalaciones temporales**:
+  **5/5 correctas**, dos turnos de herramientas, recibos reales, argumentos
+  inválidos sin HTTP innecesario, y errores de formato/EOF diferenciados.
+
+En dos de esos cinco arranques OpenCode anunció MCP conectado antes de ofrecer
+herramientas al primer turno. Se conserva este resultado inicial en los logs:
+no acredita lectura. La misma reparación única de evidencia utilizada por el
+worker recuperó el turno en ambos casos; no se añadió una segunda reparación ni
+se aumentaron deadlines. El contrato permanece sin verificar en Admin hasta
+recibir identidad de una respuesta real del adaptador. Si la reparación también
+falla, la respuesta continúa sin poder publicarse.
+
+También se ejecutó inferencia con **GPT-OSS-20B residente**, usando bases pequeñas
+temporales, sin proveedores de mercado/noticias y sin tocar la base operativa:
+
+| Caso real | Resultado |
+|---|---|
+| Brief global | Publicación shadow válida tras la única reparación; catálogo y chunk UTF-8 acreditados. |
+| Valoración geopolítica | Publicación shadow válida en la propuesta inicial. |
+| Outlook global | Ambas propuestas rechazadas por `AGENT_UNVERIFIED_NUMBER`; ninguna publicación. |
+| Outlook de ORCL con RSI null y warmup 21 | Catálogo/chunk consultados, pero ambas propuestas rechazadas por `AGENT_UNVERIFIED_NUMBER`; ninguna publicación ni conversión del requisito en medición. |
+| Primer chat de la muestra completa | Dos consultas de catálogo sin contenido acreditado; rechazo `AGENT_TOOL_EVIDENCE_REQUIRED`, sin respuesta durable válida. |
+| Chat aislado posterior a la aclaración de chunks | Respuesta válida con cita de cobertura, historial persistido, SSE y cancelación HTTP correctos. La lectura acreditada fue de cobertura; este chat no acredita por sí solo lectura de todos los chunks técnicos. |
+
+No reapareció `peg-native` en estos casos reales. La muestra completa de cinco
+tareas no se considera un aprobado semántico general: conservó dos publicaciones
+y tres rechazos. El chat aislado posterior sí pasó. Los dos outlooks todavía
+requieren revisión del modelo sobre evidencia suficiente durante la siguiente
+prueba shadow; sus cifras inválidas siguen bloqueadas.
+
+Evidencia y resultados saneados:
+`.agent-validation/mcp-recovery-v19-20261024-pE4IJZ/summary.json`, con logs de las
+suites, las cohortes de transporte, capturas de Admin y referencias a los fixtures
+reales. Se conservan los fallos exploratorios del transporte por separado; no se
+cuentan como éxitos de la cohorte final. Los ficheros privados de los fixtures
+permanecen en sus directorios con permisos restringidos y no se incorporan a Git.
+
+### Entrega y siguiente ejecución manual
+
+No hay migración nueva: **001–022 permanecen intactas**. Esta implementación no
+modifica `.env`, la base operativa SSD, modelos, llama.cpp ni publicaciones
+históricas. No se hace commit, push, merge, despliegue o promoción visible en esta
+petición. Las instancias temporales se cierran al terminar; backend operativo y
+observer se dejan detenidos.
+
+Para la siguiente ejecución, en una terminal:
+
+```bash
+cd /home/fedora/ogid/backend
+npm start 2>&1 | tee "../.agent-validation/shadow-backend-v19-$(date +%Y%m%d-%H%M%S).log"
+```
+
+Cuando `/api/health/ready` responda correctamente y Admin muestre los workers
+operativos, comprobar por separado OpenCode 2.0.31, conexión del worker y contrato
+MCP observado 1.9.0. Un estado MCP inicial sin verificar es distinto de un contrato
+incompatible. Noticias stale degradan calidad; no significan por sí solas que
+SQLite no esté listo. Revisar las publicaciones **de este arranque**, además del
+histórico.
+
+Después, en otra terminal, iniciar manualmente el observer en una ruta nueva:
+
+```bash
+cd /home/fedora/ogid
+node backend/scripts/agent-shadow-observe.js ".agent-validation/shadow-24h-v19-$(date +%Y%m%d-%H%M%S)" 24
+```
+
+Estas órdenes no se ejecutan en la entrega. `.agent-validation` conserva su
+destino HDD. La continuidad de 24 horas y la revisión semántica de las respuestas
+reales siguen siendo criterios operativos posteriores, sin promoción automática.
+
+## Corrección de auditoría CI durante el shadow — 25/10/2026
+
+El CI del commit `3ac9a1a` superó instalaciones, checks y pruebas, pero falló en
+`npm audit --omit=dev --audit-level=high`. Se reprodujeron seis vulnerabilidades
+en backend y una en MCP. El aviso de Zod afecta a versiones anteriores a 4.6.6:
+[GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5).
+
+Se mantiene **Yahoo Finance 4.0.2** y se actualiza Zod a **4.6.7** en ambos árboles.
+El lockfile de backend incorpora además las correcciones compatibles de
+`body-parser` 2.4.0, `undici` 7.30.1, `fast-uri` 3.1.9 e `ip-address` 10.7.5, con
+sus dependencias compatibles. No se usa `npm audit fix --force`, no se degrada
+Yahoo a 3.x y no se rebaja el umbral de seguridad. CI audita ahora backend y MCP.
+
+Validación en una copia aislada con **Node 24.22.1**, correspondiente a la versión
+principal de CI: `npm ci` en ambos paquetes, checks, inventario, **1.035 pruebas
+backend y 30 MCP correctas**, build y auditorías con **cero vulnerabilidades**.
+El transporte simulado con OpenCode 2.0.31 también pasa con las dependencias
+corregidas, incluida su reparación única ante catálogo inicial sin herramientas.
+
+La publicación del avance en la rama es compatible con la observación en curso:
+la identidad del backend se captura al arrancar y no cambia al mover HEAD. Las
+instalaciones y pruebas se realizan fuera del checkout operativo; sus
+`node_modules`, `.env`, base y procesos se conservan. La corrección de
+dependencias publicada se aplicará al runtime en una instalación y arranque
+posteriores; no se atribuye esa corrección al proceso que ya estaba ejecutándose.
+La prueba de 24 horas continúa y su aprobación sigue pendiente de completarse.

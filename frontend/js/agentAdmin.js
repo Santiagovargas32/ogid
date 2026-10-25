@@ -1,9 +1,10 @@
+import {SmartPollLoop} from './smartPollLoop.js';
 import {fillAgentModels} from "./agentModels.js";
 import {renderAgentOperations} from "./agentOperationsView.js";
 export function mountAgentAdmin() {
   const target = document.getElementById("agent-admin-body");
   if (!target) return;
-  let stopped = false,pending=false,dirty=false,models,refreshing=false;
+  let stopped = false,pending=false,dirty=false,models,refreshing=false,lastSample=0;
   const controller=new AbortController();
   const controls=document.createElement("div");controls.className="diagnostic-list p-3";
   const label=document.createElement("label");label.htmlFor="agent-background-model";label.textContent="Modelo del analista de fondo";
@@ -49,9 +50,11 @@ export function mountAgentAdmin() {
       const r = await fetch("/api/admin/agent", { credentials: "same-origin",signal:AbortSignal.any([controller.signal,AbortSignal.timeout(15000)]) });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const { data } = await r.json();
-      if (stopped) return;
+      if (stopped || Date.parse(data.sampledAt)<lastSample) return;
+      lastSample=Date.parse(data.sampledAt)||lastSample;
+      if(data.modelCatalog&&!pending&&!dirty){models=data.modelCatalog;fillAgentModels(select,models,models.backgroundModel);apply.disabled=!models.models.some(m=>m.id===select.value&&(m.ready||m.selectable));}
       target.replaceChildren();
-      renderAgentOperations(data,{process:document.getElementById('agent-process-body'),activity:document.getElementById('agent-activity-body'),publications:document.getElementById('agent-publications-body'),updated:document.getElementById('agent-activity-updated')});
+      renderAgentOperations(data,{process:null,activity:document.getElementById('agent-activity-body'),publications:document.getElementById('agent-publications-body'),updated:document.getElementById('agent-activity-updated')});
       for (const [label, value] of [
         ["Modo", data.mode],
         ["Modelo de fondo", data.backgroundModel || "sin verificar"],
@@ -60,7 +63,7 @@ export function mountAgentAdmin() {
         ["Cuota local", "sin cuota"],
         ["Acumulados históricos", data.jobs.map((j) => `${j.status}: ${j.count}`).join(" · ")],
         ["Prerequisitos", data.worker?.state || "desactivado"],
-        ["OpenCode / MCP", data.workerHealth?.state || "sin telemetría"],
+        ["Canal de control del worker", data.workerHealth?.state || "sin telemetría"],
       ]) {
         const p = document.createElement("p");
         p.textContent = `${label}: ${value}`;
@@ -108,22 +111,19 @@ export function mountAgentAdmin() {
         target.append(row);
       }
     } catch (e) {
-      const p = document.createElement("p");
-      p.textContent = `Diagnóstico no disponible: ${e.message}`;
-      target.append(p);
+      let p=target.querySelector("[data-agent-error]");if(!p){p=document.createElement("p");p.dataset.agentError="true";target.append(p);}
+      p.textContent = `Actividad almacenada no disponible; se conservan los últimos datos: ${e.message}`;
     } finally {
       refreshing=false;
     }
   }
-  void refresh();void loadModels();
-  const timer = setInterval(refresh,30000);
-  const modelTimer=setInterval(()=>{if(models?.activation?.state==='queued')void loadModels();},3000);
+  const timer=new SmartPollLoop({task:refresh,intervalMs:5000,hiddenIntervalMs:30000});timer.start();
   window.addEventListener(
     "pagehide",
     () => {
       stopped = true;
       controller.abort();
-      clearInterval(timer);clearInterval(modelTimer);
+      timer.stop();
     },
     { once: true },
   );

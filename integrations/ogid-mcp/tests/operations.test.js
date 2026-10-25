@@ -28,7 +28,7 @@ test("el MCP del analista limita schema y ejecución a evidencia congelada sin c
     return new Response(JSON.stringify({ ok: true, data: { contractVersion: "1.5.0" } }), { headers: { "content-type": "application/json" } });
   });
   const tools = toolDefinitions(config, read);
-  assert.deepEqual(tools.map(t => t.name).sort(), ["ogid_get_capabilities", "ogid_health", "ogid_query"]);
+  assert.deepEqual(tools.map(t => t.name).sort(), ["ogid_agent_clusters", "ogid_agent_evidence", "ogid_agent_evidence_chunk", "ogid_get_capabilities", "ogid_health", "ogid_query"]);
   const query = tools.find(t => t.name === "ogid_query");
   assert.throws(() => query.schema.parse({ operationId: "market.quotes", parameters: {} }));
   await assert.rejects(() => read.operation("market.quotes", {}), { code: "FORBIDDEN_REQUEST" });

@@ -1,6 +1,18 @@
 // Registro compartido: contratos de transporte, permisos e inventario API→MCP.
 // Sin imports de runtime ni secretos. Los parámetros son valores tipados; nunca URLs/rutas libres.
-export const OPERATIONS_VERSION = "1.8.0";
+export const OPERATIONS_VERSION = "1.9.0";
+// Fixed operation identities shared by MCP and the OpenCode receipt decoder.
+export const AGENT_EVIDENCE_TOOLS = Object.freeze({
+  ogid_agent_evidence: 'agent.evidence',
+  ogid_agent_evidence_chunk: 'agent.evidence.chunk',
+  ogid_agent_clusters: 'agent.clusters',
+});
+export function agentToolCall(name, input = {}) {
+  const args=input&&typeof input==='object'&&!Array.isArray(input)?input:{};
+  const tool = Object.keys(AGENT_EVIDENCE_TOOLS).find(key => typeof name==='string'&&(name === key || name.endsWith('_' + key)));
+  return { operationId: tool ? AGENT_EVIDENCE_TOOLS[tool] : getOperation(args.operationId)?.id,
+    snapshotId: tool ? args.snapshotId : args.parameters?.snapshotId };
+}
 import {createHash} from "node:crypto";
 export { storageOperationContract } from './storageOperations.js';
 const str = (maxLength = 128) => ({ type: "string", minLength: 1, maxLength });
@@ -110,7 +122,7 @@ export const OGID_OPERATIONS = Object.freeze([
   op("media.streams.resolve", "GET", "/api/media/streams", { ids: array(str(80), 50), resolve: choice("critical", "visible", "all") }, { ...costly, fixed: { force: true } }),
   op("media.item.resolve", "GET", "/api/media/streams/:id", { resolve: choice("visible", "all") }, { ...costly, pathParameters: schema({ id: str(80) }, ["id"]), fixed: { force: true } })
 ]);
-export const OPERATIONS_HASH=createHash("sha256").update(JSON.stringify(OGID_OPERATIONS)).digest("hex");
+export const OPERATIONS_HASH=createHash("sha256").update(JSON.stringify({version:OPERATIONS_VERSION,operations:OGID_OPERATIONS,agentTools:AGENT_EVIDENCE_TOOLS})).digest("hex");
 export function getOperation(id) { return OGID_OPERATIONS.find(operation => operation.id === id) || null; }
 export function validIsoDate(value) {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value) || !Number.isFinite(Date.parse(value))) return false;

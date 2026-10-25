@@ -4,6 +4,9 @@ import { timingSafeEqual } from "node:crypto";
 import { once } from "node:events";
 import { readyModel, localUrl } from "./config.js";
 import { agentError } from "./contracts.js";
+import {StreamDiagnostics} from './streamDiagnostics.js';
+import {terminalFailure,transportFailure} from './failures.js';
+import {randomUUID,createHash} from 'node:crypto';
 // Transport budgets, not token/output limits. Queue wait does not consume the
 // inference budget; priority applies only before admission (no preemption).
 export const BROKER_POLICY = Object.freeze({
@@ -180,6 +183,7 @@ export function createInferenceBroker({
   contextInspector = inspectServerContext,
   policy = {},
   managedModels = false,
+  onTelemetry = () => {},
 } = {}) {
   const limits = { ...BROKER_POLICY, ...policy };
   if (Object.values(limits).some(n => !Number.isSafeInteger(n) || n <= 0))
@@ -187,10 +191,16 @@ export function createInferenceBroker({
   const base = localUrl(upstream).origin;
   if (!token || !apiKey) throw agentError("BROKER_CREDENTIALS_REQUIRED");
   const gateway=managedModels?new LlamaModels({upstream,apiKey,manifest,fetchImpl}):null;
-  return createServer(async (req, res) => {
+  const telemetry={sampledAt:null,active:null,lastSuccess:null,lastFailure:null,completed:0,failed:0,upstream:{state:'unknown',observedAt:null}};
+  const snapshot=()=>({...telemetry,queue:queue.pending.length,running:queue.running,resident:queue.resident||null});
+  let lastReport=0;
+  const report=(force=false)=>{if(!force&&Date.now()-lastReport<1000)return;lastReport=Date.now();telemetry.sampledAt=new Date().toISOString();try{onTelemetry(snapshot());}catch{/* Diagnostics cannot interrupt inference. */}};
+  const server = createServer(async (req, res) => {
     const abort = new AbortController();
+    const requestId=randomUUID(),started=performance.now();let observed=false,streamFailure=null;
     let phaseTimer, totalTimer;
     const phase = (ms, code) => {
+      if(observed&&telemetry.active?.requestId===requestId){telemetry.active={...telemetry.active,requestId,phase:code.replace(/^BROKER_|_TIMEOUT$/g,''),elapsedMs:Math.round(performance.now()-started)};report();}
       clearTimeout(phaseTimer);
       phaseTimer = setTimeout(() => abort.abort(agentError(code, 504)), ms);
       phaseTimer.unref();
@@ -217,6 +227,7 @@ export function createInferenceBroker({
             queue: queue.pending.length,
             running: queue.running,
             resident: queue.resident || null,
+            telemetry:snapshot(),
           }),
         );
       }
@@ -249,6 +260,10 @@ export function createInferenceBroker({
       try { body = JSON.parse(Buffer.concat(chunks)); }
       catch { throw agentError('BROKER_INVALID_JSON', 400); }
       validateInput(body, req.url);
+      observed=true;
+      const user=[...(body.messages||[])].reverse().find(m=>m.role==='user');
+      const userText=typeof user?.content==='string'?user.content:Array.isArray(user?.content)?user.content.filter(p=>p.type==='text').map(p=>p.text).join(''):'';
+      const command={requestId,model:body.model,route:req.url,queuedAt:new Date().toISOString(),inputMessageHash:createHash('sha256').update(userText).digest('hex')};
       const model = manifest.models.find((m) => m.alias === body.model);
       if (!catalogModel(model)) throw agentError("BROKER_MODEL_UNVERIFIED", 409);
       if(req.url==='/v1/models/activate'){
@@ -264,6 +279,7 @@ export function createInferenceBroker({
         delete body.max_output_tokens;
       }
       const work = async () => {
+        telemetry.active={...command,startedAt:new Date().toISOString(),phase:'admitted'};report(true);
         clearTimeout(phaseTimer);
         totalTimer = setTimeout(() => abort.abort(agentError('BROKER_TOTAL_TIMEOUT', 504)), limits.totalMs);
         totalTimer.unref();
@@ -290,6 +306,7 @@ export function createInferenceBroker({
           body: JSON.stringify(body),
         });
         const contentType = r.headers.get('content-type') || '';
+        telemetry.upstream={state:r.ok?'responding':'degraded',observedAt:new Date().toISOString(),httpStatus:r.status,model:body.model};report(true);
         const streaming = body.stream === true && r.ok;
         if (!r.body || !(streaming ? contentType.includes('text/event-stream') : contentType.includes('application/json'))) {
           await r.body?.cancel();
@@ -300,9 +317,11 @@ export function createInferenceBroker({
           "Cache-Control": "no-store",
         };
         if (streaming) res.writeHead(r.status, responseHeaders);
-        const parts = []; let jsonBytes = 0;
+        const parts = [],stream=streaming?new StreamDiagnostics():null; let jsonBytes = 0;
         phase(limits.idleMs, 'BROKER_IDLE_TIMEOUT');
         for await (const b of r.body) {
+          stream?.push(b);
+          if(telemetry.active?.requestId===requestId)telemetry.active.lastProgressAt=new Date().toISOString();
           if (b.length > limits.maxChunkBytes)
             throw agentError('BROKER_CHUNK_TOO_LARGE', 502);
           phase(limits.idleMs, 'BROKER_IDLE_TIMEOUT');
@@ -321,10 +340,24 @@ export function createInferenceBroker({
         }
         if (!streaming) {
           const bytes = Buffer.concat(parts);
-          try { const value = JSON.parse(bytes); if (!value || typeof value !== 'object' || Array.isArray(value)) throw Error(); }
+          let value;try { value = JSON.parse(bytes); if (!value || typeof value !== 'object' || Array.isArray(value)) throw Error(); }
           catch { throw agentError('BROKER_INVALID_UPSTREAM', 502); }
+          if(value.error){streamFailure=terminalFailure(value.error);throw agentError(streamFailure.causeCode,502);}
           res.writeHead(r.status, responseHeaders); res.end(bytes);
-        } else res.end();
+        } else {
+          streamFailure=stream.result();
+          if(streamFailure){
+            // Deliver a provider error already observed inside HTTP 200 rather
+            // than destroying its last frame and disguising it as disconnect.
+            // An EOF without completion needs an explicit private error frame.
+            if(!stream.failure)res.write('event: error\ndata: '+JSON.stringify({error:{type:'server_error',message:'OGID upstream failure: BROKER_INCOMPLETE_STREAM'}})+'\n\ndata: [DONE]\n\n');
+            res.end();throw agentError(streamFailure.causeCode,502);
+          }
+          res.end();
+        }
+        if(!r.ok)throw agentError(`BROKER_HTTP_${r.status}`,502);
+        telemetry.completed++;telemetry.lastSuccess={...command,at:new Date().toISOString(),durationMs:Math.round(performance.now()-started)};
+        telemetry.upstream={...telemetry.upstream,state:'available'};
       };
       phase(limits.queueMs, 'BROKER_QUEUE_TIMEOUT');
       await queue.run(work, {
@@ -339,11 +372,12 @@ export function createInferenceBroker({
       });
     } catch (error) {
       const e = abort.signal.reason?.code?.startsWith?.('BROKER_') ? abort.signal.reason : error;
+      if(observed){telemetry.failed++;telemetry.lastFailure={requestId,at:new Date().toISOString(),causeCode:streamFailure?.causeCode||(/^[A-Z0-9_]{1,96}$/.test(e.code||'')?e.code:transportFailure(e,'BROKER').causeCode),phase:streamFailure?.phase||telemetry.active?.phase||'request',durationMs:Math.round(performance.now()-started)};telemetry.upstream={...telemetry.upstream,state:'degraded'};}
       // Also cancel upstream on validation/backpressure failures, not just when
       // the client disconnects. Never leave an unread response owning a slot.
       abort.abort(e);
       if (res.headersSent) {
-        res.destroy();
+        if(!res.writableEnded)res.destroy();
         return;
       }
       res.statusCode = e.statusCode || 502;
@@ -352,8 +386,12 @@ export function createInferenceBroker({
         JSON.stringify({ error: { code: e.code || "BROKER_UPSTREAM_ERROR" } }),
       );
     } finally {
+      if(observed){if(telemetry.active?.requestId===requestId)telemetry.active=null;report(true);}
       clearTimeout(phaseTimer); clearTimeout(totalTimer);
       res.removeListener('close', onClose); req.removeListener('aborted', onAborted);
     }
   });
+  const heartbeat=setInterval(()=>report(true),15000);heartbeat.unref();
+  server.once('close',()=>clearInterval(heartbeat));
+  return server;
 }

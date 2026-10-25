@@ -1,3 +1,4 @@
+import {currentNewsCorpus} from '../services/news/newsFreshness.js';
 import {healthDiagnostics} from '../services/healthDiagnostics.js';
 import apiQuotaTracker, { MINUTE_WINDOW_MS, WINDOW_MS } from "../services/admin/apiQuotaTrackerService.js";
 import { providerRuntime } from "../services/providers/providerRuntime.js";
@@ -338,6 +339,7 @@ export function getPipelineStatus(_req, res) {
     ok: true,
     data: {
       generatedAt: new Date().toISOString(),
+      agent:res.app.locals.agentRuntime?.status?.()||null,
       diagnostics:healthDiagnostics(res.app.locals,stateManager.getMeta()),
       stages: res.app.locals.pipelineMonitor?.snapshot() || {},
       runtime: res.app.locals.runtimeMetrics?.snapshot?.() || null,
@@ -410,7 +412,7 @@ export function getPipelineStatus(_req, res) {
         acquiredAt:newsSourceMeta.acquiredAt || null,
         rssAcquisition:newsSourceMeta.rssAcquisition || null,
         configuredProviders:config.news?.providers || [],
-        corpus: newsSourceMeta.corpus || intelSnapshot.meta?.sourceMeta?.corpus || null,
+        corpus: currentNewsCorpus(newsSourceMeta.corpus || intelSnapshot.meta?.sourceMeta?.corpus || null),
         projectionIntervalMs:config.news?.projectionIntervalMs || null,
         rssPollIntervalMs:config.news?.rssPollIntervalMs || null,
         nextProviderRunAt:orchestrator?.nextPaidCollectAt ? new Date(orchestrator.nextPaidCollectAt).toISOString() : null,

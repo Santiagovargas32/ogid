@@ -1,4 +1,5 @@
 import { stableHash } from "../utils/stableHash.js";
+import {newsFreshness,NEWS_FRESHNESS_POLICY} from '../services/news/newsFreshness.js';
 import { ingestNewsBatches } from "./newsIngestion.js";
 import { fetchAggregatedNews } from "../services/news/newsAggregatorService.js";
 import { normalizeAdminArticles } from "../services/normalizeService.js";
@@ -110,12 +111,9 @@ export class SqlNewsPipeline {
     const analytical=await this.corpus.readAnalytical({asOf:corpus.meta.asOf,windowHours:this.config.candidateWindowHours || 36,awarenessMode:input.awarenessMode || this.config.awarenessMode || 'off'});
     const market=context.selectedInstrumentIds || [], instruments=listVerifiedInstruments().filter(instrument => market.includes(instrument.instrumentId));
     const tickers=input.tickers || instruments.map(instrument => instrument.canonicalSymbol);
-    const acquisitionAt=corpus.meta.latestGeopoliticalPublishedAt;
-    const age=acquisitionAt ? Date.now()-Date.parse(acquisitionAt) : Infinity;
-    const checked=this.diagnostics?.lastSuccessfulCheckAt;
-    const lastAttempt=this.diagnostics?.lastAttemptAt;
-    const checkIsCurrent=Boolean(checked && (!lastAttempt || checked>=lastAttempt) && Date.now()-Date.parse(checked)<=(this.config.freshnessMs || 600000));
-    const sourceMode=corpus.meta.eligibleCount ? (checkIsCurrent && age <= (this.config.freshnessMs || 600000) ? "live" : "stale") : "unavailable";
+    const freshnessPolicy={...NEWS_FRESHNESS_POLICY,publicationMs:this.config.freshnessMs||NEWS_FRESHNESS_POLICY.publicationMs,acquisitionMs:this.config.acquisitionFreshnessMs||NEWS_FRESHNESS_POLICY.acquisitionMs};
+    const freshness=newsFreshness({...corpus.meta,lastSuccessfulCheckAt:this.diagnostics?.lastSuccessfulCheckAt},Date.now(),freshnessPolicy);
+    const sourceMode=freshness.sourceMode;
     const inputMode=snapshot.market?.sourceMode === "fallback" ? "mixed" : sourceMode;
     const common={articles:analytical.marketSignalCorpus, countries:riskResult.countries, marketQuotes:snapshot.market?.quotes || {}, tickers, instruments, inputMode};
     this.runtime.progress("news.impact","running");
@@ -126,7 +124,7 @@ export class SqlNewsPipeline {
     const predictions=generatePredictions(common);
     const insights=generateInsights({countries:riskResult.countries, previousCountries:snapshot.countries || {}, inputMode});
     this.runtime.progress("news.predictions","completed",{processed:predictions.tickers?.length || 0});
-    const meta={...corpus.meta,selectionTruncated:corpus.meta.analysisTruncated,analysisTruncated:analytical.meta.analysisTruncated,truncationReason:analytical.meta.truncationReason,marketAnalysisCount:analytical.marketSignalCorpus.length,analyticalInput:analytical.meta.inputManifest,lastSuccessfulAcquisitionAt:this.diagnostics?.lastContentChangeAt || null,lastSuccessfulCheckAt:this.diagnostics?.lastSuccessfulCheckAt || null,lastCommittedAt:this.diagnostics?.lastCommittedAt || null,lastAcquisitionAttemptAt:this.diagnostics?.lastAttemptAt || null,freshnessBasis:"content-publication",projectionGeneratedAt:corpus.meta.asOf,staleReasons:sourceMode==="live"?[]:[...(!checkIsCurrent?["acquisition-check-expired"]:[]),...(age>(this.config.freshnessMs || 600000)?["content-publication-expired"]:[]),...(!corpus.meta.eligibleCount?["no-eligible-content"]:[])],sourceMode};
+    const meta={...corpus.meta,selectionTruncated:corpus.meta.analysisTruncated,analysisTruncated:analytical.meta.analysisTruncated,truncationReason:analytical.meta.truncationReason,marketAnalysisCount:analytical.marketSignalCorpus.length,analyticalInput:analytical.meta.inputManifest,lastSuccessfulAcquisitionAt:this.diagnostics?.lastContentChangeAt || null,lastSuccessfulCheckAt:this.diagnostics?.lastSuccessfulCheckAt || null,lastCommittedAt:this.diagnostics?.lastCommittedAt || null,lastAcquisitionAttemptAt:this.diagnostics?.lastAttemptAt || null,freshnessBasis:"content-publication",projectionGeneratedAt:corpus.meta.asOf,freshnessPolicy,freshness,staleReasons:freshness.staleReasons,sourceMode};
     const {displayCandidates, ...projection}=corpus;
     const result={...projection, meta, riskResult, impact, predictions, insights, sourceMode};
     const checkpoint={kind:"news-projection",persisted:true,...meta, collection:this.diagnostics || null};

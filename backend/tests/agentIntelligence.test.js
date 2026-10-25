@@ -95,6 +95,32 @@ test("queued old prompts are superseded with a correctly versioned job while act
  }finally{f.close();}
 });
 
+test('an interrupted old generation requires its fenced cancellation ACK before a fresh contract job is admitted',()=>{
+ const f=fixture();try{
+  const old=job(f);f.repo.snapshot(old);f.repo.link({...old,opencodeId:'ses-old-contract'});
+  f.db.prepare("UPDATE agent_jobs SET prompt_version='ogid-analyst-v1.8' WHERE job_id=?").run(old.jobId);
+  f.repo.state({...old,status:'incomplete',errorCode:'AGENT_EXECUTION_UNCERTAIN'});
+  assert.throws(()=>f.repo.resume({jobId:old.jobId}),{code:'AGENT_RECONCILIATION_DENIED'});
+  const ticket=f.repo.interruptClaim(old);assert.ok(ticket);
+  assert.throws(()=>f.repo.cancelAcknowledged({...old,fence:old.fence-1,...ticket}),{code:'AGENT_LEASE_LOST'});
+  f.repo.cancelAcknowledged({...old,...ticket});
+  const replacement=f.repo.resume({jobId:old.jobId});assert.equal(replacement.upgraded,true);
+  const next=f.repo.claim({owner:'new-owner'});assert.equal(next.jobId,replacement.jobId);assert.equal(next.promptVersion,PROMPT_VERSION);assert.equal(next.snapshotId,null);assert.equal(next.opencodeId,null);
+  assert.equal(f.repo.run({jobId:old.jobId,internal:true}).status,'superseded');assert.equal(f.db.prepare('SELECT count(*) AS n FROM agent_runs WHERE job_id=?').get(old.jobId).n,1);
+  assert.throws(()=>f.repo.resume({jobId:old.jobId}),{code:'AGENT_RECONCILIATION_DENIED'});
+ }finally{f.close();}
+});
+
+test('admin activity bounds payloads and joins the current fence for fifty recent jobs',()=>{
+ const f=fixture();try{
+  const active=job(f);f.repo.heartbeat({...active,progress:{phase:'inference',toolsCompleted:2,evidenceReads:1}});
+  for(let i=0;i<55;i++){f.advance(1);f.repo.enqueue({task:'global_intelligence_brief',model:'llamacpp/fixture',key:'bounded-'+i});}
+  const status=f.repo.status({since:new Date(f.clock()-10000).toISOString()});
+  assert.equal(status.recentJobs.length,50);assert.equal(status.runs.length,1);assert.equal(status.runs[0].jobId,active.jobId);assert.equal(status.runs[0].fence,active.fence);assert.equal(status.runs[0].metadata.evidenceReads,1);assert.ok(Buffer.byteLength(JSON.stringify(status))<=1048576);
+  f.db.prepare('UPDATE agent_jobs SET fence=fence+1 WHERE job_id=?').run(active.jobId);assert.equal(f.repo.status().runs.length,0,'an older fence must never describe the current attempt');
+ }finally{f.close();}
+});
+
 test("reader recovery leaves admitted jobs queued and claims resume only when evidence is available",async()=>{
  const dir=mkdtempSync(join(tmpdir(),'ogid-claim-reader-')),manager=new StorageManager({enabled:true,businessEnabled:true,databasePath:join(dir,'test.sqlite')});
  try{
@@ -749,7 +775,7 @@ test("broker serializes actual HTTP streaming, strips SDK caps and preserves too
           async start(controller) {
             controller.enqueue(
               new TextEncoder().encode(
-                'data: {"usage":{"completion_tokens":20000}}\n\n',
+                'data: {"choices":[{"finish_reason":"stop"}],"usage":{"completion_tokens":20000}}\n\ndata: [DONE]\n\n',
               ),
             );
             await new Promise((r) => setTimeout(r, 30));
@@ -999,8 +1025,18 @@ test("OpenCode completed errors are terminal without session idle and expose no 
  assert.doesNotMatch(JSON.stringify(result),/PRIVATE_UPSTREAM_BODY/);
 });
 
+test('OpenCode format and incomplete-stream errors in a pending native retry are terminal for the fenced owner',async()=>{
+ for(const [message,cause]of [['The model produced output that does not match the expected peg-native format','LLAMACPP_OUTPUT_FORMAT'],['OGID upstream failure: BROKER_INCOMPLETE_STREAM','BROKER_INCOMPLETE_STREAM'],['Temporary connection failure',null]]){
+  const client=new OpenCodeClient({password:'fixture',fetchImpl:async url=>Response.json(new URL(url).pathname.endsWith('/message')?{data:[{id:'answer',type:'assistant',retry:{attempt:1,at:200,error:{type:'provider.internal',status:200,message}},time:{created:100},content:[]},{id:'input',type:'user',time:{created:90}}]}:{data:{id:'session',time:{updated:100}}})});
+  const result=await client.progress('session',undefined,'input');
+  assert.equal(result.requiresInterruption,Boolean(cause));assert.equal(result.idle,Boolean(cause));
+  if(cause){assert.equal(result.finish,'error');assert.equal(result.terminalError.causeCode,cause);}else assert.equal(result.terminalError,null);
+  assert.ok(!JSON.stringify(result).includes('Temporary connection failure'));
+ }
+});
+
 test("worker reconciles admitted IDs, repairs at most once and publishes no truncated answer", async () => {
-  for (const kind of ["reconciled", "repair", "length", "invalid", "terminal-error"]) {
+  for (const kind of ["reconciled", "repair", "length", "invalid", "terminal-error", "terminal-uncertain", "contract-mismatch"]) {
     const f = fixture();
     try {
       const j = job(f),
@@ -1015,7 +1051,7 @@ test("worker reconciles admitted IDs, repairs at most once and publishes no trun
         messages: async () => ({
           data: [...admitted,...(kind==="reconciled"?[JSON.parse(f.db.prepare("SELECT metadata_json FROM agent_runs WHERE job_id=? AND fence=?").get(j.jobId,j.fence).metadata_json).generation.messageId]:[])].map((id) => ({ id, type: "user" })),
         }),
-        cancel: async () => {},
+        cancel: async () => {if(kind==='terminal-uncertain')throw Object.assign(Error(),{code:'OPENCODE_CONNECTION'});},
         prompt: async (_, { messageId }) => {
           posted.push(messageId);
           admitted.add(messageId);
@@ -1027,7 +1063,9 @@ test("worker reconciles admitted IDs, repairs at most once and publishes no trun
           return {
             idle: true,
             messageId: "assistant",
-            finish: kind === "terminal-error" ? "error" : kind === "length" ? "length" : "stop",
+            finish: kind.startsWith('terminal-') ? "error" : kind === "length" ? "length" : "stop",
+            terminalError:kind.startsWith('terminal-')?{causeCode:'LLAMACPP_OUTPUT_FORMAT',phase:'model-response',httpStatus:200}:null,
+            requiresInterruption:kind==='terminal-uncertain',
             outcome: "succeeded",
             text:
               kind === "invalid" ||
@@ -1037,7 +1075,9 @@ test("worker reconciles admitted IDs, repairs at most once and publishes no trun
             tools: [
               {
                 name: "ogid_read_ogid_query",
-                status: "completed",
+                status: kind.startsWith('terminal-')?'error':"completed",
+                ...(kind.startsWith('terminal-')?{callId:'failed-tool',applicationCode:'INVALID_ARGUMENTS',validation:{stage:'tool-schema',issues:[]}}:{}),
+                ...(kind==='contract-mismatch'?{returnedContractHash:'0'.repeat(64)}:{}),
                 operationId: "agent.evidence",
                 snapshotId: row.snapshotId,applicationOk:true,contentRead:true,returnedSnapshotId:row.snapshotId,
               },
@@ -1055,11 +1095,17 @@ test("worker reconciles admitted IDs, repairs at most once and publishes no trun
       worker.owner = j.owner;
       await worker.execute(j);
       const result = f.repo.run({ jobId: j.jobId, internal: true });
+      if(kind.startsWith('terminal-')){
+        const m=JSON.parse(f.db.prepare('SELECT metadata_json FROM agent_runs WHERE job_id=? AND fence=?').get(j.jobId,j.fence).metadata_json);
+        assert.equal(m.terminalError.causeCode,'LLAMACPP_OUTPUT_FORMAT');assert.equal(m.lastToolFailure.code,'INVALID_ARGUMENTS');assert.equal(m.lastToolFailure.operationId,'agent.evidence');
+      }
+      if(kind==='contract-mismatch'){assert.equal(worker.mcpContractMismatch,true);assert.equal(result.errorCode,'AGENT_MCP_CONTRACT_MISMATCH');}
+      if(kind==='terminal-uncertain')assert.ok(f.repo.pendingCancellations().some(r=>r.jobId===j.jobId),'unacknowledged interruption must remain durable');
       assert.equal(
         result.status,
-        kind === "length"
+        ['length','terminal-uncertain'].includes(kind)
           ? "incomplete"
-          : ["invalid","terminal-error"].includes(kind)
+          : ["invalid","terminal-error","contract-mismatch"].includes(kind)
             ? "failed"
             : "completed",
         kind,

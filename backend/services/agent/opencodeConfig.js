@@ -24,7 +24,7 @@ export function generateOpenCodeConfig({
     !Array.isArray(toolNames) ||
     !toolNames.length ||
     toolNames.some(
-      (t) => !/^ogid_read_ogid_(query|get_capabilities|health)$/.test(t),
+      (t) => !/^ogid_read_ogid_(query|get_capabilities|health|agent_evidence|agent_evidence_chunk|agent_clusters)$/.test(t),
     )
   )
     throw agentError("OPENCODE_TOOL_ALLOWLIST_REQUIRED");
@@ -59,7 +59,7 @@ export function generateOpenCodeConfig({
     providers: {
       llamacpp: {
         name: "OGID local inference",
-        package: "@ai-sdk/openai-compatible",
+        package: "@opencode/ai/providers/openai-compatible",
         settings: {
           baseURL: localUrl(brokerUrl).origin + "/v1",
           apiKey: "{env:AGENT_BROKER_TOKEN}",
@@ -70,8 +70,9 @@ export function generateOpenCodeConfig({
             m.alias,
             {
               name: m.alias,
+              ...(/^gpt-oss(?:-|$)/.test(m.alias) ? {compatibility:{reasoningField:"reasoning_content",requireReasoning:true}} : {}),
               limit: { context: m.context },
-              capabilities: { tools: true, input: ["text"], output: ["text"] },
+              capabilities: { tools: true, input: ["text"], output: ["text"], ...(/^gpt-oss(?:-|$)/.test(m.alias)?{reasoning:{supported:true}}:{}) },
             },
           ]),
         ),

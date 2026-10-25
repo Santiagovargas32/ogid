@@ -8,6 +8,7 @@ const server = createInferenceBroker({
   upstream: process.env.LLAMACPP_BASE_URL || "http://127.0.0.1:8080",
   manifest: config.manifest,
   managedModels:true,
+  onTelemetry:telemetry=>{if(process.connected)process.send({type:'agent-broker-health',telemetry});},
 });
 server.listen(Number(new URL(config.brokerUrl).port || 80), "127.0.0.1");
 let stopping=false;

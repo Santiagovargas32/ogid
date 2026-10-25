@@ -1,3 +1,4 @@
+import {projectNewsMeta} from '../services/news/newsFreshness.js';
 import {healthDiagnostics} from '../services/healthDiagnostics.js';
 import { BACKEND_BUILD } from "../utils/buildIdentity.js";
 import stateManager from "../state/stateManager.js";
@@ -9,7 +10,7 @@ export function getHealth(req, res) {
   const config = res.app.locals.config;
   const orchestrator = res.app.locals.orchestrator;
   const storage=res.app.locals.storageManager?.getStatus?.() || null;
-  const meta = stateManager.getMeta();
+  const meta = projectNewsMeta(stateManager.getMeta());
   const snapshot = { market: stateManager.state.market };
   const quoteCount = Object.values(snapshot?.market?.quotes || {}).filter(q=>Number.isFinite(q.price)&&q.price>0&&!q.synthetic).length;
   const websocket = socketServer?.getHealth?.() || {
