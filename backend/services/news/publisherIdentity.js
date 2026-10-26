@@ -27,7 +27,12 @@ const byHost = value => PUBLISHERS.find(p => p.domains.some(domain => value === 
 export const publisherByAlias = name => PUBLISHERS.find(p => p.aliases.includes(normalize(name))) || null;
 
 export function resolveEditorialIdentity(article = {}) {
-  const name = clean(article.publisherCandidate?.name || article.publisher || article.source?.publisher || article.sourceName || article.source?.name);
+  const prior=article.publisherResolution,priorPublisher=PUBLISHERS.find(p=>p.publisherId===article.publisherId);
+  // A derived canonical label is not a new publisher claim. Preserve the
+  // original candidate when resolving an archived projection again.
+  const replay=prior?.method===PUBLISHER_METHOD&&prior.status==='resolved'&&article.publisher===priorPublisher?.name&&
+    priorPublisher?.domains.some(domain=>prior.domain===domain||prior.domain?.endsWith(`.${domain}`))&&Object.hasOwn(prior,'candidateName');
+  const name = clean(article.publisherCandidate?.name || (replay?prior.candidateName:article.publisher || article.source?.publisher || article.sourceName || article.source?.name));
   const itemHost = host(article.publisherCandidate?.url) ||
     (article.publisherResolution?.method === PUBLISHER_METHOD ? host(`https://${article.publisherResolution.domain}`) : null), articleHost = host(article.url);
   const fromDomain = byHost(articleHost), fromItem = byHost(itemHost), fromAlias = publisherByAlias(name);

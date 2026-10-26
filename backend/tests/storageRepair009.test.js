@@ -10,7 +10,6 @@ import Database from "better-sqlite3";
 import { repair009 } from "../storage/repair009.js";
 import { migrate } from "../storage/migrate.js";
 import { StorageManager } from "../storage/StorageManager.js";
-import { SqlNewsArchive } from "../storage/sqlNewsArchive.js";
 
 const migrations = new URL("../storage/migrations/",import.meta.url);
 const checksum = text => createHash("sha256").update(text).digest("hex");
@@ -27,9 +26,15 @@ function fixture() {
     db.exec(applied);
     db.prepare("INSERT INTO schema_migrations VALUES(?,?,?,?)").run(Number(name.slice(0,3)),name,checksum(applied),"2026-10-16T16:13:49.288Z");
   }
-  const archive = new SqlNewsArchive(db);
-  const article = {id:"preserved",title:"Original report",url:"https://fixture.invalid/article",publishedAt:"2026-10-16T12:00:00Z",provider:"rss"};
-  archive.ingest([article]);archive.ingest([{...article,title:"Revised report"}]);
+  // Historical fixture is written using its schema, before current migrations exist.
+  const at="2026-10-16T12:00:00.000Z";
+  for(const [revision,title] of [[1,"Original report"],[2,"Revised report"]]){
+    const payload=JSON.stringify({id:"preserved",title,url:"https://fixture.invalid/article",revision,receivedAt:at});
+    db.prepare("INSERT INTO articles VALUES('preserved',?,NULL,'https://fixture.invalid/article',?,?,?,?,'headline-only-link-out',?) ON CONFLICT(article_id) DO UPDATE SET title=excluded.title,revision=excluded.revision,payload_json=excluded.payload_json").run(title,at,at,at,revision,payload);
+    db.prepare("INSERT INTO article_revisions VALUES('preserved',?,?,?)").run(revision,at,payload);
+  }
+  db.prepare("INSERT INTO sources VALUES('fixture-rss','Fixture RSS','configured','{}')").run();
+  db.prepare("INSERT INTO article_sources VALUES('preserved','fixture-rss',?,'{}')").run(at);
   db.exec(`INSERT INTO signal_changes VALUES(1,'2026-10-16T12:00:00Z','{"instrumentId":"fixture"}');
     INSERT INTO research_rows VALUES('events','preserved','{"value":42}');
     INSERT INTO analysis_runs VALUES('run','advanced.getSnapshot','v1','2026-10-16','2026-10-16','hash','ok','{}');
@@ -62,12 +67,12 @@ test("009 check is read-only; explicit repair backs up WAL facts and permits res
     const fullSql = readFileSync(new URL("009_durable_analysis.sql",migrations),"utf8");
     assert.equal(f.db.prepare("SELECT checksum FROM schema_migrations WHERE version=9").get().checksum,checksum(fullSql));
     assert.equal(f.db.prepare("SELECT applied_at FROM schema_migrations WHERE version=9").get().applied_at,"2026-10-16T16:13:49.288Z");
-    assert.equal(migrate(f.db).length,23);
+    assert.equal(migrate(f.db).length,24);
     for(const name of result.changes)assert.ok(f.db.prepare("SELECT 1 FROM sqlite_schema WHERE name=?").get(name));
     assert.deepEqual(f.db.pragma("foreign_key_check"),[]);
     assert.equal(f.db.pragma("integrity_check",{simple:true}),"ok");
     f.db.close();manager = new StorageManager({enabled:true,databasePath:f.file});
-    await manager.start();assert.equal((await manager.request("storage.status")).migrations.length,23);
+    await manager.start();assert.equal((await manager.request("storage.status")).migrations.length,24);
     await manager.close();manager = null;
     const reopened = new Database(f.file,{readonly:true});
     try {assert.deepEqual(facts(reopened),f.before);} finally {reopened.close();}

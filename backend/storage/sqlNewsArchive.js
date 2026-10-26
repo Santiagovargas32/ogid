@@ -15,6 +15,8 @@ import { physicalPages } from './sqlNewsCorpus.js';
 import {resolveEditorialIdentity,editorialProjection,PUBLISHER_METHOD} from '../services/news/publisherIdentity.js';
 import {classifyRssArticle} from '../services/news/rssClassifier.js';
 import {classificationProjection,NEWS_CLASSIFICATION_VERSION} from '../services/news/newsClassification.js';
+import {SourceAssessments} from '../services/news/sourceAssessments.js';
+import {sourceCoverage,saveEditorialFacet} from './sourceCoverage.js';
 const hash=x=>createHash("sha256").update(JSON.stringify(x)).digest("hex");
 const wireSize=data=>{const p={ok:true,queriedAt:new Date().toISOString(),origin:"OGID",data,warnings:data.warnings,truncated:false};return Buffer.byteLength(JSON.stringify({structuredContent:p,content:[{type:"text",text:JSON.stringify(p)}]}));};
 
@@ -23,6 +25,7 @@ export class SqlNewsArchive extends NewsArchive {
     super({...options,persistencePath:null}); this.db=db;this.analysisOnly=options.analysisOnly === true;this.featureCache=new Map();this.featureCacheBytes=0;
     this.reader=new Database(db.name,{readonly:true});this.reader.pragma("query_only=ON");cacheStatements(this.reader);
     Object.assign(this,readMeta(db,"news.meta",{})); this.recoveryStatus=db.prepare("SELECT 1 FROM articles LIMIT 1").get()?"restored":"new";
+    this.sourceAssessmentStore=new SourceAssessments(db,{now:this.now});
     this.records={get:id=>this.getRecord(id),set:(_id,article)=>this.save(article),values:()=>this.values(),get size(){return db.prepare("SELECT count(*) AS n FROM articles").get().n;}};
     this.history={set:(_bucket,row)=>db.prepare("INSERT INTO news_context VALUES(?,?,?) ON CONFLICT(bucket) DO UPDATE SET observed_at=excluded.observed_at,payload_json=excluded.payload_json").run(row.bucket,row.observedAt,JSON.stringify(row)),values:()=>db.prepare("SELECT payload_json FROM news_context ORDER BY bucket").all().map(r=>JSON.parse(r.payload_json))};
     if(!options.analysisOnly)this.db.prepare("DELETE FROM news_query_snapshots").run();
@@ -36,7 +39,7 @@ export class SqlNewsArchive extends NewsArchive {
     const previous=this.db.prepare("SELECT revision,payload_json FROM articles WHERE article_id=?").get(article.id);
     if(previous?.revision===article.revision){
       this.db.prepare("UPDATE articles SET last_seen_at=?,payload_json=? WHERE article_id=? AND (last_seen_at IS NOT ? OR payload_json!=?)").run(article.archiveLastSeenAt,JSON.stringify(article),article.id,article.archiveLastSeenAt,JSON.stringify(article));
-      for(const alias of article.originalIds || [])this.db.prepare("INSERT OR IGNORE INTO article_aliases VALUES(?,?)").run(alias,article.id);this.saveSources(article);return;
+      for(const alias of article.originalIds || [])this.db.prepare("INSERT OR IGNORE INTO article_aliases VALUES(?,?)").run(alias,article.id);this.saveSources(article);saveEditorialFacet(this.db,article);return;
     }
     const policy=typeof article.usagePolicy==="string"?article.usagePolicy:article.usagePolicy?.contentPolicy || "headline-only-link-out";
     this.db.prepare("INSERT INTO articles VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(article_id) DO UPDATE SET title=excluded.title,excerpt=excluded.excerpt,canonical_url=excluded.canonical_url,published_at=excluded.published_at,last_seen_at=excluded.last_seen_at,revision=excluded.revision,usage_policy=excluded.usage_policy,payload_json=excluded.payload_json").run(article.id,article.title,article.excerpt || null,article.url || null,article.publishedAt || null,article.receivedAt,article.archiveLastSeenAt,article.revision || 1,policy,JSON.stringify(article));
@@ -55,7 +58,12 @@ export class SqlNewsArchive extends NewsArchive {
       for(const topic of article.topics || [])this.db.prepare("INSERT OR IGNORE INTO article_topics VALUES(?,?)").run(article.id,topic);
     }
     this.saveSources(article);
+    saveEditorialFacet(this.db,article);
   }
+  sourceAssessments(input={}){return this.sourceAssessmentStore.catalogue(input);}
+  sourceAssessment(input={}){return this.sourceAssessmentStore.detail(input);}
+  importSourceAssessments(input){return this.sourceAssessmentStore.importBatch(input);}
+  sourceCoverage(input={}){return sourceCoverage(this.db,this.sourceAssessmentStore,input);}
   saveSources(article){for(const p of article.provenances||[]){const sid=p.sourceId||`publisher:${p.publisher||p.provider||'unknown'}`;sourceRow(this.db,sid,p);this.db.prepare('INSERT INTO article_sources VALUES(?,?,?,?) ON CONFLICT(article_id,source_id) DO UPDATE SET observed_at=excluded.observed_at,provenance_json=excluded.provenance_json WHERE observed_at IS NOT excluded.observed_at OR provenance_json!=excluded.provenance_json').run(article.id,sid,article.archiveLastSeenAt,JSON.stringify(p));}}
   persist(){if(this.db)writeMeta(this.db,"news.meta",Object.fromEntries(["revision","startedAt","lastIngestAt","capacityPrunedAt"].map(k=>[k,this[k]])));}
   prune(){
@@ -99,7 +107,7 @@ export class SqlNewsArchive extends NewsArchive {
     }).immediate();}catch(error){Object.assign(this,readMeta(this.db,'news.meta',before));throw error;}
   }
   enrichEditorialPage({limit=100,budgetMs=50}={}) {
-    const key=`news.editorial-backfill:${PUBLISHER_METHOD}:${NEWS_CLASSIFICATION_VERSION}`, before=this.revision;
+    const key=`news.editorial-backfill:${PUBLISHER_METHOD}:${NEWS_CLASSIFICATION_VERSION}:facets-v1`, before=this.revision;
     try{return this.db.transaction(()=>{
       const state=readMeta(this.db,key,null) || {cursor:0,upper:this.db.prepare('SELECT coalesce(max(rowid),0) AS n FROM articles').get().n,processed:0};
       if(state.complete)return state;
@@ -113,7 +121,7 @@ export class SqlNewsArchive extends NewsArchive {
           classification:classificationProjection(classified.classification),threatLevel:classified.threatLevel,topicTags:classified.topicTags};
         if(hash(Object.fromEntries(Object.keys(metadata).map(k=>[k,previous[k]])))!==hash(metadata)){
           this.save({...previous,...metadata,revision:previous.revision+1,metadataUpdatedAt:new Date(this.now()).toISOString()});this.revision++;
-        }
+        }else saveEditorialFacet(this.db,previous);
         state.cursor=row.rowid;state.processed++;bytes+=row.bytes;
         if(performance.now()-start>=Math.max(1,Math.min(100,Number(budgetMs)||50)))break;
       }

@@ -1,10 +1,10 @@
 # OGID: implementación por entregas
 
-Versión 1, aprobada el 26/10/2026. Fuente: [diagnóstico](../../OGID-diagnostico-direccion-y-plan-2026-10-25.md). Entrada de reanudación: [ESTADO.md](ESTADO.md).
+Versión 2: continuación B autorizada; base v1 aprobada el 26/10/2026. Fuente: [diagnóstico](../../OGID-diagnostico-direccion-y-plan-2026-10-25.md). Entrada de reanudación: [ESTADO.md](ESTADO.md).
 
 ## Dirección y alcance autorizado
 
-Evolucionar hacia situaciones, afirmaciones y evidencias trazables conservando RSS, archivo, mercados, SQLite, dashboard y MCP. El primer ciclo ejecutable comprende entregas 0 y A; B–F son continuación de la hoja de ruta. Preparar código y validación aislada; publicación, despliegue, arranque operativo y promoción visible requieren alcance operativo propio. Los prompts históricos de otros documentos son referencias, no órdenes adicionales.
+Evolucionar hacia situaciones, afirmaciones y evidencias trazables conservando RSS, archivo, mercados, SQLite, dashboard y MCP. El ciclo inicial comprende 0 y A. El usuario autorizó después el cierre de A y la implementación/publicación de B en commits separados de la misma rama. C–F permanecen en hoja de ruta. Despliegue, arranque operativo y promoción visible requieren alcance operativo propio. Los prompts históricos de otros documentos son referencias, no órdenes adicionales.
 
 Invariantes: un escritor de negocio; lectores readonly/query_only; red/inferencia/cálculo largo fuera del escritor y HTTP; límites y guardias intactos; migraciones aditivas; históricos, IDs, aliases y snapshots congelados conservados. Arranque exclusivamente con `cd backend && npm start`, hijos gobernados por `.env`, conservar llama.cpp. Desconocido no implica neutralidad, ausencia de incidentes ni corroboración. Sindicación y publicaciones de IA no acreditan orígenes independientes.
 
@@ -36,3 +36,13 @@ Pruebas: AP/Japan/Capitol; RSS source; cinco idiomas; negación/futuro/opinión;
 Núcleo e IA se aceptan por separado. Mantener shadow. Una observación de 24 h requiere candidato identificado, muestras y continuidad; cambiar artefactos abre otra cohorte. Un reinicio prueba recuperación, no continuidad. Medir objetivos de latencia con carga/hardware declarados; no elevar límites para obtener verde.
 
 Reversión lógica: desactivar capacidades nuevas o volver a proyecciones compatibles; conservar las escrituras nuevas y código compatible con esquema vigente. Backup con API consistente, nunca reemplazar base activa por imagen anterior ni editar migraciones aplicadas. Las migraciones se prueban en copia con checksums previos, conteos, integridad y FK.
+
+## Entrega B — contrato ejecutable
+
+Evaluaciones y perfiles se versionan por editor y dominio/edición explícitos. Guardar tiempo de vigencia y de registro; una revisión no modifica filas históricas. Política de tendencia v1 con cinco posiciones ordinales y no aplicable; sin datos, escalas sin normalizar y discrepancias no se sitúan en el centro. No promediar evaluadores ni contextos políticos diferentes. Conservar valor original, método, referencia, licencia, evidencia y revisión.
+
+Importación limitada de operador con dry-run y autorización de redistribución declarada; ningún dataset externo se descarga o incorpora por defecto. Perfiles opcionales de idioma, país editorial y propiedad requieren referencias; desconocidos explícitos. Cobertura cuenta artículos, editores, propietarios y orígenes por separado en ventana recibida; facetas normalizadas y lector de consultas, sin hidratar el corpus al visitar la vista. Los registros pendientes de backfill aparecen como cobertura parcial.
+
+Lecturas públicas de catálogo/detalle de evaluaciones y cobertura con presupuestos, filtros/cortes y paginación estable. Tarjetas consultan catálogo coalescido, sin incrustar evaluaciones actuales en hechos/snapshots históricos. Página Fuentes con metodología y detalle accesibles. Publicar B únicamente tras pruebas/contratos/inventario en commit independiente.
+
+Cierre técnico de B documentado en ESTADO. Matriz inicial e instrucciones de importación en [FUENTES.md](FUENTES.md). No hay dataset político incorporado. La reversión conserva 024 y su conocimiento en el guard de migraciones; no ejecutar un checkout anterior que sólo conozca 023 sobre un esquema 024. Mantener los registros y correcciones append-only.

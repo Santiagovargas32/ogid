@@ -180,14 +180,21 @@ test('additive migration and online restore preserve article facts, revisions, p
  const migrations=new URL('../storage/migrations/',import.meta.url);
  for(const name of readdirSync(migrations).filter(n=>/^00[1-8]_/.test(n)))cpSync(new URL(name,migrations),join(old,name));
  const db=new Database(join(dir,'source.sqlite'));db.pragma('journal_mode=WAL');db.pragma('foreign_keys=ON');migrate(db,old);
- const archive=new SqlNewsArchive(db);try{
-  archive.ingest([{id:'fixture',title:'Russia conflict fixture',url:'https://fixture.invalid/one',publishedAt:new Date().toISOString(),provider:'rss'}]);
+ // Seed schema 008 directly: the current repository requires current migrations.
+ try{
+  const at=new Date().toISOString(),payload=JSON.stringify({id:'fixture',title:'Russia conflict fixture',countryMentions:['RU']});
+  db.prepare("INSERT INTO articles VALUES('fixture','Russia conflict fixture',NULL,'https://fixture.invalid/one',?,?,?,1,'headline-only-link-out',?)").run(at,at,at,payload);
+  db.prepare("INSERT INTO article_revisions VALUES('fixture',1,?,?)").run(at,payload);
+  db.prepare("INSERT INTO article_countries VALUES('fixture','RU')").run();
+  db.prepare("INSERT INTO article_aliases VALUES('legacy-fixture','fixture')").run();
+  db.prepare("INSERT INTO sources VALUES('fixture-rss','Fixture RSS','configured','{}')").run();
+  db.prepare("INSERT INTO article_sources VALUES('fixture','fixture-rss',?,'{}')").run(at);
   const tables=['articles','article_revisions','article_sources','article_aliases','article_countries'];const before=Object.fromEntries(tables.map(t=>[t,db.prepare(`SELECT * FROM ${t}`).all()]));
   const backup=join(dir,'backup.sqlite');await createStorageBackup(db.name,backup);migrate(db);
   for(const t of tables)assert.deepEqual(db.prepare(`SELECT * FROM ${t}`).all(),before[t]);
   db.prepare("INSERT INTO articles_fts(articles_fts,rank) VALUES('integrity-check',1)").run();assert.equal(db.pragma('integrity_check',{simple:true}),'ok');assert.deepEqual(db.pragma('foreign_key_check'),[]);
   const restored=new Database(backup);try{migrate(restored);for(const t of tables)assert.deepEqual(restored.prepare(`SELECT * FROM ${t}`).all(),before[t]);}finally{restored.close();}
- }finally{archive.close();db.close();rmSync(dir,{recursive:true,force:true});}
+ }finally{db.close();rmSync(dir,{recursive:true,force:true});}
 });
 
 test('writer ownership excludes another manager, while reader connection is physically read-only',async()=>{

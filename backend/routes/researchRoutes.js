@@ -1,7 +1,11 @@
-import { getSignalChange } from "../controllers/researchController.js";
+import { getSignalChange,getSourceAssessments,getSourceAssessment,getSourceCoverage,importSourceAssessments } from "../controllers/researchController.js";
 import { Router } from "express";
 import { getForecastEvaluation, registerForecast, getScenarios, getSignalsDelta, refreshScenarios, deleteScenario, acknowledgeSignals, recoverSignals, getEventImpact, getResearchSources, getCompanyFacts, getEtfHoldings, runResearchSources, acknowledgeAlerts, getCapabilities, getDiagnostics, getPortfolioContext } from "../controllers/researchController.js";
 const router = Router();
+router.get('/news/source-assessments',getSourceAssessments);
+router.get('/news/source-assessments/:id',getSourceAssessment);
+router.get('/news/source-coverage',getSourceCoverage);
+router.post('/admin/news/source-assessments/import',importSourceAssessments);
 router.get("/research/forecast-evaluation",getForecastEvaluation);
 router.post("/research/forecasts",registerForecast);
 router.get("/research/scenarios",getScenarios);

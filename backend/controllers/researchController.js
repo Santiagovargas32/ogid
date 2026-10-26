@@ -9,6 +9,15 @@ import { numericProjection } from "../utils/researchProjection.js";
 import stateManager from "../state/stateManager.js";
 import apiQuotaTracker from "../services/admin/apiQuotaTrackerService.js";
 import { researchSourceCatalog } from "../services/research/sourceCatalogView.js";
+import {SourceAssessments} from '../services/news/sourceAssessments.js';
+export async function getSourceAssessments(req,res){const input=params(req,'news.source-assessments');res.json({ok:true,data:await (res.app.locals.business?.news.sourceAssessments(input) || new SourceAssessments().catalogue(input))});}
+export async function getSourceAssessment(req,res){if(!/^[A-Za-z0-9._:-]{1,100}$/.test(req.params.id))throw new AppError('ID inválido.',400,'INVALID_ASSESSMENT_ID');const input={...params(req,'news.source-assessment'),assessmentId:req.params.id};res.json({ok:true,data:await (res.app.locals.business?.news.sourceAssessment(input) || new SourceAssessments().detail(input))});}
+export async function getSourceCoverage(req,res){const input=params(req,'news.source-coverage');res.json({ok:true,data:res.app.locals.business?await res.app.locals.business.news.sourceCoverage(input):{available:false,coverage:{partial:true,reason:'requires-sqlite'},summary:null}});}
+export async function importSourceAssessments(req,res){
+  if(!req.mcpOperatorAuthorized)throw new AppError('Requiere credencial operador news:assessments:write.',403,'MCP_OPERATOR_FORBIDDEN');
+  if(!res.app.locals.business)throw new AppError('Requiere almacenamiento SQLite.',503,'SOURCE_ASSESSMENT_STORAGE_REQUIRED');
+  res.json({ok:true,data:await res.app.locals.business.news.importSourceAssessments(req.body)});
+}
 export function params(req, id) {
   try { return parseOperationQuery(req.query, getOperation(id)); }
   catch { throw new AppError("Parámetros inválidos o ventana inconsistente.", 400, "INVALID_RESEARCH_QUERY"); }

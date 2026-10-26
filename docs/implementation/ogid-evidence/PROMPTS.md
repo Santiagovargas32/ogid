@@ -27,7 +27,7 @@ operativa; conectividad no equivale a calidad semántica.
 ## Reanudación
 
 ```text
-Retoma el primer ciclo aprobado de OGID leyendo ESTADO.md y el diff actual.
+Retoma el lote autorizado de OGID leyendo ESTADO.md y el diff actual.
 Verifica cambios desde el último checkpoint y continúa desde su siguiente acción.
 Mantén todas las restricciones y decisiones allí enlazadas. No reinicies el plan,
 no repitas suites cerradas sin cambios/fallos y conserva el trabajo del usuario.
@@ -39,3 +39,12 @@ Lote e intención; estado de entrada y evidencia; cambio concreto; pruebas actua
 con comando/resultado; limitaciones y puerta pendiente; reversión; siguiente acción.
 Antes de una ejecución larga: ubicación de log privado, identificador del proceso
 de prueba y resultado que debe recuperarse, sin argumentos ni valores secretos.
+
+## Continuidad tras B
+
+A y B tienen commits separados en feat/agentic-intelligence por petición del usuario.
+Verificar sus SHA y CI actuales antes de basarse en el cierre. No repetir la
+implementación ya verificada. Consultar FUENTES.md para importación y matriz.
+C requiere alcance propio; la operación 0 continúa condicionada a copia
+consistente actual y autorización de puesta en servicio. Nunca presentar
+fixtures, CI o etiquetas sin dataset como cobertura real o aceptación de 24 h.

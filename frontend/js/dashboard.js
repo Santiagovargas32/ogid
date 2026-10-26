@@ -8,6 +8,7 @@ import { getLevelColor } from "./levelColors.js";
 import { DEFAULT_LIVE_NEWS_LIMIT, resolveLiveNewsLimit, filterNews, newsIdentity, newsContentRevision, NewsSelectionTracker } from "./newsFeedModel.js";
 import { mountAgentIntelligence } from "./agentIntelligence.js";
 import {newsEditorialLabels} from './newsEditorial.js';
+import {SourceAssessmentCache,paintSourceAssessment} from './sourceAssessmentModel.js';
 import {observeInterest} from './interest.js';
 import { startAdvancedIntelligence } from "./intelligence/advancedIntelligence.js";
 import { mountAwarenessCenter } from "./awareness.js";
@@ -81,6 +82,12 @@ let awarenessController = null;
 const teardownHandlers = [];
 
 const elements = {};
+const sourceAssessments=new SourceAssessmentCache((params,options)=>api.getSourceAssessments(params,options),{onChange:()=>{
+  for(const [id,node] of rowNodes){const link=node.querySelector('.source-rating');if(link)paintSourceAssessment(link,sourceAssessments.lookup(renderedArticles.get(id)||{}));}
+  const article=currentNewsById.get(elements.newsDrawer?.dataset.articleId);
+  if(article&&elements.newsDrawer?.classList.contains('show'))updateNewsDrawerMeta(article);
+}});
+function sourceRatingMarkup(){return '<a class="source-rating" href="/sources.html"><span class="source-rating-label">Tendencia del medio: consultando</span><span class="source-rating-rail" aria-hidden="true"><i class="source-rating-marker" hidden></i></span></a>';}
 
 function byId(id) {
   return document.getElementById(id);
@@ -198,7 +205,10 @@ function updateNewsDrawerMeta(article) {
   const editorial=newsEditorialLabels(article);
   const items=[editorial.publisher,editorial.provenance,editorial.scope,editorial.status,editorial.modality,
     formatDate(article.publishedAt),deriveArticleLevel(article),(article.countryMentions || []).join(', ') || 'Global'];
-  elements.newsDrawerMeta.innerHTML=items.filter(Boolean).map(item=>`<span class="news-meta-pill">${escapeHtml(item)}</span>`).join('');
+  let labels=elements.newsDrawerMeta.querySelector('.news-drawer-editorial-labels');
+  if(!labels){labels=document.createElement('span');labels.className='news-drawer-editorial-labels';elements.newsDrawerMeta.replaceChildren(labels);const holder=document.createElement('span');holder.innerHTML=sourceRatingMarkup();elements.newsDrawerMeta.append(holder.firstElementChild);}
+  labels.innerHTML=items.filter(Boolean).map(item=>`<span class="news-meta-pill">${escapeHtml(item)}</span>`).join('');
+  paintSourceAssessment(elements.newsDrawerMeta.querySelector('.source-rating'),sourceAssessments.lookup(article));
 }
 
 function openNewsDrawer(articleId = "") {
@@ -909,6 +919,7 @@ function newsRowMarkup(article,ai){
     <p class="news-item-excerpt">${escapeHtml(resolveNewsExcerpt(article))}</p>
     <div class="news-item-footer"><div class="news-item-meta">
       <span class="news-publisher" title="${escapeHtml(editorial.provenance)}">${escapeHtml(editorial.publisher)}</span>
+      ${sourceRatingMarkup()}
       <span class="news-meta-pill">${escapeHtml(editorial.scope)}</span>
       <span class="news-meta-pill" aria-label="${escapeHtml(`${editorial.status}: ${editorial.modality}`)}">${escapeHtml(editorial.status)}${article.classification?.modality && article.classification.modality!=='reported'?` · ${escapeHtml(editorial.modality)}`:''}</span>
       <time datetime="${escapeHtml(article.publishedAt||'')}">${escapeHtml(date)}</time>
@@ -948,6 +959,7 @@ function renderNews(news=[],countries={},ai={}){
   let ordered=page.items;
   if(!canReorder){const byIdentity=new Map(news.map(a=>[newsIdentity(a),a]));ordered=visibleNewsOrder.map(id=>byIdentity.get(id)||renderedArticles.get(id)).filter(Boolean);}
   for (const article of ordered) currentNewsById.set(String(article.id), article);
+  void sourceAssessments.refresh({interested:newsInterest?.interested!==false,signal:dashboardController.signal});
   const renderKey=JSON.stringify(ordered.map(a=>[newsIdentity(a),newsContentRevision(a),pendingNews.has(newsIdentity(a)),updatedNews.has(newsIdentity(a))]));
   if(renderKey===lastNewsRenderKey&&!forceNewsRender)return;
   lastNewsRenderKey=renderKey;
@@ -966,6 +978,7 @@ function renderNews(news=[],countries={},ai={}){
     const markup=newsRowMarkup(article,ai),revision=newsContentRevision(article)+pendingNews.has(id)+updatedNews.has(id);
     node.className=`news-item ${newsLevelClass(deriveArticleLevel(article))}${isNew&&pendingNews.has(id)?' news-arrival':''}`;
     if(node.dataset.revision!==revision&&(!node.contains(active)||forceNewsRender)){node.innerHTML=markup;node.dataset.revision=revision;}
+    const rating=node.querySelector('.source-rating');if(rating)paintSourceAssessment(rating,sourceAssessments.lookup(article));
     if(canReorder&&elements.newsFeed.children[index]!==node)elements.newsFeed.insertBefore(node,elements.newsFeed.children[index]||null);
   });
   visibleNewsOrder=ordered.map(newsIdentity);forceNewsRender=false;

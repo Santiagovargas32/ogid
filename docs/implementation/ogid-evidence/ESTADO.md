@@ -1,6 +1,6 @@
 # Estado de implementación — leer primero
 
-Actualizado el 26/10/2026. Plan v1. Base Git: `a1d0fb875cf9c2aea2475ad73f761b36abc60199`, rama `feat/agentic-intelligence`. Se conservó el árbol previo limpio. Cierre de A preparado para commit en la misma rama; publicación autorizada expresamente por el usuario el 26/10/2026.
+Actualizado el 26/10/2026. Plan v2. Base histórica Git: `a1d0fb875cf9c2aea2475ad73f761b36abc60199`, rama `feat/agentic-intelligence`. Se conservó el árbol previo limpio. Entrega A cerrada y publicada: 9cbdef2529d0a332d229824636818d250883c0eb. Checkout y remoto verificados coincidentes. Entrega B en curso sobre ese commit, autorizada por el usuario.
 
 ## Resultado y alcance
 
@@ -19,7 +19,7 @@ Leer [PLAN](PLAN.md), [DECISIONES](DECISIONES.md) y [PROMPTS](PROMPTS.md). Los p
 | A.3 | Verificado en aislamiento | Orden común servidor/cliente, tarjetas/drawer, sync y preservación de IDs/fechas/contentRevision |
 | Aceptación operativa y semántica | Pendiente y separadas | Nuevo candidato continuo 24 h y revisión útil por tarea; conservar shadow |
 
-## Validación actual
+## Validación histórica del cierre A (9cbdef2)
 
 Copia de trabajo: `/tmp/ogid-evidence-validation-ob4kdkj3`; sin `.env` ni datos operativos. Node 24.22.1 mediante `/home/fedora/.npm/_npx/387698761821791d/node_modules/node/bin/node`. Los checks de sintaxis incluyen frontend. Las suites sólo utilizan proveedores simulados, bases propias y puertos efímeros.
 
@@ -61,11 +61,11 @@ Log: 129.680.810 bytes, SHA256 `c6ac5a6666e98e8858967896dbf7bce95f182d53a994bc2f
 
 Hashes del observador: samples `816374c1a5d9b83b1d1e5fa8163c192e70b1594cf8c02cea25b70f54dab8085d`; summary `46c6c36504e4d9b7347e75203db7c3ad21ab4500f208a58dd24be69aaa6ec306`. El informe reproducido está en `ogid-evidence-v19-baseline.json`.
 
-## Limitaciones operativas y siguiente acción
+## Limitaciones operativas del corte A y trabajo 0 pendiente
 
-La base configurada sigue en SSD `/home/fedora/.local/share/ogid/db/ogid.sqlite`, esquema 022 confirmado por lectura readonly/query_only. El backup consistente con helper existente falló con SQLITE_IOERR; `/home` y `/srv/bitcoin` se exponen como ro en este entorno. No hay copia actual certificada y no se ha aplicado 023. No remonte volúmenes ni restaure una base antigua para obtener verde.
+En el corte operativo inicial, la base configurada estaba en SSD `/home/fedora/.local/share/ogid/db/ogid.sqlite`, esquema 022 confirmado por lectura readonly/query_only. El backup consistente con helper existente falló con SQLITE_IOERR; `/home` y `/srv/bitcoin` se exponen como ro en este entorno. No hay copia actual certificada y no se ha aplicado 023. No remonte volúmenes ni restaure una base antigua para obtener verde.
 
-Las instalaciones operativas siguen detrás de los locks. El nuevo manifiesto detecta ocho discrepancias backend (incluido Zod 4.5.4 frente a 4.6.7) y Zod MCP 4.6.5 frente a 4.6.7. Sólo la copia aislada está alineada. ArtifactHash de código candidato: `ea1cd62790fe86bba4f18fa91c3197f14a69607f7de309d0341964eda5ab9f92`; no acredita dependencias/configuración ni una versión operativa.
+En ese mismo corte las instalaciones operativas estaban detrás de los locks. El nuevo manifiesto detecta ocho discrepancias backend (incluido Zod 4.5.4 frente a 4.6.7) y Zod MCP 4.6.5 frente a 4.6.7. Sólo la copia aislada está alineada. ArtifactHash de código candidato: `ea1cd62790fe86bba4f18fa91c3197f14a69607f7de309d0341964eda5ab9f92`; no acredita dependencias/configuración ni una versión operativa.
 
 Siguiente acción: retomar 0.2 cuando exista acceso efectivo para crear y verificar una copia consistente actual en HDD. Reproducir allí status, snapshots, trabajos analíticos y commits, correlacionando SQL/cola/commit/checkpoint antes de atribuir causa física. Validar 022→023 sobre esa copia conservando checksums y hechos. Preparar después la puesta en servicio controlada del candidato, instalación desde locks y cohorte continua nueva; el arranque requiere su alcance operativo. Mantener separada la revisión semántica IA. No rehacer los lotes locales ya verificados ni repetir suites sin cambios o dudas nuevas.
 
@@ -76,3 +76,40 @@ Para reanudar: comprobar Git/diff y procesos actuales, leer este documento y con
 El usuario ha pedido cerrar A con commit en feat/agentic-intelligence y continuar B del mismo modo. El cierre publica A junto con las bases 0 dependientes y su documentación, sin convertirlo en aceptación operativa. Para B: evaluaciones versionadas por publisher/edición, importador de datos autorizados, tendencia del medio accesible y cobertura por medios/idiomas/regiones, con propiedad/origen conocidos separados. No hay dataset político autorizado disponible: dejar sin evaluar y probar con fixtures ficticios. Preparar un commit B separado al terminar.
 
 Autorización de publicación mediante conector GitHub; no incluye PR, merge, arranque operativo ni promoción IA. Los límites de copia/volumen y las 24 h permanecen pendientes. Reanudar desde B después de verificar el commit A en GitHub.
+
+## Cierre técnico B — verificado en aislamiento
+
+A publicada mediante conector; árbol verificado de 46 archivos y sincronización local exacta. CI A: https://github.com/Santiagovargas32/ogid/actions/runs/40321335609 (completada correctamente).
+
+B: repositorio temporal append-only de evaluaciones/perfiles por publisher y edición; importación operador con autorización de uso declarada y dry-run; lecturas acotadas current/asOf/knownAt, medidor con discrepancia/sin evaluar/no aplicable, y cobertura sobre facetas normalizadas de artículos anteriores al recorte. Datos políticos de producción inicialmente vacíos. Sin red al renderizar ni por tarjeta; consultas coalescidas y página Fuentes independiente.
+
+B implementada y verificada; cierre en un commit independiente de esta rama con título `feat(sources): cerrar entrega B de evaluaciones y cobertura`. Identificar su SHA mediante Git y el remoto; este documento forma parte del propio commit. Base A: `9cbdef2529d0a332d229824636818d250883c0eb`. El cierre técnico y publicación no aplican 024 a la base operativa ni acreditan cobertura real.
+
+| Lote B | Estado | Evidencia / límite |
+|---|---|---|
+| B.1 Evaluaciones/perfiles | Verificado en aislamiento | Filas append-only por editor/edición, vigencia y registro, corrección/retirada, originales y permiso conservados; cursores fijan revisiones; desacuerdo/contextos separados |
+| B.2 Importador/contratos | Verificado en aislamiento | Operador news:assessments:write, preview por defecto, 25+25 / 64 KiB, transacción y recibo durable; 4 operaciones nuevas, contrato 1.10.0 |
+| B.3 Tarjetas/Fuentes | Verificado en aislamiento | Medidor accesible sin centro para desconocidos, lectura compartida y ligada al interés; foco conservado; detalle de evaluaciones/licencias; página Fuentes a 390/1280 px |
+| B.4 Cobertura/matriz | Verificado en aislamiento | Facetas paginadas, archivo antes de selección, recepción ≤31 días; idiomas declarados/observados, menciones de países, propiedad/origen separados; [FUENTES.md](FUENTES.md) |
+| Datos y operación | Pendientes | Sin dataset político real ni perfiles importados; no hay backfill operativo acreditado. Salud/adquisición y reportería regional pendientes de E |
+
+Validación del candidato B (Node 24.22.1, copia aislada sin .env ni datos operativos):
+
+| Comprobación | Resultado | Log privado B |
+|---|---|---|
+| Backend completo | 1.057/1.057; cero fallos/skips | ogid-delivery-b-backend-final.log |
+| MCP completo | 31/31; cero fallos/skips, incluido stdio real de B y 8 KiB | ogid-delivery-b-mcp-release.log |
+| Check/build backend y frontend | Correctos | ogid-delivery-b-build-final-node24.log, ogid-delivery-b-backend-check-final.log |
+| Check MCP e inventario | Correctos; 87 rutas / 96 operaciones | ogid-delivery-b-mcp-check-final.log, ogid-delivery-b-inventory-final.log |
+| Audits runtime backend/MCP | Cero vulnerabilidades, locks sin cambios | ogid-delivery-b-backend-audit.log, ogid-delivery-b-mcp-audit.log |
+| Migraciones | 008/009 y 023→024 en fixtures, checksums previos y originales conservados, integridad/FK correctas | Suites completas y ogid-delivery-b-regression-node24.log |
+| UI navegador | Firefox 157 headless: Fuentes sin overflow a 390/1280 px; componente medidor conserva foco y oculta marcador al retirar evaluación | browser/result.json, capturas sources-390.png y sources-1280.png |
+| Higiene/publicación | Revisar manifiesto B-review-manifest.json y Git para el SHA resultante | Sin .env, DB, logs, modelos o dependencias versionados |
+
+Evidencias de B conservadas en `.implementation-evidence/2026-10-26/B/`, privadas e ignoradas, con logs intermedios y fallidos. La primera suite detectó dos fixtures históricos que escribían con el repositorio actual antes de migrar; ahora se siembran con su esquema 008/009, sin debilitar guardias. El transporte MCP conserva los errores explícitos de B. La regresión de facetas detectó además una revisión innecesaria al releer la etiqueta canónica de un editor: se conserva su candidato original, manteniendo el rechazo de conflictos nuevos. La prueba final demuestra que el backfill no crea revisiones cuando los metadatos ya están completos. Los ensayos del navegador necesitaron perfil temporal y ruta BiDi /session; no se usó el perfil del usuario.
+
+Los resultados de UI son de fixtures locales y comprobación del componente; no equivalen a revisión completa del dashboard en LAN/móvil real ni a evaluación de un dataset político. Las suites de B sí se ejecutaron con Node 24; la compatibilidad Node 22 dirigida que consta arriba corresponde al corte A.
+
+Reversión: deshabilitar el consumidor/importador mediante una versión compatible conservando 024 y todos los registros. No usar DOWN ni arrancar el código A sin conservar el conocimiento de 024: el guard de migraciones rechaza un esquema por delante del código. Una corrección editorial se hace con una revisión nueva; nunca borrar sus originales.
+
+Siguiente acción: comprobar que el commit B y su CI están en la rama y revisar las puertas 0 pendientes antes de cualquier puesta en servicio. C sigue en hoja de ruta y necesita alcance de ejecución propio. Si se autoriza retomar operación, crear/verificar una copia consistente actual, reproducir costes reales, validar 022→024 sobre esa copia y preparar instalación/arranque controlados con npm. Sólo después iniciar una cohorte continua nueva de 24 h. Mantener IA en shadow con puerta semántica separada.

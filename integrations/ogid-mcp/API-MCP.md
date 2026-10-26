@@ -1,8 +1,8 @@
 # Inventario API → MCP
 
-Contrato 1.9.0. Generado desde backend/contracts/ogidOperations.js; no editar a mano.
+Contrato 1.10.0. Generado desde backend/contracts/ogidOperations.js; no editar a mano.
 
-83 rutas JSON con método; 59 operaciones de investigación y 33 de operador. Las variantes almacenadas/proveedor comparten algunas rutas.
+87 rutas JSON con método; 62 operaciones de investigación y 34 de operador. Las variantes almacenadas/proveedor comparten algunas rutas.
 
 Las cuatro herramientas compatibles se conservan. ogid_get_awareness_sources compone el catálogo local versionado y la salud pública Awareness, sin una ruta adicional. El inventario cubre las rutas de backend/routes montadas bajo /api; WebSocket, archivos estáticos y transporte del túnel tienen contratos independientes.
 
@@ -12,6 +12,10 @@ Las rutas privadas de chat, dispositivos y control agentivo son de primera parte
 
 | Operación | Método y ruta | Herramienta | Perfil / permiso | Proyección | Efectos / coste |
 | --- | --- | --- | --- | --- | --- |
+| news.source-assessments | GET /api/news/source-assessments | ogid_query | research / read:stored | public | pure stored temporal source assessments; no providers; no-provider |
+| news.source-assessment | GET /api/news/source-assessments/:id | ogid_query | research / read:stored | public | pure stored assessment detail; no providers; no-provider |
+| news.source-coverage | GET /api/news/source-coverage | ogid_query | research / read:stored | public | bounded normalized archive facets; no providers; pending backfill explicit; no-provider |
+| news.source-assessments.import | POST /api/admin/news/source-assessments/import | ogid_operator | operator / news:assessments:write | public | mutation; max 25 assessments and 25 profiles / 64 KiB; dry-run default; redistribution permission required |
 | intel.advanced.status | GET /api/intel/advanced-snapshot/status | ogid_query | research / read:stored | public | stored pure read; no job admission; no-provider |
 | agent.capabilities | GET /api/agent/v1/capabilities | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
 | agent.brief | GET /api/agent/v1/brief | ogid_query | research / read:stored | agent-bundle | stored/local-calculation; no-provider |
@@ -110,6 +114,439 @@ Las rutas privadas de chat, dispositivos y control agentivo son de primera parte
 Los query arrays viajan como CSV tipado; no se permiten claves extra, cabeceras, URLs o rutas libres. fixed se añade exclusivamente en el cliente y se verifica en backend para operador. La API existente mantiene su autenticación sensible; el permiso MCP añade credenciales de alcance, sin retirarla.
 
 researchRoutes.integration.test.js compara todas las rutas montadas con este registro y ejecuta todas las lecturas contra backend real con proveedores bloqueados. operations.test.js verifica todas las operaciones operador mediante fixtures HTTP, métodos, permisos y cuerpos; no demuestra ejecución de proveedores reales. Las pruebas de archivo, protocolo y e2e comprueban los contratos especializados.
+
+### news.source-assessments
+
+Retención: append-only revisions; asOf and knownAt distinguish validity and knowledge. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "publisherIds": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "minItems": 1,
+        "maxItems": 50,
+        "uniqueItems": true
+      },
+      "edition": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 100
+      },
+      "politicalScope": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 80
+      },
+      "view": {
+        "type": "string",
+        "enum": [
+          "subjects",
+          "records"
+        ]
+      },
+      "asOf": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "knownAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "cursor": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      },
+      "maxBytes": {
+        "type": "integer",
+        "minimum": 4096,
+        "maximum": 262144
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### news.source-assessment
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "revision": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 1000000
+      },
+      "asOf": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "knownAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 100
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "additionalProperties": false
+  },
+  "fixed": {}
+}
+```
+
+### news.source-coverage
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "from": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "to": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "knownAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "politicalScope": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 80
+      },
+      "maxBytes": {
+        "type": "integer",
+        "minimum": 4096,
+        "maximum": 262144
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### news.source-assessments.import
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": {
+    "type": "object",
+    "properties": {
+      "requestId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+      },
+      "dryRun": {
+        "type": "boolean"
+      },
+      "permission": {
+        "type": "object",
+        "properties": {
+          "basis": {
+            "type": "string",
+            "enum": [
+              "self-authored",
+              "licensed",
+              "permission"
+            ]
+          },
+          "reference": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "redistributionAllowed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "basis",
+          "reference",
+          "redistributionAllowed"
+        ],
+        "additionalProperties": false
+      },
+      "assessments": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "assessmentId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+            },
+            "revision": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            },
+            "publisherId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+            },
+            "edition": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "evaluatorId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+            },
+            "evaluatorName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160
+            },
+            "politicalScope": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "methodId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+            },
+            "methodVersion": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "methodUrl": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "originalRating": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160
+            },
+            "rating": {
+              "type": "string",
+              "enum": [
+                "left",
+                "center-left",
+                "center",
+                "center-right",
+                "right",
+                "not-applicable",
+                "unmapped"
+              ]
+            },
+            "scaleVersion": {
+              "type": "string",
+              "enum": [
+                "political-five-v1",
+                "external-unmapped"
+              ]
+            },
+            "assessedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "validFrom": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "validUntil": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "published",
+                "withdrawn"
+              ]
+            },
+            "evidenceUrls": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              },
+              "maxItems": 5,
+              "uniqueItems": true
+            },
+            "licenseName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160
+            },
+            "licenseUrl": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            }
+          },
+          "required": [
+            "assessmentId",
+            "revision",
+            "publisherId",
+            "edition",
+            "evaluatorId",
+            "evaluatorName",
+            "politicalScope",
+            "methodId",
+            "methodVersion",
+            "methodUrl",
+            "originalRating",
+            "rating",
+            "scaleVersion",
+            "assessedAt",
+            "validFrom",
+            "state",
+            "evidenceUrls",
+            "licenseName",
+            "licenseUrl"
+          ],
+          "additionalProperties": false
+        },
+        "maxItems": 25,
+        "uniqueItems": true
+      },
+      "profiles": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "publisherId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+            },
+            "edition": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "revision": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            },
+            "verifiedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "editorialCountries": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Z]{2}$"
+              },
+              "maxItems": 10,
+              "uniqueItems": true
+            },
+            "languages": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z]{2,3}$"
+              },
+              "maxItems": 10,
+              "uniqueItems": true
+            },
+            "ownerGroupId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+            },
+            "ownerGroupName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160
+            },
+            "evidenceUrls": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              },
+              "maxItems": 5,
+              "uniqueItems": true
+            }
+          },
+          "required": [
+            "publisherId",
+            "edition",
+            "revision",
+            "verifiedAt",
+            "editorialCountries",
+            "languages",
+            "evidenceUrls"
+          ],
+          "additionalProperties": false
+        },
+        "maxItems": 25,
+        "uniqueItems": true
+      }
+    },
+    "required": [
+      "requestId",
+      "permission"
+    ],
+    "additionalProperties": false
+  },
+  "pathParameters": null,
+  "fixed": {}
+}
+```
 
 ### intel.advanced.status
 
@@ -4274,3 +4711,11 @@ capabilities.runtime.newsEditorial anuncia publisher-identity-v1, news-classific
 La clasificación describe relevancia informativa; reported no acredita ocurrencia ni corroboración. Negación, posibilidad futura, opinión e idioma sin soporte son explícitos. El idioma esperado del catálogo no demuestra el idioma del artículo. La prioridad heredada es una política editorial, no una probabilidad de verdad ni una evaluación política.
 
 Los campos usan las proyecciones existentes, manteniendo envelopes, permisos, paginación estable y límites de bytes. Una revisión de metadatos conserva ID, publicación y contentRevision. El manifiesto de build añade hashes de lock e instalación, Node, contrato y esquema esperado; no es atestación criptográfica ni prueba de versión desplegada. effectiveSchemaVersion informa por separado del esquema aplicado en health.
+
+## Evaluaciones y cobertura de medios
+
+news.source-assessments devuelve editores/ediciones, estado explícito y un resumen de hasta cinco evaluaciones. view=records pagina todas las evaluaciones efectivas con sus referencias, originales, permisos declarados y licencias; news.source-assessment consulta una revisión individual. asOf corta la vigencia y knownAt el conocimiento registrado (por defecto asOf). Los cursores fijan ambos tiempos y los watermarks de revisiones: continuar con los mismos filtros. No se promedian contextos políticos o evaluadores en desacuerdo.
+
+news.source-assessments.import requiere operador news:assessments:write. dryRun es true por defecto; usar otro requestId al confirmar dryRun=false. Lotes de hasta 25 evaluaciones y 25 perfiles, máximo 64 KiB, revisiones consecutivas e inmutables y permiso de redistribución declarado. No descarga referencias ni valida externamente la licencia. No hay dataset político incorporado; sin datos se muestra sin evaluar. La escala ordinal political-five-v1 conserva la etiqueta original; external-unmapped no recibe posición. Una evaluación del medio no clasifica un artículo ni prueba hechos.
+
+news.source-coverage usa recepción, ventana máxima 31 días y facetas acotadas del archivo anterior a la selección; informa artículos aún pendientes. Cuenta editores, grupos propietarios conocidos e identificadores de origen por separado. Desconocido sigue desconocido; varios países editoriales pueden atribuir el mismo artículo. No reconstruye metadatos históricos ni mide salud de adquisición. Catálogo, perfiles y evaluaciones se consultan por lectores readonly/query_only; importar utiliza el escritor único y recibo durable.

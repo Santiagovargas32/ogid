@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="es">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>OGID · Fuentes y cobertura</title><link rel="icon" href="/assets/ogid-logo.svg"><link rel="stylesheet" href="/css/sourceAssessments.css"></head>
+<body class="sources-page">
+  <nav aria-label="Vistas"><a href="/">Dashboard</a> · <a href="/sources.html" aria-current="page">Fuentes y cobertura</a></nav>
+  <main>
+    <h1>Fuentes y cobertura</h1>
+    <p>La tendencia describe al medio en un contexto político. No evalúa el encuadre de cada artículo ni demuestra su veracidad. Las escalas o contextos distintos conservan sus evaluaciones originales.</p>
+    <div class="source-controls"><label>Ventana de recepción <select id="coverage-window"><option value="24">Últimas 24 horas</option><option value="168">Últimos 7 días</option><option value="720">Últimos 30 días</option></select></label><button id="sources-refresh" type="button">Actualizar lecturas</button></div>
+    <p id="sources-status" role="status" aria-live="polite">Consultando datos almacenados…</p>
+    <section aria-labelledby="coverage-title"><h2 id="coverage-title">Cobertura del archivo recolectado</h2><p>Incluye publicaciones anteriores a la selección editorial. Los países editoriales no son lugares de incidentes; las búsquedas configuradas no son editores. Grupos propietarios e identificadores de origen no acreditan corroboración independiente.</p><div id="coverage-summary"></div></section>
+    <section aria-labelledby="publisher-title"><h2 id="publisher-title">Evaluaciones por editor y edición</h2><p>Sin evaluaciones autorizadas se muestra «sin evaluar», sin asignar una posición central. Un país, propietario o idioma desconocido permanece desconocido.</p><div id="publisher-assessments" class="source-grid"></div></section>
+    <section aria-labelledby="records-title"><h2 id="records-title">Procedencia de las evaluaciones</h2><p id="records-filter"></p><div id="assessment-records" class="source-grid"></div><button id="records-more" type="button" hidden>Cargar más evaluaciones</button></section>
+  </main>
+  <script type="module" src="/js/sourceCoverage.js"></script>
+</body></html>

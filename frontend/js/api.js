@@ -98,6 +98,7 @@ async function performRequest(path, params = {}, options = {}) {
 }
 
 export const api = {
+  getSourceAssessments: (params = {}, options = {}) => request('/api/news/source-assessments', params, options),
   getDashboardBootstrap:(params={},options={})=>request('/api/intel/bootstrap',{profile:'dashboard-v1',...params},{...options,revalidate:true,cache:'no-cache'}),
   getSyncSnapshot: (params = {}, options = {}) => request("/api/intel/sync", params, { ...options, cache: "no-store" }),
   getSyncChanges: (params = {}, options = {}) => request("/api/intel/changes", params, { ...options, cache: "no-store" }),

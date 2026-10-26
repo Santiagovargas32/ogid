@@ -23,7 +23,7 @@ try{
   const actual=repo.status().recentJobs.map(row=>row.jobId);
   const unchanged=JSON.stringify(previous)===JSON.stringify(db.prepare('SELECT version,name,checksum FROM schema_migrations WHERE version<=22 ORDER BY version').all());
   console.log(JSON.stringify({fixture:{rows:100000,storage:'SQLite memory database',node:process.version,realCorpus:false},
-    migration:{from:22,to:23,previousChecksumsUnchanged:unchanged,integrity:db.pragma('integrity_check',{simple:true}),foreignKeyErrors:db.pragma('foreign_key_check').length},
+    migration:{from:22,to:db.prepare("SELECT max(version) AS n FROM schema_migrations").get().n,previousChecksumsUnchanged:unchanged,integrity:db.pragma('integrity_check',{simple:true}),foreignKeyErrors:db.pragma('foreign_key_check').length},
     activeFirstOrderPreserved:JSON.stringify(expected)===JSON.stringify(actual),
     oldPlan,newPlan:db.prepare('EXPLAIN QUERY PLAN '+newQuery).all().map(row=>row.detail),
     before,after:measure(()=>fresh.all()),fullStatus:measure(()=>repo.status()),

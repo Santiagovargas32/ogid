@@ -24,6 +24,9 @@ test('publisher aliases are exact and domains cannot impersonate an editor',()=>
   assert.equal(resolveEditorialIdentity({publisher:'Reuters'}).publisherResolution.status,'candidate');
   assert.equal(resolveEditorialIdentity({url:'https://apnews.com/a',publisher:'Reuters'}).publisherResolution.reason,'conflicting-identities');
   assert.equal(resolveEditorialIdentity({url:'https://unrelated.invalid/a',publisherCandidate:{name:'Reuters',url:'https://reuters.com'}}).publisherId,null);
+  const direct={url:'https://reuters.com/fixture'},resolved=resolveEditorialIdentity(direct);
+  assert.deepEqual(resolveEditorialIdentity({...direct,...resolved}),resolved);
+  assert.equal(resolveEditorialIdentity({...direct,...resolved,publisher:'Associated Press'}).publisherResolution.reason,'conflicting-identities');
 });
 
 test('RSS item source survives normalization and public policy while discovery stays separate',()=>{
