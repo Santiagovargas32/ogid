@@ -1,8 +1,8 @@
 # Inventario API → MCP
 
-Contrato 1.10.0. Generado desde backend/contracts/ogidOperations.js; no editar a mano.
+Contrato 1.11.0. Generado desde backend/contracts/ogidOperations.js; no editar a mano.
 
-87 rutas JSON con método; 62 operaciones de investigación y 34 de operador. Las variantes almacenadas/proveedor comparten algunas rutas.
+92 rutas JSON con método; 66 operaciones de investigación y 35 de operador. Las variantes almacenadas/proveedor comparten algunas rutas.
 
 Las cuatro herramientas compatibles se conservan. ogid_get_awareness_sources compone el catálogo local versionado y la salud pública Awareness, sin una ruta adicional. El inventario cubre las rutas de backend/routes montadas bajo /api; WebSocket, archivos estáticos y transporte del túnel tienen contratos independientes.
 
@@ -12,6 +12,11 @@ Las rutas privadas de chat, dispositivos y control agentivo son de primera parte
 
 | Operación | Método y ruta | Herramienta | Perfil / permiso | Proyección | Efectos / coste |
 | --- | --- | --- | --- | --- | --- |
+| news.comparisons | GET /api/news/comparisons | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
+| news.comparison.changes | GET /api/news/comparisons/changes | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
+| news.comparison | GET /api/news/comparisons/:id | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
+| news.claim | GET /api/news/claims/:id | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
+| news.comparison.review | POST /api/admin/news/comparisons/review | ogid_operator | operator / news:comparisons:write | public | mutation; audited idempotent merge/split/origin/claim-link; at most 500 publications per merge; no providers |
 | news.source-assessments | GET /api/news/source-assessments | ogid_query | research / read:stored | public | pure stored temporal source assessments; no providers; no-provider |
 | news.source-assessment | GET /api/news/source-assessments/:id | ogid_query | research / read:stored | public | pure stored assessment detail; no providers; no-provider |
 | news.source-coverage | GET /api/news/source-coverage | ogid_query | research / read:stored | public | bounded normalized archive facets; no providers; pending backfill explicit; no-provider |
@@ -114,6 +119,294 @@ Las rutas privadas de chat, dispositivos y control agentivo son de primera parte
 Los query arrays viajan como CSV tipado; no se permiten claves extra, cabeceras, URLs o rutas libres. fixed se añade exclusivamente en el cliente y se verifica en backend para operador. La API existente mantiene su autenticación sensible; el permiso MCP añade credenciales de alcance, sin retirarla.
 
 researchRoutes.integration.test.js compara todas las rutas montadas con este registro y ejecuta todas las lecturas contra backend real con proveedores bloqueados. operations.test.js verifica todas las operaciones operador mediante fixtures HTTP, métodos, permisos y cuerpos; no demuestra ejecución de proveedores reales. Las pruebas de archivo, protocolo y e2e comprueban los contratos especializados.
+
+### news.comparisons
+
+Retención: append-only derived coverage; cursor freezes revisions and window; at most 31 days. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "articleId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "from": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "to": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "cursor": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      },
+      "maxBytes": {
+        "type": "integer",
+        "minimum": 4096,
+        "maximum": 262144
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### news.comparison.changes
+
+Retención: durable ordered revision log; no consumer ACK; follow every nextCursor. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "sinceSequence": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+      },
+      "cursor": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      },
+      "maxBytes": {
+        "type": "integer",
+        "minimum": 4096,
+        "maximum": 262144
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### news.comparison
+
+Retención: frozen member page with attributed claims; relation hints only for returned publications. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "cursor": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      },
+      "maxBytes": {
+        "type": "integer",
+        "minimum": 4096,
+        "maximum": 262144
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "additionalProperties": false
+  },
+  "fixed": {}
+}
+```
+
+### news.claim
+
+Retención: immutable publication revision and paginated reviewer links; currentness explicit. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "cursor": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      },
+      "maxBytes": {
+        "type": "integer",
+        "minimum": 4096,
+        "maximum": 262144
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "additionalProperties": false
+  },
+  "fixed": {}
+}
+```
+
+### news.comparison.review
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": {
+    "type": "object",
+    "properties": {
+      "requestId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+      },
+      "action": {
+        "type": "string",
+        "enum": [
+          "merge",
+          "split",
+          "origin",
+          "claim-link"
+        ]
+      },
+      "reviewer": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 100
+      },
+      "reason": {
+        "type": "string",
+        "minLength": 8,
+        "maxLength": 1000
+      },
+      "references": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "minItems": 1,
+        "maxItems": 5,
+        "uniqueItems": true
+      },
+      "groupIds": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+        },
+        "minItems": 2,
+        "maxItems": 10,
+        "uniqueItems": true
+      },
+      "groupId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+      },
+      "articleIds": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+        },
+        "minItems": 1,
+        "maxItems": 50,
+        "uniqueItems": true
+      },
+      "originChainId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+      },
+      "leftClaimId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+      },
+      "rightClaimId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+      },
+      "relation": {
+        "type": "string",
+        "enum": [
+          "support",
+          "contradiction",
+          "context"
+        ]
+      }
+    },
+    "required": [
+      "requestId",
+      "action",
+      "reviewer",
+      "reason",
+      "references"
+    ],
+    "additionalProperties": false
+  },
+  "pathParameters": null,
+  "fixed": {}
+}
+```
 
 ### news.source-assessments
 
@@ -4713,6 +5006,8 @@ La clasificación describe relevancia informativa; reported no acredita ocurrenc
 Los campos usan las proyecciones existentes, manteniendo envelopes, permisos, paginación estable y límites de bytes. Una revisión de metadatos conserva ID, publicación y contentRevision. El manifiesto de build añade hashes de lock e instalación, Node, contrato y esquema esperado; no es atestación criptográfica ni prueba de versión desplegada. effectiveSchemaVersion informa por separado del esquema aplicado en health.
 
 ## Evaluaciones y cobertura de medios
+
+news.comparisons, news.comparison y news.claim exponen cobertura candidata y afirmaciones atribuidas a revisiones de publicaciones; no incidentes verificados. Los cursores fijan una secuencia durable. news.comparison.changes recorre todas las revisiones con nextCursor y nextSinceSequence; no es un ACK ni una emisión de alertas. news.comparison.review exige news:comparisons:write, motivo, revisor, referencias e idempotencia requestId; permite merge/split/origin/claim-link y conserva el historial. El agrupamiento automático es heurístico, limitado a lugar exacto, tipo, contexto temporal y seis horas; hasta 500 miembros por grupo. Orígenes y editores desconocidos no acreditan independencia.
 
 news.source-assessments devuelve editores/ediciones, estado explícito y un resumen de hasta cinco evaluaciones. view=records pagina todas las evaluaciones efectivas con sus referencias, originales, permisos declarados y licencias; news.source-assessment consulta una revisión individual. asOf corta la vigencia y knownAt el conocimiento registrado (por defecto asOf). Los cursores fijan ambos tiempos y los watermarks de revisiones: continuar con los mismos filtros. No se promedian contextos políticos o evaluadores en desacuerdo.
 

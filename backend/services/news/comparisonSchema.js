@@ -1,0 +1,4 @@
+const id={type:'string',pattern:'^[A-Za-z0-9._:-]{1,128}$'};
+export const COMPARISON_REVIEW_PROPERTIES={requestId:id,action:{type:'string',enum:['merge','split','origin','claim-link']},reviewer:{type:'string',minLength:1,maxLength:100},reason:{type:'string',minLength:8,maxLength:1000},references:{type:'array',items:{type:'string',minLength:1,maxLength:500},minItems:1,maxItems:5,uniqueItems:true},groupIds:{type:'array',items:id,minItems:2,maxItems:10,uniqueItems:true},groupId:id,articleIds:{type:'array',items:id,minItems:1,maxItems:50,uniqueItems:true},originChainId:id,leftClaimId:id,rightClaimId:id,relation:{type:'string',enum:['support','contradiction','context']}};
+export const COMPARISON_REVIEW_REQUIRED=['requestId','action','reviewer','reason','references'];
+export const COMPARISON_REVIEW_SCHEMA={type:'object',properties:COMPARISON_REVIEW_PROPERTIES,required:COMPARISON_REVIEW_REQUIRED,additionalProperties:false};

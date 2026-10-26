@@ -2,7 +2,7 @@
 // timeout semantics and worker enforcement must consume the same descriptor.
 const queries = {
   admin:['history','historyRevision'], sources:['status','holdings'], history:['get','coverage','coverageState','coverageStates','repairPlan'], imports:['datasets','datasetsPage'],
-  news:['search','getItem','getHistory','coverage','getFeed','getLiveFeed','sourceAssessments','sourceAssessment','sourceCoverage'],
+  news:['search','getItem','getHistory','coverage','getFeed','getLiveFeed','sourceAssessments','sourceAssessment','sourceCoverage','comparisons','comparison','comparisonClaim','comparisonChanges'],
   candles:['query','latest','has','hasCandle','coverageSummary'], awareness:['getSnapshot'], events:['search']
 };
 const analysis = new Set(['market','technical','indicators','conditions','advanced','map','coupling','portfolio']);

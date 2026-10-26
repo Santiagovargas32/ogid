@@ -57,7 +57,8 @@ export function publicProjection(value, depth = 0, textLimit = 2000) {
     if (/^(?:\/(?!api(?:\/|$))|file:|Bearer\s)/i.test(value)) return null;
     return cleanText(value, textLimit);
   }
-  if (!value.eventId && value.title && (value.publishedAt !== undefined || value.provider) && value.url) {
+  const comparisonPublication=value.methodVersion==='coverage-claims-v1'&&value.articleId&&Array.isArray(value.claimIds);
+  if (!comparisonPublication && !value.eventId && value.title && (value.publishedAt !== undefined || value.provider) && value.url) {
     return { ...permittedArticle(value), ...publicProjection(pick(value, ["originalIds", "archiveFirstSeenAt", "archiveLastSeenAt", "archiveChangedAt", "contentRevision", "revision", "provenances", "matchReasons", "materiality", "claimStatus"]), depth + 1) };
   }
   const result = Object.fromEntries(Object.entries(value).filter(([key]) => !privateKey.test(key)).map(([key, entry]) => [key, publicProjection(entry, depth + 1, textLimit)]));

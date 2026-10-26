@@ -10,6 +10,23 @@ import stateManager from "../state/stateManager.js";
 import apiQuotaTracker from "../services/admin/apiQuotaTrackerService.js";
 import { researchSourceCatalog } from "../services/research/sourceCatalogView.js";
 import {SourceAssessments} from '../services/news/sourceAssessments.js';
+async function comparisonRead(req,res,operation,method,key){
+  const input=params(req,operation);
+  if(key){if(!/^[A-Za-z0-9._:-]{1,128}$/.test(req.params.id))throw new AppError('ID inválido.',400,'INVALID_COMPARISON');input[key]=req.params.id;}
+  const news=res.app.locals.business?.news;
+  if(!news&&key)throw new AppError('Comparación no disponible.',404,'COMPARISON_NOT_FOUND');
+  res.json({ok:true,data:news?await news[method](input):{available:false,items:[],hasMore:false,nextCursor:null,coverage:{partial:true,reason:'requires-sqlite'}}});
+}
+export const getComparisons=(req,res)=>comparisonRead(req,res,'news.comparisons','comparisons');
+export const getComparison=(req,res)=>comparisonRead(req,res,'news.comparison','comparison','groupId');
+export const getComparisonClaim=(req,res)=>comparisonRead(req,res,'news.claim','comparisonClaim','claimId');
+export const getComparisonChanges=(req,res)=>comparisonRead(req,res,'news.comparison.changes','comparisonChanges');
+export async function reviewComparison(req,res){
+  if(!req.mcpOperatorAuthorized)throw new AppError('Requiere operador news:comparisons:write.',403,'MCP_OPERATOR_FORBIDDEN');
+  if(!res.app.locals.business)throw new AppError('Requiere SQLite.',503,'COMPARISON_STORAGE_REQUIRED');
+  if(!validateValue(req.body,getOperation('news.comparison.review').body))throw new AppError('Revisión inválida.',400,'INVALID_COMPARISON');
+  res.json({ok:true,data:await res.app.locals.business.news.reviewComparison(req.body)});
+}
 export async function getSourceAssessments(req,res){const input=params(req,'news.source-assessments');res.json({ok:true,data:await (res.app.locals.business?.news.sourceAssessments(input) || new SourceAssessments().catalogue(input))});}
 export async function getSourceAssessment(req,res){if(!/^[A-Za-z0-9._:-]{1,100}$/.test(req.params.id))throw new AppError('ID inválido.',400,'INVALID_ASSESSMENT_ID');const input={...params(req,'news.source-assessment'),assessmentId:req.params.id};res.json({ok:true,data:await (res.app.locals.business?.news.sourceAssessment(input) || new SourceAssessments().detail(input))});}
 export async function getSourceCoverage(req,res){const input=params(req,'news.source-coverage');res.json({ok:true,data:res.app.locals.business?await res.app.locals.business.news.sourceCoverage(input):{available:false,coverage:{partial:true,reason:'requires-sqlite'},summary:null}});}

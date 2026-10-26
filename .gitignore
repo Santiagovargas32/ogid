@@ -78,5 +78,9 @@ docs/OGID-Prompt-Codex-GPT-6.1-xhigh.md
 !/docs/implementation/ogid-evidence/DECISIONES.md
 !/docs/implementation/ogid-evidence/PROMPTS.md
 !/docs/implementation/ogid-evidence/FUENTES.md
+!/docs/implementation/ogid-evidence/ENTREGA-D.md
+!/docs/implementation/ogid-evidence/RECUPERACION.md
+!/docs/implementation/ogid-evidence/CIERRE-FINAL.md
+!/docs/implementation/ogid-evidence/CIERRE-C.md
 # Evidencias privadas del ciclo cuando el enlace HDD de .agent-validation es ro.
 /.implementation-evidence/

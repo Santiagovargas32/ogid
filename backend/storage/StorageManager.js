@@ -18,7 +18,7 @@ import {readNativeWait} from './nativeWait.js';
 const error = code => Object.assign(new Error(code), { code, statusCode: 503 });
 const commandLabel = value => typeof value === "string" ? value.slice(0,128) : null;
 const OPERATIONS = new Set(["agent.call", "agent.snapshot", "agent.read", "storage.status", "storage.verify", "storage.checkpoint", "pipeline.record", "domain.configure", "domain.registry", "domain.indexPage", "domain.call", "scenarios.prepare", "storage.import", "runtime.save", "runtime.load", "rss.fetch", "news.collect", "news.supplemental", "analysis.persist", "snapshot.prepare", "snapshot.claim", "snapshot.fail", "snapshot.pending", "snapshot.renew","snapshot.recover","market.persist.admit","market.persist.page","market.persist.pending","market.persist.status"]);
-const ISOLATED_NEWS_METHODS = new Set(["getProjection","getFeed","getLiveFeed","search","getItem","getHistory","coverage","sourceAssessments","sourceAssessment","sourceCoverage"]);
+const ISOLATED_NEWS_METHODS = new Set(["getProjection","getFeed","getLiveFeed","search","getItem","getHistory","coverage","sourceAssessments","sourceAssessment","sourceCoverage","comparisons","comparison","comparisonClaim","comparisonChanges"]);
 const CPU_SERVICES = new Set(["market","technical","indicators","conditions","advanced","map","portfolio","scenarios","forecasts","coupling","signals"]);
 
 export class StorageManager extends EventEmitter {
@@ -266,6 +266,9 @@ export class StorageManager extends EventEmitter {
     const agentInput=operation==='agent.call'?input.args:input;
     const diagnostic={operation,service:commandLabel(input.service),method:commandLabel(input.method),kind:commandLabel(input.kind),
       jobId:typeof agentInput?.jobId==='string'?agentInput.jobId.slice(0,128):null,fence:Number.isSafeInteger(agentInput?.fence)?agentInput.fence:null};
+    // Link a delayed heartbeat to its durable heartbeat:<renewalId> receipt.
+    // Keep owner, progress and arbitrary command arguments out of diagnostics.
+    if(operation==='agent.call'&&input.method==='heartbeat'&&typeof agentInput?.renewalId==='string'&&/^[A-Za-z0-9._:-]{1,160}$/.test(agentInput.renewalId))diagnostic.renewalId=agentInput.renewalId;
     const rejectCommand=code=>{
       this.metrics.rejected++;
       const reason=error(code);

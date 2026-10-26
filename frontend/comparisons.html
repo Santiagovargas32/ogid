@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="es">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>OGID · Comparar publicaciones</title><link rel="icon" href="/assets/ogid-logo.svg"><link rel="stylesheet" href="/css/sourceAssessments.css"></head>
+<body class="sources-page">
+  <nav aria-label="Vistas"><a href="/">Dashboard</a> · <a href="/sources.html">Fuentes</a> · <a href="/comparisons.html" aria-current="page">Comparar publicaciones</a></nav>
+  <main>
+    <h1>Comparar publicaciones</h1>
+    <p>Las agrupaciones relacionan cobertura candidata por lugar, tipo y proximidad temporal. Las afirmaciones se atribuyen a la publicación y conservan su revisión y modalidad. No acreditan por sí solas un incidente ni corroboración independiente.</p>
+    <div class="source-controls"><label>Ventana de publicación <select id="comparison-window"><option value="24">Últimas 24 horas</option><option value="168" selected>Últimos 7 días</option><option value="720">Últimos 30 días</option></select></label><button id="comparison-refresh" type="button">Actualizar lectura</button></div>
+    <p id="comparison-status" role="status" aria-live="polite">Consultando publicaciones…</p>
+    <section aria-labelledby="comparison-heading"><h2 id="comparison-heading">Cobertura relacionada</h2><div id="comparison-summary"></div><div id="comparison-items" class="source-grid"></div><button id="comparison-more" type="button" hidden>Cargar más publicaciones</button></section>
+  </main>
+  <script type="module" src="/js/comparisons.js"></script>
+</body></html>

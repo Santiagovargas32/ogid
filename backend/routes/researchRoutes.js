@@ -1,7 +1,13 @@
 import { getSignalChange,getSourceAssessments,getSourceAssessment,getSourceCoverage,importSourceAssessments } from "../controllers/researchController.js";
 import { Router } from "express";
+import {getComparisons,getComparison,getComparisonClaim,getComparisonChanges,reviewComparison} from '../controllers/researchController.js';
 import { getForecastEvaluation, registerForecast, getScenarios, getSignalsDelta, refreshScenarios, deleteScenario, acknowledgeSignals, recoverSignals, getEventImpact, getResearchSources, getCompanyFacts, getEtfHoldings, runResearchSources, acknowledgeAlerts, getCapabilities, getDiagnostics, getPortfolioContext } from "../controllers/researchController.js";
 const router = Router();
+router.get('/news/comparisons',getComparisons);
+router.get('/news/comparisons/changes',getComparisonChanges);
+router.get('/news/comparisons/:id',getComparison);
+router.get('/news/claims/:id',getComparisonClaim);
+router.post('/admin/news/comparisons/review',reviewComparison);
 router.get('/news/source-assessments',getSourceAssessments);
 router.get('/news/source-assessments/:id',getSourceAssessment);
 router.get('/news/source-coverage',getSourceCoverage);

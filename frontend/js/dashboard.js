@@ -929,7 +929,7 @@ function newsRowMarkup(article,ai){
       ${article.provenance?.sourceType==='generated_search'?'<span>Búsqueda RSS</span>':''}
       ${article.provenance?.stale||article.dataMode==='stale'?'<span>Stale</span>':''}
       ${article.synthetic?'<span class="news-flag">SIMULATED</span>':''}
-    </div><div class="news-card-actions"><button class="btn btn-sm btn-outline-info" type="button" data-action="open-news" data-news-id="${escapeHtml(article.id)}">Open brief</button>${source}</div></div></div>`;
+    </div><div class="news-card-actions"><a href="/comparisons.html?articleId=${encodeURIComponent(article.id)}">Comparar cobertura</a><button class="btn btn-sm btn-outline-info" type="button" data-action="open-news" data-news-id="${escapeHtml(article.id)}">Open brief</button>${source}</div></div></div>`;
 }
 function renderNews(news=[],countries={},ai={}){
   if (newsOptions.windowHours === 0 && olderNews) news=olderNews;

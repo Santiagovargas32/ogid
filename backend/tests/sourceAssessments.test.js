@@ -51,7 +51,7 @@ test('024 upgrades schema 023 additively without rewriting article originals or 
     for(const name of readdirSync(new URL('../storage/migrations/',import.meta.url)))if(Number(name.slice(0,3))<=23)copyFileSync(new URL(`../storage/migrations/${name}`,import.meta.url),join(dir,name));
     migrate(db,dir);const checksums=db.prepare('SELECT * FROM schema_migrations ORDER BY version').all();
     db.prepare("INSERT INTO articles VALUES('legacy','Historical original',NULL,NULL,NULL,?,?,1,'headline-only-link-out','{}')").run(at,at);
-    const originals=db.prepare('SELECT * FROM articles').all();assert.equal(migrate(db).length,24);
+    const originals=db.prepare('SELECT * FROM articles').all();assert.equal(migrate(db).length,25);
     assert.deepEqual(db.prepare('SELECT * FROM schema_migrations WHERE version<=23 ORDER BY version').all(),checksums);
     assert.deepEqual(db.prepare('SELECT * FROM articles').all(),originals);assert.equal(db.prepare('SELECT count(*) AS n FROM news_editorial_facets').get().n,0);
     assert.equal(db.pragma('integrity_check',{simple:true}),'ok');assert.deepEqual(db.pragma('foreign_key_check'),[]);
@@ -103,7 +103,7 @@ test('facet backfill resumes bounded pages without changing complete editorial r
   try{
     archive.ingest(Array.from({length:3},(_,n)=>({id:`facet-${n}`,title:`Ukraine missile strike report ${n}`,url:`https://reuters.com/fixture-${n}`,provider:'rss',publishedAt:at})));
     archive.enrichEditorialPage();const originals=db.prepare('SELECT * FROM article_revisions ORDER BY article_id,revision').all();
-    db.exec("DELETE FROM news_editorial_facets; DELETE FROM runtime_meta WHERE key LIKE 'news.editorial-backfill:%:facets-v1'");
+    db.exec("DELETE FROM news_editorial_facets; DELETE FROM runtime_meta WHERE key LIKE 'news.editorial-backfill:%:comparisons-v1'");
     assert.equal(archive.sourceCoverage().coverage.pendingFacetArticles,3);
     const first=archive.enrichEditorialPage({limit:1});assert.equal(first.processed,1);assert.equal(first.complete,false);
     assert.equal(archive.sourceCoverage().coverage.pendingFacetArticles,2);

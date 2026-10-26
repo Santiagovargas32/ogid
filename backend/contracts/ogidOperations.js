@@ -1,7 +1,8 @@
 // Registro compartido: contratos de transporte, permisos e inventario API→MCP.
 // Sin imports de runtime ni secretos. Los parámetros son valores tipados; nunca URLs/rutas libres.
-export const OPERATIONS_VERSION = "1.10.0";
+export const OPERATIONS_VERSION = "1.11.0";
 import {SOURCE_IMPORT_PROPERTIES,SOURCE_IMPORT_REQUIRED} from '../services/news/sourceAssessmentSchema.js';
+import {COMPARISON_REVIEW_PROPERTIES,COMPARISON_REVIEW_REQUIRED} from '../services/news/comparisonSchema.js';
 // Fixed operation identities shared by MCP and the OpenCode receipt decoder.
 export const AGENT_EVIDENCE_TOOLS = Object.freeze({
   ogid_agent_evidence: 'agent.evidence',
@@ -43,6 +44,11 @@ function op(id, method, path, parameters = {}, options = {}) {
 const costly = { profile: "operator", scope: "provider:query", effects: "provider requests and cache updates", cost: "provider quota/rate limits" };
 const mutation = (scope) => ({ profile: "operator", scope, effects: "mutation", cost: "see runtime quotas" });
 export const OGID_OPERATIONS = Object.freeze([
+  op('news.comparisons','GET','/api/news/comparisons',{articleId:str(),from:date,to:date,cursor:str(4096),limit,maxBytes:int(4096,262144)},{retention:'append-only derived coverage; cursor freezes revisions and window; at most 31 days'}),
+  op('news.comparison.changes','GET','/api/news/comparisons/changes',{sinceSequence:int(0,Number.MAX_SAFE_INTEGER),cursor:str(4096),limit,maxBytes:int(4096,262144)},{retention:'durable ordered revision log; no consumer ACK; follow every nextCursor'}),
+  op('news.comparison','GET','/api/news/comparisons/:id',{cursor:str(4096),limit,maxBytes:int(4096,262144)},{pathParameters:schema({id:str()},['id']),retention:'frozen member page with attributed claims; relation hints only for returned publications'}),
+  op('news.claim','GET','/api/news/claims/:id',{cursor:str(4096),limit,maxBytes:int(4096,262144)},{pathParameters:schema({id:str()},['id']),retention:'immutable publication revision and paginated reviewer links; currentness explicit'}),
+  op('news.comparison.review','POST','/api/admin/news/comparisons/review',{}, {...mutation('news:comparisons:write'),body:COMPARISON_REVIEW_PROPERTIES,bodyRequired:COMPARISON_REVIEW_REQUIRED,cost:'audited idempotent merge/split/origin/claim-link; at most 500 publications per merge; no providers'}),
   op('news.source-assessments','GET','/api/news/source-assessments',{publisherIds:array(str(100),50),edition:str(100),politicalScope:str(80),view:choice('subjects','records'),asOf:date,knownAt:date,cursor:str(4096),limit,maxBytes:int(4096,262144)},{effects:'pure stored temporal source assessments; no providers',retention:'append-only revisions; asOf and knownAt distinguish validity and knowledge'}),
   op('news.source-assessment','GET','/api/news/source-assessments/:id',{revision:int(1,1000000),asOf:date,knownAt:date},{pathParameters:schema({id:str(100)},['id']),effects:'pure stored assessment detail; no providers'}),
   op('news.source-coverage','GET','/api/news/source-coverage',{from:date,to:date,knownAt:date,politicalScope:str(80),maxBytes:int(4096,262144)},{effects:'bounded normalized archive facets; no providers; pending backfill explicit'}),

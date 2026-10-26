@@ -14,7 +14,8 @@ function controlledManager(t) {
 }
 test('delayed writer renewal quarantines dispatch and resumes only on its definite result',async t=>{
   const f=controlledManager(t);
-  const renewal=f.manager.localRequest('agent.call',{method:'heartbeat'},{timeoutMs:5});
+  const events=[];f.manager.on('control-delayed',event=>events.push(event));f.manager.on('control-reconciled',event=>events.push(event));
+  const renewal=f.manager.localRequest('agent.call',{method:'heartbeat',args:{jobId:'fixture-job',fence:7,owner:'private-owner-fixture',renewalId:'fixture-renewal-1',progress:{privateText:'private-progress-fixture'}}},{timeoutMs:5});
   f.start(f.sent[0]);t.mock.timers.tick(5);
   assert.equal(f.manager.state,'ready');assert.equal(f.manager.getStatus().reconciliation.pending,true);
   const write=f.manager.localRequest('runtime.save',{kind:'fixture',payload:{}});
@@ -23,6 +24,16 @@ test('delayed writer renewal quarantines dispatch and resumes only on its defini
   assert.deepEqual(await renewal,{renewed:true});assert.equal(f.manager.getStatus().reconciliation.pending,false);
   assert.equal(f.sent.length,2);f.start(f.sent[1]);f.finish(f.sent[1],{persisted:true});await write;
   assert.equal(f.manager.getStatus().reconciliation.resolved,1);
+  assert.equal(events.length,2);
+  for(const event of events){assert.equal(event.command.renewalId,'fixture-renewal-1');assert.equal(event.command.jobId,'fixture-job');assert.equal(event.command.fence,7);assert.ok(!JSON.stringify(event).includes('private-owner-fixture'));assert.ok(!JSON.stringify(event).includes('private-progress-fixture'));}
+});
+test('diagnostics accept only a bounded heartbeat renewal identity and never copy arbitrary arguments',async t=>{
+  const f=controlledManager(t);
+  for(const [operation,input] of [['agent.call',{method:'heartbeat',args:{renewalId:'private\ninvalid'}}],['agent.call',{method:'heartbeat',args:{renewalId:'x'.repeat(161)}}],['agent.call',{method:'state',args:{renewalId:'not-a-heartbeat'}}],['runtime.save',{kind:'fixture',renewalId:'not-an-agent-command'}]]){
+    const task=f.manager.localRequest(operation,input),message=f.sent.at(-1);f.start(message);
+    const command=f.manager.getStatus().activeCommands.find(c=>c.id===message.id);assert.equal('renewalId' in command,false);assert.ok(!JSON.stringify(command).includes('private'));
+    f.finish(message);await task;
+  }
 });
 test('unresponsive renewal fails closed at the original writer guard measured from start',async t=>{
   const f=controlledManager(t);
