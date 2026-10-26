@@ -861,7 +861,7 @@ export function createAppServer(overrides = {}) {
   app.locals.agentMaintenance = new AgentMaintenance({call:app.locals.agentCall,business,
     dependencies:()=>storageManager.request("runtime.load",{kind:"maintenance-inputs"}),
     instruments:()=>marketWatchlistService.selectedInstrumentIds,
-    enabled:Boolean(business && app.locals.agentConfig.mode !== "off")});
+    enabled:Boolean(business)});
   app.locals.business = business;
   app.locals.marketWatchlistService = marketWatchlistService;
   app.locals.marketDataService = marketDataService;

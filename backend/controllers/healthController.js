@@ -35,6 +35,7 @@ export function getHealth(req, res) {
       pipeline: res.app.locals.pipelineMonitor?.snapshot() || {},
       server:{pid:process.pid,nodeVersion:process.version,startedAt:SERVER_STARTED_AT,memory:process.memoryUsage()},
       build: BACKEND_BUILD,
+      effectiveSchemaVersion: storage?.migrations?.length ? Math.max(...storage.migrations.map(row=>Number(row.version))) : null,
       timestamp: new Date().toISOString(),
       uptimeSeconds: Math.floor(process.uptime()),
       websocketClients: websocket.clientCount ?? 0,

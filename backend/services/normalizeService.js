@@ -1,7 +1,8 @@
+import {resolveEditorialIdentity} from './news/publisherIdentity.js';
+import {extractNewsCountries} from './news/newsClassification.js';
 import { articleIdentity, publicationDate } from "./news/articleIdentity.js";
 import { classifyRssArticle } from "./news/rssClassifier.js";
 import { createHash } from "node:crypto";
-import { detectCountryMentions } from "../utils/countryCatalog.js";
 import { analyzeSentiment } from "../utils/sentimentRules.js";
 import { extractConflictSignal } from "../utils/conflictTags.js";
 import { sanitizeArticleContent } from "./news/newsContentSanitizer.js";
@@ -56,18 +57,23 @@ function normalizeArticle(rawArticle, index, provider) {
   const publishedAt = date.publishedAt;
   const receivedAt = toIsoDate(rawArticle?.receivedAt || rawArticle?.fetchedAt, Date.now());
   const textBlob = `${title}. ${description}. ${content}`;
-  const countryMentions = detectCountryMentions(textBlob);
+  const countryMentions = extractNewsCountries(textBlob);
+  const classified = classifyRssArticle({...rawArticle,title,description,content});
   const sentiment = analyzeSentiment(textBlob);
   const conflict = extractConflictSignal(textBlob);
 
   return {
     id: rawArticle.id || articleIdentity({...rawArticle, publishedAt}),
-    identity: articleIdentity({...rawArticle, publishedAt}),
+    identity: !rawArticle.url && (rawArticle.identity || rawArticle.id) || articleIdentity({...rawArticle, publishedAt}),
     aliases: [...new Set([...(rawArticle.aliases || []), hashId(`${rawArticle?.url || title}-${rawArticle?.publishedAt || publishedAt}-${index}`)])],
     publishedAtQuality: rawArticle?.provenance?.publishedAtQuality || date.publishedAtQuality,
     provider: rawArticle?.provider || provider,
     sourceName: rawArticle?.source?.name || rawArticle?.sourceName || "Unknown Source",
     ...normalizeSourceMetadata(rawArticle),
+    ...resolveEditorialIdentity(rawArticle),
+    // Preserve the legacy publisher label as an attributed candidate. Only
+    // publisherId + resolution establish a resolved editorial identity.
+    publisher: classified.publisher || rawArticle.publisher || rawArticle.source?.publisher || null,
     title,
     description,
     content,
@@ -80,9 +86,10 @@ function normalizeArticle(rawArticle, index, provider) {
     receivedAt,
     firstSeenAt: rawArticle.firstSeenAt || receivedAt,
     updatedAt: rawArticle.updatedAt || null,
-    threatLevel: rawArticle.threatLevel || classifyRssArticle({title, description, content}).threatLevel,
+    threatLevel: classified.classification.status==='unsupported-language' ? 'unknown' : rawArticle.threatLevel || classified.threatLevel,
+    classification: classified.classification,
     severityOrigin: rawArticle.severityOrigin || "rss-classifier-rules",
-    topicTags: rawArticle.topicTags || classifyRssArticle({title, description, content}).topicTags,
+    topicTags: rawArticle.topicTags || classified.topicTags,
     countryMentions,
     synthetic: Boolean(rawArticle?.synthetic),
     dataMode: normalizeDataMode(

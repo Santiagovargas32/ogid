@@ -148,7 +148,7 @@ export function toolDefinitions(config, read) {
         if(!frozen)validateAwareness(awareness);
         return { data: {
           adapterVersion: VERSION, adapterBuild: ADAPTER_BUILD, backendBuild: health.build || null, ogidCheckoutCommit: config.commit, runningCommitVerified: false,
-          ...pick(health, ["status", "timestamp", "uptimeSeconds", "lastRefreshAt", "sourceMode"]),
+          ...pick(health, ["status", "timestamp", "uptimeSeconds", "lastRefreshAt", "sourceMode", "effectiveSchemaVersion"]),
           dataQuality: Object.fromEntries(Object.entries(health.dataQuality || {}).map(([key,value]) => [key, pick(value, ["mode", "provider", "reason", "synthetic", "inputMode"])])),
           market: pick(health.market, ["availability", "quoteCount", "selectedInstrumentCount", "configuredProvider", "effectiveProvider"]),
           storage: publicStorageStatus(health.storage),

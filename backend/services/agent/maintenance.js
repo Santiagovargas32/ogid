@@ -53,6 +53,7 @@ export class AgentMaintenance {
       return stableHash(domain==='alerts'?[inputs.news?.revision,inputs.awareness,inputs.research]:domain==='evaluation'?[inputs.research,inputs.candles]:[inputs.news?.revision,inputs.awareness,inputs.market,inputs.signals,inputs.candles,temporal]);
     };
     const operations = [
+      ...(!this.editorialComplete && this.business.news?.enrichEditorialPage ? [["editorial",async()=>{const result=await this.business.news.enrichEditorialPage({});this.editorialComplete=result.complete===true;}]] : []),
       ["alerts", () => this.call("alertSync")],
       ["advanced", () => this.business.advanced.getSnapshot({})],
       [
@@ -73,7 +74,7 @@ export class AgentMaintenance {
     for (const [domain, execute] of operations) {
       if (this.stopping) break;
       const revision=revisionFor(domain);
-      if(!force && revision && this.completedInputs.get(domain)===revision){domains[domain]={...previousDomains[domain],state:'ready',deferredReason:'inputs-unchanged',inputRevision:revision};continue;}
+      if(domain!=='editorial' && !force && revision && this.completedInputs.get(domain)===revision){domains[domain]={...previousDomains[domain],state:'ready',deferredReason:'inputs-unchanged',inputRevision:revision};continue;}
       this.status={...this.status,currentDomain:domain,domains:{...domains,[domain]:{state:"running",startedAt:new Date().toISOString()}}};
       try {
         await execute();

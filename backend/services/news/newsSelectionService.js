@@ -1,32 +1,16 @@
+import {sourcePriority} from './publisherIdentity.js';
+import {normalizeNewsText} from './newsClassification.js';
 import { compareNews } from "../../utils/newsOrder.js";
 import { articleIdentity } from "./articleIdentity.js";
-const SOURCE_RELIABILITY = Object.freeze({
-  reuters: 1,
-  "associated press": 0.98,
-  ap: 0.95,
-  bloomberg: 0.94,
-  "financial times": 0.92,
-  wsj: 0.9,
-  cnn: 0.82,
-  bbc: 0.86,
-  aljazeera: 0.8
-});
-
 function clamp(value, min = 0, max = 1) {
   return Math.max(min, Math.min(max, value));
 }
 
 function normalizeText(value = "") {
-  return String(value)
-    .toLowerCase()
-    .replace(/[^\w\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return normalizeNewsText(value);
 }
 
 function buildBaseDedupKey(article) {
-  const normalizedUrl = String(article.url || "").trim().toLowerCase();
-  const normalizedTitle = normalizeText(article.title || "");
   return articleIdentity(article);
 }
 
@@ -36,25 +20,6 @@ function buildHeadlineFingerprint(article) {
     .filter(Boolean)
     .slice(0, 12);
   return words.join("|");
-}
-
-function sourceReliabilityScore(sourceName = "") {
-  const normalized = normalizeText(sourceName);
-  if (!normalized) {
-    return 0.55;
-  }
-
-  const exact = SOURCE_RELIABILITY[normalized];
-  if (Number.isFinite(exact)) {
-    return exact;
-  }
-
-  const containsMatch = Object.entries(SOURCE_RELIABILITY).find(([key]) => normalized.includes(key));
-  if (containsMatch) {
-    return containsMatch[1];
-  }
-
-  return 0.55;
 }
 
 function countryRelevanceScore(article, watchlistCountries = []) {
@@ -98,7 +63,7 @@ function scoreArticle(article, context) {
   const country = countryRelevanceScore(article, context.watchlistCountries);
   const conflict = conflictIntensityScore(article);
   const recency = recencyScore(article, context.nowMs, context.candidateWindowMs);
-  const reliability = sourceReliabilityScore(article.sourceName);
+  const reliability = sourcePriority(article);
   const novelty = noveltyScore(article, context.seenFingerprints);
 
   const totalScore = Math.round(
@@ -273,7 +238,7 @@ export function buildIntelNewsSelection({
         seenFingerprints
       })
     )
-    .sort((left, right) => compareNews(left, right) || right.analysisScore - left.analysisScore);
+    .sort(compareNews);
 
   const signalCorpus = scored.slice(0, selectionCap(analyzeLimit));
   const displaySelection = selectWithDiversity(scored, {

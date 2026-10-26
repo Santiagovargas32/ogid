@@ -4265,3 +4265,12 @@ Retención: current snapshot; consult response coverage. Procedencia: OGID runti
   }
 }
 ```
+
+
+## Metadatos editoriales opcionales
+
+capabilities.runtime.newsEditorial anuncia publisher-identity-v1, news-classification-v2, idiomas en/es/fr/de/pt y legacy-editorial-priority-v1. Los artículos pueden incorporar transportProvider, discoverySourceId, publisherId, originChainId, publisherResolution y classification (método, idioma, estado, alcance textual y modalidad). La ausencia histórica sigue siendo desconocida. Sólo publisherId con resolución resolved identifica al editor; publisher/sourceName heredados pueden ser nombres atribuidos o candidatos. Google News sigue siendo descubrimiento.
+
+La clasificación describe relevancia informativa; reported no acredita ocurrencia ni corroboración. Negación, posibilidad futura, opinión e idioma sin soporte son explícitos. El idioma esperado del catálogo no demuestra el idioma del artículo. La prioridad heredada es una política editorial, no una probabilidad de verdad ni una evaluación política.
+
+Los campos usan las proyecciones existentes, manteniendo envelopes, permisos, paginación estable y límites de bytes. Una revisión de metadatos conserva ID, publicación y contentRevision. El manifiesto de build añade hashes de lock e instalación, Node, contrato y esquema esperado; no es atestación criptográfica ni prueba de versión desplegada. effectiveSchemaVersion informa por separado del esquema aplicado en health.

@@ -6,7 +6,7 @@ export function createBusinessAdapters(manager, {rootDir,enabled=true,rssEnabled
   const call=(service,method,args=[],options={})=>manager.request("domain.call",{service,method,args,...(options.context?{context:context()}: {})},{timeoutMs:options.timeoutMs,signal:options.signal,requestId:options.requestId});
   const proxy=(service,methods,options={})=>Object.fromEntries(methods.map(method=>[method,(...args)=>call(service,method,args,options)]));
   let coverage={totalStored:0};
-  const news=proxy("news",["search","getItem","getHistory","coverage","recordContext","getFeed","getLiveFeed"]);
+  const news=proxy("news",["search","getItem","getHistory","coverage","recordContext","getFeed","getLiveFeed","enrichEditorialPage"]);
   news.getProjection=(input)=>call("news","getProjection",[input],{context:true});
   news.recordContext=snapshot=>call("news","recordContext",[{meta:{lastRefreshAt:snapshot.meta?.lastRefreshAt,dataQuality:snapshot.meta?.dataQuality},countries:snapshot.countries,impact:{items:snapshot.impact?.items || []}}]);
   const originalCoverage=news.coverage;news.coverage=async(...args)=>{coverage=await originalCoverage(...args);return coverage;};

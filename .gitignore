@@ -67,3 +67,15 @@ docs/OGID-Prompt-Codex-GPT-6.1-xhigh.md
 # Diagnóstico y runbook de la siguiente prueba shadow.
 !/docs/audits/2026-10-24/
 !/docs/audits/2026-10-24/live-stability-diagnosis.md
+# Plan aprobado y continuidad; no incluye evidencias operativas privadas.
+!/docs/OGID-diagnostico-direccion-y-plan-2026-10-25.md
+!/docs/implementation/
+/docs/implementation/*
+!/docs/implementation/ogid-evidence/
+/docs/implementation/ogid-evidence/*
+!/docs/implementation/ogid-evidence/PLAN.md
+!/docs/implementation/ogid-evidence/ESTADO.md
+!/docs/implementation/ogid-evidence/DECISIONES.md
+!/docs/implementation/ogid-evidence/PROMPTS.md
+# Evidencias privadas del ciclo cuando el enlace HDD de .agent-validation es ro.
+/.implementation-evidence/

@@ -9,6 +9,8 @@ import { listVerifiedInstruments } from "../market/instrumentRegistry.js";
 import { matchInstrument, resolveReferences } from "./instrumentIdentity.js";
 
 import { normalizeNewsFilters } from "../../utils/stableHash.js";
+import {resolveEditorialIdentity} from '../news/publisherIdentity.js';
+import {classifyRssArticle} from '../news/rssClassifier.js';
 const DAY = 86400000;
 const hash = value => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const temporal = value => value && Number.isFinite(Date.parse(value)) ? Date.parse(value) : null;
@@ -70,7 +72,8 @@ export class NewsArchive {
     const now = new Date(this.now()).toISOString(); let accepted = 0; const collected = [];
     for (const raw of values) {
       if (!allowedArticle(raw)) continue;
-      const article = permittedArticle({ ...raw, sourceId: raw.sourceId || raw.source?.sourceId || raw.provenance?.sourceId, sourceName: raw.sourceName || raw.source?.name,
+      const classified = classifyRssArticle(raw);
+      const article = permittedArticle({ ...raw, ...resolveEditorialIdentity(raw), classification:classified.classification, threatLevel:raw.threatLevel || classified.threatLevel, sourceId: raw.sourceId || raw.source?.sourceId || raw.provenance?.sourceId, sourceName: raw.sourceName || raw.source?.name,
         publisher: raw.publisher || raw.source?.publisher, topics: raw.topics || raw.source?.topics, instrumentIds: raw.instrumentIds || raw.source?.instrumentIds }, now);
       if (!article.title) continue;
       article.url = canonicalUrl(article.url);
@@ -206,4 +209,4 @@ export class NewsArchive {
   }
 }
 function pickContent(article) { return { title: article.title, excerpt: article.excerpt, publishedAt: article.publishedAt, updatedAt: article.updatedAt,...(article.permittedExcerptHash?{permittedExcerptHash:article.permittedExcerptHash}:{}) }; }
-function pickSemantic(article) { return { ...pickContent(article), synthetic: article.synthetic, dataMode: article.dataMode, analysisFeatures: article.analysisFeatures, instrumentIds: article.instrumentIds, topics: article.topics, sectors: article.sectors, countryMentions: article.countryMentions, provenances: article.provenances?.map(p => ({ provider: p.provider, sourceId: p.sourceId, publisher: p.publisher, url: p.url })) }; }
+function pickSemantic(article) { return { ...pickContent(article), publisherId:article.publisherId, publisherResolution:article.publisherResolution, transportProvider:article.transportProvider, discoverySourceId:article.discoverySourceId, originChainId:article.originChainId, classification:article.classification, synthetic: article.synthetic, dataMode: article.dataMode, analysisFeatures: article.analysisFeatures, instrumentIds: article.instrumentIds, topics: article.topics, sectors: article.sectors, countryMentions: article.countryMentions, provenances: article.provenances?.map(p => ({ provider: p.provider, sourceId: p.sourceId, publisher: p.publisher, url: p.url })) }; }

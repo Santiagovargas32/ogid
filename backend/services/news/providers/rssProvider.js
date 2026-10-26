@@ -3,6 +3,7 @@ import { publicationDate } from "../articleIdentity.js";
 import { parseRateLimitHeaders } from "../../admin/apiQuotaTrackerService.js";
 import { providerRuntime } from "../../providers/providerRuntime.js";
 import { sanitizeArticleContent } from "../newsContentSanitizer.js";
+import {resolveEditorialIdentity} from '../publisherIdentity.js';
 
 const INVALID_FEED_CACHE_MS = 6 * 60 * 60 * 1_000;
 const invalidFeedCache = new Map();
@@ -66,6 +67,11 @@ export function parseFeedArticles(xml = "", feedLabel = "RSS Feed", sourceDefini
     const publishedAtBasis = dateTags.find(tag => extractTag(item, tag)) || null;
     const rawPublishedAt = publishedAtBasis ? extractTag(item, publishedAtBasis) : "";
     const publishedAt = publicationDate(publishedAtBasis === "updated" ? null : rawPublishedAt);
+    const sourceUrl = item.match(/<(?:[\w.-]+:)?source\b[^>]*\burl=["']([^"']+)["']/i)?.[1];
+    const publisherCandidate = {name: extractTag(item,'source') || sourceDefinition.publisher || null,
+      url: sourceUrl ? decodeEntities(sourceUrl) : null};
+    const identity = resolveEditorialIdentity({provider:'rss',url:link,sourceId:sourceDefinition.sourceId,
+      publisherCandidate,sourceName:sourceName,source:{type:sourceType}});
 
     return {
       provider: "rss",
@@ -82,7 +88,10 @@ export function parseFeedArticles(xml = "", feedLabel = "RSS Feed", sourceDefini
       role: sourceDefinition.role || null,
       topics: Array.isArray(sourceDefinition.topics) ? sourceDefinition.topics : [],
       instrumentIds: Array.isArray(sourceDefinition.instrumentIds) ? sourceDefinition.instrumentIds : [],
-      publisher: sourceType === "generated_search" ? null : sourceDefinition.publisher || sourceName,
+      ...identity,
+      publisherCandidate,
+      // Catalog languages describe expected coverage, not the item's language.
+      language: extractTag(item,'dc:language') || extractTag(item,'language') || null,
       title: sanitized.title,
       description: sanitized.description,
       content: sanitized.content,

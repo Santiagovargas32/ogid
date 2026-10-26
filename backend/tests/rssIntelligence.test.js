@@ -15,6 +15,7 @@ test("rss classifier keeps RSS sources distinct from 435 generated searches", ()
     title: "Missile strike and cyber disruption hit Tehran and Tel Aviv",
     description: "Sanctions pressure rises after the attack.",
     sourceName: "Reuters",
+    url: "https://www.reuters.com/world/fixture",
     publishedAt: new Date().toISOString()
   });
 

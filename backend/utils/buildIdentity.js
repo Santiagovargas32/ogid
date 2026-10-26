@@ -3,7 +3,8 @@ import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { OPERATIONS_VERSION } from "../contracts/ogidOperations.js";
+import { OPERATIONS_VERSION, OPERATIONS_HASH } from "../contracts/ogidOperations.js";
+import { releaseManifest } from './releaseManifest.js';
 const root = fileURLToPath(new URL("../../", import.meta.url));
 function git(args) { try { return execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 2000 }).trim(); } catch { return null; } }
 // Capturado una sola vez al importar, nunca recalculado desde un checkout mutable al consultar health.
@@ -17,13 +18,16 @@ export function captureBuildIdentity(component, version) {
   } }
   let artifactHash = null;
   try { for (const dir of component === "backend" ? ["backend/config", "backend/storage", "backend/contracts", "backend/controllers", "backend/middleware", "backend/routes", "backend/services", "backend/state", "backend/utils"] : ["integrations/ogid-mcp/src", "backend/contracts", "backend/utils"]) scan(dir);
-    if (component === "backend") digest.update(readFileSync(path.join(root, "backend/server.js"))); artifactHash = digest.digest("hex");
+    if (component === "backend") digest.update(readFileSync(path.join(root, "backend/server.js")));
+    else scan('backend/services/news'); // Shared editorial projections loaded by MCP.
+    artifactHash = digest.digest("hex");
   } catch { /* Un artefacto incompleto no acredita identidad. */ }
   const declared = process.env.OGID_BUILD_COMMIT;
   const buildCommit = /^[a-f0-9]{40,64}$/.test(declared || "") ? declared : null;
   return Object.freeze({ component, version, contractVersion: OPERATIONS_VERSION, capturedAt: new Date().toISOString(),
     checkoutCommitAtStart, buildCommit, buildTime: Number.isFinite(Date.parse(process.env.OGID_BUILD_TIME || "")) ? new Date(process.env.OGID_BUILD_TIME).toISOString() : null,
     dirty: status === null ? "unknown" : Boolean(status), artifactHash, hashAlgorithm: "sha256", verification: artifactHash ? "startup-files-hashed" : "unknown",
+    release: releaseManifest(root, component, {contractHash: OPERATIONS_HASH}),
     declaredCommitMatchesCheckout: buildCommit && checkoutCommitAtStart ? buildCommit === checkoutCommitAtStart : null,
     runningCommitVerified: false, attestation: "local-startup-observation; declared build metadata is not cryptographic attestation" });
 }

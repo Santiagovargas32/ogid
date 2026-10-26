@@ -1,3 +1,4 @@
+import {normalizeNewsText,newsTopicTags} from '../services/news/newsClassification.js';
 const TAG_DEFINITIONS = [
   {
     tag: "Military",
@@ -42,7 +43,7 @@ const TAG_DEFINITIONS = [
 ];
 
 function normalizeText(value = "") {
-  return ` ${String(value).toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim()} `;
+  return ` ${normalizeNewsText(value)} `;
 }
 
 function countKeywordHits(haystack, keywords) {
@@ -71,6 +72,12 @@ export function extractConflictSignal(text = "") {
       });
       totalWeight += definition.weight * count;
     }
+  }
+
+  const topicNames={conflict:'Military',sanctions:'Sanctions',civil_unrest:'Civil Unrest',cyber:'Cyber Operations',humanitarian:'Humanitarian Crisis'};
+  for(const topic of newsTopicTags(text)){
+    const name=topicNames[topic],definition=TAG_DEFINITIONS.find(item=>item.tag===name);
+    if(definition && !tags.some(item=>item.tag===name)){tags.push({tag:name,count:1,weight:definition.weight});totalWeight+=definition.weight;}
   }
 
   return { tags, totalWeight };

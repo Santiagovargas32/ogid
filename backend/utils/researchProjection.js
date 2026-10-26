@@ -1,3 +1,5 @@
+import {editorialProjection} from '../services/news/publisherIdentity.js';
+import {classificationProjection} from '../services/news/newsClassification.js';
 // Salida para investigación. Nunca reenvía cuerpos de proveedores, prompts o rutas locales.
 export function safeUrl(value) {
   try {
@@ -33,6 +35,9 @@ export function permittedArticle(value, now = new Date().toISOString()) {
   const synthetic = Boolean(value.synthetic || value.provenance?.synthetic || ["synthetic", "fallback"].includes(value.dataMode) || value.provider === "fallback");
   return {
     ...pick(value, ["id", "provider", "sourceId", "sourceName", "publisher", "topics", "topicTags", "sectors", "instrumentIds", "countryMentions", "synthetic", "dataMode"]),
+    ...editorialProjection(value),
+    ...(classificationProjection(value.classification) ? {classification:classificationProjection(value.classification)} : {}),
+    ...(['critical','elevated','monitoring','low','unknown'].includes(value.threatLevel) ? {threatLevel:value.threatLevel} : {}),
     synthetic, dataMode: value.dataMode || (synthetic ? "synthetic" : "observed"),
     title: cleanText(value.title), excerpt: headlineOnly ? null : cleanText(value.excerpt || value.description), url: safeUrl(value.url || value.canonicalUrl),
     publishedAt: fallback || updateOnly ? null : instant(value.publishedAt),
@@ -64,7 +69,7 @@ export function projectOperation(operation, data) {
   // Applying the legacy text projection here would corrupt base64 chunks and
   // silently truncate recoverable evidence and validated publications.
   if (operation.projection === "agent-bundle") return data;
-  if (operation.projection === "health") return publicProjection({ ...pick(data, ["build", "status", "timestamp", "uptimeSeconds", "lastRefreshAt", "refreshIntervalMs", "sourceMode", "dataQuality", "market"]), storage: publicStorageStatus(data.storage) });
+  if (operation.projection === "health") return publicProjection({ ...pick(data, ["build", "effectiveSchemaVersion", "status", "timestamp", "uptimeSeconds", "lastRefreshAt", "refreshIntervalMs", "sourceMode", "dataQuality", "market"]), storage: publicStorageStatus(data.storage) });
   if (operation.projection === "admin-counts") return { generatedAt: data.generatedAt || null, summary: numericProjection(data.summary || {}), pagination: numericProjection(data.pagination || {}), itemCount: data.items?.length ?? data.entries?.length ?? null, metrics: numericProjection(data) };
   if (operation.projection === "quotes") return publicProjection({ ...pick(data,["contractVersion","tickers","snapshotId","asOf","warnings"]), quotes: data.quotes || {}, ...(data.contractVersion === "quotes-compact-v1" && data.timeseries ? {timeseries:data.timeseries}: {}) });
   const projected = publicProjection(data);

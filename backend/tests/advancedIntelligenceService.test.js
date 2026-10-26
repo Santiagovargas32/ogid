@@ -137,7 +137,7 @@ test("advanced snapshot shares one corpus, timestamp and methodology across ever
   assert.deepEqual(cached, snapshot);
   assert.equal(snapshot.schemaVersion, "advanced-intelligence-snapshot-v1");
   assert.equal(snapshot.methodology.version, "advanced-intelligence-v3");
-  assert.equal(snapshot.methodology.severity.version, "rule-based-news-severity-v1");
+  assert.equal(snapshot.methodology.severity.version, "news-classification-v2");
   assert.equal(snapshot.methodology.frequentTerms.version, "frequent-headline-terms-v2");
   assert.equal(snapshot.methodology.anomaly.version, "signal-anomaly-v3");
   assert.equal(snapshot.generatedAt, snapshot.anomalies.generatedAt);

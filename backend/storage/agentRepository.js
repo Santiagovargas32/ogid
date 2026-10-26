@@ -132,8 +132,13 @@ export class AgentRepository {
     }).immediate();
   }
   status({since=null}={}) {
+    return this.db.transaction(()=>this.statusView({since})).deferred();
+  }
+  statusView({since=null}={}) {
     const validSince=typeof since==='string' && Number.isFinite(Date.parse(since)) ? since : stamp(this.now());
-    const recentJobs=this.db.prepare("SELECT job_id AS jobId,task,scope,model,status,error_code AS errorCode,created_at AS createdAt,updated_at AS updatedAt,lease_until AS leaseUntil,fence,attempts,snapshot_id AS snapshotId FROM agent_jobs ORDER BY CASE WHEN status IN ('running','waiting-model','validating') THEN 0 ELSE 1 END,updated_at DESC,job_id LIMIT 50").all();
+    const columns="job_id AS jobId,task,scope,model,status,error_code AS errorCode,created_at AS createdAt,updated_at AS updatedAt,lease_until AS leaseUntil,fence,attempts,snapshot_id AS snapshotId";
+    const recentJobs=this.db.prepare(`SELECT ${columns} FROM agent_jobs INDEXED BY agent_jobs_active_recent WHERE status IN ('running','waiting-model','validating') ORDER BY updated_at DESC,job_id LIMIT 50`).all();
+    if(recentJobs.length<50)recentJobs.push(...this.db.prepare(`SELECT ${columns} FROM agent_jobs INDEXED BY agent_jobs_inactive_recent WHERE status NOT IN ('running','waiting-model','validating') ORDER BY updated_at DESC,job_id LIMIT ?`).all(50-recentJobs.length));
     const current=this.db.prepare("SELECT count(*) AS executions,coalesce(sum(status='completed'),0) AS completed,coalesce(sum(status='failed'),0) AS failed,coalesce(sum(status IN ('running','waiting-model','validating')),0) AS active,coalesce(sum(json_extract(metadata_json,'$.validation.candidateAttempts')),0) AS candidates,coalesce(sum(json_extract(metadata_json,'$.validation.repairAttempted')=1),0) AS repairs,coalesce(sum(json_extract(metadata_json,'$.evidenceReads')>0),0) AS evidenceReads,coalesce(sum(json_type(metadata_json,'$.evidenceReads') IS NULL),0) AS evidenceReadUnknown,max(CASE WHEN status='completed' THEN finished_at END) AS lastSuccessAt,max(CASE WHEN status='failed' THEN finished_at END) AS lastFailureAt FROM agent_runs WHERE started_at>=?").get(validSince);
     current.publications=this.db.prepare('SELECT count(*) AS n FROM agent_publications WHERE published_at>=?').get(validSince).n;
     current.failures=this.db.prepare("SELECT coalesce(json_extract(metadata_json,'$.terminalError.causeCode'),CASE WHEN json_extract(metadata_json,'$.lastToolFailure.code')='INVALID_ARGUMENTS' THEN 'MCP_INVALID_ARGUMENTS' END,json_extract(metadata_json,'$.errorCode'),'UNKNOWN') AS causeCode,count(*) AS count FROM agent_runs WHERE started_at>=? AND status='failed' GROUP BY causeCode ORDER BY count DESC LIMIT 16").all(validSince);
@@ -1765,6 +1770,7 @@ export class AgentRepository {
             text = `${article.title || ""} ${article.excerpt || ""}`,
             severity = classifyThreat({
               text,
+              language: article.classification?.language,
               topicTags: extractTopicTags(text),
             });
           if (
@@ -1809,6 +1815,8 @@ export class AgentRepository {
               instrumentIds: article.instrumentIds || [],
               evidenceIds: [`news:${raw.id}:${raw.revision || 1}`],
               corroboration: "syndication-is-not-independent-confirmation",
+              classification: severity.classification,
+              publisherId: article.publisherId || null,
             };
           this.db
             .prepare(

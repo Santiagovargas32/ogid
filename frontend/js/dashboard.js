@@ -7,6 +7,7 @@ import { resolveMarketQuotesPollDelayMs } from "./marketPolling.js";
 import { getLevelColor } from "./levelColors.js";
 import { DEFAULT_LIVE_NEWS_LIMIT, resolveLiveNewsLimit, filterNews, newsIdentity, newsContentRevision, NewsSelectionTracker } from "./newsFeedModel.js";
 import { mountAgentIntelligence } from "./agentIntelligence.js";
+import {newsEditorialLabels} from './newsEditorial.js';
 import {observeInterest} from './interest.js';
 import { startAdvancedIntelligence } from "./intelligence/advancedIntelligence.js";
 import { mountAwarenessCenter } from "./awareness.js";
@@ -193,21 +194,23 @@ function buildNewsParagraphs(article = {}) {
   return excerpt ? [excerpt] : [];
 }
 
+function updateNewsDrawerMeta(article) {
+  const editorial=newsEditorialLabels(article);
+  const items=[editorial.publisher,editorial.provenance,editorial.scope,editorial.status,editorial.modality,
+    formatDate(article.publishedAt),deriveArticleLevel(article),(article.countryMentions || []).join(', ') || 'Global'];
+  elements.newsDrawerMeta.innerHTML=items.filter(Boolean).map(item=>`<span class="news-meta-pill">${escapeHtml(item)}</span>`).join('');
+}
+
 function openNewsDrawer(articleId = "") {
   const article = currentNewsById.get(articleId);
   if (!article || !elements.newsDrawerTitle || !elements.newsDrawerMeta || !elements.newsDrawerBody || !elements.newsDrawerLink) {
     return;
   }
 
-  const level = deriveArticleLevel(article, getState().countries || {});
-  const mentions = article.countryMentions?.length ? article.countryMentions.join(", ") : "Global";
-  const metaItems = [article.sourceName || "Unknown Source", formatDate(article.publishedAt), level, mentions, String(article.provider || "").toUpperCase()].filter(Boolean);
   const leadImageUrl = String(article.leadImageUrl || article.imageUrl || "").trim();
 
   elements.newsDrawerTitle.textContent = String(article.title || "Headline").trim() || "Headline";
-  elements.newsDrawerMeta.innerHTML = metaItems
-    .map((item) => `<span class="news-meta-pill">${escapeHtml(item)}</span>`)
-    .join("");
+  updateNewsDrawerMeta(article);
   elements.newsDrawerBody.innerHTML = buildNewsParagraphs(article)
     .map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`)
     .join("");
@@ -894,6 +897,7 @@ function observeNewsSelection(state){
 }
 function newsRowMarkup(article,ai){
   const identity=newsIdentity(article),level=deriveArticleLevel(article);
+  const editorial=newsEditorialLabels(article);
   const image=String(article.leadImageUrl||article.imageUrl||'');
   const safeImage=/^https?:\/\//i.test(image)?image:'';
   const source=/^https?:\/\//i.test(article.url||'')?`<a class="news-source-link" href="${escapeHtml(article.url)}" target="_blank" rel="noopener noreferrer">Fuente ↗</a>`:'';
@@ -904,7 +908,9 @@ function newsRowMarkup(article,ai){
     ${pendingNews.has(identity)?'<span class="news-new-marker">Nueva</span>':updatedNews.has(identity)?'<span class="news-updated-marker">Actualizada</span>':''}</div>
     <p class="news-item-excerpt">${escapeHtml(resolveNewsExcerpt(article))}</p>
     <div class="news-item-footer"><div class="news-item-meta">
-      <span class="news-publisher">${escapeHtml(article.publisher||article.sourceName||'Unknown publisher')}</span>
+      <span class="news-publisher" title="${escapeHtml(editorial.provenance)}">${escapeHtml(editorial.publisher)}</span>
+      <span class="news-meta-pill">${escapeHtml(editorial.scope)}</span>
+      <span class="news-meta-pill" aria-label="${escapeHtml(`${editorial.status}: ${editorial.modality}`)}">${escapeHtml(editorial.status)}${article.classification?.modality && article.classification.modality!=='reported'?` · ${escapeHtml(editorial.modality)}`:''}</span>
       <time datetime="${escapeHtml(article.publishedAt||'')}">${escapeHtml(date)}</time>
       <span class="news-meta-pill" title="${escapeHtml(article.severityOrigin||'unknown')}">${escapeHtml(level)}</span>
       <span>${escapeHtml((article.countryMentions||[]).join(' · ')||'Global')}</span>
@@ -926,6 +932,7 @@ function renderNews(news=[],countries={},ai={}){
     if(article){
       currentNewsById.set(String(elements.newsDrawer.dataset.articleId),article);
       elements.newsDrawerTitle.textContent=article.title || "Headline";
+      updateNewsDrawerMeta(article);
       const revision=newsContentRevision(article);
       if(elements.newsDrawerBody.dataset.revision!==revision){const scroll=elements.newsDrawerBody.scrollTop;elements.newsDrawerBody.innerHTML=buildNewsParagraphs(article).map(p=>`<p>${escapeHtml(p)}</p>`).join("");elements.newsDrawerBody.dataset.revision=revision;elements.newsDrawerBody.scrollTop=scroll;}
 

@@ -1,3 +1,5 @@
+import {classifyRssArticle} from '../news/rssClassifier.js';
+import {extractNewsCountries} from '../news/newsClassification.js';
 import { canonicalizeArticleUrl } from "../news/articleIdentity.js";
 import { BASELINE_COUNTRIES } from "../../utils/countryCatalog.js";
 import { computeCountryInstability, COUNTRY_INSTABILITY_METHODOLOGY } from "./countryInstabilityService.js";
@@ -6,8 +8,6 @@ import { GEO_CONVERGENCE_METHODOLOGY } from "./geoEventIndex.js";
 import { normalizeOsintEvents, OSINT_FUSION_METHODOLOGY } from "./osintFusion.js";
 import { SIGNAL_ANOMALY_METHODOLOGY } from "./signalCorrelator.js";
 import {
-  classifyThreat,
-  extractTopicTags,
   RULE_BASED_NEWS_SEVERITY_METHODOLOGY
 } from "../news/rssClassifier.js";
 
@@ -72,45 +72,6 @@ export function buildMarketAwarenessProjection(awareness = {}, generatedAt = nul
   };
 }
 
-const MULTILINGUAL_COUNTRY_ALIASES = Object.freeze({
-  US: ["estados unidos", "etats unis", "vereinigte staaten"],
-  RU: ["rusia", "russie", "russland"],
-  CN: ["chine"],
-  UA: ["ucrania"],
-  IL: ["israel"],
-  IR: ["iran"],
-  SY: ["siria", "syrie"],
-  IQ: ["irak"],
-  AF: ["afganistan"],
-  KP: ["corea del norte", "coree du nord", "nordkorea"],
-  KR: ["corea del sur", "coree du sud", "sudkorea"],
-  TW: ["taiwan"],
-  IN: ["inde"],
-  PK: ["paquistan"],
-  TR: ["turquia", "turquie"],
-  YE: ["yemen"],
-  SD: ["sudan"],
-  ET: ["etiopia", "ethiopie"],
-  VE: ["venezuela"],
-  CO: ["colombie"],
-  MM: ["birmania", "birmanie"]
-});
-
-const AMBIGUOUS_US_CONTEXTS = Object.freeze([
-  "latin america", "america latina", "south america", "america del sur",
-  "central america", "america central", "north america", "america del norte"
-]);
-
-const MULTILINGUAL_TOPIC_ALIASES = Object.freeze({
-  conflict: ["misil", "misiles", "guerra", "ataque aereo", "tropas", "frappe aerienne", "guerre", "rakete", "krieg", "missil"],
-  cyber: ["ciberataque", "ciberseguridad", "cyberattaque", "cyberangriff", "ataque cibernetico"],
-  sanctions: ["sancion", "sanciones", "sanctions", "sanktionen", "sancoes"],
-  civil_unrest: ["protesta", "protestas", "manifestacion", "manifestation", "proteste", "manifestacao"],
-  humanitarian: ["refugiados", "desplazados", "aide humanitaire", "fluchtlinge", "ajuda humanitaria"],
-  energy: ["petroleo", "oleoducto", "gazoduc", "erdol", "gasoduto"],
-  space: ["satelite", "lanzamiento espacial", "lancement spatial", "weltraumstart", "lancamento espacial"]
-});
-
 function normalizeText(value = "") {
   return String(value)
     .normalize("NFKD")
@@ -126,57 +87,14 @@ function includesNormalizedPhrase(haystack, value) {
   return haystack.includes(` ${normalizedTitle(value)} `);
 }
 
-function extractMultilingualTopicTags(text = "") {
-  const haystack = ` ${normalizedTitle(text)} `;
-  return Object.entries(MULTILINGUAL_TOPIC_ALIASES)
-    .filter(([, aliases]) => aliases.some((alias) => includesNormalizedPhrase(haystack, alias)))
-    .map(([topic]) => topic);
-}
-
 function extractCountryEntities(item = {}) {
-  const haystack = ` ${normalizedTitle(`${item.title || ""} ${item.description || ""} ${item.summary || ""}`)} `;
-  const matches = new Set(item.countryMentions || []);
-  for (const country of BASELINE_COUNTRIES) {
-    const aliases = [country.name, ...(country.aliases || []), ...(MULTILINGUAL_COUNTRY_ALIASES[country.iso2] || [])]
-      .filter((alias) => !(country.iso2 === "US" && normalizedTitle(alias) === "america"));
-    if (aliases.some((alias) => includesNormalizedPhrase(haystack, alias))) matches.add(country.iso2);
-  }
-  const ambiguousUsContext = AMBIGUOUS_US_CONTEXTS.some((alias) => includesNormalizedPhrase(haystack, alias));
-  if (ambiguousUsContext) {
-    const us = BASELINE_COUNTRIES.find((country) => country.iso2 === "US");
-    const explicitUs = [us?.name, ...(us?.aliases || []), ...(MULTILINGUAL_COUNTRY_ALIASES.US || [])]
-      .filter((alias) => normalizedTitle(alias) !== "america")
-      .some((alias) => includesNormalizedPhrase(haystack, alias));
-    if (!explicitUs) matches.delete("US");
-  }
-  return [...matches];
+  return extractNewsCountries(`${item.title || ''} ${item.description || ''} ${item.summary || ''}`,item.countryMentions || []);
 }
-
 function enrichAdvancedArticle(item = {}, countryMentions = []) {
-  const text = `${item.title || ""} ${item.description || ""} ${item.summary || ""} ${item.content || ""}`;
-  const topicTags = [...new Set([
-    ...extractTopicTags(text),
-    ...extractMultilingualTopicTags(text),
-    ...(Number(item.conflict?.totalWeight || 0) > 0 ? ["conflict"] : []),
-    ...(item.topicTags || [])
-  ].map((tag) => String(tag || "").toLowerCase()).filter(Boolean))].slice(0, 8);
-  const threat = classifyThreat({ text, topicTags });
-  const threatRank = { low: 0, monitoring: 1, elevated: 2, critical: 3 };
-  const existingThreatLevel = String(item.threatLevel || "low").toLowerCase();
-  const threatLevel = Number(threatRank[existingThreatLevel] || 0) > Number(threatRank[threat.level] || 0)
-    ? existingThreatLevel
-    : threat.level;
-  const existingThreatScore = Number(item.threatScore);
-  return {
-    ...item,
-    countryMentions,
-    topicTags,
-    threatLevel,
-    threatScore: Math.max(Number.isFinite(existingThreatScore) ? existingThreatScore : 0, Number(threat.score || 0)),
-    credibilityScore: Number(item.credibilityScore ?? 0.55)
-  };
+  const result = classifyRssArticle({...item,description:item.description || item.summary || item.excerpt || ''});
+  return {...item,countryMentions,topicTags:result.topicTags,threatLevel:result.threatLevel,
+    threatScore:result.threatScore,classification:result.classification,credibilityScore:Number(item.credibilityScore ?? .55)};
 }
-
 
 export function advancedArticleIdentity(item = {}) {
   const url = canonicalizeArticleUrl(item.url);

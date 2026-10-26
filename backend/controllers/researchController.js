@@ -1,3 +1,5 @@
+import {PUBLISHER_METHOD,SOURCE_PRIORITY_METHOD} from '../services/news/publisherIdentity.js';
+import {NEWS_CLASSIFICATION_VERSION,NEWS_LANGUAGES} from '../services/news/newsClassification.js';
 import { BACKEND_BUILD } from "../utils/buildIdentity.js";
 import { OGID_OPERATIONS, OPERATIONS_VERSION, OPERATIONS_HASH, getOperation, parseOperationQuery, validateValue } from "../contracts/ogidOperations.js";
 import { AppError } from "../utils/error.js";
@@ -22,7 +24,7 @@ export async function resolveInstruments(req, res) {
   res.json({ ok: true, data: { generatedAt: new Date().toISOString(), registryOrigin: "verified-runtime", instruments: universe.filter(instrument => !query.references?.length || ids.has(instrument.instrumentId)).map(instrument => instrumentView(instrument, res.app.locals.marketWatchlistService.selectedInstrumentIds, snapshot.market?.quotes || {})), resolutions,
     warnings: ["La identidad de proveedor no demuestra una posición ni una clase elegida. Resolver no consulta proveedores; si falta una identidad, usar búsqueda operador y verificación explícita."] } });
 }
-export async function getCapabilities(_req, res) { res.json({ ok: true, data: { contractVersion: OPERATIONS_VERSION, contractHash: OPERATIONS_HASH, dashboardProfiles:['dashboard-v1'], build: BACKEND_BUILD, generatedAt: new Date().toISOString(), operations: OGID_OPERATIONS.filter(op => op.profile === "research"), researchPipeline:res.app.locals.researchPipeline, newsCoverage: await res.app.locals.newsArchive.coverage(), runningCommitVerified: false } }); }
+export async function getCapabilities(_req, res) { res.json({ ok: true, data: { contractVersion: OPERATIONS_VERSION, contractHash: OPERATIONS_HASH, dashboardProfiles:['dashboard-v1'], newsEditorial:{identityMethod:PUBLISHER_METHOD,classificationMethod:NEWS_CLASSIFICATION_VERSION,languages:NEWS_LANGUAGES,sourcePriorityMethod:SOURCE_PRIORITY_METHOD,meaning:'news relevance; not verified occurrence or factual reliability'}, build: BACKEND_BUILD, generatedAt: new Date().toISOString(), operations: OGID_OPERATIONS.filter(op => op.profile === "research"), researchPipeline:res.app.locals.researchPipeline, newsCoverage: await res.app.locals.newsArchive.coverage(), runningCommitVerified: false } }); }
 export async function getDiagnostics(_req, res) {
   const snapshot = stateManager.getSnapshot(); const orchestrator = res.app.locals.orchestrator;
   res.json({ ok: true, data: { generatedAt: new Date().toISOString(), counts: { news: snapshot.news.length, quotes: Object.keys(snapshot.market?.quotes || {}).length, archived: res.app.locals.newsArchive.records.size },

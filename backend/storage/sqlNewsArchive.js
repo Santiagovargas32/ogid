@@ -12,6 +12,9 @@ import { normalizeArticles } from "../services/normalizeService.js";
 import { classifyFinancialArticle, scoreFinancialImportance } from "../services/news/financialNewsService.js";
 import { sanitizeArticleContent } from '../services/news/newsContentSanitizer.js';
 import { physicalPages } from './sqlNewsCorpus.js';
+import {resolveEditorialIdentity,editorialProjection,PUBLISHER_METHOD} from '../services/news/publisherIdentity.js';
+import {classifyRssArticle} from '../services/news/rssClassifier.js';
+import {classificationProjection,NEWS_CLASSIFICATION_VERSION} from '../services/news/newsClassification.js';
 const hash=x=>createHash("sha256").update(JSON.stringify(x)).digest("hex");
 const wireSize=data=>{const p={ok:true,queriedAt:new Date().toISOString(),origin:"OGID",data,warnings:data.warnings,truncated:false};return Buffer.byteLength(JSON.stringify({structuredContent:p,content:[{type:"text",text:JSON.stringify(p)}]}));};
 
@@ -39,7 +42,7 @@ export class SqlNewsArchive extends NewsArchive {
     this.db.prepare("INSERT INTO articles VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(article_id) DO UPDATE SET title=excluded.title,excerpt=excluded.excerpt,canonical_url=excluded.canonical_url,published_at=excluded.published_at,last_seen_at=excluded.last_seen_at,revision=excluded.revision,usage_policy=excluded.usage_policy,payload_json=excluded.payload_json").run(article.id,article.title,article.excerpt || null,article.url || null,article.publishedAt || null,article.receivedAt,article.archiveLastSeenAt,article.revision || 1,policy,JSON.stringify(article));
     for(const alias of article.originalIds || [])this.db.prepare("INSERT OR IGNORE INTO article_aliases VALUES(?,?)").run(alias,article.id);
     if(previous?.revision===article.revision)return;
-    this.db.prepare("INSERT OR IGNORE INTO article_revisions VALUES(?,?,?,?)").run(article.id,article.revision || 1,article.archiveLastSeenAt,JSON.stringify(article));
+    this.db.prepare("INSERT OR IGNORE INTO article_revisions VALUES(?,?,?,?)").run(article.id,article.revision || 1,article.metadataUpdatedAt || article.archiveLastSeenAt,JSON.stringify(article));
     const excerpt=this.pendingExcerpts?.get(article.id);
     if(excerpt!==undefined&&article.permittedExcerptHash)this.db.prepare('INSERT OR IGNORE INTO article_permitted_excerpts VALUES(?,?,?,?,?)').run(article.id,article.revision,article.permittedExcerptHash,excerpt,article.archiveLastSeenAt);
     for(const alias of article.originalIds || [])this.db.prepare("INSERT OR IGNORE INTO article_aliases VALUES(?,?)").run(alias,article.id);
@@ -94,6 +97,29 @@ export class SqlNewsArchive extends NewsArchive {
       for(const article of values){accepted+=this.ingest([article],options).accepted||0;processed++;if(performance.now()-started>=budgetMs)break;}
       return {processed,accepted,revision:this.revision};
     }).immediate();}catch(error){Object.assign(this,readMeta(this.db,'news.meta',before));throw error;}
+  }
+  enrichEditorialPage({limit=100,budgetMs=50}={}) {
+    const key=`news.editorial-backfill:${PUBLISHER_METHOD}:${NEWS_CLASSIFICATION_VERSION}`, before=this.revision;
+    try{return this.db.transaction(()=>{
+      const state=readMeta(this.db,key,null) || {cursor:0,upper:this.db.prepare('SELECT coalesce(max(rowid),0) AS n FROM articles').get().n,processed:0};
+      if(state.complete)return state;
+      const rows=this.db.prepare('SELECT rowid,length(CAST(payload_json AS BLOB)) AS bytes FROM articles WHERE rowid>? AND rowid<=? ORDER BY rowid LIMIT ?').all(state.cursor,state.upper,Math.max(1,Math.min(100,Number(limit)||100)));
+      const start=performance.now();let bytes=0;
+      for(const row of rows){
+        if(bytes && bytes+row.bytes>131072)break;
+        if(row.bytes>131072)throw new AppError('Enriquecimiento diferido: un registro excede el presupuesto de página.',413,'NEWS_METADATA_ROW_TOO_LARGE');
+        const previous=JSON.parse(this.db.prepare('SELECT payload_json FROM articles WHERE rowid=?').get(row.rowid).payload_json),classified=classifyRssArticle(previous);
+        const metadata={...editorialProjection(resolveEditorialIdentity(previous)),publisher:classified.publisher,
+          classification:classificationProjection(classified.classification),threatLevel:classified.threatLevel,topicTags:classified.topicTags};
+        if(hash(Object.fromEntries(Object.keys(metadata).map(k=>[k,previous[k]])))!==hash(metadata)){
+          this.save({...previous,...metadata,revision:previous.revision+1,metadataUpdatedAt:new Date(this.now()).toISOString()});this.revision++;
+        }
+        state.cursor=row.rowid;state.processed++;bytes+=row.bytes;
+        if(performance.now()-start>=Math.max(1,Math.min(100,Number(budgetMs)||50)))break;
+      }
+      state.complete=!this.db.prepare('SELECT 1 FROM articles WHERE rowid>? AND rowid<=? LIMIT 1').get(state.cursor,state.upper);
+      writeMeta(this.db,key,state);this.persist();return state;
+    }).immediate();}catch(error){this.revision=before;throw error;}
   }
   preparePermittedExcerpt(raw,record,previous){
     if(!this.pendingExcerpts)return;
