@@ -1,6 +1,9 @@
 # Entrega C — cierre de implementación e integración
 
-Corte: **26/10/2026**. Rama `feat/agentic-intelligence`, base anterior B `9a3aa2fb4e58b7fd1342f835288b843e1b06e2a9`. Este checkpoint identifica el commit `feat(news): cerrar entrega C de comparación y afirmaciones`. El SHA y las comprobaciones posteriores de publicación/CI se conservan en el recibo privado `.implementation-evidence/2026-10-26/C-close/publication.json` y se verifican por el conector GitHub; en otro checkout se localiza el commit por ese título.
+**Corte histórico fechado.** Los recuentos, instalaciones y procesos de este informe pertenecen a su cierre; el estado posterior del punto 2 se consulta en [ESTADO.md](ESTADO.md). No retomar sus pendientes si ya figuran cerrados allí.
+
+
+Corte: **26/10/2026**. Rama `feat/agentic-intelligence`, base anterior B `9a3aa2fb4e58b7fd1342f835288b843e1b06e2a9`. Este checkpoint identifica el commit `feat(news): cerrar entrega C de comparación y afirmaciones`. Commit publicado **40a027d21bcf5cb7140a16bbf8649d3c7126dbc4**, [CI 40404890887 correcta](https://github.com/Santiagovargas32/ogid/actions/runs/40404890887). Los detalles de publicación/CI se conservan en el recibo privado `.implementation-evidence/2026-10-26/C-close/publication.json` y se verifican por el conector GitHub; en otro checkout se localiza el commit por ese título.
 
 Identidad del código validado: artifactHash **17aaed71a063a740c091b281071c799a6e5b5133b5b01e88a8e980a37796c0e4**, contrato **1.11.0**, esquema **025**. El hash identifica archivos de runtime, no configuración, instalación, datos ni frontend. El manifiesto privado identifica todos los paths/bytes revisados antes de publicar.
 
@@ -46,6 +49,6 @@ Suites en la instalación aislada con dependencias coincidentes y Node 24.22.1; 
 
 ## Frontera con la puesta en servicio y las siguientes entregas
 
-El enriquecimiento histórico **no se ejecutó de forma persistente** en este cierre: el piloto hizo rollback. Las facetas B y el índice C siguen pendientes de poblar. Las dependencias operativas continúan en las versiones anteriores al lock actualizado, con un adaptador MCP activo; no se reinstalaron durante la revisión. El backend permanece detenido, la base reparada sigue seleccionada y llama.cpp/shadow se preservan.
+El enriquecimiento histórico **no se ejecutó de forma persistente** en este cierre: el piloto hizo rollback. En el corte C, las facetas B y el índice C estaban pendientes de poblar y las instalaciones seguían anteriores a sus locks. El punto 2 posterior alinea instalaciones y completa el histórico; consultar ESTADO.md, sin reutilizar este corte como estado vigente. El backend permanece detenido, la base reparada sigue seleccionada y llama.cpp/shadow se preservan.
 
 Esto mantiene separadas la implementación/integración/publicación de C y las puertas operativas finales. Siguiente lote recomendado: alinear instalaciones en una ventana controlada, pilotar y completar el enriquecimiento por páginas, y comenzar D.1 con datos coherentes. Pruebas de D/E/F progresivas; observación formal de 24 h y promoción semántica al final del candidato correspondiente. Detalle y origen de pendientes en [CIERRE-FINAL.md](CIERRE-FINAL.md); entrada D en [ENTREGA-D.md](ENTREGA-D.md).

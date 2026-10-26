@@ -19,6 +19,7 @@ import {SourceAssessments} from '../services/news/sourceAssessments.js';
 import {sourceCoverage,saveEditorialFacet} from './sourceCoverage.js';
 import {NewsComparisons} from './newsComparisons.js';
 const hash=x=>createHash("sha256").update(JSON.stringify(x)).digest("hex");
+export const EDITORIAL_BACKFILL_KEY=`news.editorial-backfill:${PUBLISHER_METHOD}:${NEWS_CLASSIFICATION_VERSION}:comparisons-v1`;
 const wireSize=data=>{const p={ok:true,queriedAt:new Date().toISOString(),origin:"OGID",data,warnings:data.warnings,truncated:false};return Buffer.byteLength(JSON.stringify({structuredContent:p,content:[{type:"text",text:JSON.stringify(p)}]}));};
 
 export class SqlNewsArchive extends NewsArchive {
@@ -115,7 +116,7 @@ export class SqlNewsArchive extends NewsArchive {
     }).immediate();}catch(error){Object.assign(this,readMeta(this.db,'news.meta',before));throw error;}
   }
   enrichEditorialPage({limit=100,budgetMs=50}={}) {
-    const key=`news.editorial-backfill:${PUBLISHER_METHOD}:${NEWS_CLASSIFICATION_VERSION}:comparisons-v1`, before=this.revision;
+    const key=EDITORIAL_BACKFILL_KEY, before=this.revision;
     try{return this.db.transaction(()=>{
       const state=readMeta(this.db,key,null) || {cursor:0,upper:this.db.prepare('SELECT coalesce(max(rowid),0) AS n FROM articles').get().n,processed:0};
       if(state.complete)return state;

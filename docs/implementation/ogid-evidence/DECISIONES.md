@@ -1,5 +1,8 @@
 # Decisiones vigentes
 
+Registro cronológico: los estados operativos describen su fecha, no el presente. D27 sustituyó las precondiciones iniciales de copia; D33/D34 cerraron la recuperación; D35 cerró la publicación C. **D37–D39 rigen el cierre del punto 2; consultar ESTADO.md.**
+
+
 26/10/2026, aprobación explícita del plan por el usuario:
 
 - D01: primer ciclo 0 + A; B–F continúan la hoja de ruta. Evita mezclar rediseño global con la base necesaria.
@@ -51,3 +54,9 @@ Decisiones de implementación del primer ciclo, 26/10/2026:
 
 - D35: el usuario autoriza cerrar y publicar C mediante commit del conector, con revisión de aceptación y exclusiones. Revisión final: procedencia de origen, políticas de texto, budgets reales y paginación por índices corregidos; backend 1071/1071, MCP 32/32, audits 0 y piloto real con rollback. Se preserva el diagnóstico renewalId previo. El enriquecimiento persistente y la instalación operativa no se confunden con estas pruebas.
 - D36: orden recomendado: alinear instalaciones y pilotar/completar enriquecimiento antes de D, pruebas integradas progresivas con D/E/F y observación formal 24 h del candidato final. Las 8+1 diferencias proceden exactamente de los locks actualizados en a1d0fb8, conservándose node_modules anteriores durante shadow. No reinstalar sobre el adaptador activo sin coordinar su reconexión. Corpus de evaluación y matriz del piloto pueden prepararse en paralelo.
+
+- D37 (26/10/2026, después de C=40a027d): el usuario autoriza cerrar punto 2 antes de desarrollar D/E/F: eliminar discrepancias documentales, instalar versiones seguras compatibles y enriquecer históricos. Se reproducen los locks auditados con npm ci; 0 discrepancias/0 vulnerabilidades backend y MCP. Se recarga el túnel/adaptador existente conservando credenciales, configuración y llama.cpp. El enriquecimiento utiliza el escritor protegido en páginas, sin configurar adquisición/IA ni abrir otro scheduler. Piloto persistente y pasada completa deben acreditarse en ESTADO, nunca inferirse de las pruebas. Se conserva «sin evaluar» sin dataset autorizado.
+
+- D38 (26/10/2026, mismo lote autorizado): después de resolver las discrepancias iniciales, el registro mostró versiones compatibles posteriores. Se eligieron Express 5.3.0, Helmet 8.3.0, ws 8.22.0, parche Yahoo Finance 4.0.5 y SDK MCP cliente/servidor 2.4.0, conservando Zod 4.6.7 y dotenv 16.6.1. Candidato aislado completo: backend 1074/1074, MCP 32/32 y auditorías runtime 0. Se cambia el pin Yahoo sólo tras esa validación, sin el downgrade incompatible de audit fix --force. No se adopta dotenv 18 (cambio mayor sin necesidad de seguridad demostrada). MCP puede recargarse independientemente; backend se instala al terminar el backfill y sus comprobaciones. Los locks nuevos revisados sustituyen a los de a1d0fb8; las discrepancias originales no se reintroducen. Ver estado efectivo en ESTADO.md.
+
+- D39: punto 2 cerrado con 146.475/146.475 noticias, 0 proyecciones pendientes y reapertura idempotente 0 procesadas. Se instalan los locks candidatos ya verificados; 138/3 paquetes runtime matched y auditorías 0. Se verifica conservación global de identidad/fechas/contentRevision, 147 revisiones congeladas muestreadas y recuentos ajenos; se añaden revisiones sin reescribir historia. No inventar los 141.959 editores pendientes ni las 34.161 clasificaciones unknown-language/2.671 unsupported-language. 0.2 conserva episodios largos y cobertura 30 días de 1,93 s: no aceptar rendimiento por completar el histórico. D.1 recibe todo el backlog, sin saltarlo ni emitir incidentes nuevos por indexación; no se implementa D en este lote.

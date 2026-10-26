@@ -71,7 +71,7 @@ export class BusinessRuntime {
     this.registryDiagnostics={...this.registryDiagnostics,...state,...details,cleanupPending:state.state!=='ready'||!this.maintenancePending||Object.values(this.maintenancePending).some(Boolean),maintenancePhase:phase,maintenanceBudgetMs:budgetMs,durationMs:performance.now()-started};
     return this.registryDiagnostics;
   }
-  close(){this.newsCorpus?.close();this.services?.news.close();}
+  close(){this.newsCorpus?.close();this.services?.news.close();this.maintenanceNews?.close();this.maintenanceNews=null;}
   restoreQuotas(){for(const [provider,saved]of Object.entries(this.load("provider-quota")?.providers || {})){apiQuotaTracker.ensureProvider(provider);Object.assign(apiQuotaTracker.providers[provider],saved);}}
   configure(input={}){
     this.analysisOnly=input.analysisOnly === true;
@@ -224,6 +224,25 @@ export class BusinessRuntime {
     return {...calculateMarketProjection({...input,articles}),newsCoverage:{...corpus.meta,awarenessRevision:awareness?.revision ?? null,analysisArticleCount:articles.length}};
   }
   async call({service,method,args=[],context,analysisJob,requestId,preparedScenarios}){
+    // The existing writer can enrich metadata without configuring acquisition,
+    // recovering unrelated jobs or hydrating analytical services. analysisOnly
+    // here disables archive cleanup; the storage contract still requires a writer.
+    if(service==='news'&&method==='enrichEditorialPage'){
+      const target=this.services?.news || (this.maintenanceNews ||= new SqlNewsArchive(this.db,{analysisOnly:true}));
+      const requestHash=stableHash([service,method,args]);
+      if(requestId){
+        if(!/^[A-Za-z0-9._:-]{1,128}$/.test(requestId))throw new AppError('Identidad inválida.',400,'STORAGE_INVALID_REQUEST_ID');
+        const previous=this.db.prepare('SELECT input_hash,result_json FROM storage_commands WHERE request_id=?').get(requestId);
+        if(previous){if(previous.input_hash!==requestHash)throw new AppError('Conflicto de idempotencia.',409,'STORAGE_IDEMPOTENCY_CONFLICT');return JSON.parse(previous.result_json);}
+      }
+      Object.assign(target,readMeta(this.db,'news.meta',{}));
+      const before=target.revision;
+      try{return this.db.transaction(()=>{
+        const value=target.enrichEditorialPage(...args.map(value=>value===null?undefined:value));
+        if(requestId)this.db.prepare('INSERT INTO storage_commands VALUES(?,?,?,?,?)').run(requestId,'domain.news.enrichEditorialPage',requestHash,JSON.stringify(value),new Date().toISOString());
+        return value;
+      }).immediate();}catch(error){target.revision=before;throw error;}
+    }
     if(service === "quotes" && method === "history"){
       const i=getInstrumentByCanonicalSymbol(args[0]);if(!i)return [];
       return this.db.prepare("SELECT market_time,price,payload_json FROM quote_observations WHERE instrument_id=? ORDER BY coalesce(market_time,received_at) DESC LIMIT 500").all(i.instrumentId).reverse().map(r=>({...JSON.parse(r.payload_json),timestamp:r.market_time,price:r.price}));

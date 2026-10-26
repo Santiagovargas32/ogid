@@ -11,6 +11,7 @@
     "dev:rss-lab": "node --watch scripts/rss-lab-server.js",
     "rss:probe": "node scripts/probe-rss.js",
     "rss:audit": "node scripts/audit-rss-catalog.js",
+    "news:enrich": "node scripts/news-editorial-backfill.js",
     "awareness:lab": "node scripts/awareness-admission-lab.js",
     "market:watchlist:inspect": "node scripts/inspect-market-watchlist.js",
     "smoke:upstreams": "node scripts/smoke-upstreams.js",
@@ -35,9 +36,9 @@
     "better-sqlite3": "13.0.3",
     "cheerio": "1.2.0",
     "dotenv": "^16.6.1",
-    "express": "^5.1.0",
-    "helmet": "^8.1.0",
-    "ws": "^8.21.0",
-    "yahoo-finance2": "4.0.2"
+    "express": "^5.3.0",
+    "helmet": "^8.3.0",
+    "ws": "^8.22.0",
+    "yahoo-finance2": "4.0.5"
   }
 }

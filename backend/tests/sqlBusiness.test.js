@@ -172,17 +172,24 @@ test("SQL startup runs background news ingestion without requiring a legacy RSS 
 });
 async function fixture(){const dir=mkdtempSync(join(tmpdir(),"ogid-sql-business-")),db=join(dir,"test.sqlite"),manager=new StorageManager({enabled:true,businessEnabled:true,databasePath:db});await manager.start();await manager.request("domain.configure",{instruments:listVerifiedInstruments(),rootDir:dir,researchSources:[],signalPolicy:{},rss:{rssFeeds:[],maxFeedsPerRun:18,maxCorpusItems:900}});return {dir,db,manager,call:(service,method,...args)=>manager.request("domain.call",{service,method,args}),async close(){await this.manager.close();rmSync(dir,{recursive:true,force:true});}};}
 
-test("news feed and archive reads run on the read-only analysis worker without occupying the writer",async()=>{
+test("news feed and archive reads run on the read-only analysis worker without occupying the writer",async t=>{
   const f=await fixture();
   try{
     await f.call("news","ingest",[article(1,{title:"United States defense forces strike after Russia attack",publishedAt:new Date(Date.now()-1000).toISOString()})]);
-    const writerBefore=f.manager.metrics.completed,analysisBefore=f.manager.queryManager.metrics.completed;
+    // Background index maintenance may finish while the reads are pending.
+    // Observe routing of these reads rather than all unrelated writer work.
+    const writerReads=[],request=f.manager.localRequest.bind(f.manager);
+    t.mock.method(f.manager,'localRequest',(operation,input,options)=>{
+      if(operation==='domain.call'&&input.service==='news'&&['getFeed','getLiveFeed'].includes(input.method))writerReads.push(input.method);
+      return request(operation,input,options);
+    });
+    const analysisBefore=f.manager.queryManager.metrics.completed;
     const [feed,live,archive]=await Promise.all([
       f.call("news","getFeed",{}),f.call("news","getLiveFeed",{}),
       f.call("news","getLiveFeed",{includeOlder:true,q:"Russia"})
     ]);
     assert.equal(feed.items.length,1);assert.equal(live.news.length,1);assert.equal(archive.news.length,1);
-    assert.equal(f.manager.metrics.completed,writerBefore);
+    assert.deepEqual(writerReads,[]);
     assert.equal(f.manager.queryManager.metrics.completed,analysisBefore+3);
     assert.equal(f.manager.queryManager.getStatus().queryOnly,true);
     assert.equal(f.manager.queryManager.metrics.failed,0);

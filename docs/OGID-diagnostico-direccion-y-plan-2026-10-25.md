@@ -2,6 +2,8 @@
 
 Fecha: 25 de octubre de 2026. Revisión de GitHub y lecturas del servicio conectado realizadas a partir de las 16:55, Europe/Madrid.
 
+> Diagnóstico histórico del 25/10. La implementación y el estado operativo posteriores se consultan en [ESTADO.md](implementation/ogid-evidence/ESTADO.md); los fallos o pendientes descritos aquí no se presuponen vigentes.
+
 ## 1. Recomendación ejecutiva
 
 Orientaría OGID a una **plataforma de seguimiento geopolítico con comparación de fuentes, evidencias trazables y alertas de cambios relevantes**. Su unidad principal debería evolucionar de «noticia puntuada» a «situación con afirmaciones, fuentes y revisiones». La noticia original seguiría siendo accesible y conservaría su identidad.

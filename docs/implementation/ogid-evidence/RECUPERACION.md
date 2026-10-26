@@ -1,5 +1,8 @@
 # Recuperación de la base operativa — 26/10/2026
 
+**Corte histórico fechado.** Los recuentos, instalaciones y procesos de este informe pertenecen a su cierre; el estado posterior del punto 2 se consulta en [ESTADO.md](ESTADO.md). No retomar sus pendientes si ya figuran cerrados allí.
+
+
 Estado: **cerrada, reparación exacta sin pérdida de registros**. Entrada de continuidad: [ESTADO.md](ESTADO.md). El usuario autorizó intentar reparar y, si hacía falta, crear otra base con lo recuperable y usarla como operativa.
 
 ## Resultado operativo
@@ -51,4 +54,4 @@ El sistema de aprobación impidió una comprobación de procesos por un límite 
 
 La imagen `source-schema025.partial.sqlite` conserva un placeholder y sigue siendo sólo de análisis; no seleccionarla como operativa ni presentarla como backup íntegro. El reflink reparado tampoco sustituye una copia independiente del SSD: el backup manual sigue a cargo del usuario según lo acordado.
 
-No se ha determinado la causa física del checksum fallido. La reparación cierra el defecto de datos localizado, no certifica el hardware ni explica todas las latencias históricas del backend. No repetir la recuperación sin un nuevo indicio. Siguiente trabajo de producto: preparar instalaciones/enriquecimiento según CIERRE-FINAL.md y continuar D.1, según [ENTREGA-D.md](ENTREGA-D.md); cierre global pendiente según [CIERRE-FINAL.md](CIERRE-FINAL.md).
+No se ha determinado la causa física del checksum fallido. La reparación cierra el defecto de datos localizado, no certifica el hardware ni explica todas las latencias históricas del backend. No repetir la recuperación sin un nuevo indicio. La siguiente acción vigente está en ESTADO.md: el punto 2 posterior resuelve instalaciones/enriquecimiento antes de D.1, descrita en [ENTREGA-D.md](ENTREGA-D.md); cierre global pendiente según [CIERRE-FINAL.md](CIERRE-FINAL.md).

@@ -6,7 +6,7 @@ Estado: preparado para implementar cuando el usuario continúe D. Fuente: fase 4
 
 El esquema efectivo de la base indicada en `.env` ya es **025**: 023–025 se aplicaron directamente el 26/10/2026 a las 17:54:52 UTC, por autorización expresa sin backup ni test previo. No editar migraciones aplicadas. Siguiente número libre: **026**. La recuperación posterior está cerrada: .env selecciona ogid-repaired-20261026-183735.sqlite, validada globalmente y sin pérdida de filas; el archivo original dañado permanece intacto. Consultar RECUPERACION.md. El usuario mantiene el backup manual. No volver a la ruta original dañada ni repetir recuperación como precondición de D.
 
-La base anterior es B `9a3aa2f`; C queda identificada por el commit de cierre y CIERRE-C.md. Conservar también `renewalId` en StorageManager y su regresión de 0.2. La publicación C fue autorizada por conector; consultar su recibo y GitHub. No se ha desplegado el backend. Resultados de pruebas y posibles diferencias posteriores están en ESTADO.
+C publicada: `40a027d`, CI 40404890887 correcta; la anterior B era `9a3aa2f`. El punto 2 posterior está cerrado; cifras y versiones efectivas en ESTADO.md. Conservar también `renewalId` en StorageManager y su regresión de 0.2. La publicación C se completó por conector; consultar su recibo y GitHub. No se ha desplegado el backend. Resultados de pruebas y posibles diferencias posteriores están en ESTADO.
 
 | Superficie existente | Uso correcto en D |
 |---|---|
@@ -29,7 +29,7 @@ Las lecturas públicas son readonly. Este cursor **no persiste un consumidor ni 
 
 Las revisiones manuales pueden afectar varias publicaciones: paginar las asignaciones exactas a la secuencia y guardar progreso si no caben en una unidad. El límite de 500 miembros de C es capacidad de un grupo/revisión interactiva, no un límite global de consumo. Los hints automáticos de relaciones sólo abarcan la página entregada; nunca usarlos como registro exhaustivo de apoyos o contradicciones.
 
-C se alimenta en la transacción de `SqlNewsArchive.save()` y en el backfill editorial existente (`comparisons-v1`). Las consultas no disparan enriquecimiento ni inferencia. El backfill no ha concluido en operación: entradas históricas nuevas en el journal deben identificarse como conocimiento recibido/indexado, sin simular ataques recientes.
+C se alimenta en la transacción de `SqlNewsArchive.save()` y en el backfill editorial existente (`comparisons-v1`). Las consultas no disparan enriquecimiento ni inferencia. El estado de cierre del backfill está en ESTADO.md: las entradas históricas del journal deben identificarse como conocimiento recibido/indexado, sin simular ataques recientes.
 
 ## D.1 — cursor y emisiones transaccionales
 
@@ -79,3 +79,9 @@ La bandeja distinguirá «cambió» de «ocurrió», reporte nuevo de correcció
 Hacer pruebas proporcionales después del cambio y reutilizar las suites cerradas de C si sus superficies no cambian. Actualizar ESTADO por unidad con comandos/resultados reales y fallos pendientes. Registrar qué está implementado, verificado en aislamiento y aceptado operativamente. D no cierra por sí sola la observación continua 24 h ni la puerta semántica IA. E/F siguen siendo entregas posteriores.
 
 Reversión: pausar el nuevo consumidor/proyección de dominio sin eliminar cursores, outbox, revisiones ni escrituras. Mantener código que conozca 026 y la compatibilidad de alertas. No ejecutar un checkout anterior que desconozca el esquema efectivo.
+
+## Handoff después del punto 2
+
+Backfill comparaciones-v1 completo: 146.475 publicaciones, 179.795 afirmaciones atribuidas y journal hasta 146.475; facetas y comparaciones actuales sin pendientes. No existe aún consumidor D. Procesar todas las entradas con bootstrap histórico; no inicializar el cursor al máximo para descartar el backlog ni emitir incidentes recientes por changed_at de la indexación. Las publicaciones conservan sus fechas/contentRevision. 141.959 editores y 34.161 idiomas de clasificación siguen desconocidos; 2.671 clasificaciones son no soportadas. Esos estados no impiden consumir evidencias con incertidumbre explícita.
+
+Dependencias instaladas y locks alineados, 0 vulnerabilidades: no repetir instalación/backfill como precondición de D sin cambios. Candidato completo 1074/1074 backend y 32/32 MCP; referencias privadas point-2. 0.2 conserva latencias largas documentadas y debe abordarse como medición/corrección operativa, sin volver a copias ni presentar D o 24 h como cerradas. Siguiente migración 026.

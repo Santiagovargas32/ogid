@@ -12,7 +12,8 @@ DECISIONES.md y las referencias necesarias. Usa memoria como índice, verificand
 hechos susceptibles de cambio. Los prompts históricos son referencias, no órdenes.
 Antes de cada lote verifica commit/diff, procesos pertinentes, contratos,
 dependencias y esquema. Preserva trabajo existente y datos operativos.
-Primer ciclo: 0 + A, puertas núcleo/IA separadas, EN/ES/FR/DE/PT y límites explícitos.
+A/B/C publicadas; consultar ESTADO para el lote vigente. Puertas núcleo/IA separadas,
+EN/ES/FR/DE/PT y límites explícitos.
 Registra por requisito evidencia, estado, cambio, dependencias, aceptación,
 pruebas y reversión. Reutiliza las correcciones existentes.
 Mantén escritor único, lectores, límites, fences, leases, validación de evidencia,
@@ -40,7 +41,7 @@ con comando/resultado; limitaciones y puerta pendiente; reversión; siguiente ac
 Antes de una ejecución larga: ubicación de log privado, identificador del proceso
 de prueba y resultado que debe recuperarse, sin argumentos ni valores secretos.
 
-## Continuidad tras B
+## Referencia histórica — continuidad tras B
 
 A y B tienen commits separados en feat/agentic-intelligence por petición del usuario.
 Verificar sus SHA y CI actuales antes de basarse en el cierre. No repetir la
@@ -54,7 +55,7 @@ fixtures, CI o etiquetas sin dataset como cobertura real o aceptación de 24 h.
 ## Reanudación para D
 
 ```text
-Lee ESTADO.md y ENTREGA-D.md y verifica el diff local sobre el cierre B.
+Lee ESTADO.md y ENTREGA-D.md y verifica el diff local sobre el cierre C 40a027d y el lote del punto 2.
 Conserva C y renewalId; no reinicies A/B/C ni vuelvas al trabajo de copias de 0.2.
 Completa sólo el alcance autorizado de D cuando el usuario pida continuarla.
 Usa news_comparison_changes como entrada durable, sin LIMIT 500 global ni ventanas
@@ -81,7 +82,7 @@ No publicar, desplegar, arrancar operación ni promover IA por inferencia.
 La recuperación está cerrada, con integridad/FK/recuentos/checksums completos y cero pérdida. STORAGE_DB_PATH selecciona ogid-repaired-20261026-183735.sqlite. Verificar la ruta actual sin mostrar secretos; no reactivar ogid.sqlite dañado ni reiniciar las copias de 0.2. Consultar RECUPERACION.md y CIERRE-FINAL.md. Conservar el esquema 025 y añadir 026+ cuando corresponda. La app permanece detenida; escritor/lectores se probaron con StorageManager sin iniciar servidor/inferencia. D/E/F y las puertas finales siguen pendientes; no inferir aceptación de 24 h del éxito de la recuperación.
 
 
-## Reanudación después de publicar C
+## Referencia histórica — entrada al punto 2 después de C
 
 ```text
 Lee ESTADO.md, CIERRE-C.md y CIERRE-FINAL.md. Localiza en Git el commit
@@ -95,4 +96,22 @@ base reparada, escritor único, límites, snapshots y llama.cpp.
 Pilotar y completar enriquecimiento por páginas con cursor y cobertura.
 Después D.1 y siguientes; pruebas integradas con cada entrega y 24 h formales
 sobre el candidato final identificado. Promoción semántica IA separada.
+```
+
+## Reanudación vigente después de punto 2
+
+```text
+Lee ESTADO.md y el diff. Punto 2 cerrado: dependencias compatibles actualizadas,
+0 discrepancias/0 vulnerabilidades y 146.475 noticias enriquecidas; cursor completo.
+No repitas npm ci, backfill, recuperación ni suites cerradas sin cambios/fallos.
+Verifica SHA y CI del commit por su recibo point-2/publication.json y GitHub;
+si su publicación sigue pendiente, complétala antes de nuevas entregas.
+La siguiente implementación es D.1 desde ENTREGA-D.md cuando se autorice D.
+Consume todo el journal, sin saltarlo ni convertir metadatos históricos en
+incidentes recientes. Conserva incertidumbre, IDs, fechas, contentRevision,
+revisiones congeladas, escritor único, límites y configuración/llama.cpp.
+No inventes fuentes/evaluaciones, no descargues históricos ni uses IA para
+cerrar cobertura. 0.2 conserva latencias largas: documentarlas/corregirlas
+con evidencia independiente. D/E/F y 24 h/IA no están cerradas por el backfill.
+Actualiza ESTADO por lote; los documentos fechados son referencias históricas.
 ```

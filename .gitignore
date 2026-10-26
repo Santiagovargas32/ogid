@@ -84,3 +84,6 @@ docs/OGID-Prompt-Codex-GPT-6.1-xhigh.md
 !/docs/implementation/ogid-evidence/CIERRE-C.md
 # Evidencias privadas del ciclo cuando el enlace HDD de .agent-validation es ro.
 /.implementation-evidence/
+
+# Continuidad histórica fechada; el estado vigente vive en ESTADO.md.
+!/docs/implementation/ogid-evidence/HISTORICO-CONTINUIDAD.md

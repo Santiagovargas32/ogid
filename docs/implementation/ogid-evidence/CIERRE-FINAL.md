@@ -1,37 +1,38 @@
 # Estado del producto y condiciones de entrega final
 
-Corte: **26/10/2026**, después de cerrar la recuperación y las verificaciones definitivas de C. Fuente: [diagnóstico](../../OGID-diagnostico-direccion-y-plan-2026-10-25.md), [PLAN.md](PLAN.md), [ESTADO.md](ESTADO.md) y [RECUPERACION.md](RECUPERACION.md). Este documento describe lo pendiente; no autoriza automáticamente publicación, despliegue ni promoción de IA.
+Actualización vigente: 26/10/2026, lote del punto 2 posterior a C. Leer primero [ESTADO.md](ESTADO.md). El [diagnóstico](../../OGID-diagnostico-direccion-y-plan-2026-10-25.md), [CIERRE-C.md](CIERRE-C.md) y [RECUPERACION.md](RECUPERACION.md) son cortes fechados; sus recuentos y pendientes anteriores no son el estado actual.
 
-## Estado de la app
+## Estado actual
 
-La base operativa configurada ya es la reparada, esquema **025**, validada globalmente sin pérdida. El backend está **detenido**; no hay una nueva observación de operación en curso. Su almacenamiento sí se verificó con el escritor y lectores reales de OGID, sin servidor ni proveedores. Los procesos llama.cpp existentes y AGENT_MODE=shadow se conservan.
+C está publicada: **40a027d**, [CI 40404890887 correcta](https://github.com/Santiagovargas32/ogid/actions/runs/40404890887). Código de cierre validado con 1071/1071 backend y 32/32 MCP. Base reparada seleccionada, esquema 025, recuperación sin pérdida cerrada. Backend detenido; llama.cpp y controles .env conservados; IA shadow.
 
-El cierre C se identifica por [CIERRE-C.md](CIERRE-C.md) y por el commit `feat(news): cerrar entrega C de comparación y afirmaciones`, con base B 9a3aa2f. A/B fueron publicadas en commits separados y la publicación de C está autorizada por conector. El recibo privado C-close/publication.json conserva el SHA y la comprobación de GitHub/CI. El candidato final de código pasó **1071/1071 backend, 32/32 MCP**, build, inventario y dos auditorías sin vulnerabilidades; esa pasada sustituye a la anterior con expectativas antiguas corregidas. No implica despliegue ni backfill persistente.
+El usuario autorizó cerrar **punto 2 antes de D/E/F**. Las instalaciones backend y MCP ya coinciden con los locks: **0 discrepancias y 0 vulnerabilidades runtime** en ambos. El túnel/adaptador MCP se recargó conservando configuración. La conectividad al backend sigue separada: sin servidor, CONNECTION_FAILED es el resultado esperado.
 
-Las instalaciones operativas continúan desalineadas: **8 discrepancias backend y 1 MCP** frente a sus lockfiles, comprobadas en este corte. Las instalaciones aisladas usadas en las suites estaban alineadas. No se ejecutó npm ci operativo durante esta recuperación.
+**Punto 2 cerrado:** 146.475/146.475 noticias enriquecidas; facetas y publicaciones C completas, 179.795 afirmaciones atribuidas y 146.475 cambios del journal. Cursor complete=true, cero proyecciones actuales pendientes. Identidad/fechas/contentRevision globales y 147 revisiones muestreadas conservadas; aliases, evidencias, snapshots, velas y alertas sin pérdidas. Reapertura idempotente: 0 noticias procesadas. Véanse cifras y límites en ESTADO.md.
 
-Las 146.475 noticias históricas están conservadas. Las facetas B y las publicaciones indexadas C contienen **0 filas** en este corte: el esquema y el código están preparados, pero el backfill editorial no ha corrido en operación. Una vista de comparación vacía ahora no acredita ausencia de noticias. B no incluye un dataset político autorizado; «sin evaluar» es el resultado correcto mientras falte.
+El candidato actualizado pasó 1074/1074 backend y 32/32 MCP; la instalación MCP final pasó 32/32. Se instalaron Express 5.3.0, Helmet 8.3.0, ws 8.22.0, Yahoo Finance 4.0.5 y SDK MCP cliente/servidor 2.4.0; Zod 4.6.7 y dotenv 16.6.1 conservados. 138 paquetes runtime backend/3 MCP matched y auditorías 0. Los locks nuevos fueron probados antes de instalarlos; no se modificaron dependencias del backfill activo.
+
 
 ## Entregas frente al diagnóstico
 
 | Entrega | Código y evidencia actual | Qué falta para su cierre de producto |
 |---|---|---|
-| **0 · Base operativa** | Identidad/release, mantenimiento determinista, status acotado y trazabilidad implementados. Base recuperada y seleccionada; integridad/FK/recuentos completos y almacenamiento real correctos | Alinear instalaciones; completar reproducciones/mediciones 0.2 sobre datos íntegros; puesta en servicio y nueva cohorte continua. Backup manual según responsabilidad acordada |
-| **A · Identidad y clasificación** | Implementada, verificada en aislamiento y publicada: 9cbdef2. EN/ES/FR/DE/PT, publishers exactos, modalidades e IDs/revisiones conservados | Ejecutar backfill reanudable y medir cobertura/error real; aceptación con datos operativos y evaluación ampliada |
-| **B · Fuentes y cobertura** | Implementada, verificada y publicada: 9a3aa2f. Evaluaciones temporales, importador, permisos, medidor y cobertura | Completar facetas históricas; incorporar evaluaciones sólo si existe acceso/licencia autorizados, o mantener «sin evaluar» explícito; comprobar uso real |
-| **C · Comparación y afirmaciones** | Cierre definitivo de implementación/integración 1071/1071 + 32/32; commit autorizado conector y 025 aplicada; API/MCP/UI y auditoría verificadas | Backfill persistente y muestra editorial real. La extracción v1 es heurística y atribuida; observación operativa/piloto quedan en su puerta global |
+| **0 · Base operativa** | Identidad/release, mantenimiento determinista, status acotado y trazabilidad implementados. Base recuperada y seleccionada; integridad/FK/recuentos completos y almacenamiento real correctos | Instalaciones alineadas; completar reproducciones/mediciones 0.2 sobre datos íntegros; puesta en servicio y nueva cohorte continua. Backup manual según responsabilidad acordada |
+| **A · Identidad y clasificación** | Implementada, verificada en aislamiento y publicada: 9cbdef2. EN/ES/FR/DE/PT, publishers exactos, modalidades e IDs/revisiones conservados | Backfill completo; evaluación editorial ampliada y aceptación operativa pendientes |
+| **B · Fuentes y cobertura** | Implementada, verificada y publicada: 9a3aa2f. Evaluaciones temporales, importador, permisos, medidor y cobertura | Facetas históricas completas; incorporar evaluaciones sólo si existe acceso/licencia autorizados, o mantener «sin evaluar» explícito; comprobar uso real |
+| **C · Comparación y afirmaciones** | Cierre definitivo de implementación/integración 1071/1071 + 32/32; commit 40a027d publicado por conector y 025 aplicada; API/MCP/UI y auditoría verificadas | Backfill persistente completo y lecturas reales verificadas. La extracción v1 es heurística y atribuida; evaluación editorial ampliada y observación operativa siguen en su puerta global |
 | **D · Situaciones y motor 24 h** | Handoff concreto en ENTREGA-D.md; C aporta journal y versiones inmutables | Implementar consumidor transaccional, stream de awareness, dominio incidente/situación, correcciones, emisión idempotente y transición de bandeja. Probar >500, reinicio/ACK perdido y modo IA off |
 | **E · Piloto y fuentes** | Matriz inicial en FUENTES.md; ámbitos Ucrania/Mar Negro y mar Rojo definidos | Admitir/verificar fuentes reales y sus accesos; medir cobertura, duplicación, fechas/lugares y latencias; evaluación específica RU/UK y revisión humana |
 | **F · Analista e impactos** | Existe runtime IA y módulos analíticos previos; la nueva entrega sobre situaciones no está implementada | Síntesis y cronologías con evidencia elegible, contradicciones y propagación de correcciones; impactos/valores numéricos trazables y evaluación útil por tarea |
 
-## Origen de dependencias e históricos pendientes
+## Origen de las discrepancias — resueltas
 
-Las **8+1 discrepancias no son dependencias nuevas de C**. Los lockfiles se actualizaron en `a1d0fb8` como parte de la corrección de dependencias/auditoría, mientras node_modules operativos se mantuvieron sin cambiar para preservar el shadow activo. Se contrastaron los locks anterior/posterior de ese commit y las instalaciones presentes:
+Los locks se actualizaron en a1d0fb8 para corregir dependencias, manteniendo las instalaciones anteriores durante el shadow. No eran nueve dependencias nuevas de C. Este lote aplicó npm ci primero reproduciendo el grafo de C. Después se verificaron e instalaron actualizaciones compatibles publicadas: los nuevos locks sustituyen a los anteriores. La actualización transitiva content-disposition 2.0.1 y content-type 2.1.0 procede de Express 5.3.0, cuyo contrato integrado pasó la suite. No se impuso un cambio mayor de dotenv ni un downgrade forzado.
 
-| Instalación | Paquete | Instalado | Lock esperado |
+| Instalación | Paquete | Anterior (corte C) | Instalado y fijado ahora |
 |---|---|---|---|
 | Backend | body-parser | 2.3.0 | 2.4.0 |
-| Backend | body-parser / content-type anidado | 2.0.0 | 2.1.0 |
+| Backend | body-parser/content-type | 2.0.0 | 2.1.0 |
 | Backend | fast-uri | 3.1.8 | 3.1.9 |
 | Backend | iconv-lite | 0.7.2 | 0.7.3 |
 | Backend | ip-address | 10.7.3 | 10.7.5 |
@@ -40,37 +41,36 @@ Las **8+1 discrepancias no son dependencias nuevas de C**. Los lockfiles se actu
 | Backend | zod | 4.5.4 | 4.6.7 |
 | MCP | zod | 4.6.5 | 4.6.7 |
 
-CI y la instalación aislada usan npm ci y sí coinciden con los locks. El objetivo operativo es reproducir ese grafo fijado, sin cambiar versiones arbitrariamente ni volver a introducir features. La observación anterior ya terminó y el backend está detenido, pero existe un adaptador MCP activo: coordinar su reconexión antes de sustituir su instalación. Conservar .env, base y llama.cpp. Verificar manifiestos matched, auditorías y pruebas dirigidas en el runtime elegido tras instalar.
+138 paquetes runtime backend y 3 MCP verificados frente a sus locks; Yahoo Finance se fija en 4.0.5 tras verificarlo. «0 vulnerabilidades» describe las auditorías actuales del grafo runtime, no una garantía permanente ni una razón para forzar downgrades o cambios mayores. Node operativo 22.23.3, compatible con engines; CI C utilizó Node 24; el recibo del nuevo commit identifica su CI.
 
-El **enriquecimiento histórico** procede de migraciones aditivas que crearon proyecciones vacías sin escanear el archivo durante DDL: A aporta identidad/clasificación, B facetas editoriales y C grupos/afirmaciones/registro de cambios. No consiste en descargar otra vez las noticias ni en usar IA. Recorre las publicaciones ya guardadas y su texto permitido mediante `SqlNewsArchive.enrichEditorialPage`: hasta 100 referencias y 128 KiB por página, objetivo 50 ms, cursor durable y commit atómico. Conserva IDs, publicación, recepción, contentRevision y revisiones congeladas; los metadatos visibles pueden añadir una nueva revisión.
+## Enriquecimiento A/B/C
 
-Actualmente están conservadas 146.475 noticias, pero el piloto C sólo confirmó una dentro de una transacción revertida. Por eso las facetas y publicaciones C persistidas siguen en cero. El cursor permite continuar sin empezar desde cero después de una interrupción. No reconstruye texto perdido ni inventa publisher/origen/idioma. Tampoco crea evaluaciones políticas: B necesita datos de uso autorizado o conserva «sin evaluar».
+Sí: aplica a las noticias existentes la identidad/clasificación A, facetas B y comparación/afirmaciones C usando texto ya permitido. No descarga nuevamente contenido ni llama al modelo. El paso único comparte cursor y transacción, con hasta 100 referencias/128 KiB y objetivo 50 ms de procesamiento por página. El tiempo de commit puede superar ese objetivo; las mediciones y episodios largos deben quedar explícitos.
 
-## Orden recomendado de ejecución
+`cd backend && npm run news:enrich` consulta sin escribir; `npm run news:enrich -- --apply --max-pages=3` ejecuta un piloto persistente y pausa; sin max-pages continúa hasta completar. La herramienta respeta el owner y usa StorageManager sin configurar proveedores ni recuperación de trabajos ajenos. Cada página y recibo se confirman junto al cursor. SIGINT/SIGTERM pausan tras la operación en curso. Si una fila/error impide avanzar, se detiene y se resuelve; no se salta para declarar completo.
 
-**No completar 2→3→4 enteros antes de nuevas entregas.** El punto 2 prepara datos/runtime; el 3 acompaña cada cambio y el 4 acepta un candidato identificado.
+Se conservan IDs, URLs, aliases, publicación/recepción, contentRevision y revisiones congeladas. Los metadatos pueden añadir una revisión sin rejuvenecer el contenido ni emitir un incidente nuevo. Desconocido sigue desconocido; la cobertura no implica calidad editorial verificada. B conserva «sin evaluar» cuando no hay dataset autorizado, con independencia de terminar el histórico.
 
-1. **Ahora, cerrar el punto 2 acotado:** npm ci backend y MCP en ventana controlada con reconexión del adaptador, sin tocar .env/llama.cpp. Manifiestos matched, auditorías y pruebas dirigidas; no arrancar una observación de 24 h mientras aún cambian sus artefactos.
-2. **Piloto y backfill:** medir páginas reales, commit/cola y cobertura; comprobar reanudación, IDs/fechas y snapshots. Después completar A/B/C por páginas con progreso visible, sin hidratar el histórico completo en el escritor. Una fila grande/error se registra y se resuelve; no se salta para declarar completo. Hacer smoke operativo corto y mediciones 0.2 disponibles, sin confundirlos con la aceptación continua.
-3. **D.1 y D.2:** consumir todas las revisiones con cursor/efectos/outbox en el mismo commit; añadir stream awareness y dominio de incidentes/situaciones. El histórico preparado aporta datos reales para probar backlog, correcciones y noticias antiguas. No convertir grupos C en hechos confirmados. Próxima migración: 026.
-4. **D.3:** integrar bandeja, ventanas «cambió/ocurrió», compatibilidad de ACK/IDs y correcciones propagadas; probar >500, reinicio, ACK perdido e IA off. Estas pruebas del consumidor requieren que D exista; no las reemplaza la lectura de 513 cambios de C.
-5. **E y F:** evaluar los pilotos Ucrania/Mar Negro y mar Rojo y sus accesos/idiomas; después síntesis, cronologías e impactos con evidencia elegible y correcciones. Mantener probability=null sin modelo probabilístico evaluado.
-6. **Punto 3 durante toda la secuencia:** regresiones de comportamiento/persistencia/contratos/UI/permisos/budgets y medidas de rendimiento por entrega. Reutilizar resultados cerrados sin cambios, salvo la verificación integrada que justifique el candidato final. C ya tiene sus suites y transporte real cerrados.
-7. **Punto 4 al final:** fijar código, locks, instalación, configuración y esquema; observar 24 h continuas del candidato final y evaluar por separado la utilidad semántica IA. Cambiar artefactos inicia otra cohorte. Publicación por conector con su alcance; promoción visible no se infiere de CI o conectividad.
+## Orden hasta la entrega final
 
-Se pueden preparar **ya**, de forma independiente de D.1, el corpus anotado/guía de evaluación y la matriz verificable de fuentes del piloto E. El diagnóstico propone unas 300 publicaciones/100 incidentes como referencia inicial, no como conjunto ya evaluado. Las evaluaciones políticas sin licencia/dataset no bloquean D si su ausencia sigue explícita.
+1. Punto 2 cerrado: instalaciones, histórico y conservación comprobados. Permanecen 141.959 editores pendientes, 34.161 clasificaciones unknown-language y 2.671 unsupported-language; «sin evaluar» sin dataset autorizado. El usuario mantiene el backup manual. La próxima implementación es D.1.
+2. D.1/D.2/D.3 desde ENTREGA-D.md: consumidor durable y outbox, awareness, incidentes/situaciones y transición de bandeja/ACK. Las entradas históricas del journal no son incidentes recientes.
+3. E: accesos y cobertura reales de Ucrania/Mar Negro y mar Rojo; evaluación lingüística RU/UK y muestras anotadas. F: síntesis/cronologías/impactos con evidencia elegible, correcciones y puerta semántica por tarea.
+4. Punto 3 progresivo: comportamiento, persistencia, contratos/UI/permisos/budgets, >500, reinicios, ACK perdido y correcciones cuando existan sus consumidores. Repetir suites cerradas sólo por cambios/fallos o dudas justificadas. El journal C no sustituye a D.
+5. Punto 4 al final: candidato identificado sin cambios de artefactos durante 24 h continuas; evaluación IA separada, manteniendo shadow hasta su aceptación. v19 (23 h 54 min) no acredita la puerta formal.
 
-## Validaciones de entrega final
+## Puertas que siguen abiertas
 
-| Puerta | Evidencia necesaria | Estado en este corte |
-|---|---|---|
-| Conservación y recuperación | Datos, IDs, revisiones y snapshots íntegros; esquema/checksums correctos; lectura/escritura del almacenamiento | Recuperación exacta cerrada; backup independiente/restauración manual aún no acreditados por este lote |
-| Comportamiento editorial | Publisher/descubrimiento, idiomas, ataque/huelga, modalidades, sindicación, afirmaciones y correcciones sobre corpus representativo | Regresiones A/B/C correctas; evaluación ampliada y piloto pendientes |
-| Durabilidad D | Ráfagas >500, todas las páginas, reinicio, ACK perdido, idempotencia, concurrencia y cambios históricos sin ataque nuevo | Pendiente. La prueba del journal C no sustituye al consumidor/emisión de D |
-| Contratos y producto | API/MCP real, permisos, budgets, paginación/sync, rutas heredadas y accesibilidad/foco/scroll | C verificada; repetir sólo superficies modificadas por D/E/F y el cierre integrado necesario |
-| Dependencias y CI | Instalación desde locks, inventario coherente, checks/build/suites/auditorías pertinentes del candidato final | C con verificaciones definitivas y publicación autorizada por conector; instalaciones operativas y CI/identidad del futuro candidato D/E/F pendientes |
-| Rendimiento | Hardware/concurrencia/cohortes declarados; consultas y commits sin recurrencias largas no explicadas | Pendiente sobre operación. Objetivos del diagnóstico: lectura caliente p95≤500 ms, persistencia→alerta p95≤60 s y páginas de escritura orientadas a 250 ms; no son resultados alcanzados |
-| Núcleo continuo | Adquisición/mantenimiento sin IA ni navegador, recuperación controlada y observación continua de 24 h del candidato final | Pendiente. v19 tuvo 23 h 54 min y no cierra esta puerta |
-| IA semántica | Calidad útil por tarea, evidencia realmente consultada, citas/números válidos, correcciones propagadas y denominadores claros | Pendiente y separada del núcleo. Conservar shadow hasta aceptación específica |
+- 0.2: reproducir y explicar costes actuales de lectura/SQL/commit/checkpoint. El lote histórico ya vuelve a registrar commits de varios segundos; no atribuirlos a una causa física sin evidencia. Objetivos del diagnóstico son objetivos, no resultados alcanzados.
+- D/E/F y su evaluación de producto; contratos/UI y durabilidad integrados sobre cada candidato.
+- Núcleo sin IA/navegador con adquisición real, recuperación controlada y observación continua final; la ejecución de mantenimiento no lo acredita.
+- Calidad semántica IA con denominadores, evidencia/citas/números válidos y correcciones; conectividad y suites no acreditan utilidad.
+- Importación de evaluaciones sólo con datos/autorización disponibles; en su ausencia la app debe mantener «sin evaluar», sin bloquear el desarrollo de D.
 
-El producto completo no se considera terminado por tener una base sana, suites verdes o un modelo conectado. Su cierre exige D/E/F implementadas, cobertura evaluada y las puertas de núcleo/IA cerradas con evidencia independiente. El estado diario y la siguiente acción permanecen concentrados en ESTADO.md.
+La recuperación, los recuentos históricos de C y los resultados anteriores se conservan fechados en sus informes y HISTORICO-CONTINUIDAD.md. El estado actual y siguiente acción tienen una sola entrada: ESTADO.md.
+
+## Decisión de versiones y evidencia actual
+
+La tabla anterior muestra los nueve desfases iniciales y su primera corrección, no el total de cambios del candidato posterior. Las versiones directas finales son las del párrafo de cierre y package.json/package-lock.json; las actualizaciones transitivas están identificadas en dependency-upgrade-review.json privado. Selección contrastada con el registro npm y notas oficiales de [Express 5.3.0](https://github.com/expressjs/express/releases/tag/v5.3.0), [Helmet](https://github.com/helmetjs/helmet/blob/main/CHANGELOG.md), [SDK MCP 2.4.0](https://github.com/modelcontextprotocol/typescript-sdk/releases/tag/2.4.0) y [Yahoo Finance](https://www.npmjs.com/package/yahoo-finance2?activeTab=versions). La prueba funcional decide la instalación; la etiqueta latest no la sustituye.
+
+El objetivo 0.2 sigue abierto: p95 de ejecución por página 205,46 ms pero máximo 12.012,02 ms; commits lentos hasta 11.944 ms y checkpoints hasta 18.331,89 ms. Cobertura de 30 días: 1.926,98 ms en la muestra; otras 11 lecturas ≤1,42 ms. No son un p95 general de API ni explicación física. El enriquecimiento está completo sin certificar rendimiento operativo o calidad semántica.
