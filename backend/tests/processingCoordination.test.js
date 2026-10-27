@@ -113,13 +113,13 @@ test('identical technical inputs produce no extra analysis/outbox, while a new e
 });
 
 test('maintenance skips unchanged dependencies and retries a failed domain',async()=>{
-  let fail=true;const calls=new Map();
+  let fail=true,now=0;const calls=new Map();
   const run=domain=>async()=>{calls.set(domain,(calls.get(domain)||0)+1);if(domain==='advanced' && fail)throw Error('transient');};
   const inputs={news:{revision:1},candles:{},research:1};
-  const maintenance=new AgentMaintenance({enabled:true,dependencies:async()=>inputs,call:run('alerts'),business:{advanced:{getSnapshot:run('advanced')},conditions:{getSnapshot:run('conditions')},forecasts:{evaluate:run('evaluation')}}});
-  await maintenance.tick();fail=false;await maintenance.tick();await maintenance.tick();
+  const maintenance=new AgentMaintenance({enabled:true,now:()=>now,dependencies:async()=>inputs,call:run('alerts'),business:{advanced:{getSnapshot:run('advanced')},conditions:{getSnapshot:run('conditions')},forecasts:{evaluate:run('evaluation')}}});
+  await maintenance.tick();fail=false;now+=60000;await maintenance.tick();await maintenance.tick();
   assert.equal(calls.get('alerts'),1);assert.equal(calls.get('advanced'),2);assert.equal(calls.get('conditions'),1);
-  inputs.news.revision++;await maintenance.tick();assert.equal(calls.get('alerts'),2);assert.equal(calls.get('advanced'),3);
+  inputs.news.revision++;now+=60000;await maintenance.tick();assert.equal(calls.get('alerts'),2);assert.equal(calls.get('advanced'),3);await maintenance.stop();
 });
 
 test('lease control retains admission capacity while ordinary writer units stay in the parent queue',async()=>{

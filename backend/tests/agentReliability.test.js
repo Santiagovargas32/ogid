@@ -222,10 +222,10 @@ test('a rejected progress cleanup cannot reject an unobserved worker task', asyn
   assert.equal(worker.lastProgressErrorCode, 'AGENT_PROGRESS_UNAVAILABLE');
 });
 test('maintenance retains previous domain success when a later sweep fails',async()=>{
-  let fail=false;
-  const m=new AgentMaintenance({enabled:true,call:async()=>{},business:{advanced:{getSnapshot:async()=>{if(fail)throw Error('cold');}},conditions:{getSnapshot:async()=>{}},forecasts:{evaluate:async()=>{}}}});
+  let fail=false,now=Date.now();
+  const m=new AgentMaintenance({enabled:true,now:()=>now,call:async()=>{},business:{advanced:{getSnapshot:async()=>{if(fail)throw Error('cold');}},conditions:{getSnapshot:async()=>{}},forecasts:{evaluate:async()=>{}}}});
   await m.tick();const success=m.status.domains.advanced.lastSuccessAt;
-  fail=true;await m.tick();assert.equal(m.status.state,'degraded');assert.equal(m.status.domains.advanced.lastSuccessAt,success);
+  fail=true;now+=60000;await m.tick();assert.equal(m.status.state,'degraded');assert.equal(m.status.domains.advanced.lastSuccessAt,success);
 });
 test('deterministic maintenance drains its durable backlog even when legacy input revisions stay unchanged',async()=>{
  let calls=0,advanced=0;
@@ -245,6 +245,29 @@ test('a manual maintenance sweep replaces the pending timer instead of starting 
   m.start();await m.task;const previous=m.timer;assert.ok(previous);
   await m.tick();assert.notEqual(m.timer,previous);assert.ok(clear.mock.calls.some(c=>c.arguments[0]===previous));
  }finally{await m.stop();}
+});
+test('durable alert pages continue while a slow analytical sweep is still running',async()=>{
+ let release,entered,calls=0,analytical=0;
+ const gate=new Promise(r=>{release=r;}),started=new Promise(r=>{entered=r;});
+ const m=new AgentMaintenance({enabled:true,call:async()=>({hasMore:++calls<3,durationMs:1,processed:100}),business:{advanced:{getSnapshot:async()=>{analytical++;entered();await gate;}},conditions:{getSnapshot:async()=>{}},forecasts:{evaluate:async()=>{}}}});
+ const first=m.tick();await started;await wait(5);const second=m.tick();
+ try{await wait(50);assert.equal(calls,2,'a pending analytical read must not hold the durable consumer');assert.equal(analytical,1,'analytical sweeps must not overlap');}
+ finally{release();await Promise.all([first,second]);await m.stop();}
+});
+test('rapid input changes are coalesced without regenerating the analytical corpus on every control tick',async()=>{
+ let now=0,revision=1,analytical=0;
+ const m=new AgentMaintenance({enabled:true,now:()=>now,dependencies:async()=>({news:{revision},candles:{}}),call:async()=>({hasMore:false}),business:{advanced:{getSnapshot:async()=>{analytical++;}},conditions:{getSnapshot:async()=>{}},forecasts:{evaluate:async()=>{}}}});
+ try{
+  await m.tick();for(let n=0;n<5;n++){revision++;now+=100;await m.tick();}assert.equal(analytical,1);
+  now=60000;await m.tick();assert.equal(analytical,2);
+ }finally{await m.stop();}
+});
+test('stopping maintenance drains its accepted analytical operation and starts no later domains',async()=>{
+ let release,entered,conditions=0;const gate=new Promise(r=>{release=r;}),started=new Promise(r=>{entered=r;});
+ const m=new AgentMaintenance({enabled:true,call:async()=>({hasMore:false}),business:{advanced:{getSnapshot:async()=>{entered();await gate;}},conditions:{getSnapshot:async()=>{conditions++;}},forecasts:{evaluate:async()=>{}}}});
+ const first=m.tick();await started;let finished=false;const stopped=m.stop().then(()=>{finished=true;});
+ try{await wait(5);assert.equal(finished,false);}finally{release();await Promise.all([first,stopped]);}
+ assert.equal(conditions,0);assert.equal(m.status.state,'stopped');assert.equal(m.timer,null);
 });
 test('OpenCode rejects and cancels error bodies without reading private upstream text',async()=>{
  let cancelled=false;
