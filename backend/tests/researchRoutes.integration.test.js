@@ -43,7 +43,7 @@ test("inventario: todas las rutas JSON montadas tienen contrato y permiso; rutas
   const agentSource=readFileSync(dir+'agentRoutes.js','utf8');
   const agentRoutes=[...agentSource.matchAll(/router\.(get|post|put|delete|patch)\s*\(\s*(["'`])([^"'`]+)\2/g)].map(m=>`${m[1].toUpperCase()} /api${m[3]}`);
   const mounted = new Set([...enumerate("index.js", "/api"),...agentRoutes]); const registered = new Set([...OGID_OPERATIONS.map(op => `${op.method} ${op.path}`),...AGENT_PRIVATE_ROUTES]);
-  assert.deepEqual([...mounted].sort(), [...registered].sort()); assert.equal(OPERATIONS_VERSION, "1.11.0");
+  assert.deepEqual([...mounted].sort(), [...registered].sort()); assert.equal(OPERATIONS_VERSION, "1.12.0");
   for (const operation of OGID_OPERATIONS) { assert.ok(operation.scope); assert.ok(operation.effects); assert.ok(operation.projection); assert.equal(operation.parameters.additionalProperties, false); assert.ok(["research", "operator"].includes(operation.profile)); }
 });
 test("todas las lecturas MCP sobre backend real: almacenadas, sin refresh/cuotas, identidades y separación operador", async () => {
@@ -64,6 +64,7 @@ test("todas las lecturas MCP sobre backend real: almacenadas, sin refresh/cuotas
   const change=alertStore.researchTransaction(state=>alertStore.appendChange(state,{kind:'fixture',entityId:'fixture',revision:1,snapshot:{status:'watch'}}));
   try {
     for (const operation of OGID_OPERATIONS.filter(op => op.profile === "research")) {
+      if(['situations.detail','situations.revisions'].includes(operation.id)){await assert.rejects(read.operation(operation.id,{},undefined,{id:'missing-situation'}),{code:'SITUATION_NOT_FOUND'});continue;}
       if(['news.comparison','news.claim'].includes(operation.id)){await assert.rejects(read.operation(operation.id,{},undefined,{id:'missing-comparison'}),{code:'COMPARISON_NOT_FOUND'});continue;}
       if(operation.id==='news.source-assessment'){await assert.rejects(read.operation(operation.id,{},undefined,{id:'missing-assessment'}),{code:'SOURCE_ASSESSMENT_NOT_FOUND'});continue;}
       if(operation.id.startsWith('media.')){await assert.rejects(read.operation(operation.id,{},undefined,operation.pathParameters?{id:'fixture-stream'}:undefined),{code:'MEDIA_RETIRED'});continue;}

@@ -10,7 +10,9 @@
     "test": "node --test tests/*.test.js",
     "smoke": "node scripts/smoke.js",
     "inventory": "node scripts/inventory.js",
-    "inventory:check": "node scripts/inventory.js --check"
+    "inventory:check": "node scripts/inventory.js --check-json",
+    "inventory:json": "node scripts/inventory.js --json",
+    "inventory:check-markdown": "node scripts/inventory.js --check"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.4.0",

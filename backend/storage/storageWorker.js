@@ -63,7 +63,7 @@ function execute(operation, input, requestId, commandId) {
   if(operation === "agent.read"){
     if(!workerData.analysisWorker || !AGENT_READER_METHODS.has(input.method))fail("STORAGE_INVALID_COMMAND");
     runtime.agent ||= new AgentRepository(runtime);
-    return runtime.agent.call(input.method,input.args);
+    return runtime.agent.call(input.method,['alertSync','alertState'].includes(input.method)?{...input.args,requestId:input.args?.requestId||requestId}:input.args);
   }
   if(operation === "agent.snapshot") {
     if(!workerData.analysisWorker)fail("STORAGE_INVALID_COMMAND");
@@ -72,7 +72,7 @@ function execute(operation, input, requestId, commandId) {
   if(operation === "agent.call") {
     if(workerData.analysisWorker)fail("STORAGE_READ_ONLY");
     runtime.agent ||= new AgentRepository(runtime);
-    return runtime.agent.call(input.method,input.args);
+    return runtime.agent.call(input.method,['alertSync','alertState'].includes(input.method)?{...input.args,requestId:input.args?.requestId||requestId}:input.args);
   }
   if(operation.startsWith("market.persist.")){
     if(workerData.analysisWorker && !["market.persist.status","market.persist.pending"].includes(operation))fail("STORAGE_READ_ONLY");

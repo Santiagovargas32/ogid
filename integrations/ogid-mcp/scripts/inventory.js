@@ -30,7 +30,14 @@ lines.push('## Evaluaciones y cobertura de medios', '',
   'news.source-assessments.import requiere operador news:assessments:write. dryRun es true por defecto; usar otro requestId al confirmar dryRun=false. Lotes de hasta 25 evaluaciones y 25 perfiles, máximo 64 KiB, revisiones consecutivas e inmutables y permiso de redistribución declarado. No descarga referencias ni valida externamente la licencia. No hay dataset político incorporado; sin datos se muestra sin evaluar. La escala ordinal political-five-v1 conserva la etiqueta original; external-unmapped no recibe posición. Una evaluación del medio no clasifica un artículo ni prueba hechos.', '',
   'news.source-coverage usa recepción, ventana máxima 31 días y facetas acotadas del archivo anterior a la selección; informa artículos aún pendientes. Cuenta editores, grupos propietarios conocidos e identificadores de origen por separado. Desconocido sigue desconocido; varios países editoriales pueden atribuir el mismo artículo. No reconstruye metadatos históricos ni mide salud de adquisición. Catálogo, perfiles y evaluaciones se consultan por lectores readonly/query_only; importar utiliza el escritor único y recibo durable.', '');
 const output = lines.join("\n");
-if (process.argv.includes("--check")) {
+const machineTarget=fileURLToPath(new URL('../API-MCP.contract.json',import.meta.url));
+const machine=JSON.stringify({contractVersion:OPERATIONS_VERSION,routes:unique.size,operations:OGID_OPERATIONS},null,2)+'\n';
+if(process.argv.includes('--check-json')){
+  if(readFileSync(machineTarget,'utf8')!==machine)throw new Error('API-MCP.contract.json difiere del contrato: ejecutar npm run inventory:json.');
+  console.log(`Inventario ejecutable válido: ${unique.size} rutas, ${OGID_OPERATIONS.length} operaciones.`);
+}else if(process.argv.includes('--json')){
+  writeFileSync(machineTarget,machine);console.log(`Inventario ejecutable generado: ${unique.size} rutas, ${OGID_OPERATIONS.length} operaciones.`);
+}else if (process.argv.includes("--check")) {
   if (readFileSync(target, "utf8") !== output) throw new Error("API-MCP.md difiere del registro: ejecutar npm run inventory.");
   console.log(`Inventario válido: ${unique.size} rutas, ${OGID_OPERATIONS.length} operaciones.`);
 } else { writeFileSync(target, output); console.log(`Inventario generado: ${unique.size} rutas, ${OGID_OPERATIONS.length} operaciones.`); }

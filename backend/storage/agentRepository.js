@@ -1,3 +1,4 @@
+import {SituationStore} from './situations.js';
 import { randomUUID, createHash, randomBytes } from "node:crypto";
 import { performance } from 'node:perf_hooks';
 import { stableHash } from "../utils/stableHash.js";
@@ -49,7 +50,7 @@ const safeId = (v) =>
 const admitted = (id) =>
   AWARENESS_SOURCES.find((s) => s.sourceId === id)?.admissionState === "active";
 export const AGENT_READER_METHODS = new Set(["evidence","evidenceChunk","clusters","memory",
-  "messages","deviceAuth","run","status","publications","sessions","workerHealth","sessionAccess"]);
+  "messages","deviceAuth","run","status","publications","sessions","workerHealth","sessionAccess","alerts","alertRevisions"]);
 export const AGENT_METHODS = [
   "sessionAccess",
   "progress",
@@ -1639,6 +1640,23 @@ export class AgentRepository {
     this.runtime.lastCommitMs=performance.now()-transactionStarted;
     return committed;
   }
+  publicationCurrentness(snapshotId,proposal) {
+    const all=(proposal?.evidenceIds||[]).filter(x=>/^(news|event|alert):/.test(x)),items=[];
+    for(const evidenceId of all.slice(0,100)){
+      const match=/^(news|event|alert):(.*):(\d+)$/.exec(evidenceId);if(!match)continue;
+      const [,kind,sourceId,revision]=match;let current;
+      if(kind==='news')current=this.db.prepare('SELECT revision FROM articles WHERE article_id=?').get(sourceId)?.revision;
+      else if(kind==='event')current=this.db.prepare('SELECT revision FROM awareness_events WHERE event_id=?').get(sourceId)?.revision;
+      else{
+        const frozen=this.db.prepare("SELECT json_extract(payload_json,'$.sourceRevision') revision FROM agent_evidence WHERE snapshot_id=? AND evidence_id=?").get(snapshotId,evidenceId);
+        const live=this.db.prepare("SELECT json_extract(payload_json,'$.sourceRevision') revision FROM geopolitical_alerts WHERE alert_id=?").get(sourceId);
+        if(frozen?.revision!=null&&live?.revision!=null&&frozen.revision!==live.revision)items.push({evidenceId,reason:'source-revised',currentSourceRevision:live.revision});
+        continue;
+      }
+      if(current==null||Number(current)!==Number(revision))items.push({evidenceId,reason:current==null?'source-unavailable':'source-revised',currentSourceRevision:current??null});
+    }
+    return {current:items.length===0&&all.length<=100,partial:all.length>100,checkedReferences:Math.min(all.length,100),items:items.slice(0,10),meaning:'current use of immutable evidence; original snapshot is unchanged'};
+  }
   publications({
     task,
     scope,
@@ -1671,10 +1689,10 @@ export class AgentRepository {
     const hasMore = rows.length > pageLimit(limit);
     if (hasMore) rows.pop();
     const items = rows
-      .map((r) => ({
-        ...parse(r.payload_json),
-        status: Date.parse(r.valid_until) <= this.now() ? "stale" : "ready",
-      }))
+      .map((r) => {
+        const value=parse(r.payload_json),sourceCurrentness=this.publicationCurrentness(r.snapshot_id,value.proposal);
+        return {...value,sourceCurrentness,status:!sourceCurrentness.current?'needs-review':Date.parse(r.valid_until)<=this.now()?'stale':'ready'};
+      })
       .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
     return {
       items,
@@ -1693,152 +1711,10 @@ export class AgentRepository {
       derived: true,
     };
   }
-  alertSync() {
-    return this.db
-      .transaction(() => {
-        let updated = 0;
-        for (const r of this.db
-          .prepare(
-            "SELECT * FROM awareness_events ORDER BY observed_at DESC LIMIT 500",
-          )
-          .all()) {
-          if (!admitted(r.source_id)) continue;
-          const e = parse(r.payload_json);
-          if (
-            ![
-              "official_security_release",
-              "maritime_alert",
-              "market_moving_news",
-            ].includes(e.kind) ||
-            !["released", "updated", "cancelled"].includes(e.status)
-          )
-            continue;
-          const old = this.db
-            .prepare(
-              "SELECT revision,payload_json FROM geopolitical_alerts WHERE alert_id=?",
-            )
-            .get(r.event_id);
-          if (
-            old &&
-            (parse(old.payload_json).sourceRevision ||
-              parse(old.payload_json).revision) >= r.revision
-          )
-            continue;
-          const nextRevision = (old?.revision || 0) + 1;
-          const payload = {
-            alertId: r.event_id,
-            revision: nextRevision,
-            sourceRevision: r.revision,
-            title: e.title,
-            summary: e.summary || "",
-            sourceId: r.source_id,
-            url: safeUrl(e.canonicalUrl),
-            publishedAt: e.publishedAt || null,
-            receivedAt: e.observedAt || r.observed_at,
-            updatedAt: r.observed_at,
-            verification:
-              e.status === "cancelled" ? "corrected" : "official-claim",
-            assessment: "deterministic",
-            severity: e.importance || "medium",
-            countries: e.countries || [],
-            instrumentIds: e.instrumentIds || [],
-          };
-          this.db
-            .prepare(
-              "INSERT INTO geopolitical_alerts VALUES(?,?,?,?,?) ON CONFLICT(alert_id) DO UPDATE SET revision=excluded.revision,updated_at=excluded.updated_at,payload_json=excluded.payload_json",
-            )
-            .run(
-              r.event_id,
-              nextRevision,
-              r.source_id,
-              r.observed_at,
-              json(payload),
-            );
-          this.db
-            .prepare("INSERT INTO geopolitical_alert_revisions VALUES(?,?,?)")
-            .run(r.event_id, nextRevision, json(payload));
-          updated++;
-        }
-        const seen = new Set();
-        for (const row of this.db
-          .prepare(
-            "SELECT payload_json FROM articles WHERE received_at>=? ORDER BY received_at DESC LIMIT 500",
-          )
-          .all(stamp(this.now() - 86400000))) {
-          const raw = parse(row.payload_json),
-            article = permittedArticle(raw),
-            text = `${article.title || ""} ${article.excerpt || ""}`,
-            severity = classifyThreat({
-              text,
-              language: article.classification?.language,
-              topicTags: extractTopicTags(text),
-            });
-          if (
-            article.synthetic ||
-            !["critical", "elevated"].includes(severity.level)
-          )
-            continue;
-          const alertId = `news:${stableHash(
-            String(article.title)
-              .toLowerCase()
-              .replace(/[^\p{L}\p{N}]+/gu, " "),
-          )}`;
-          if (seen.has(alertId)) continue;
-          seen.add(alertId);
-          const previous = this.db
-            .prepare(
-              "SELECT payload_json FROM geopolitical_alerts WHERE alert_id=?",
-            )
-            .get(alertId);
-          const prior = previous ? parse(previous.payload_json) : null;
-          if (
-            prior &&
-            prior.title === article.title &&
-            prior.summary === article.excerpt
-          )
-            continue;
-          const revision = (prior?.revision || 0) + 1,
-            payload = {
-              alertId,
-              revision,
-              title: article.title,
-              summary: article.excerpt || "",
-              sourceId: article.sourceId || article.provider,
-              url: article.url,
-              publishedAt: article.publishedAt,
-              receivedAt: article.receivedAt,
-              updatedAt: stamp(this.now()),
-              verification: "unverified",
-              assessment: "deterministic",
-              severity: severity.level,
-              countries: article.countryMentions || [],
-              instrumentIds: article.instrumentIds || [],
-              evidenceIds: [`news:${raw.id}:${raw.revision || 1}`],
-              corroboration: "syndication-is-not-independent-confirmation",
-              classification: severity.classification,
-              publisherId: article.publisherId || null,
-            };
-          this.db
-            .prepare(
-              "INSERT INTO geopolitical_alerts VALUES(?,?,?,?,?) ON CONFLICT(alert_id) DO UPDATE SET revision=excluded.revision,updated_at=excluded.updated_at,payload_json=excluded.payload_json",
-            )
-            .run(
-              alertId,
-              revision,
-              payload.sourceId,
-              payload.updatedAt,
-              json(payload),
-            );
-          this.db
-            .prepare("INSERT INTO geopolitical_alert_revisions VALUES(?,?,?)")
-            .run(alertId, revision, json(payload));
-          updated++;
-        }
-        return { updated };
-      })
-      .immediate();
-  }
-  alerts({
+  get situations(){return this.situationStore ||= new SituationStore(this.db,{now:this.now});}
+  alertSync(input={}) {return this.situations.processPage(input);}
+  alerts(input={}) {return this.situations.alerts(input,()=>this.legacyAlerts(input));}
+  legacyAlerts({
     deviceId = "",
     cursor = "",
     limit = 20,
@@ -1927,19 +1803,16 @@ export class AgentRepository {
       nextCursor: hasMore ? String(rows.at(-1).revision) : null,
     };
   }
-  alertState({ deviceId, alertId, read, archived }) {
-    const a = this.db
-      .prepare("SELECT revision FROM geopolitical_alerts WHERE alert_id=?")
-      .get(alertId);
-    if (!a) throw agentError("AGENT_ALERT_NOT_FOUND", 404);
-    if (typeof read !== "boolean" || typeof archived !== "boolean")
-      throw agentError("AGENT_INVALID_ALERT_STATE");
-    this.db
-      .prepare(
-        "INSERT INTO geopolitical_alert_state VALUES(?,?,?,?) ON CONFLICT(device_id,alert_id) DO UPDATE SET read_revision=excluded.read_revision,archived=excluded.archived",
-      )
-      .run(deviceId, alertId, read ? a.revision : 0, Number(archived));
-    return { updated: true };
+  alertState({deviceId,alertId,read,archived,revision,requestId}) {
+    if(typeof read!=='boolean'||typeof archived!=='boolean')throw agentError('AGENT_INVALID_ALERT_STATE');
+    return this.situations.receipt(requestId?`alert-state:${stableHash([deviceId,requestId])}`:null,['alert-state',deviceId,alertId,read,archived,revision??null],()=>{
+      const current=this.db.prepare('SELECT revision FROM geopolitical_alerts WHERE alert_id=?').get(alertId);
+      if(!current)throw agentError('AGENT_ALERT_NOT_FOUND',404);
+      const acknowledged=revision??current.revision;
+      if(!Number.isInteger(acknowledged)||acknowledged<1||acknowledged>current.revision)throw agentError('AGENT_INVALID_ALERT_STATE');
+      this.db.prepare('INSERT INTO geopolitical_alert_state VALUES(?,?,?,?) ON CONFLICT(device_id,alert_id) DO UPDATE SET read_revision=CASE WHEN excluded.read_revision=0 THEN 0 ELSE max(read_revision,excluded.read_revision) END,archived=excluded.archived').run(deviceId,alertId,read?acknowledged:0,Number(archived));
+      return {updated:true,acknowledgedRevision:acknowledged};
+    });
   }
   run({ jobId, deviceId, internal = false }) {
     const r = this.job(jobId);

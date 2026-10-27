@@ -348,6 +348,7 @@ export function mountAgentIntelligence({getWatchlist=()=>null,deferUntilInterest
           `${p.status} · Evidencia ${p.evidenceAsOf} · Publicado ${p.publishedAt}`,
         ),
       );
+      if(p.sourceCurrentness?.current===false)article.append(node("p","Las fuentes citadas cambiaron o su vigencia no está comprobada. Esta valoración necesita revisión; conserva su evidencia histórica."));
       if (p.proposal.task.includes("outlook")) {
         article.append(
           node(
@@ -510,10 +511,12 @@ export function mountAgentIntelligence({getWatchlist=()=>null,deferUntilInterest
     severityFilter.append(o);
   }
   const moreAlerts = button("Más alertas", async () => {
+    const restoreFocus=document.activeElement===moreAlerts;
     try {
       renderInbox(
         await request("/api/alerts/v1/geopolitical?" + alertQuery(alertCursor)),
         true,
+        restoreFocus,
       );
     } catch (e) {
       showError(e);
@@ -536,20 +539,26 @@ export function mountAgentIntelligence({getWatchlist=()=>null,deferUntilInterest
       ...(cursor ? { cursor } : {}),
     }).toString();
   }
-  function renderInbox(data, append = false) {
+  function renderInbox(data, append = false,moreFocused=false) {
     if (!inbox) return;
     const y = inbox.scrollTop;
+    const pageY=window.scrollY,active=document.activeElement,hadFocus=inbox.contains(active),focusedId=active?.closest?.('[data-alert-id]')?.dataset.alertId,action=active?.dataset?.alertAction;
+    let firstNew=null;
     if (!append) inbox.replaceChildren();
     for (const alert of data.items) {
       const item = node("article", null, "agent-alert");
+      item.dataset.alertId=alert.alertId;item.tabIndex=-1;firstNew ||= item;
       item.append(
         node("h3", alert.title),
         node("p", alert.summary),
         node(
           "small",
-          `${alert.severity} · r${alert.revision} · ${alert.sourceId} · ${alert.verification} · ${alert.publishedAt || alert.receivedAt}`,
+          `${alert.severity} · r${alert.revision} · ${alert.sourceId} · ${alert.verification} · Publicación: ${alert.publishedAt || 'desconocida'} · Hecho: ${alert.occurredAt || 'no establecido'} · Cambió: ${alert.changedAt || alert.updatedAt}`,
         ),
       );
+      if(alert.modality)item.append(node('p',`Modalidad: ${{reported:'relato atribuido',negated:'negación',prospective:'futuro o amenaza',opinion:'opinión',mixed:'mixta',unknown:'desconocida',retracted:'retirado'}[alert.modality]||alert.modality}. No acredita por sí sola que el hecho ocurriera.`));
+      if(alert.changeKind)item.append(node('p',`Cambio: ${{'new-report':'nuevo reporte','source-corrected':'fuente corregida','metadata-updated':'metadatos actualizados','evidence-reviewed':'evidencia revisada','historical-indexed':'incorporación histórica','context-changed':'contexto reorganizado'}[alert.changeKind]||alert.changeKind}${alert.historical?' · incorporación histórica':''}`));
+      if(alert.situationId){const a=node('a','Ver situación y evidencias');a.href=`/situations.html?id=${encodeURIComponent(alert.situationId)}`;item.append(a);}
       if (alert.agentAssessment)
         item.append(
           node("p", `Valoración del agente: ${alert.agentAssessment.summary}`),
@@ -569,19 +578,14 @@ export function mountAgentIntelligence({getWatchlist=()=>null,deferUntilInterest
       const save = async (read, archived) => {
         await request(
           `/api/alerts/v1/geopolitical/${encodeURIComponent(alert.alertId)}/state`,
-          { method: "PATCH", body: JSON.stringify({ read, archived }) },
+          { method: "PATCH", body: JSON.stringify({read,archived,revision:alert.revision,requestId:globalThis.crypto?.randomUUID?.()||`ack-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`}) },
         );
         await refresh();
       };
-      item.append(
-        button(alert.read ? "Marcar sin leer" : "Marcar leído", () =>
-          save(!alert.read, alert.archived).catch(showError),
-        ),
-        button(alert.archived ? "Restaurar" : "Archivar", () =>
-          save(true, !alert.archived).catch(showError),
-        ),
-        button("Consultar", () => open([alert.alertId])),
-      );
+      const readButton=button(alert.read?'Marcar sin leer':'Marcar leído',()=>save(!alert.read,alert.archived).catch(showError));readButton.dataset.alertAction='read';
+      const archiveButton=button(alert.archived?'Restaurar':'Archivar',()=>save(true,!alert.archived).catch(showError));archiveButton.dataset.alertAction='archive';
+      const consultButton=button('Consultar',()=>open([alert.alertId]));consultButton.dataset.alertAction='consult';
+      item.append(readButton,archiveButton,consultButton);
       inbox.append(item);
     }
     if (!inbox.children.length)
@@ -593,7 +597,10 @@ export function mountAgentIntelligence({getWatchlist=()=>null,deferUntilInterest
       );
     alertCursor = data.nextCursor;
     moreAlerts.hidden = !data.hasMore;
+    if(hadFocus){const replacement=[...inbox.children].find(n=>n.dataset?.alertId===focusedId)||inbox.firstElementChild;if(replacement){replacement.tabIndex=-1;(replacement.querySelector(`[data-alert-action="${action||''}"]`)||replacement).focus({preventScroll:true});}}
+    else if(moreFocused&&moreAlerts.hidden&&firstNew)firstNew.focus({preventScroll:true});
     inbox.scrollTop = y;
+    if(hadFocus||moreFocused)window.scrollTo({top:pageY,behavior:'auto'});
   }
   const brief = byId("agent-brief-body");
   const openChat = button("Abrir chat", () => open());

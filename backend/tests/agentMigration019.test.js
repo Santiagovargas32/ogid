@@ -21,7 +21,7 @@ test('main 001–009 and branch 001–020 WAL backups upgrade without modifying 
         db.prepare('INSERT INTO pipeline_runs VALUES(?,?,?,?,?,?,NULL)').run('retained','storage','2026-10-21','2026-10-22','healthy','{"articles":42}');
         const original=db.prepare('SELECT * FROM pipeline_runs').all(),checksums=db.prepare('SELECT version,checksum FROM schema_migrations').all();
         const backup=await createStorageBackup(file,join(root,`candidate-${version}.sqlite`));assert.equal(backup.verified,true);
-        candidate=new Database(backup.destination);assert.equal(migrate(candidate).length,25);
+        candidate=new Database(backup.destination);assert.equal(migrate(candidate).length,29);
         assert.deepEqual(candidate.prepare('SELECT * FROM pipeline_runs').all(),original);
         assert.deepEqual(candidate.prepare('SELECT version,checksum FROM schema_migrations WHERE version<=?').all(version),checksums);
         assert.equal(db.prepare('SELECT max(version) AS version FROM schema_migrations').get().version,version);

@@ -12,6 +12,7 @@
     "rss:probe": "node scripts/probe-rss.js",
     "rss:audit": "node scripts/audit-rss-catalog.js",
     "news:enrich": "node scripts/news-editorial-backfill.js",
+    "situations:maintain": "node scripts/situations-maintain.js",
     "awareness:lab": "node scripts/awareness-admission-lab.js",
     "market:watchlist:inspect": "node scripts/inspect-market-watchlist.js",
     "smoke:upstreams": "node scripts/smoke-upstreams.js",

@@ -44,7 +44,7 @@ export function createBusinessAdapters(manager, {rootDir,enabled=true,rssEnabled
     },
     async stop(){rss.running=false;clearTimeout(rss.timer);await rss.task;}
   };
-  return {call,news,candles,rss,
+  return {call,news,candles,rss,situations:proxy('situations',['list','detail','revisions','changes','status','review']),
     store:proxy("store",["view","getRow"]),events:proxy("events",["ingest","search","replayAwareness"]),alerts:proxy("alerts",["acknowledge","delta","getChange","acknowledgeChanges","recoverCheckpoint"]),
     sources:proxy("sources",["status","run","holdings","stop"]),history:proxy("history",["create","get","run","coverage","coverageState","coverageStates","ensureCatchup","repairPlan","cancel"]),imports:proxy("imports",["datasets","datasetsPage","import"]),
     technical:proxy("technical",["get"]),indicators:proxy("indicators",["calculate"]),coupling:proxy("coupling",["calculate"]),scenarios:proxy("scenarios",["refresh","list","remove"]),

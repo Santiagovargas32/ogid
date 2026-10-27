@@ -341,13 +341,15 @@ router.get("/alerts/v1/geopolitical/:id/revisions", device, async (req, res) =>
   ),
 );
 router.patch("/alerts/v1/geopolitical/:id/state", device, async (req, res) => {
-  const { read, archived } = body(req, ["read", "archived"]);
+  const {read,archived,revision,requestId}=body(req,["read","archived","revision","requestId"]);
   res.json(
     await call(req, "alertState", {
       deviceId: req.agentDevice.deviceId,
       alertId: req.params.id,
       read,
       archived,
+      revision,
+      requestId,
     }),
   );
 });

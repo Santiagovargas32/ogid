@@ -22,6 +22,8 @@ export class AgentMaintenance {
   }
   tick() {
     if (this.task) return this.task;
+    clearTimeout(this.timer);
+    this.timer = null;
     this.task = this.run()
       .catch((e) => {
         this.status = {
@@ -32,6 +34,11 @@ export class AgentMaintenance {
       })
       .finally(() => {
         this.task = null;
+        if(this.running&&!this.stopping){
+          const delay=this.alertsPending?Math.min(60000,Math.max(1000,Math.ceil((this.alertPageMs||0)*9))):60000;
+          this.status.nextEligibleAt=new Date(this.now()+delay).toISOString();
+          this.timer=setTimeout(()=>{this.timer=null;void this.tick();},delay);this.timer.unref?.();
+        }
       });
     return this.task;
   }
@@ -43,6 +50,7 @@ export class AgentMaintenance {
     const revisionFor=domain=>{
       if(!inputs)return null;
       const temporal=inputs.news?.hasRecentNews?Math.floor(now/60000):null;
+      const d=inputs.situations;const durable=d?[d.initialized,d.state,d.domainSequence,d.outboxSequence,d.bootstrap,d.streams?.map(s=>[s.stream,s.lastSequence,s.headSequence,s.continuation,s.errorCode])]:null;
       if(domain.startsWith('technical:')){
         const [,id,interval]=domain.split(':');const instrument=getInstrumentById(id);
         const policy=providerPublicationPolicy(instrument);
@@ -50,11 +58,11 @@ export class AgentMaintenance {
         const baseInterval=['15min','30min','1h'].includes(interval)?'5min':interval;
         return stableHash([inputs.candles[`candles.revision:provider-yahoo:${id}:${baseInterval}:splits`] || 0,inputs.candles[`candles.revision:provider-yahoo:${id}:${interval}:splits`] || 0,expected,CALENDAR_VERSION,'shared-closed-series-v1']);
       }
-      return stableHash(domain==='alerts'?[inputs.news?.revision,inputs.awareness,inputs.research]:domain==='evaluation'?[inputs.research,inputs.candles]:[inputs.news?.revision,inputs.awareness,inputs.market,inputs.signals,inputs.candles,temporal]);
+      return stableHash(domain==='alerts'?[inputs.news?.revision,inputs.awareness,inputs.research,durable]:domain==='evaluation'?[inputs.research,inputs.candles]:[inputs.news?.revision,inputs.awareness,inputs.market,inputs.signals,inputs.candles,temporal]);
     };
     const operations = [
       ...(!this.editorialComplete && this.business.news?.enrichEditorialPage ? [["editorial",async()=>{const result=await this.business.news.enrichEditorialPage({});this.editorialComplete=result.complete===true;}]] : []),
-      ["alerts", () => this.call("alertSync")],
+      ["alerts", async () => {const result=await this.call("alertSync");this.alertsPending=result?.hasMore===true;this.alertPageMs=result?.durationMs||0;return result;}],
       ["advanced", () => this.business.advanced.getSnapshot({})],
       [
         "conditions",
@@ -74,15 +82,16 @@ export class AgentMaintenance {
     for (const [domain, execute] of operations) {
       if (this.stopping) break;
       const revision=revisionFor(domain);
-      if(domain!=='editorial' && !force && revision && this.completedInputs.get(domain)===revision){domains[domain]={...previousDomains[domain],state:'ready',deferredReason:'inputs-unchanged',inputRevision:revision};continue;}
+      if(domain!=='editorial' && !(domain==='alerts'&&this.alertsPending) && !force && revision && this.completedInputs.get(domain)===revision){domains[domain]={...previousDomains[domain],state:'ready',deferredReason:'inputs-unchanged',inputRevision:revision};continue;}
       this.status={...this.status,currentDomain:domain,domains:{...domains,[domain]:{state:"running",startedAt:new Date().toISOString()}}};
       try {
-        await execute();
-        if(revision)this.completedInputs.set(domain,revision);
+        const result=await execute();
+        if(revision&&!(domain==='alerts'&&this.alertsPending))this.completedInputs.set(domain,revision);
         domains[domain] = {
           state: "ready",
           inputRevision:revision,
           lastSuccessAt: new Date().toISOString(),
+          ...(domain==='alerts'&&result?{hasMore:result.hasMore,processed:result.processed,streams:result.streams,bootstrap:result.bootstrap}:{}),
         };
       } catch (e) {
         domains[domain] = {
@@ -106,15 +115,15 @@ export class AgentMaintenance {
     };
   }
   start() {
-    if (!this.enabled || this.timer) return;
+    if (!this.enabled || this.running) return;
+    this.running=true;
     this.stopping = false;
     void this.tick();
-    this.timer = setInterval(() => void this.tick(), 60000);
-    this.timer.unref();
   }
   async stop() {
     this.stopping = true;
-    clearInterval(this.timer);
+    this.running=false;
+    clearTimeout(this.timer);
     this.timer = null;
     await this.task;
   }

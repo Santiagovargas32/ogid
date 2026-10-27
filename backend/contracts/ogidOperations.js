@@ -1,8 +1,9 @@
 // Registro compartido: contratos de transporte, permisos e inventario API→MCP.
 // Sin imports de runtime ni secretos. Los parámetros son valores tipados; nunca URLs/rutas libres.
-export const OPERATIONS_VERSION = "1.11.0";
+export const OPERATIONS_VERSION = "1.12.0";
 import {SOURCE_IMPORT_PROPERTIES,SOURCE_IMPORT_REQUIRED} from '../services/news/sourceAssessmentSchema.js';
 import {COMPARISON_REVIEW_PROPERTIES,COMPARISON_REVIEW_REQUIRED} from '../services/news/comparisonSchema.js';
+import {SITUATION_REVIEW_PROPERTIES,SITUATION_REVIEW_REQUIRED} from '../services/situations/reviewSchema.js';
 // Fixed operation identities shared by MCP and the OpenCode receipt decoder.
 export const AGENT_EVIDENCE_TOOLS = Object.freeze({
   ogid_agent_evidence: 'agent.evidence',
@@ -44,6 +45,12 @@ function op(id, method, path, parameters = {}, options = {}) {
 const costly = { profile: "operator", scope: "provider:query", effects: "provider requests and cache updates", cost: "provider quota/rate limits" };
 const mutation = (scope) => ({ profile: "operator", scope, effects: "mutation", cost: "see runtime quotas" });
 export const OGID_OPERATIONS = Object.freeze([
+  op('situations.list','GET','/api/situations',{kind:choice('situation','incident'),timeField:choice('changed','occurred','published'),from:date,to:date,cursor:str(4096),limit,maxBytes:int(4096,262144)},{retention:'stable domain-sequence cut; candidate situations and explicitly reviewed incidents; event time may be unknown'}),
+  op('situations.status','GET','/api/situations/status',{}, {retention:'durable source cursors, bootstrap and explicit backlog/error; no provider or model calls'}),
+  op('situations.changes','GET','/api/situation-changes',{sinceSequence:int(0,Number.MAX_SAFE_INTEGER),cursor:str(4096),limit,maxBytes:int(4096,262144)},{retention:'durable idempotent outbox; historical changes explicit; reading does not ACK delivery'}),
+  op('situations.detail','GET','/api/situations/:id',{atSequence:int(0,Number.MAX_SAFE_INTEGER),cursor:str(4096),limit,maxBytes:int(4096,262144)},{pathParameters:schema({id:str()},['id']),retention:'exact evidence at a frozen domain cut; corrections invalidate current use without rewriting history'}),
+  op('situations.revisions','GET','/api/situations/:id/revisions',{cursor:str(4096),limit,maxBytes:int(4096,262144)},{pathParameters:schema({id:str()},['id']),retention:'immutable domain revisions; occurrence, publication, reception and knowledge changes are distinct'}),
+  op('situations.review','POST','/api/admin/situations/review',{}, {...mutation('situations:write'),body:SITUATION_REVIEW_PROPERTIES,bodyRequired:SITUATION_REVIEW_REQUIRED,cost:'attributed idempotent incident creation/association/review; exact processed evidence required; no providers'}),
   op('news.comparisons','GET','/api/news/comparisons',{articleId:str(),from:date,to:date,cursor:str(4096),limit,maxBytes:int(4096,262144)},{retention:'append-only derived coverage; cursor freezes revisions and window; at most 31 days'}),
   op('news.comparison.changes','GET','/api/news/comparisons/changes',{sinceSequence:int(0,Number.MAX_SAFE_INTEGER),cursor:str(4096),limit,maxBytes:int(4096,262144)},{retention:'durable ordered revision log; no consumer ACK; follow every nextCursor'}),
   op('news.comparison','GET','/api/news/comparisons/:id',{cursor:str(4096),limit,maxBytes:int(4096,262144)},{pathParameters:schema({id:str()},['id']),retention:'frozen member page with attributed claims; relation hints only for returned publications'}),

@@ -362,6 +362,19 @@ const job = (f) => {
   assert.equal(claim.jobId, jobId);
   return { ...claim, owner: "owner" };
 };
+test('source corrections mark existing analyst publications for review without changing frozen citations',()=>{
+ const f=fixture();try{
+  const archive=f.runtime.services.news;
+  archive.ingest([{title:'Missile strike in Kyiv',url:'https://reuters.com/revised-source',provider:'rss',publishedAt:new Date(f.clock()-1000).toISOString()}]);
+  f.advance(1000);
+  const article=archive.search({}).articles[0],auth=job(f),snapshot=f.repo.snapshot(auth),item=f.repo.evidence({snapshotId:snapshot.snapshotId,domain:'news'}).items.find(x=>x.data.id===article.id);
+  assert.ok(item);f.repo.publish({...auth,proposal:proposal([item.evidenceId]),mode:'shadow'});
+  const before=f.repo.publications({includeShadow:true}).items[0];assert.equal(before.sourceCurrentness.current,true);
+  const frozen=f.db.prepare('SELECT payload_json FROM agent_publications').get().payload_json;
+  archive.ingest([{title:'No missile strike in Kyiv',url:'https://reuters.com/revised-source',provider:'rss',publishedAt:new Date(f.clock()-1000).toISOString()}]);
+  const after=f.repo.publications({includeShadow:true}).items[0];assert.equal(after.status,'needs-review');assert.equal(after.sourceCurrentness.current,false);assert.deepEqual(after.proposal.evidenceIds,before.proposal.evidenceIds);assert.equal(f.db.prepare('SELECT payload_json FROM agent_publications').get().payload_json,frozen);
+ }finally{f.close();}
+});
 test("frozen technical lookup keeps instrument, timeframe and cutoff boundaries",()=>{
  const f=fixture();try{
   const asOf=f.clock(),at=offset=>new Date(asOf+offset).toISOString();

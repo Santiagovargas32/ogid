@@ -1,6 +1,7 @@
 // Internal execution descriptors complement the public API contracts. Routing,
 // timeout semantics and worker enforcement must consume the same descriptor.
 const queries = {
+  situations:['list','detail','revisions','changes','status'],
   admin:['history','historyRevision'], sources:['status','holdings'], history:['get','coverage','coverageState','coverageStates','repairPlan'], imports:['datasets','datasetsPage'],
   news:['search','getItem','getHistory','coverage','getFeed','getLiveFeed','sourceAssessments','sourceAssessment','sourceCoverage','comparisons','comparison','comparisonClaim','comparisonChanges'],
   candles:['query','latest','has','hasCandle','coverageSummary'], awareness:['getSnapshot'], events:['search']
@@ -18,6 +19,7 @@ export function storageOperationContract(operation,input={}) {
   if(operation==='runtime.load' && !['awareness','maintenance-inputs','dashboard-analysis','advanced-job'].includes(input.kind))role='writer';
   if(operation==='agent.snapshot' || operation==='domain.call' && (analysis.has(input.service) || input.service==='forecasts' && input.method==='evaluate' || input.service==='news' && input.method==='getProjection'))role='analysis';
   const workClass=operation==='snapshot.renew'?'control':operation==='agent.call' && controls.has(input.method)?'control':
+    operation==='agent.call'&&input.method==='alertSync'?'maintenance':
     ['snapshot.recover','domain.indexPage','storage.checkpoint','storage.verify','storage.import'].includes(operation) || operation==='domain.call' && input.service==='news' && input.method==='enrichEditorialPage'?'maintenance':
     acquisition?'acquisition':['market.persist.admit','market.persist.page','analysis.persist','runtime.save','pipeline.record'].includes(operation)?'commit':pureRead?'read':'calculation';
   return {role,pureRead,workClass,effects:pureRead?'read-only':acquisition?'acquisition-and-commit':'may-commit',acquisition};

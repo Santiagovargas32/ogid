@@ -35,6 +35,7 @@ import { publicProjection } from "../utils/researchProjection.js";
 import { AgentRepository } from "./agentRepository.js";
 import { SqlRssCanonicalState } from "./rssCanonicalState.js";
 import { checkOperation, committedOperationItems } from "../services/shared/operationContext.js";
+import {SituationStore} from './situations.js';
 
 const METHODS={market:["analyze"],awareness:["parseSource","getSnapshot","reconcile","setSourceStale"],store:["view","getRow"],news:["ingest","enrichEditorialPage","sourceAssessments","sourceAssessment","sourceCoverage","comparisons","comparison","comparisonClaim","comparisonChanges","importSourceAssessments","reviewComparison","recordContext","search","getItem","getHistory","coverage","getProjection","getFeed","getLiveFeed"],events:["ingest","search","replayAwareness"],alerts:["acknowledge","delta","getChange","acknowledgeChanges","recoverCheckpoint"],sources:["status","run","holdings","stop"],history:["create","get","run","coverage","coverageState","coverageStates","ensureCatchup","repairPlan","cancel"],imports:["datasets","datasetsPage","import"],technical:["get"],indicators:["calculate"],coupling:["calculate"],scenarios:["refresh","list","remove"],forecasts:["evaluate","record"],portfolio:["getContext"],rss:["getSnapshot","refresh"],conditions:["getSnapshot"],map:["getDashboardMapAssets","getLayerBundle","getConfig"],advanced:["getSnapshot"],signals:["recordSnapshot","getAnomalies"],candles:["query","append","upsert","latest","has","hasCandle","hydrate","coverageSummary"]};
 export class BusinessRuntime {
@@ -201,7 +202,8 @@ export class BusinessRuntime {
       research:readMeta(this.db,"research.revision",0),signals:readMeta(this.db,"signals.revision",null),
       candles:Object.fromEntries(this.db.prepare("SELECT key,value_json FROM runtime_meta WHERE key GLOB 'candles.revision:*'").all().map(row=>[row.key,JSON.parse(row.value_json)])),
       market:this.db.prepare("SELECT json_extract(payload_json,'$.revision') AS revision FROM runtime_snapshots WHERE kind='market'").get()?.revision || null,
-      alerts:readMeta(this.db,'alerts.meta',{}).sequence || 0
+      alerts:readMeta(this.db,'alerts.meta',{}).sequence || 0,
+      situations:(this.situations ||= new SituationStore(this.db)).status()
     })).deferred();
     if(kind === "awareness")return loadAwarenessProjection(this.db);
     if(kind === "ai")return {records:this.db.prepare("SELECT payload_json FROM ai_enrichments ORDER BY observed_at DESC LIMIT 1000").all().reverse().map(r=>JSON.parse(r.payload_json))};
@@ -224,6 +226,10 @@ export class BusinessRuntime {
     return {...calculateMarketProjection({...input,articles}),newsCoverage:{...corpus.meta,awarenessRevision:awareness?.revision ?? null,analysisArticleCount:articles.length}};
   }
   async call({service,method,args=[],context,analysisJob,requestId,preparedScenarios}){
+    if(service==='situations'&&['list','detail','revisions','changes','status','review'].includes(method)){
+      this.situations ||= new SituationStore(this.db);
+      return this.situations[method](...args.map(value=>value===null?undefined:value));
+    }
     // The existing writer can enrich metadata without configuring acquisition,
     // recovering unrelated jobs or hydrating analytical services. analysisOnly
     // here disables archive cleanup; the storage contract still requires a writer.

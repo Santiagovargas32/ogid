@@ -227,11 +227,24 @@ test('maintenance retains previous domain success when a later sweep fails',asyn
   await m.tick();const success=m.status.domains.advanced.lastSuccessAt;
   fail=true;await m.tick();assert.equal(m.status.state,'degraded');assert.equal(m.status.domains.advanced.lastSuccessAt,success);
 });
+test('deterministic maintenance drains its durable backlog even when legacy input revisions stay unchanged',async()=>{
+ let calls=0,advanced=0;
+ const m=new AgentMaintenance({enabled:true,dependencies:async()=>({news:{revision:1},awareness:0,research:0,candles:{}}),call:async()=>({hasMore:++calls<3,durationMs:5,processed:100}),business:{advanced:{getSnapshot:async()=>{advanced++;}},conditions:{getSnapshot:async()=>{}},forecasts:{evaluate:async()=>{}}}});
+ for(let n=0;n<4;n++)await m.tick();assert.equal(calls,3);assert.equal(advanced,1);assert.equal(m.status.domains.alerts.hasMore,false);await m.stop();
+});
 test('maintenance stop does not report a partial sweep as a new success',async()=>{
   let release,entered;const gate=new Promise(r=>{release=r;}),started=new Promise(r=>{entered=r;});
   const m=new AgentMaintenance({enabled:true,call:async()=>{entered();await gate;},business:{advanced:{getSnapshot:async()=>assert.fail('stopped sweep continued')},conditions:{getSnapshot:async()=>{}},forecasts:{evaluate:async()=>{}}}});
   const tick=m.tick();await started;const stopped=m.stop();release();await Promise.all([tick,stopped]);
   assert.equal(m.status.state,'stopped');assert.equal(m.status.lastSuccessAt,null);
+});
+test('a manual maintenance sweep replaces the pending timer instead of starting another timer chain',async(t)=>{
+ const clear=t.mock.method(globalThis,'clearTimeout');
+ const m=new AgentMaintenance({enabled:true,call:async()=>({hasMore:false}),business:{advanced:{getSnapshot:async()=>{}},conditions:{getSnapshot:async()=>{}},forecasts:{evaluate:async()=>{}}}});
+ try{
+  m.start();await m.task;const previous=m.timer;assert.ok(previous);
+  await m.tick();assert.notEqual(m.timer,previous);assert.ok(clear.mock.calls.some(c=>c.arguments[0]===previous));
+ }finally{await m.stop();}
 });
 test('OpenCode rejects and cancels error bodies without reading private upstream text',async()=>{
  let cancelled=false;

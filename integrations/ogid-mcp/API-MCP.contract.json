@@ -1,0 +1,5788 @@
+{
+  "contractVersion": "1.12.0",
+  "routes": 98,
+  "operations": [
+    {
+      "retention": "stable domain-sequence cut; candidate situations and explicitly reviewed incidents; event time may be unknown",
+      "id": "situations.list",
+      "method": "GET",
+      "path": "/api/situations",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "situation",
+              "incident"
+            ]
+          },
+          "timeField": {
+            "type": "string",
+            "enum": [
+              "changed",
+              "occurred",
+              "published"
+            ]
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "maxBytes": {
+            "type": "integer",
+            "minimum": 4096,
+            "maximum": 262144
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "retention": "durable source cursors, bootstrap and explicit backlog/error; no provider or model calls",
+      "id": "situations.status",
+      "method": "GET",
+      "path": "/api/situations/status",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "retention": "durable idempotent outbox; historical changes explicit; reading does not ACK delivery",
+      "id": "situations.changes",
+      "method": "GET",
+      "path": "/api/situation-changes",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "sinceSequence": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "maxBytes": {
+            "type": "integer",
+            "minimum": 4096,
+            "maximum": 262144
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "pathParameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "retention": "exact evidence at a frozen domain cut; corrections invalidate current use without rewriting history",
+      "id": "situations.detail",
+      "method": "GET",
+      "path": "/api/situations/:id",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "atSequence": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "maxBytes": {
+            "type": "integer",
+            "minimum": 4096,
+            "maximum": 262144
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "pathParameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "retention": "immutable domain revisions; occurrence, publication, reception and knowledge changes are distinct",
+      "id": "situations.revisions",
+      "method": "GET",
+      "path": "/api/situations/:id/revisions",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "maxBytes": {
+            "type": "integer",
+            "minimum": 4096,
+            "maximum": 262144
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "profile": "operator",
+      "scope": "situations:write",
+      "effects": "mutation",
+      "cost": "attributed idempotent incident creation/association/review; exact processed evidence required; no providers",
+      "body": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._:-]+$"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "create-incident",
+              "link-incident",
+              "verification"
+            ]
+          },
+          "entityId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._:-]+$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "reviewer": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "references": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 20,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            }
+          },
+          "sourceRefs": {
+            "type": "array",
+            "maxItems": 25,
+            "items": {
+              "type": "object",
+              "properties": {
+                "stream": {
+                  "type": "string",
+                  "enum": [
+                    "news",
+                    "awareness"
+                  ]
+                },
+                "sourceId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "pattern": "^[A-Za-z0-9._:-]+$"
+                },
+                "sourceRevision": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                }
+              },
+              "required": [
+                "stream",
+                "sourceId",
+                "sourceRevision"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "verification": {
+            "type": "string",
+            "enum": [
+              "unverified",
+              "reviewed-supported",
+              "reviewed-disputed",
+              "retracted"
+            ]
+          },
+          "occurredAt": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "format": "date-time"
+          },
+          "occurrenceBasis": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "requestId",
+          "action",
+          "entityId",
+          "reviewer",
+          "reason",
+          "references"
+        ],
+        "additionalProperties": false
+      },
+      "bodyRequired": [
+        "requestId",
+        "action",
+        "entityId",
+        "reviewer",
+        "reason",
+        "references"
+      ],
+      "id": "situations.review",
+      "method": "POST",
+      "path": "/api/admin/situations/review",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_operator"
+    },
+    {
+      "retention": "append-only derived coverage; cursor freezes revisions and window; at most 31 days",
+      "id": "news.comparisons",
+      "method": "GET",
+      "path": "/api/news/comparisons",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "articleId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "maxBytes": {
+            "type": "integer",
+            "minimum": 4096,
+            "maximum": 262144
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "retention": "durable ordered revision log; no consumer ACK; follow every nextCursor",
+      "id": "news.comparison.changes",
+      "method": "GET",
+      "path": "/api/news/comparisons/changes",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "sinceSequence": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "maxBytes": {
+            "type": "integer",
+            "minimum": 4096,
+            "maximum": 262144
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "pathParameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "retention": "frozen member page with attributed claims; relation hints only for returned publications",
+      "id": "news.comparison",
+      "method": "GET",
+      "path": "/api/news/comparisons/:id",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "maxBytes": {
+            "type": "integer",
+            "minimum": 4096,
+            "maximum": 262144
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "pathParameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "retention": "immutable publication revision and paginated reviewer links; currentness explicit",
+      "id": "news.claim",
+      "method": "GET",
+      "path": "/api/news/claims/:id",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "maxBytes": {
+            "type": "integer",
+            "minimum": 4096,
+            "maximum": 262144
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "profile": "operator",
+      "scope": "news:comparisons:write",
+      "effects": "mutation",
+      "cost": "audited idempotent merge/split/origin/claim-link; at most 500 publications per merge; no providers",
+      "body": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "merge",
+              "split",
+              "origin",
+              "claim-link"
+            ]
+          },
+          "reviewer": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 1000
+          },
+          "references": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "minItems": 1,
+            "maxItems": 5,
+            "uniqueItems": true
+          },
+          "groupIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+            },
+            "minItems": 2,
+            "maxItems": 10,
+            "uniqueItems": true
+          },
+          "groupId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+          },
+          "articleIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "originChainId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+          },
+          "leftClaimId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+          },
+          "rightClaimId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+          },
+          "relation": {
+            "type": "string",
+            "enum": [
+              "support",
+              "contradiction",
+              "context"
+            ]
+          }
+        },
+        "required": [
+          "requestId",
+          "action",
+          "reviewer",
+          "reason",
+          "references"
+        ],
+        "additionalProperties": false
+      },
+      "bodyRequired": [
+        "requestId",
+        "action",
+        "reviewer",
+        "reason",
+        "references"
+      ],
+      "id": "news.comparison.review",
+      "method": "POST",
+      "path": "/api/admin/news/comparisons/review",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_operator"
+    },
+    {
+      "effects": "pure stored temporal source assessments; no providers",
+      "retention": "append-only revisions; asOf and knownAt distinguish validity and knowledge",
+      "id": "news.source-assessments",
+      "method": "GET",
+      "path": "/api/news/source-assessments",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "publisherIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "edition": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "politicalScope": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "view": {
+            "type": "string",
+            "enum": [
+              "subjects",
+              "records"
+            ]
+          },
+          "asOf": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "knownAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "maxBytes": {
+            "type": "integer",
+            "minimum": 4096,
+            "maximum": 262144
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "cost": "no-provider",
+      "fixed": {},
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "pathParameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "effects": "pure stored assessment detail; no providers",
+      "id": "news.source-assessment",
+      "method": "GET",
+      "path": "/api/news/source-assessments/:id",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000000
+          },
+          "asOf": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "knownAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "effects": "bounded normalized archive facets; no providers; pending backfill explicit",
+      "id": "news.source-coverage",
+      "method": "GET",
+      "path": "/api/news/source-coverage",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "knownAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "politicalScope": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "maxBytes": {
+            "type": "integer",
+            "minimum": 4096,
+            "maximum": 262144
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "profile": "operator",
+      "scope": "news:assessments:write",
+      "effects": "mutation",
+      "cost": "max 25 assessments and 25 profiles / 64 KiB; dry-run default; redistribution permission required",
+      "body": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+          },
+          "dryRun": {
+            "type": "boolean"
+          },
+          "permission": {
+            "type": "object",
+            "properties": {
+              "basis": {
+                "type": "string",
+                "enum": [
+                  "self-authored",
+                  "licensed",
+                  "permission"
+                ]
+              },
+              "reference": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              },
+              "redistributionAllowed": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "basis",
+              "reference",
+              "redistributionAllowed"
+            ],
+            "additionalProperties": false
+          },
+          "assessments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "assessmentId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+                },
+                "revision": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000000
+                },
+                "publisherId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+                },
+                "edition": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "evaluatorId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+                },
+                "evaluatorName": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                },
+                "politicalScope": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "methodId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+                },
+                "methodVersion": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "methodUrl": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "originalRating": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                },
+                "rating": {
+                  "type": "string",
+                  "enum": [
+                    "left",
+                    "center-left",
+                    "center",
+                    "center-right",
+                    "right",
+                    "not-applicable",
+                    "unmapped"
+                  ]
+                },
+                "scaleVersion": {
+                  "type": "string",
+                  "enum": [
+                    "political-five-v1",
+                    "external-unmapped"
+                  ]
+                },
+                "assessedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "validFrom": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "validUntil": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "published",
+                    "withdrawn"
+                  ]
+                },
+                "evidenceUrls": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  },
+                  "maxItems": 5,
+                  "uniqueItems": true
+                },
+                "licenseName": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                },
+                "licenseUrl": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                }
+              },
+              "required": [
+                "assessmentId",
+                "revision",
+                "publisherId",
+                "edition",
+                "evaluatorId",
+                "evaluatorName",
+                "politicalScope",
+                "methodId",
+                "methodVersion",
+                "methodUrl",
+                "originalRating",
+                "rating",
+                "scaleVersion",
+                "assessedAt",
+                "validFrom",
+                "state",
+                "evidenceUrls",
+                "licenseName",
+                "licenseUrl"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 25,
+            "uniqueItems": true
+          },
+          "profiles": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "publisherId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+                },
+                "edition": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "revision": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000000
+                },
+                "verifiedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "editorialCountries": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Z]{2}$"
+                  },
+                  "maxItems": 10,
+                  "uniqueItems": true
+                },
+                "languages": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z]{2,3}$"
+                  },
+                  "maxItems": 10,
+                  "uniqueItems": true
+                },
+                "ownerGroupId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+                },
+                "ownerGroupName": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                },
+                "evidenceUrls": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  },
+                  "maxItems": 5,
+                  "uniqueItems": true
+                }
+              },
+              "required": [
+                "publisherId",
+                "edition",
+                "revision",
+                "verifiedAt",
+                "editorialCountries",
+                "languages",
+                "evidenceUrls"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 25,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "requestId",
+          "permission"
+        ],
+        "additionalProperties": false
+      },
+      "bodyRequired": [
+        "requestId",
+        "permission"
+      ],
+      "id": "news.source-assessments.import",
+      "method": "POST",
+      "path": "/api/admin/news/source-assessments/import",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_operator"
+    },
+    {
+      "required": [
+        "jobId"
+      ],
+      "effects": "stored pure read; no job admission",
+      "id": "intel.advanced.status",
+      "method": "GET",
+      "path": "/api/intel/advanced-snapshot/status",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "jobId"
+        ],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "id": "agent.capabilities",
+      "method": "GET",
+      "path": "/api/agent/v1/capabilities",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "projection": "agent-bundle",
+      "id": "agent.brief",
+      "method": "GET",
+      "path": "/api/agent/v1/brief",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "tool": "ogid_query"
+    },
+    {
+      "projection": "agent-bundle",
+      "id": "agent.geopolitical",
+      "method": "GET",
+      "path": "/api/agent/v1/geopolitical",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "tool": "ogid_query"
+    },
+    {
+      "projection": "agent-bundle",
+      "id": "agent.outlooks",
+      "method": "GET",
+      "path": "/api/agent/v1/outlooks",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "instrumentId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "tool": "ogid_query"
+    },
+    {
+      "required": [
+        "snapshotId"
+      ],
+      "projection": "agent-bundle",
+      "retention": "durable immutable bundle; permitted metadata only",
+      "id": "agent.evidence",
+      "method": "GET",
+      "path": "/api/agent/v1/evidence",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "snapshotId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "domain": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "snapshotId"
+        ],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "tool": "ogid_query"
+    },
+    {
+      "required": [
+        "snapshotId",
+        "evidenceId"
+      ],
+      "projection": "agent-bundle",
+      "retention": "recoverable base64 or readable UTF-8 chunks with sha256",
+      "id": "agent.evidence.chunk",
+      "method": "GET",
+      "path": "/api/agent/v1/evidence/chunk",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "snapshotId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "evidenceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "base64",
+              "utf8"
+            ]
+          }
+        },
+        "required": [
+          "snapshotId",
+          "evidenceId"
+        ],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "tool": "ogid_query"
+    },
+    {
+      "required": [
+        "snapshotId"
+      ],
+      "projection": "agent-bundle",
+      "retention": "durable ranked catalogue and members from frozen evidence",
+      "id": "agent.clusters",
+      "method": "GET",
+      "path": "/api/agent/v1/clusters",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "snapshotId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "clusterId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "required": [
+          "snapshotId"
+        ],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "tool": "ogid_query"
+    },
+    {
+      "required": [
+        "profile"
+      ],
+      "effects": "stored compact projection; never admits acquisition or calculation",
+      "retention": "versioned dashboard-v1; full details retain v2 contracts",
+      "id": "intel.bootstrap",
+      "method": "GET",
+      "path": "/api/intel/bootstrap",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "profile": {
+            "type": "string",
+            "enum": [
+              "dashboard-v1"
+            ]
+          },
+          "countries": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "order": {
+            "type": "string",
+            "enum": [
+              "recent",
+              "critical"
+            ]
+          }
+        },
+        "required": [
+          "profile"
+        ],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "cost": "no-provider",
+      "fixed": {},
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "id": "intel.sync",
+      "method": "GET",
+      "path": "/api/intel/sync",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "resource": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "epoch": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          },
+          "cursor": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          },
+          "profile": {
+            "type": "string",
+            "enum": [
+              "dashboard-v1"
+            ]
+          },
+          "downloadId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "filterKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "id": "intel.changes",
+      "method": "GET",
+      "path": "/api/intel/changes",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "epoch": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "since": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "tool": "ogid_health",
+      "projection": "health",
+      "id": "health",
+      "method": "GET",
+      "path": "/api/health",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values"
+    },
+    {
+      "projection": "health",
+      "id": "health.live",
+      "method": "GET",
+      "path": "/api/health/live",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "tool": "ogid_query"
+    },
+    {
+      "projection": "health",
+      "id": "health.ready",
+      "method": "GET",
+      "path": "/api/health/ready",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "tool": "ogid_query"
+    },
+    {
+      "profile": "operator",
+      "scope": "admin:read",
+      "projection": "admin-counts",
+      "retention": "last minute event-loop; last 512 HTTP samples; last 20 WS events",
+      "effects": "bounded administrative metrics",
+      "id": "admin.runtime",
+      "method": "GET",
+      "path": "/api/admin/runtime",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "cost": "no-provider",
+      "fixed": {},
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "tool": "ogid_operator"
+    },
+    {
+      "tool": "ogid_get_capabilities",
+      "id": "capabilities",
+      "method": "GET",
+      "path": "/api/capabilities",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public"
+    },
+    {
+      "projection": "public",
+      "id": "intel.snapshot",
+      "method": "GET",
+      "path": "/api/intel/snapshot",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "countries": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^(ALL|[A-Z]{2})$"
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "order": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "recent"
+            ]
+          },
+          "q": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000
+          },
+          "windowHours": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 720
+          },
+          "includeOlder": {
+            "type": "boolean"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "tool": "ogid_query"
+    },
+    {
+      "projection": "public",
+      "id": "intel.hotspots",
+      "method": "GET",
+      "path": "/api/intel/hotspots",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "countries": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^(ALL|[A-Z]{2})$"
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "order": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "recent"
+            ]
+          },
+          "q": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000
+          },
+          "windowHours": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 720
+          },
+          "includeOlder": {
+            "type": "boolean"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "tool": "ogid_query"
+    },
+    {
+      "projection": "public",
+      "id": "intel.risks",
+      "method": "GET",
+      "path": "/api/intel/risks",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "countries": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^(ALL|[A-Z]{2})$"
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "order": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "recent"
+            ]
+          },
+          "q": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000
+          },
+          "windowHours": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 720
+          },
+          "includeOlder": {
+            "type": "boolean"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "tool": "ogid_query"
+    },
+    {
+      "projection": "news",
+      "tool": "ogid_get_news",
+      "id": "intel.news",
+      "method": "GET",
+      "path": "/api/intel/news",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "countries": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^(ALL|[A-Z]{2})$"
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "order": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "recent"
+            ]
+          },
+          "q": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000
+          },
+          "windowHours": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 720
+          },
+          "includeOlder": {
+            "type": "boolean"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values"
+    },
+    {
+      "projection": "public",
+      "id": "intel.insights",
+      "method": "GET",
+      "path": "/api/intel/insights",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "countries": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^(ALL|[A-Z]{2})$"
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "order": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "recent"
+            ]
+          },
+          "q": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000
+          },
+          "windowHours": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 720
+          },
+          "includeOlder": {
+            "type": "boolean"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "tool": "ogid_query"
+    },
+    {
+      "tool": "ogid_get_awareness",
+      "projection": "awareness",
+      "retention": "backend retention policy (365-day default); public admission only",
+      "id": "awareness",
+      "method": "GET",
+      "path": "/api/intel/awareness-snapshot",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "financial",
+                "macro",
+                "market",
+                "corporate",
+                "regulatory",
+                "geopolitical",
+                "security"
+              ]
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "kinds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "macro_scheduled",
+                "macro_release",
+                "market_moving_news",
+                "regulatory_filing",
+                "official_security_release",
+                "maritime_alert"
+              ]
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "status": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "scheduled",
+                "live",
+                "released",
+                "updated",
+                "cancelled"
+              ]
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "countries": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "instrumentIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values"
+    },
+    {
+      "fixed": {
+        "stored": true
+      },
+      "effects": "stored/local-calculation; explicit force preserves refresh contract",
+      "id": "intel.advanced-snapshot",
+      "method": "GET",
+      "path": "/api/intel/advanced-snapshot",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "countries": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "windowHours": {
+            "type": "integer",
+            "minimum": 6,
+            "maximum": 168
+          },
+          "maxEvents": {
+            "type": "integer",
+            "minimum": 50,
+            "maximum": 1000
+          },
+          "activeWindowHours": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 48
+          },
+          "baselineDays": {
+            "type": "integer",
+            "enum": [
+              7,
+              30
+            ]
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "cost": "no-provider",
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "fixed": {
+        "stored": true
+      },
+      "effects": "stored/local-calculation; explicit force preserves refresh contract",
+      "id": "intel.hotspots-v2",
+      "method": "GET",
+      "path": "/api/intel/hotspots-v2",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "countries": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "windowHours": {
+            "type": "integer",
+            "minimum": 6,
+            "maximum": 168
+          },
+          "maxEvents": {
+            "type": "integer",
+            "minimum": 50,
+            "maximum": 1000
+          },
+          "activeWindowHours": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 48
+          },
+          "baselineDays": {
+            "type": "integer",
+            "enum": [
+              7,
+              30
+            ]
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "cost": "no-provider",
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "fixed": {
+        "stored": true
+      },
+      "effects": "stored/local-calculation; explicit force preserves refresh contract",
+      "id": "intel.anomalies",
+      "method": "GET",
+      "path": "/api/intel/anomalies",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "countries": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "windowHours": {
+            "type": "integer",
+            "minimum": 6,
+            "maximum": 168
+          },
+          "maxEvents": {
+            "type": "integer",
+            "minimum": 50,
+            "maximum": 1000
+          },
+          "activeWindowHours": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 48
+          },
+          "baselineDays": {
+            "type": "integer",
+            "enum": [
+              7,
+              30
+            ]
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "cost": "no-provider",
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "fixed": {
+        "stored": true
+      },
+      "effects": "stored/local-calculation; explicit force preserves refresh contract",
+      "id": "intel.country-instability",
+      "method": "GET",
+      "path": "/api/intel/country-instability",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "countries": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "windowHours": {
+            "type": "integer",
+            "minimum": 6,
+            "maximum": 168
+          },
+          "maxEvents": {
+            "type": "integer",
+            "minimum": 50,
+            "maximum": 1000
+          },
+          "activeWindowHours": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 48
+          },
+          "baselineDays": {
+            "type": "integer",
+            "enum": [
+              7,
+              30
+            ]
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "cost": "no-provider",
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "fixed": {
+        "stored": true
+      },
+      "id": "country-instability.alias",
+      "method": "GET",
+      "path": "/api/country-instability",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "countries": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "windowHours": {
+            "type": "integer",
+            "minimum": 6,
+            "maximum": 168
+          },
+          "maxEvents": {
+            "type": "integer",
+            "minimum": 50,
+            "maximum": 1000
+          },
+          "activeWindowHours": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 48
+          },
+          "baselineDays": {
+            "type": "integer",
+            "enum": [
+              7,
+              30
+            ]
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "fixed": {
+        "stored": true
+      },
+      "projection": "aggregate",
+      "id": "news.aggregate",
+      "method": "GET",
+      "path": "/api/news/aggregate",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "countries": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "topic": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "threat": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "elevated",
+              "monitoring",
+              "low"
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "tool": "ogid_query"
+    },
+    {
+      "tool": "ogid_search_news",
+      "retention": "30 days of permitted metadata, starting on activation",
+      "projection": "archive",
+      "id": "news.search",
+      "method": "GET",
+      "path": "/api/news/search",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "countries": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "symbols": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "instrumentIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "q": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "topics": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "minItems": 1,
+            "maxItems": 20,
+            "uniqueItems": true
+          },
+          "sectors": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "minItems": 1,
+            "maxItems": 20,
+            "uniqueItems": true
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "minItems": 1,
+            "maxItems": 30,
+            "uniqueItems": true
+          },
+          "providers": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            },
+            "minItems": 1,
+            "maxItems": 20,
+            "uniqueItems": true
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "timeField": {
+            "type": "string",
+            "enum": [
+              "publishedAt",
+              "updatedAt",
+              "receivedAt",
+              "archiveChangedAt"
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048
+          },
+          "maxBytes": {
+            "type": "integer",
+            "minimum": 4096,
+            "maximum": 524288
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values"
+    },
+    {
+      "pathParameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "tool": "ogid_get_news_item",
+      "projection": "archive",
+      "id": "news.item",
+      "method": "GET",
+      "path": "/api/news/items/:id",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values"
+    },
+    {
+      "tool": "ogid_resolve_instruments",
+      "projection": "instruments",
+      "id": "instruments.resolve",
+      "method": "GET",
+      "path": "/api/market/instruments/resolve",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "references": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "exchange": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$"
+          },
+          "isin": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}[A-Z0-9]{9}[0-9]$"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values"
+    },
+    {
+      "projection": "watchlist",
+      "id": "market.watchlist",
+      "method": "GET",
+      "path": "/api/market/watchlist",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "tool": "ogid_query"
+    },
+    {
+      "projection": "quotes",
+      "fixed": {
+        "view": "compact"
+      },
+      "id": "market.quotes",
+      "method": "GET",
+      "path": "/api/market/quotes",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "tickers": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "includeSeries": {
+            "type": "boolean"
+          },
+          "seriesLimit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "tool": "ogid_query"
+    },
+    {
+      "id": "market.provider-status",
+      "method": "GET",
+      "path": "/api/market/provider-status",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "required": [
+        "instrumentId"
+      ],
+      "fixed": {
+        "source": "stored"
+      },
+      "id": "market.candles",
+      "method": "GET",
+      "path": "/api/market/candles",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "instrumentId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "interval": {
+            "type": "string",
+            "enum": [
+              "1day",
+              "1h",
+              "30min",
+              "15min",
+              "5min"
+            ]
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "adjusted": {
+            "type": "string",
+            "enum": [
+              "splits",
+              "none"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "stored"
+            ]
+          }
+        },
+        "required": [
+          "instrumentId"
+        ],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "id": "market.candles.metrics",
+      "method": "GET",
+      "path": "/api/market/candles/metrics",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "required": [
+        "instrumentId"
+      ],
+      "id": "market.indicators",
+      "method": "GET",
+      "path": "/api/market/indicators",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "instrumentId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "interval": {
+            "type": "string",
+            "enum": [
+              "1day",
+              "1h",
+              "30min",
+              "15min",
+              "5min"
+            ]
+          },
+          "adjusted": {
+            "type": "string",
+            "enum": [
+              "splits",
+              "none"
+            ]
+          },
+          "package": {
+            "type": "string",
+            "enum": [
+              "standard-v1"
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2500
+          }
+        },
+        "required": [
+          "instrumentId"
+        ],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "required": [
+        "instrumentId"
+      ],
+      "id": "market.technical-context",
+      "method": "GET",
+      "path": "/api/market/technical-context",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "instrumentId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "datasetId": {
+            "type": "string",
+            "pattern": "^csv-[a-f0-9]{32}$"
+          },
+          "interval": {
+            "type": "string",
+            "enum": [
+              "1day",
+              "1wk",
+              "1h",
+              "30min",
+              "15min",
+              "5min"
+            ]
+          },
+          "adjusted": {
+            "type": "string",
+            "enum": [
+              "splits",
+              "none"
+            ]
+          },
+          "package": {
+            "type": "string",
+            "enum": [
+              "standard-v1"
+            ]
+          },
+          "benchmarkInstrumentId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 30,
+            "maximum": 2500
+          },
+          "anchor": {
+            "type": "string",
+            "enum": [
+              "live",
+              "last-close"
+            ]
+          }
+        },
+        "required": [
+          "instrumentId"
+        ],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "effects": "stored evaluation; no forecast registration or providers",
+      "id": "research.forecast-evaluation",
+      "method": "GET",
+      "path": "/api/research/forecast-evaluation",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "instrumentIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "modelVersion": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "minSamples": {
+            "type": "integer",
+            "minimum": 20,
+            "maximum": 500
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "asOf": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "profile": "operator",
+      "scope": "forecasts:write",
+      "effects": "mutation",
+      "cost": "prospective local registration only",
+      "body": {
+        "type": "object",
+        "properties": {
+          "forecastId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "instrumentId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "benchmarkInstrumentId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "eventId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "target": {
+            "type": "string",
+            "enum": [
+              "return",
+              "relative-return",
+              "direction"
+            ]
+          },
+          "horizonHours": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 720
+          },
+          "issuedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "modelVersion": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "predictedValue": {
+            "type": "number"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "up",
+              "down",
+              "flat"
+            ]
+          },
+          "probability": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "probabilityModelVersion": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "costs": {
+            "type": "object",
+            "properties": {
+              "commissionBps": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1000
+              },
+              "spreadBps": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1000
+              },
+              "slippageBps": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1000
+              }
+            },
+            "required": [
+              "commissionBps",
+              "spreadBps",
+              "slippageBps"
+            ],
+            "additionalProperties": false
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "sourceId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "availableAt": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              },
+              "required": [
+                "sourceId",
+                "availableAt"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "maxItems": 20,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "forecastId",
+          "instrumentId",
+          "target",
+          "horizonHours",
+          "modelVersion"
+        ],
+        "additionalProperties": false
+      },
+      "bodyRequired": [
+        "forecastId",
+        "instrumentId",
+        "target",
+        "horizonHours",
+        "modelVersion"
+      ],
+      "id": "research.forecast.register",
+      "method": "POST",
+      "path": "/api/research/forecasts",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_operator"
+    },
+    {
+      "retention": "durable scenarios; bounded audited revisions",
+      "id": "research.scenarios",
+      "method": "GET",
+      "path": "/api/research/scenarios",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "instrumentIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "statuses": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "pending-data",
+                "watch",
+                "confirmed",
+                "invalidated",
+                "expired"
+              ]
+            },
+            "minItems": 1,
+            "maxItems": 5,
+            "uniqueItems": true
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "required": [
+        "changeId"
+      ],
+      "effects": "immutable historical public revision in base64 UTF-8 pages; verify sha256; never acknowledges processing",
+      "id": "signals.change",
+      "method": "GET",
+      "path": "/api/signals/change",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "changeId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          },
+          "maxBytes": {
+            "type": "integer",
+            "minimum": 4096,
+            "maximum": 524288
+          }
+        },
+        "required": [
+          "changeId"
+        ],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "effects": "stored read; never advances consumer checkpoint",
+      "retention": "durable SQL journal; legacy retention gaps remain explicit; compact references resolve via signals.change",
+      "id": "signals.delta",
+      "method": "GET",
+      "path": "/api/signals/delta",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "consumerId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "instrumentIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "maxBytes": {
+            "type": "integer",
+            "minimum": 4096,
+            "maximum": 524288
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "cost": "no-provider",
+      "fixed": {},
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "profile": "operator",
+      "scope": "signals:generate",
+      "effects": "mutation",
+      "cost": "stored calculations; no provider",
+      "body": {
+        "type": "object",
+        "properties": {
+          "instrumentIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "instrumentIds"
+        ],
+        "additionalProperties": false
+      },
+      "bodyRequired": [
+        "instrumentIds"
+      ],
+      "id": "research.scenarios.refresh",
+      "method": "POST",
+      "path": "/api/research/scenarios/refresh",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_operator"
+    },
+    {
+      "profile": "operator",
+      "scope": "signals:generate",
+      "effects": "mutation",
+      "cost": "local audited tombstone",
+      "body": {
+        "type": "object",
+        "properties": {
+          "scenarioId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "scenarioId",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "bodyRequired": [
+        "scenarioId",
+        "reason"
+      ],
+      "id": "research.scenarios.delete",
+      "method": "POST",
+      "path": "/api/research/scenarios/delete",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_operator"
+    },
+    {
+      "profile": "operator",
+      "scope": "signals:ack",
+      "effects": "mutation",
+      "cost": "processing acknowledgement only; no delivery receipt",
+      "body": {
+        "type": "object",
+        "properties": {
+          "consumerId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "checkpointCursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "expectedSequence": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          }
+        },
+        "required": [
+          "consumerId",
+          "checkpointCursor",
+          "expectedSequence"
+        ],
+        "additionalProperties": false
+      },
+      "bodyRequired": [
+        "consumerId",
+        "checkpointCursor",
+        "expectedSequence"
+      ],
+      "id": "signals.checkpoint",
+      "method": "POST",
+      "path": "/api/signals/checkpoint",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_operator"
+    },
+    {
+      "profile": "operator",
+      "scope": "signals:ack",
+      "effects": "mutation",
+      "cost": "explicit recovery after snapshot review; acknowledges retained gap",
+      "body": {
+        "type": "object",
+        "properties": {
+          "consumerId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "sequence": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          },
+          "expectedSequence": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "consumerId",
+          "sequence",
+          "expectedSequence",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "bodyRequired": [
+        "consumerId",
+        "sequence",
+        "expectedSequence",
+        "reason"
+      ],
+      "id": "signals.recover",
+      "method": "POST",
+      "path": "/api/signals/recover",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_operator"
+    },
+    {
+      "id": "research.event-impact",
+      "method": "GET",
+      "path": "/api/research/event-impact",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "instrumentIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "eventIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "required": [
+        "companyId"
+      ],
+      "id": "research.companyfacts",
+      "method": "GET",
+      "path": "/api/research/companyfacts",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "companyId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "companyId"
+        ],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "id": "research.sources",
+      "method": "GET",
+      "path": "/api/research/sources",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "required": [
+        "instrumentId"
+      ],
+      "id": "etf.holdings",
+      "method": "GET",
+      "path": "/api/etf/holdings",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "instrumentId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          },
+          "snapshotId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "instrumentId"
+        ],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "required": [
+        "jobId"
+      ],
+      "retention": "durable bounded job ledger",
+      "id": "market.history.job",
+      "method": "GET",
+      "path": "/api/market/history/jobs",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "jobId"
+        ],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "profile": "operator",
+      "scope": "candles:backfill",
+      "effects": "mutation",
+      "cost": "local job creation; run is explicit",
+      "body": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "instrumentIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "minItems": 1,
+            "maxItems": 20,
+            "uniqueItems": true
+          },
+          "targetBars": {
+            "type": "integer",
+            "minimum": 30,
+            "maximum": 2500
+          },
+          "startAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "requestId",
+          "instrumentIds"
+        ],
+        "additionalProperties": false
+      },
+      "bodyRequired": [
+        "requestId",
+        "instrumentIds"
+      ],
+      "id": "market.history.create",
+      "method": "POST",
+      "path": "/api/market/history/jobs",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_operator"
+    },
+    {
+      "id": "market.history.datasets",
+      "method": "GET",
+      "path": "/api/market/history/datasets",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "profile": "operator",
+      "scope": "admin:read",
+      "effects": "bounded stored projection; queries readonly",
+      "id": "admin.history.status",
+      "method": "GET",
+      "path": "/api/admin/history",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "jobsLimit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          },
+          "legacyLimit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "datasetsLimit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "jobsCursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048
+          },
+          "legacyCursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048
+          },
+          "datasetsCursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048
+          },
+          "maxBytes": {
+            "type": "integer",
+            "minimum": 4096,
+            "maximum": 524288
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_operator"
+    },
+    {
+      "profile": "operator",
+      "scope": "candles:backfill",
+      "effects": "mutation",
+      "cost": "local job creation only",
+      "body": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "instrumentIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "minItems": 1,
+            "maxItems": 20,
+            "uniqueItems": true
+          },
+          "targetBars": {
+            "type": "integer",
+            "minimum": 30,
+            "maximum": 2500
+          },
+          "startAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "requestId",
+          "instrumentIds"
+        ],
+        "additionalProperties": false
+      },
+      "bodyRequired": [
+        "requestId",
+        "instrumentIds"
+      ],
+      "id": "admin.history.create",
+      "method": "POST",
+      "path": "/api/admin/history/jobs",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_operator"
+    },
+    {
+      "profile": "operator",
+      "scope": "candles:backfill",
+      "effects": "mutation",
+      "cost": "max 4 Yahoo requests per explicit run",
+      "body": {
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "maxRequests": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4
+          }
+        },
+        "required": [
+          "jobId"
+        ],
+        "additionalProperties": false
+      },
+      "bodyRequired": [
+        "jobId"
+      ],
+      "id": "admin.history.run",
+      "method": "POST",
+      "path": "/api/admin/history/run",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_operator"
+    },
+    {
+      "profile": "operator",
+      "scope": "sources:ingest",
+      "effects": "mutation",
+      "cost": "local Awareness snapshot replay; dryRun defaults true; no providers; snapshotId required to commit",
+      "body": {
+        "type": "object",
+        "properties": {
+          "dryRun": {
+            "type": "boolean"
+          },
+          "snapshotId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "id": "admin.events.replay",
+      "method": "POST",
+      "path": "/api/admin/events/replay",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_operator"
+    },
+    {
+      "profile": "operator",
+      "scope": "candles:backfill",
+      "effects": "mutation",
+      "cost": "local validated CSV; preview default; no external requests",
+      "body": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "instrumentId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "sourceUrl": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "providerSymbol": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$"
+          },
+          "adjustmentMode": {
+            "type": "string",
+            "enum": [
+              "splits",
+              "none"
+            ]
+          },
+          "startAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "csv": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500000
+          },
+          "dryRun": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "instrumentId",
+          "source",
+          "sourceUrl",
+          "providerSymbol",
+          "currency",
+          "adjustmentMode",
+          "startAt",
+          "endAt",
+          "csv"
+        ],
+        "additionalProperties": false
+      },
+      "bodyRequired": [
+        "instrumentId",
+        "source",
+        "sourceUrl",
+        "providerSymbol",
+        "currency",
+        "adjustmentMode",
+        "startAt",
+        "endAt",
+        "csv"
+      ],
+      "id": "admin.history.import",
+      "method": "POST",
+      "path": "/api/admin/history/import",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_operator"
+    },
+    {
+      "profile": "operator",
+      "scope": "candles:backfill",
+      "effects": "mutation",
+      "cost": "max 4 Yahoo requests per run; provider limits",
+      "body": {
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "maxRequests": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4
+          }
+        },
+        "required": [
+          "jobId"
+        ],
+        "additionalProperties": false
+      },
+      "bodyRequired": [
+        "jobId"
+      ],
+      "id": "market.history.run",
+      "method": "POST",
+      "path": "/api/market/history/run",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_operator"
+    },
+    {
+      "profile": "operator",
+      "scope": "sources:ingest",
+      "effects": "mutation",
+      "cost": "configured public sources only; max 4 requests",
+      "body": {
+        "type": "object",
+        "properties": {
+          "sourceIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "minItems": 1,
+            "maxItems": 4,
+            "uniqueItems": true
+          },
+          "maxRequests": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4
+          }
+        },
+        "required": [
+          "sourceIds"
+        ],
+        "additionalProperties": false
+      },
+      "bodyRequired": [
+        "sourceIds"
+      ],
+      "id": "research.sources.run",
+      "method": "POST",
+      "path": "/api/research/sources/run",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_operator"
+    },
+    {
+      "id": "market.impact",
+      "method": "GET",
+      "path": "/api/market/impact",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "tickers": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "countries": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "windowMin": {
+            "type": "integer",
+            "minimum": 10,
+            "maximum": 1440
+          },
+          "couplingInterval": {
+            "type": "string",
+            "enum": [
+              "1day",
+              "1h",
+              "30min",
+              "15min",
+              "5min"
+            ]
+          },
+          "couplingWindows": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 15,
+              "maximum": 1440
+            },
+            "minItems": 1,
+            "maxItems": 4,
+            "uniqueItems": true
+          },
+          "benchmarkInstrumentId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "id": "market.analytics",
+      "method": "GET",
+      "path": "/api/market/analytics",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "tickers": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "countries": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "windowMin": {
+            "type": "integer",
+            "minimum": 10,
+            "maximum": 1440
+          },
+          "couplingInterval": {
+            "type": "string",
+            "enum": [
+              "1day",
+              "1h",
+              "30min",
+              "15min",
+              "5min"
+            ]
+          },
+          "couplingWindows": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 15,
+              "maximum": 1440
+            },
+            "minItems": 1,
+            "maxItems": 4,
+            "uniqueItems": true
+          },
+          "benchmarkInstrumentId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "id": "market.conditions",
+      "method": "GET",
+      "path": "/api/market/conditions",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "windowMin": {
+            "type": "integer",
+            "enum": [
+              15,
+              60,
+              240,
+              1440
+            ]
+          },
+          "countries": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "anchor": {
+            "type": "string",
+            "enum": [
+              "live",
+              "last-close"
+            ]
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "id": "map.config",
+      "method": "GET",
+      "path": "/api/map/config",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "id": "map.presets",
+      "method": "GET",
+      "path": "/api/map/presets",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "id": "map.themes",
+      "method": "GET",
+      "path": "/api/map/themes",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "fixed": {
+        "stored": true
+      },
+      "effects": "stored/local-calculation; explicit force preserves refresh contract",
+      "id": "map.layers",
+      "method": "GET",
+      "path": "/api/map/layers",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "layers": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "minItems": 1,
+            "maxItems": 30,
+            "uniqueItems": true
+          },
+          "timeWindow": {
+            "type": "string",
+            "enum": [
+              "1h",
+              "6h",
+              "24h",
+              "3d",
+              "7d"
+            ]
+          },
+          "countries": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "bbox": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "minimum": -180,
+              "maximum": 180
+            },
+            "minItems": 4,
+            "maxItems": 4
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "preset": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "cost": "no-provider",
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "fixed": {
+        "stored": true,
+        "resolve": "none"
+      },
+      "id": "media.streams",
+      "method": "GET",
+      "path": "/api/media/streams",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "id": "media.health",
+      "method": "GET",
+      "path": "/api/media/streams/health",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "pathParameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "fixed": {
+        "stored": true,
+        "resolve": "none"
+      },
+      "id": "media.item",
+      "method": "GET",
+      "path": "/api/media/streams/:id",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "projection": "diagnostics",
+      "effects": "sanitized counts; excludes private admin payloads",
+      "id": "diagnostics",
+      "method": "GET",
+      "path": "/api/diagnostics",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "tool": "ogid_query"
+    },
+    {
+      "required": [
+        "mode"
+      ],
+      "tool": "ogid_get_portfolio_context",
+      "effects": "stored/local-calculation; persists observed alert candidates, never delivery",
+      "id": "portfolio.context",
+      "method": "GET",
+      "path": "/api/portfolio/context",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "agenda",
+              "daily",
+              "material",
+              "weekly"
+            ]
+          },
+          "symbols": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "instrumentIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "countries": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "minImportance": {
+            "type": "string",
+            "enum": [
+              "medium",
+              "high"
+            ]
+          },
+          "includeUncorroborated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public"
+    },
+    {
+      "profile": "operator",
+      "scope": "provider:query",
+      "effects": "provider requests and cache updates",
+      "cost": "provider quota/rate limits",
+      "required": [
+        "q"
+      ],
+      "id": "market.instruments.search",
+      "method": "GET",
+      "path": "/api/market/instruments/search",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          }
+        },
+        "required": [
+          "q"
+        ],
+        "additionalProperties": false
+      },
+      "body": null,
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_operator"
+    },
+    {
+      "profile": "operator",
+      "scope": "intel:refresh",
+      "effects": "mutation",
+      "cost": "see runtime quotas",
+      "body": {
+        "type": "object",
+        "properties": {
+          "countries": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "id": "intel.refresh",
+      "method": "POST",
+      "path": "/api/intel/refresh",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "countries": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_operator"
+    },
+    {
+      "profile": "operator",
+      "scope": "watchlist:write",
+      "effects": "mutation",
+      "cost": "see runtime quotas",
+      "body": {
+        "type": "object",
+        "properties": {
+          "instrumentIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "minItems": 0,
+            "maxItems": 50,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "instrumentIds"
+        ],
+        "additionalProperties": false
+      },
+      "bodyRequired": [
+        "instrumentIds"
+      ],
+      "id": "market.watchlist.update",
+      "method": "PUT",
+      "path": "/api/market/watchlist",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_operator"
+    },
+    {
+      "profile": "operator",
+      "scope": "candles:backfill",
+      "effects": "mutation",
+      "cost": "provider quota",
+      "body": {
+        "type": "object",
+        "properties": {
+          "instrumentIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "minItems": 1,
+            "maxItems": 20,
+            "uniqueItems": true
+          },
+          "days": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30
+          },
+          "adjusted": {
+            "type": "string",
+            "enum": [
+              "splits",
+              "none"
+            ]
+          }
+        },
+        "required": [
+          "instrumentIds"
+        ],
+        "additionalProperties": false
+      },
+      "bodyRequired": [
+        "instrumentIds"
+      ],
+      "id": "market.candles.backfill",
+      "method": "POST",
+      "path": "/api/market/candles/backfill",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_operator"
+    },
+    {
+      "profile": "operator",
+      "scope": "media:refresh",
+      "effects": "mutation",
+      "cost": "provider requests",
+      "body": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "force": {
+            "type": "boolean"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "id": "media.refresh",
+      "method": "POST",
+      "path": "/api/media/streams/refresh",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_operator"
+    },
+    {
+      "profile": "operator",
+      "scope": "alerts:ack",
+      "effects": "mutation",
+      "cost": "see runtime quotas",
+      "body": {
+        "type": "object",
+        "properties": {
+          "candidateIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "minItems": 1,
+            "maxItems": 100,
+            "uniqueItems": true
+          },
+          "deliveredAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "candidateIds",
+          "deliveredAt"
+        ],
+        "additionalProperties": false
+      },
+      "bodyRequired": [
+        "candidateIds",
+        "deliveredAt"
+      ],
+      "id": "portfolio.alerts.ack",
+      "method": "POST",
+      "path": "/api/portfolio/alerts/ack",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_operator"
+    },
+    {
+      "profile": "operator",
+      "scope": "admin:read",
+      "projection": "admin-counts",
+      "effects": "sanitized administrative projection; full internal bodies never relayed",
+      "id": "admin.api-limits",
+      "method": "GET",
+      "path": "/api/admin/api-limits",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "tool": "ogid_operator"
+    },
+    {
+      "profile": "operator",
+      "scope": "admin:read",
+      "projection": "admin-counts",
+      "fixed": {
+        "stored": true
+      },
+      "effects": "sanitized administrative projection; full internal bodies never relayed",
+      "id": "admin.news-raw",
+      "method": "GET",
+      "path": "/api/admin/news-raw",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "dataset": {
+            "type": "string",
+            "enum": [
+              "intel",
+              "rss-aggregate"
+            ]
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000
+          },
+          "pageSize": {
+            "type": "integer",
+            "minimum": 10,
+            "maximum": 100
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "cost": "no-provider",
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "tool": "ogid_operator"
+    },
+    {
+      "profile": "operator",
+      "scope": "admin:read",
+      "projection": "admin-counts",
+      "effects": "sanitized administrative projection; full internal bodies never relayed",
+      "id": "admin.pipeline-status",
+      "method": "GET",
+      "path": "/api/admin/pipeline-status",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "tool": "ogid_operator"
+    },
+    {
+      "profile": "operator",
+      "scope": "admin:read",
+      "projection": "admin-counts",
+      "effects": "sanitized administrative projection; full internal bodies never relayed",
+      "id": "admin.ai-enrichments",
+      "method": "GET",
+      "path": "/api/admin/ai-enrichments",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "running",
+              "ready",
+              "rejected",
+              "failed",
+              "stale"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "article_summary",
+              "country_insight",
+              "market_explanation"
+            ]
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000
+          },
+          "pageSize": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "tool": "ogid_operator"
+    },
+    {
+      "profile": "operator",
+      "scope": "provider:query",
+      "effects": "provider requests and cache updates",
+      "cost": "provider quota/rate limits",
+      "fixed": {
+        "force": true
+      },
+      "projection": "aggregate",
+      "id": "news.aggregate.fetch",
+      "method": "GET",
+      "path": "/api/news/aggregate",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "countries": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "topic": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "threat": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "tool": "ogid_operator"
+    },
+    {
+      "profile": "operator",
+      "scope": "provider:query",
+      "effects": "provider requests and cache updates",
+      "cost": "provider quota/rate limits",
+      "fixed": {
+        "force": true
+      },
+      "id": "intel.advanced.fetch",
+      "method": "GET",
+      "path": "/api/intel/advanced-snapshot",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "countries": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "windowHours": {
+            "type": "integer",
+            "minimum": 6,
+            "maximum": 168
+          },
+          "maxEvents": {
+            "type": "integer",
+            "minimum": 50,
+            "maximum": 1000
+          },
+          "activeWindowHours": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 48
+          },
+          "baselineDays": {
+            "type": "integer",
+            "enum": [
+              7,
+              30
+            ]
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_operator"
+    },
+    {
+      "profile": "operator",
+      "scope": "provider:query",
+      "effects": "provider requests and cache updates",
+      "cost": "provider quota/rate limits",
+      "fixed": {
+        "force": true
+      },
+      "id": "intel.instability.fetch",
+      "method": "GET",
+      "path": "/api/intel/country-instability",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "countries": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "windowHours": {
+            "type": "integer",
+            "minimum": 6,
+            "maximum": 168
+          },
+          "maxEvents": {
+            "type": "integer",
+            "minimum": 50,
+            "maximum": 1000
+          },
+          "activeWindowHours": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 48
+          },
+          "baselineDays": {
+            "type": "integer",
+            "enum": [
+              7,
+              30
+            ]
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_operator"
+    },
+    {
+      "profile": "operator",
+      "scope": "provider:query",
+      "effects": "provider requests and cache updates",
+      "cost": "provider quota/rate limits",
+      "fixed": {
+        "force": true
+      },
+      "id": "intel.hotspots.fetch",
+      "method": "GET",
+      "path": "/api/intel/hotspots-v2",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "countries": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "windowHours": {
+            "type": "integer",
+            "minimum": 6,
+            "maximum": 168
+          },
+          "maxEvents": {
+            "type": "integer",
+            "minimum": 50,
+            "maximum": 1000
+          },
+          "activeWindowHours": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 48
+          },
+          "baselineDays": {
+            "type": "integer",
+            "enum": [
+              7,
+              30
+            ]
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_operator"
+    },
+    {
+      "profile": "operator",
+      "scope": "provider:query",
+      "effects": "provider requests and cache updates",
+      "cost": "provider quota/rate limits",
+      "fixed": {
+        "force": true
+      },
+      "id": "intel.instability-alias.fetch",
+      "method": "GET",
+      "path": "/api/country-instability",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "countries": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "windowHours": {
+            "type": "integer",
+            "minimum": 6,
+            "maximum": 168
+          },
+          "maxEvents": {
+            "type": "integer",
+            "minimum": 50,
+            "maximum": 1000
+          },
+          "activeWindowHours": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 48
+          },
+          "baselineDays": {
+            "type": "integer",
+            "enum": [
+              7,
+              30
+            ]
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_operator"
+    },
+    {
+      "profile": "operator",
+      "scope": "provider:query",
+      "effects": "provider requests and cache updates",
+      "cost": "provider quota/rate limits",
+      "required": [
+        "instrumentId"
+      ],
+      "fixed": {
+        "force": true
+      },
+      "id": "market.candles.fetch",
+      "method": "GET",
+      "path": "/api/market/candles",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "instrumentId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "interval": {
+            "type": "string",
+            "enum": [
+              "1day",
+              "1h",
+              "30min",
+              "15min",
+              "5min"
+            ]
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "adjusted": {
+            "type": "string",
+            "enum": [
+              "splits",
+              "none"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "stored",
+              "yahoo"
+            ]
+          }
+        },
+        "required": [
+          "instrumentId"
+        ],
+        "additionalProperties": false
+      },
+      "body": null,
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_operator"
+    },
+    {
+      "profile": "operator",
+      "scope": "provider:query",
+      "effects": "provider requests and cache updates",
+      "cost": "provider quota/rate limits",
+      "fixed": {
+        "force": true
+      },
+      "id": "map.layers.fetch",
+      "method": "GET",
+      "path": "/api/map/layers",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "layers": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "minItems": 1,
+            "maxItems": 30,
+            "uniqueItems": true
+          },
+          "timeWindow": {
+            "type": "string",
+            "enum": [
+              "1h",
+              "6h",
+              "24h",
+              "3d",
+              "7d"
+            ]
+          },
+          "countries": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "bbox": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "minimum": -180,
+              "maximum": 180
+            },
+            "minItems": 4,
+            "maxItems": 4
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "preset": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_operator"
+    },
+    {
+      "profile": "operator",
+      "scope": "provider:query",
+      "effects": "provider requests and cache updates",
+      "cost": "provider quota/rate limits",
+      "fixed": {
+        "force": true
+      },
+      "id": "media.streams.resolve",
+      "method": "GET",
+      "path": "/api/media/streams",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "resolve": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "visible",
+              "all"
+            ]
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_operator"
+    },
+    {
+      "profile": "operator",
+      "scope": "provider:query",
+      "effects": "provider requests and cache updates",
+      "cost": "provider quota/rate limits",
+      "pathParameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "fixed": {
+        "force": true
+      },
+      "id": "media.item.resolve",
+      "method": "GET",
+      "path": "/api/media/streams/:id",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "resolve": {
+            "type": "string",
+            "enum": [
+              "visible",
+              "all"
+            ]
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_operator"
+    }
+  ]
+}
