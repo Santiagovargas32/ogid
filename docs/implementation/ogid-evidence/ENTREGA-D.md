@@ -1,4 +1,12 @@
-# Entrega D — punto de entrada después de C
+# Entrega D — diseño previo y enlace al cierre actual
+
+**Actualización del 27/10/2026:** D está implementada/publicada en **df50aae**, contrato **1.12.0**, esquema efectivo **029**, siguiente migración disponible: 030. Leer [CIERRE-D.md](CIERRE-D.md) para implementación/pruebas, [EJECUCION-D-2026-10-27.md](EJECUCION-D-2026-10-27.md) para la última ejecución y [ESTADO.md](ESTADO.md) para pendientes. Backlog/capacidad D bajo adquisición y aceptación operativa permanecen abiertos; E/F siguen después.
+
+## Diseño histórico de entrada — anterior a implementar D
+
+Todo el texto siguiente conserva el plan recibido desde C/punto 2. Sus frases «preparado», «025», «siguiente 026» y «no existe consumidor» pertenecen a aquel corte, no al estado actual ni a órdenes de reimplementación. La aceptación de diseño se contrasta con CIERRE-D/EJECUCION-D; no editar migraciones aplicadas.
+
+---
 
 Estado: preparado para implementar cuando el usuario continúe D. Fuente: fase 4 del [diagnóstico](../../OGID-diagnostico-direccion-y-plan-2026-10-25.md). Consultar primero [ESTADO.md](ESTADO.md), el diff y las decisiones vigentes. No repetir A/B/C ni volver a copias de 0.2.
 

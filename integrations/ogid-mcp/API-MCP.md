@@ -1,8 +1,8 @@
 # Inventario API → MCP
 
-Contrato 1.11.0. Generado desde backend/contracts/ogidOperations.js; no editar a mano.
+Contrato 1.12.0. Generado desde backend/contracts/ogidOperations.js; no editar a mano.
 
-92 rutas JSON con método; 66 operaciones de investigación y 35 de operador. Las variantes almacenadas/proveedor comparten algunas rutas.
+98 rutas JSON con método; 71 operaciones de investigación y 36 de operador. Las variantes almacenadas/proveedor comparten algunas rutas.
 
 Las cuatro herramientas compatibles se conservan. ogid_get_awareness_sources compone el catálogo local versionado y la salud pública Awareness, sin una ruta adicional. El inventario cubre las rutas de backend/routes montadas bajo /api; WebSocket, archivos estáticos y transporte del túnel tienen contratos independientes.
 
@@ -12,6 +12,12 @@ Las rutas privadas de chat, dispositivos y control agentivo son de primera parte
 
 | Operación | Método y ruta | Herramienta | Perfil / permiso | Proyección | Efectos / coste |
 | --- | --- | --- | --- | --- | --- |
+| situations.list | GET /api/situations | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
+| situations.status | GET /api/situations/status | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
+| situations.changes | GET /api/situation-changes | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
+| situations.detail | GET /api/situations/:id | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
+| situations.revisions | GET /api/situations/:id/revisions | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
+| situations.review | POST /api/admin/situations/review | ogid_operator | operator / situations:write | public | mutation; attributed idempotent incident creation/association/review; exact processed evidence required; no providers |
 | news.comparisons | GET /api/news/comparisons | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
 | news.comparison.changes | GET /api/news/comparisons/changes | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
 | news.comparison | GET /api/news/comparisons/:id | ogid_query | research / read:stored | public | stored/local-calculation; no-provider |
@@ -119,6 +125,348 @@ Las rutas privadas de chat, dispositivos y control agentivo son de primera parte
 Los query arrays viajan como CSV tipado; no se permiten claves extra, cabeceras, URLs o rutas libres. fixed se añade exclusivamente en el cliente y se verifica en backend para operador. La API existente mantiene su autenticación sensible; el permiso MCP añade credenciales de alcance, sin retirarla.
 
 researchRoutes.integration.test.js compara todas las rutas montadas con este registro y ejecuta todas las lecturas contra backend real con proveedores bloqueados. operations.test.js verifica todas las operaciones operador mediante fixtures HTTP, métodos, permisos y cuerpos; no demuestra ejecución de proveedores reales. Las pruebas de archivo, protocolo y e2e comprueban los contratos especializados.
+
+### situations.list
+
+Retención: stable domain-sequence cut; candidate situations and explicitly reviewed incidents; event time may be unknown. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "kind": {
+        "type": "string",
+        "enum": [
+          "situation",
+          "incident"
+        ]
+      },
+      "timeField": {
+        "type": "string",
+        "enum": [
+          "changed",
+          "occurred",
+          "published"
+        ]
+      },
+      "from": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "to": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "cursor": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      },
+      "maxBytes": {
+        "type": "integer",
+        "minimum": 4096,
+        "maximum": 262144
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### situations.status
+
+Retención: durable source cursors, bootstrap and explicit backlog/error; no provider or model calls. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### situations.changes
+
+Retención: durable idempotent outbox; historical changes explicit; reading does not ACK delivery. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "sinceSequence": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+      },
+      "cursor": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      },
+      "maxBytes": {
+        "type": "integer",
+        "minimum": 4096,
+        "maximum": 262144
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": null,
+  "fixed": {}
+}
+```
+
+### situations.detail
+
+Retención: exact evidence at a frozen domain cut; corrections invalidate current use without rewriting history. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "atSequence": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+      },
+      "cursor": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      },
+      "maxBytes": {
+        "type": "integer",
+        "minimum": 4096,
+        "maximum": 262144
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "additionalProperties": false
+  },
+  "fixed": {}
+}
+```
+
+### situations.revisions
+
+Retención: immutable domain revisions; occurrence, publication, reception and knowledge changes are distinct. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "cursor": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      },
+      "maxBytes": {
+        "type": "integer",
+        "minimum": 4096,
+        "maximum": 262144
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": null,
+  "pathParameters": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "additionalProperties": false
+  },
+  "fixed": {}
+}
+```
+
+### situations.review
+
+Retención: current snapshot; consult response coverage. Procedencia: OGID runtime; source metadata. Calidad: preserve mode, dates, stale/synthetic and missing values.
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "body": {
+    "type": "object",
+    "properties": {
+      "requestId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[A-Za-z0-9._:-]+$"
+      },
+      "action": {
+        "type": "string",
+        "enum": [
+          "create-incident",
+          "link-incident",
+          "verification"
+        ]
+      },
+      "entityId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[A-Za-z0-9._:-]+$"
+      },
+      "title": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512
+      },
+      "reviewer": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 120
+      },
+      "reason": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2000
+      },
+      "references": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 20,
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        }
+      },
+      "sourceRefs": {
+        "type": "array",
+        "maxItems": 25,
+        "items": {
+          "type": "object",
+          "properties": {
+            "stream": {
+              "type": "string",
+              "enum": [
+                "news",
+                "awareness"
+              ]
+            },
+            "sourceId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9._:-]+$"
+            },
+            "sourceRevision": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            }
+          },
+          "required": [
+            "stream",
+            "sourceId",
+            "sourceRevision"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "verification": {
+        "type": "string",
+        "enum": [
+          "unverified",
+          "reviewed-supported",
+          "reviewed-disputed",
+          "retracted"
+        ]
+      },
+      "occurredAt": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 80,
+        "format": "date-time"
+      },
+      "occurrenceBasis": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 500
+      }
+    },
+    "required": [
+      "requestId",
+      "action",
+      "entityId",
+      "reviewer",
+      "reason",
+      "references"
+    ],
+    "additionalProperties": false
+  },
+  "pathParameters": null,
+  "fixed": {}
+}
+```
 
 ### news.comparisons
 

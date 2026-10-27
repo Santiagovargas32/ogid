@@ -1,6 +1,6 @@
 # Entrega C — cierre de implementación e integración
 
-**Corte histórico fechado.** Los recuentos, instalaciones y procesos de este informe pertenecen a su cierre; el estado posterior del punto 2 se consulta en [ESTADO.md](ESTADO.md). No retomar sus pendientes si ya figuran cerrados allí.
+**Corte histórico fechado.** Los recuentos, instalaciones y procesos de este informe pertenecen a su cierre; el estado posterior (punto 2, D y ejecución del 27/10) se consulta en [ESTADO.md](ESTADO.md). No retomar sus pendientes si ya figuran cerrados allí.
 
 
 Corte: **26/10/2026**. Rama `feat/agentic-intelligence`, base anterior B `9a3aa2fb4e58b7fd1342f835288b843e1b06e2a9`. Este checkpoint identifica el commit `feat(news): cerrar entrega C de comparación y afirmaciones`. Commit publicado **40a027d21bcf5cb7140a16bbf8649d3c7126dbc4**, [CI 40404890887 correcta](https://github.com/Santiagovargas32/ogid/actions/runs/40404890887). Los detalles de publicación/CI se conservan en el recibo privado `.implementation-evidence/2026-10-26/C-close/publication.json` y se verifican por el conector GitHub; en otro checkout se localiza el commit por ese título.

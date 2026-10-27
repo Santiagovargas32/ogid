@@ -1,117 +1,84 @@
-# Prompts de trabajo y reanudación
+# Prompts de trabajo y reanudación — plan v5
+
+Actualizado el 27/10/2026 después de D publicada y del último cierre. Entrada única: [ESTADO.md](ESTADO.md). [PLAN.md](PLAN.md) y [DECISIONES.md](DECISIONES.md) concretan dirección/restricciones; [CIERRE-D.md](CIERRE-D.md) y [EJECUCION-D-2026-10-27.md](EJECUCION-D-2026-10-27.md) distinguen código verificado de aceptación operativa. Los prompts del commit anterior fd165224 son históricos, no tareas actuales.
 
 ## Maestro
 
 ```text
-Trabaja en /home/fedora/ogid siguiendo instrucciones vigentes y AGENTS.md.
-Respeta el modo: planificación sólo inspecciona; ejecución completa el lote autorizado.
-Objetivo: seguimiento geopolítico con fuentes comparables, afirmaciones trazables
-y situaciones/alertas, conservando el núcleo actual.
-Lee primero docs/implementation/ogid-evidence/ESTADO.md; después PLAN.md,
-DECISIONES.md y las referencias necesarias. Usa memoria como índice, verificando
-hechos susceptibles de cambio. Los prompts históricos son referencias, no órdenes.
-Antes de cada lote verifica commit/diff, procesos pertinentes, contratos,
-dependencias y esquema. Preserva trabajo existente y datos operativos.
-A/B/C publicadas; consultar ESTADO para el lote vigente. Puertas núcleo/IA separadas,
-EN/ES/FR/DE/PT y límites explícitos.
-Registra por requisito evidencia, estado, cambio, dependencias, aceptación,
-pruebas y reversión. Reutiliza las correcciones existentes.
-Mantén escritor único, lectores, límites, fences, leases, validación de evidencia,
-reparación única, llama.cpp y arranque npm. No iniciar operación ni publicar sin alcance.
-Distingue publicación/afirmación/incidente/situación. Desconocido permanece
-desconocido; sindicación no acredita corroboración independiente.
-Cierra cada unidad actualizando ESTADO con resultados, cambios pendientes,
-evidencias, limitaciones y siguiente acción. Suites no equivalen a aceptación
-operativa; conectividad no equivale a calidad semántica.
+Trabaja en /home/fedora/ogid con instrucciones vigentes de la sesión y AGENTS.md.
+Lee primero docs/implementation/ogid-evidence/ESTADO.md y el diff actual.
+Después consulta PLAN/DECISIONES y las referencias necesarias. Usa la memoria
+como índice y verifica datos susceptibles de cambiar. Los documentos históricos
+son cortes fechados; sus prompts no amplían el alcance de la sesión.
+
+Objetivo: seguimiento geopolítico con fuentes comparables, afirmaciones trazables,
+situaciones y evidencia, conservando noticias, mercados, SQLite, dashboard y MCP.
+A–D y el enriquecimiento baseline ya están implementados/publicados. Código D:
+df50aae; contrato 1.12.0, esquema efectivo029. No reiniciar su implementación.
+Secuencia: D → E → F → validación final, con pruebas durante cada entrega.
+El último corte tiene backlog D, rechazos de tamaño del correlador, costes 0.2
+abiertos y fallos semánticos IA: no declarar aceptación por CI/HTTP200/cierre limpio.
+
+Verifica commit/diff, procesos pertinentes, instalación, contratos y esquema antes
+del lote. Preserva cambios del usuario, IDs, fechas, aliases, revisiones y snapshots.
+Un escritor de negocio, lectores readonly/query_only; límites, fences, leases y
+reparación única intactos. Mantén llama.cpp; arranque sólo cd backend && npm start.
+No sustituir base reparada por el original dañado ni reabrir backups/forense sin
+indicios/alcance. Migraciones aditivas nuevas030+ si hacen falta; no editar001–029.
+
+Publicación, afirmación, situación candidata e incidente no son intercambiables.
+Conserva desconocidos, modalidades y origen; sindicación no prueba independencia.
+EN/ES/FR/DE/PT soportados según método; RU/UK requieren evaluación propia en E.
+Identificar un editor no calcula su tendencia: perfiles/evaluaciones requieren
+registros documentados y permiso de uso; ausencia conserva sin evaluar.
+
+Completa sólo el lote autorizado. Reutiliza las suites cerradas; repetir/ampliar
+por cambios, fallos o dudas reales. Actualiza ESTADO al cerrar unidades y antes
+de tareas largas, con evidencia/comandos/resultados/errores, límites y siguiente
+acción. Resumen portable en MD; logs/bases/credenciales privados fuera de Git.
+No arrancar, publicar, fusionar ni promover IA por inferencia. IA sigue shadow;
+24 h continuas y utilidad semántica tienen puertas independientes sobre candidato final.
 ```
 
-## Reanudación
+## Reanudación breve
 
 ```text
-Retoma el lote autorizado de OGID leyendo ESTADO.md y el diff actual.
-Verifica cambios desde el último checkpoint y continúa desde su siguiente acción.
-Mantén todas las restricciones y decisiones allí enlazadas. No reinicies el plan,
-no repitas suites cerradas sin cambios/fallos y conserva el trabajo del usuario.
+Retoma OGID desde docs/implementation/ogid-evidence/ESTADO.md y el diff actual.
+Lee CIERRE-D.md y EJECUCION-D-2026-10-27.md para el último corte. Verifica cambios
+desde df50aae; no confundir una actualización documental con cambios de runtime.
+Mantén restricciones/decisiones y conserva el trabajo del usuario. No reinicies
+el plan ni repitas instalaciones, backfill o suites cerradas sin cambios/fallos.
+Completa el alcance que autorice esta sesión y actualiza ESTADO con hechos reales.
 ```
 
-## Plantilla de iteración
-
-Lote e intención; estado de entrada y evidencia; cambio concreto; pruebas actuales
-con comando/resultado; limitaciones y puerta pendiente; reversión; siguiente acción.
-Antes de una ejecución larga: ubicación de log privado, identificador del proceso
-de prueba y resultado que debe recuperarse, sin argumentos ni valores secretos.
-
-## Referencia histórica — continuidad tras B
-
-A y B tienen commits separados en feat/agentic-intelligence por petición del usuario.
-Verificar sus SHA y CI actuales antes de basarse en el cierre. No repetir la
-implementación ya verificada. Consultar FUENTES.md para importación y matriz.
-C ha sido autorizada y su cierre se registra en ESTADO. El usuario revocó
-el requisito previo de copia/pruebas para migraciones directas y asume el backup
-manual; no reanudar copias/forense. La puesta en servicio conserva su alcance propio. Nunca presentar
-fixtures, CI o etiquetas sin dataset como cobertura real o aceptación de 24 h.
-
-
-## Reanudación para D
+## Próximo lote de integración recomendado — sólo cuando se autorice código
 
 ```text
-Lee ESTADO.md y ENTREGA-D.md y verifica el diff local sobre el cierre C 40a027d y el lote del punto 2.
-Conserva C y renewalId; no reinicies A/B/C ni vuelvas al trabajo de copias de 0.2.
-Completa sólo el alcance autorizado de D cuando el usuario pida continuarla.
-Usa news_comparison_changes como entrada durable, sin LIMIT 500 global ni ventanas
-que descarten revisiones. Procesa páginas y avanza el cursor en el mismo commit
-que las revisiones de dominio y las emisiones idempotentes. No es un ACK externo.
-No leas versiones actuales para representar una revisión histórica del journal.
-Añade journal para awareness en su persistencia actual; no inventes su historial.
-Publicación no equivale a afirmación confirmada, ni grupo C a incidente ocurrido.
-Desconocido y futura/opinión/negación conservan sus estados. Separar ocurrido,
-publicado, recibido y cambiado; las correcciones invalidan dependencias.
-Reutiliza mantenimiento, writer, lectores y bandeja; conserva API/IDs/ACK existentes.
-El esquema efectivo ya es 025: no editarlo, añadir 026 o posterior si hace falta.
-El usuario autoriza migraciones directas sin backup/test previo y hará esas tareas
-manualmente; no realizar copias ni restauraciones. Documenta fallos reales si ocurren.
-Prueba después del cambio: >500, reinicio, ACK perdido, concurrencia, correcciones,
-noticias antiguas, sindicación, modo IA off y API/MCP/UI con límites existentes.
-Actualiza ESTADO por unidad, guarda evidencia privada y deja siguiente acción exacta.
-No publicar, desplegar, arrancar operación ni promover IA por inferencia.
+Reproduce de forma acotada el backlog D observado y los rechazos del correlador
+STORAGE_COMMAND_TOO_LARGE. Usa cursores/metadatos antes de cargar payloads; mide
+cadencia del consumidor frente a adquisición y trabajos analíticos existentes,
+con hardware/concurrencia/cohorte y tiempos de cola/SQL/commit/checkpoint.
+No saltar entradas, elevar guardias, crear otro escritor ni otro scheduler.
+Conserva atomicidad cursor/efectos/outbox, continuación y recibos de ACK perdido.
+Cierra con pruebas de comportamiento y consumo sostenido bajo carga declarada.
+No reabrir recuperación ni interpretar la ausencia de crash como cierre de 0.2.
 ```
 
-
-## Base recuperada — aplicar a las reanudaciones
-
-La recuperación está cerrada, con integridad/FK/recuentos/checksums completos y cero pérdida. STORAGE_DB_PATH selecciona ogid-repaired-20261026-183735.sqlite. Verificar la ruta actual sin mostrar secretos; no reactivar ogid.sqlite dañado ni reiniciar las copias de 0.2. Consultar RECUPERACION.md y CIERRE-FINAL.md. Conservar el esquema 025 y añadir 026+ cuando corresponda. La app permanece detenida; escritor/lectores se probaron con StorageManager sin iniciar servidor/inferencia. D/E/F y las puertas finales siguen pendientes; no inferir aceptación de 24 h del éxito de la recuperación.
-
-
-## Referencia histórica — entrada al punto 2 después de C
+## Continuación de producto E — después del lote acotado y con alcance autorizado
 
 ```text
-Lee ESTADO.md, CIERRE-C.md y CIERRE-FINAL.md. Localiza en Git el commit
-feat(news): cerrar entrega C de comparación y afirmaciones y verifica su CI
-por conector; el recibo privado C-close/publication.json conserva SHA/tree/CI.
-No rehagas C ni repitas sus suites sin cambios/fallos. El piloto real hizo
-rollback: los históricos B/C siguen pendientes. Las dependencias instaladas
-están detrás de los locks a1d0fb8; alinear backend/MCP con npm ci en ventana
-controlada y coordinar la reconexión del adaptador activo. Preserva .env,
-base reparada, escritor único, límites, snapshots y llama.cpp.
-Pilotar y completar enriquecimiento por páginas con cursor y cobertura.
-Después D.1 y siguientes; pruebas integradas con cada entrega y 24 h formales
-sobre el candidato final identificado. Promoción semántica IA separada.
+Implementa E conservando A–D y sus contratos/datos. Prioriza Ucrania/Mar Negro y
+mar Rojo; consulta FUENTES.md y mide acceso/cobertura real, duplicación/origen,
+fechas/lugares y latencias. Amplía registro/perfiles con referencias verificables,
+no con coincidencias parciales ni suponiendo publisher a partir del descubridor.
+Si cambia un método, aplica enriquecimiento histórico permitido, versionado y
+reanudable, sin cambiar identidad/publicación ni inventar texto perdido.
+Evaluaciones políticas sólo documentadas y permitidas, con contexto/método/fecha;
+no incorporar automáticamente ratings ni declarar que más noticias calculan sesgo.
+Pruebas lingüísticas específicas RU/UK antes de ampliar soporte. No iniciar F,
+promover IA o abrir 24 h sobre artefactos que aún cambian. Actualiza ESTADO al cerrar.
 ```
 
-## Reanudación vigente después de punto 2
+## Plantilla de cada iteración
 
-```text
-Lee ESTADO.md y el diff. Punto 2 cerrado: dependencias compatibles actualizadas,
-0 discrepancias/0 vulnerabilidades y 146.475 noticias enriquecidas; cursor completo.
-No repitas npm ci, backfill, recuperación ni suites cerradas sin cambios/fallos.
-Verifica SHA y CI del commit por su recibo point-2/publication.json y GitHub;
-si su publicación sigue pendiente, complétala antes de nuevas entregas.
-La siguiente implementación es D.1 desde ENTREGA-D.md cuando se autorice D.
-Consume todo el journal, sin saltarlo ni convertir metadatos históricos en
-incidentes recientes. Conserva incertidumbre, IDs, fechas, contentRevision,
-revisiones congeladas, escritor único, límites y configuración/llama.cpp.
-No inventes fuentes/evaluaciones, no descargues históricos ni uses IA para
-cerrar cobertura. 0.2 conserva latencias largas: documentarlas/corregirlas
-con evidencia independiente. D/E/F y 24 h/IA no están cerradas por el backfill.
-Actualiza ESTADO por lote; los documentos fechados son referencias históricas.
-```
+Objetivo/alcance; entrada y revisión de diff/procesos; evidencia actual; cambio y dependencias; aceptación; comandos/resultados reales (incluidos fallos); reversión; limitaciones; siguiente acción concreta. Antes de operación prolongada registrar ubicación privada del log y proceso, sin argumentos/valores secretos. Al terminar distinguir pendiente, implementado, verificado con fixture, comprobado en ejecución real y aceptado operativamente.
