@@ -19,6 +19,7 @@ import { SqlAwarenessStore, loadAwarenessProjection } from "../storage/sqlAwaren
 import { migrate } from "../storage/migrate.js";
 import { createAwarenessEvent } from "../services/awareness/awarenessParsers.js";
 import { SqlNewsArchive } from "../storage/sqlNewsArchive.js";
+import { createBusinessAdapters } from '../storage/businessAdapters.js';
 import { SqlEventLedger, SqlCandleStore } from "../storage/sqlRepositories.js";
 const instrumentId="us-equity-general-dynamics";
 const article=(n,extra={})=>({id:`source-${n}`,title:`General Dynamics earnings ${n}`,url:`https://example.org/${n}`,publishedAt:new Date(Date.now()-86400000+n*1000).toISOString(),provider:"fixture-rss",usagePolicy:"headline-only-link-out",description:"Content must not be exposed",...extra});
@@ -489,6 +490,24 @@ test("signal history commits only changed buckets and rolls snapshot and checkpo
       assert.equal(db.prepare("SELECT value FROM signal_buckets WHERE signal='news' AND country='US' AND bucket=?").get(bucket).value,4);
     }finally{db.close();}
   }finally{await f.close();}
+});
+test('the real writer persists large-corpus signal counts with bounded commands and rolls failed updates back',async()=>{
+ const f=await fixture();try{
+  const adapter=createBusinessAdapters(f.manager),at=new Date().toISOString();
+  const items=Array.from({length:700},(_,n)=>article(n,{publishedAt:at,countryMentions:['US'],description:'private-provider-body '.repeat(1024)}));
+  const snapshot={meta:{lastRefreshAt:at},signalCorpus:items,market:{quotes:{}}};
+  await adapter.signals.recordSnapshot(snapshot,{items});
+  const command=f.manager.recentCommands.findLast(r=>r.service==='signals'&&r.method==='recordMeasurement');assert.ok(command.bytes<65536);assert.equal(f.manager.options.maxCommandBytes,8388608);
+  const db=new Database(f.db);try{
+   const before=db.prepare("SELECT payload_json FROM runtime_snapshots WHERE kind='signals'").get(),payload=JSON.parse(before.payload_json);
+   assert.equal(payload.news.at(-1).value,700);assert.equal(payload.news.at(-1).byCountry.US,700);assert.equal(before.payload_json.includes('private-provider-body'),false);
+   db.exec("CREATE TRIGGER reject_compact_signal BEFORE UPDATE ON signal_buckets BEGIN SELECT RAISE(ABORT,'fixture rejected update'); END");
+   const added={...snapshot,signalCorpus:[...items,article(701,{publishedAt:at,countryMentions:['US']})]};
+   await assert.rejects(adapter.signals.recordSnapshot(added),{code:'SQLITE_CONSTRAINT_TRIGGER'});assert.deepEqual(db.prepare("SELECT payload_json FROM runtime_snapshots WHERE kind='signals'").get(),before);
+   db.exec('DROP TRIGGER reject_compact_signal');await adapter.signals.recordSnapshot(added);
+   assert.equal(JSON.parse(db.prepare("SELECT payload_json FROM runtime_snapshots WHERE kind='signals'").get().payload_json).news.at(-1).value,701);
+  }finally{db.close();}
+ }finally{await f.close();}
 });
 
 test("SQL HTTP mode serves history, news, map config and health without legacy stores",async()=>{

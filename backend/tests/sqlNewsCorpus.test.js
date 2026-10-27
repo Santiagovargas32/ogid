@@ -151,6 +151,21 @@ test("worker domain messages omit large maps and unrelated history",async()=>{
   assert.equal(requests.length,3);
   for(const input of requests){assert.ok(Buffer.byteLength(JSON.stringify(input))<1000);assert.equal(JSON.stringify(input).includes('"huge"'),false);}
 });
+test('signal recording transports complete counts instead of an oversized article corpus',async()=>{
+ const maximum=8*1024*1024,requests=[];
+ const manager={options:{maxCommandBytes:maximum},request:async(operation,input)=>{
+  const bytes=Buffer.byteLength(JSON.stringify({operation,input}));
+  if(bytes>maximum)throw Object.assign(Error('oversized'),{code:'STORAGE_COMMAND_TOO_LARGE'});
+  requests.push({input,bytes});return {};
+ }};
+ const items=Array.from({length:600},(_,i)=>({id:`signal-${i}`,title:'Satellite launch',url:`https://example.org/signal-${i}`,publishedAt:at,countryMentions:['US'],description:'private corpus text '.repeat(1024)}));
+ const adapters=createBusinessAdapters(manager);
+ await adapters.signals.recordSnapshot({meta:{lastRefreshAt:at},signalCorpus:items,market:{quotes:{}}},{items});
+ assert.equal(requests.length,1);assert.ok(requests[0].bytes<65536);
+ assert.equal(JSON.stringify(requests[0].input).includes('private corpus text'),false);
+ assert.equal(requests[0].input.args[0].values.news,600);
+ assert.equal(requests[0].input.args[0].countryValues.news.US,600);
+});
 
 test("worker collects each rotating RSS batch into SQL before returning and preserves previous batches",async()=>{
   const server=createServer((req,res)=>{const feed=Number(req.url.slice(1));res.end(`<rss version="2.0"><channel>${Array.from({length:2},(_,i)=>`<item><title>Russia military conflict report ${feed}-${i}</title><link>https://example.org/${feed}/${i}</link><pubDate>${new Date().toUTCString()}</pubDate></item>`).join("")}</channel></rss>`);});

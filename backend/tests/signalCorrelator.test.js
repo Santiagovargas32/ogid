@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { SignalCorrelatorService, welfordVariance } from "../services/intel/signalCorrelator.js";
+import { SignalCorrelatorService, welfordVariance, prepareSignalMeasurement } from "../services/intel/signalCorrelator.js";
 
 test("welford variance returns stable statistics for rolling baselines", () => {
   const result = welfordVariance([1, 2, 3, 4, 5]);
@@ -136,5 +136,22 @@ test('7 and 30 day baselines match a reference with nonoverlapping active window
   assert.equal(news.samples.active,active.length);assert.equal(news.samples.baseline,baseline.length);
   assert.equal(news.baselineMean,Number((baseline.reduce((n,r)=>n+r.value,0)/baseline.length).toFixed(2)));
   assert.equal(data.latestBucketAt,new Date(now).toISOString());
+ }
+});
+test('compact measurements retain hourly deduplication, country attribution and market gauges',()=>{
+ const now=Date.parse('2026-10-27T15:30:00Z'),story=(id,extra={})=>({title:id,url:'https://example.org/'+id,publishedAt:'2026-10-27T15:01:00Z',countryMentions:['US','US','RU'],...extra});
+ const input={meta:{lastRefreshAt:new Date(now).toISOString()},signalCorpus:[story('one',{topicTags:['conflict','cyber','space']}),story('two',{title:'Satellite launch'}),story('old',{publishedAt:'2026-10-27T14:59:59Z'}),story('future',{publishedAt:'2026-10-27T15:36:00Z'})],impact:{items:[{impactScore:2,linkedCountries:['DE']}]},market:{quotes:{A:{changePct:-2},B:{changePct:.5}}},predictions:{tickers:[{predictionScore:1,sector:'energy'}]}};
+ const measurement=prepareSignalMeasurement(input,{items:[story('one')]},now);
+ assert.deepEqual(measurement.values,{news:2,military:1,market:2,cyber:1,satellite:2,prediction:1});
+ assert.deepEqual(measurement.countryValues.news,{US:2,RU:2});assert.deepEqual(measurement.countryValues.market,{DE:1,US:1});assert.deepEqual(measurement.countryValues.prediction,{IR:1});
+ const service=new SignalCorrelatorService({now:()=>now});let writes=0;service.persist=()=>writes++;
+ service.recordMeasurement(measurement);service.recordMeasurement(structuredClone(measurement));assert.equal(writes,1);
+ measurement.countryValues.news.US=999;assert.equal(service.history.news[0].byCountry.US,2);
+});
+test('invalid compact measurements fail before changing or persisting signal history',()=>{
+ const now=Date.parse('2026-10-27T15:30:00Z'),service=new SignalCorrelatorService({now:()=>now});let writes=0;service.persist=()=>writes++;
+ const value=prepareSignalMeasurement({meta:{lastRefreshAt:new Date(now).toISOString()}},{items:[]},now),before=structuredClone(service.history);
+ for(const mutate of [v=>v.values.news=-1,v=>v.values.news=NaN,v=>v.timestamp='2026-10-27T15:30:00Z',v=>v.countryValues.news={ZZZ:1},v=>v.methodologyVersion='unknown',v=>v.rawCorpus=['private']]){
+  const invalid=structuredClone(value);mutate(invalid);assert.throws(()=>service.recordMeasurement(invalid),{code:'SIGNAL_INVALID_MEASUREMENT'});assert.deepEqual(service.history,before);assert.equal(writes,0);
  }
 });

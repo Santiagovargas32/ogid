@@ -1,5 +1,6 @@
 import { RUNTIME_POLICY } from "../config/runtimePolicy.js";
 import { workerRssStatus } from "../services/news/rssDiagnostics.js";
+import { prepareSignalMeasurement } from '../services/intel/signalCorrelator.js';
 // These adapters contain no historical corpus. Domain methods execute inside
 // the SQLite worker; HTTP controllers and pipeline callbacks await their result.
 export function createBusinessAdapters(manager, {rootDir,enabled=true,rssEnabled=false,rssIntervalMs=30000,context=()=>undefined}={}) {
@@ -27,7 +28,7 @@ export function createBusinessAdapters(manager, {rootDir,enabled=true,rssEnabled
   const map=proxy("map",["getDashboardMapAssets","getLayerBundle","getConfig"],{context:true});
   map.getDashboardMapAssets=(input={})=>call("map","getDashboardMapAssets",[{snapshot:input.snapshot?{news:input.snapshot.news,countries:input.snapshot.countries,hotspots:input.snapshot.hotspots,meta:input.snapshot.meta}:null}],{context:true});
   const signals=proxy("signals",["recordSnapshot","getAnomalies"]);
-  signals.recordSnapshot=(snapshot,aggregate)=>call("signals","recordSnapshot",[{meta:{lastRefreshAt:snapshot.meta?.lastRefreshAt},signalCorpus:snapshot.signalCorpus || [],impact:snapshot.impact,predictions:snapshot.predictions,market:{quotes:snapshot.market?.quotes || {}}},aggregate]);
+  signals.recordSnapshot=(snapshot,aggregate)=>call('signals','recordMeasurement',[prepareSignalMeasurement(snapshot,aggregate)]);
   const rss={...proxy("rss",["getSnapshot","refresh"],{}),maxCorpusItems:RUNTIME_POLICY.news.rssAggregateMaxItems,
     getStatus:()=>workerRssStatus(manager.getStatus().worker?.rss),
     start(){

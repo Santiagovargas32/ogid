@@ -37,7 +37,7 @@ import { SqlRssCanonicalState } from "./rssCanonicalState.js";
 import { checkOperation, committedOperationItems } from "../services/shared/operationContext.js";
 import {SituationStore} from './situations.js';
 
-const METHODS={market:["analyze"],awareness:["parseSource","getSnapshot","reconcile","setSourceStale"],store:["view","getRow"],news:["ingest","enrichEditorialPage","sourceAssessments","sourceAssessment","sourceCoverage","comparisons","comparison","comparisonClaim","comparisonChanges","importSourceAssessments","reviewComparison","recordContext","search","getItem","getHistory","coverage","getProjection","getFeed","getLiveFeed"],events:["ingest","search","replayAwareness"],alerts:["acknowledge","delta","getChange","acknowledgeChanges","recoverCheckpoint"],sources:["status","run","holdings","stop"],history:["create","get","run","coverage","coverageState","coverageStates","ensureCatchup","repairPlan","cancel"],imports:["datasets","datasetsPage","import"],technical:["get"],indicators:["calculate"],coupling:["calculate"],scenarios:["refresh","list","remove"],forecasts:["evaluate","record"],portfolio:["getContext"],rss:["getSnapshot","refresh"],conditions:["getSnapshot"],map:["getDashboardMapAssets","getLayerBundle","getConfig"],advanced:["getSnapshot"],signals:["recordSnapshot","getAnomalies"],candles:["query","append","upsert","latest","has","hasCandle","hydrate","coverageSummary"]};
+const METHODS={market:["analyze"],awareness:["parseSource","getSnapshot","reconcile","setSourceStale"],store:["view","getRow"],news:["ingest","enrichEditorialPage","sourceAssessments","sourceAssessment","sourceCoverage","comparisons","comparison","comparisonClaim","comparisonChanges","importSourceAssessments","reviewComparison","recordContext","search","getItem","getHistory","coverage","getProjection","getFeed","getLiveFeed"],events:["ingest","search","replayAwareness"],alerts:["acknowledge","delta","getChange","acknowledgeChanges","recoverCheckpoint"],sources:["status","run","holdings","stop"],history:["create","get","run","coverage","coverageState","coverageStates","ensureCatchup","repairPlan","cancel"],imports:["datasets","datasetsPage","import"],technical:["get"],indicators:["calculate"],coupling:["calculate"],scenarios:["refresh","list","remove"],forecasts:["evaluate","record"],portfolio:["getContext"],rss:["getSnapshot","refresh"],conditions:["getSnapshot"],map:["getDashboardMapAssets","getLayerBundle","getConfig"],advanced:["getSnapshot"],signals:["recordSnapshot","recordMeasurement","getAnomalies"],candles:["query","append","upsert","latest","has","hasCandle","hydrate","coverageSummary"]};
 export class BusinessRuntime {
   constructor(db,rpc,emitStage=()=>{}){Object.assign(this,{db,rpc,emitStage});this.stageStates=new Map();this.stageTimes=new Map();this.services=null;this.rssCursor=0;}
   progress(id,status,details={}) {
@@ -292,13 +292,13 @@ export class BusinessRuntime {
       const previous=this.db.prepare('SELECT input_hash,result_json FROM storage_commands WHERE request_id=?').get(requestId);
       if(previous){if(previous.input_hash!==requestHash)throw new AppError('Conflicto de idempotencia.',409,'STORAGE_IDEMPOTENCY_CONFLICT');return JSON.parse(previous.result_json);}
     }
-    const track=["ingest","append","upsert","recordContext","recordSnapshot","run","import","refresh","record","acknowledgeChanges","acknowledge","recoverCheckpoint","remove","reconcile","setSourceStale"].includes(method);
+    const track=["ingest","append","upsert","recordContext","recordSnapshot","recordMeasurement","run","import","refresh","record","acknowledgeChanges","acknowledge","recoverCheckpoint","remove","reconcile","setSourceStale"].includes(method);
     const pipelineId=({news:"news",rss:"rss",candles:"market-candles",signals:"signals",awareness:"awareness"})[service] || "research",runId=randomUUID(),started=new Date().toISOString();
     if(track)this.db.prepare("INSERT INTO pipeline_runs VALUES(?,?,?,?,?,?,?)").run(runId,pipelineId,started,null,"running","{}",null);
     try{
       let result;
       const newsBefore=idempotent?Object.fromEntries(['revision','startedAt','lastIngestAt','capacityPrunedAt'].map(k=>[k,this.services.news[k]])):null;
-      const signalBefore=service==='signals'&&method==='recordSnapshot'?structuredClone(target.history):null;
+      const signalBefore=service==='signals'&&['recordSnapshot','recordMeasurement'].includes(method)?structuredClone(target.history):null;
       try{
         const invoke=()=>{
           if(service==="scenarios" && method==="refresh" && preparedScenarios)return target.applyPrepared(preparedScenarios);

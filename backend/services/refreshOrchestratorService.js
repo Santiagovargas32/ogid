@@ -174,6 +174,7 @@ class RefreshOrchestratorService {
       await this.signalCorrelator?.recordSnapshot(correlatorSnapshot, resolvedAggregateNews);
     } catch (error) {
       log.warn("signal_correlator_record_failed", {
+        code: error.code || 'SIGNAL_RECORD_FAILED',
         message: error.message
       });
     }
