@@ -120,6 +120,7 @@ class RefreshOrchestratorService {
     this.newsTimerHandle = null;
     this.marketTimerHandle = null;
     this.stopped = true;
+    this.stopping = false;
     this.newsBackoffMs = 0;
     this.newsCycleTelemetry = createCycleTelemetry();
     this.marketCycleTelemetry = createCycleTelemetry();
@@ -368,6 +369,7 @@ class RefreshOrchestratorService {
   }
 
   runNewsCycle(trigger = "scheduled-news", options = {}) {
+    if(this.stopping)return Promise.resolve({skipped:true,reason:'stopping'});
     if (this.newsTask) {
       this.cycleMetrics.newsJoined++;
       if (options.rssOnly) { this.rssSelectionPending = true; this.cycleMetrics.rssCoalesced++; }
@@ -377,7 +379,7 @@ class RefreshOrchestratorService {
       await this.executeNewsCycle(trigger, options);
       // An RSS notification arriving during a provider fetch must use the newest
       // stored corpus after that fetch completes, without concurrent state writes.
-      while (this.rssSelectionPending) {
+      while (this.rssSelectionPending && !this.stopping) {
         this.rssSelectionPending = false;
         await this.executeNewsCycle("rss-selected-coalesced", { rssOnly: true });
       }
@@ -937,6 +939,7 @@ class RefreshOrchestratorService {
   start() {
     if (!this.stopped) return;
     this.stopped = false;
+    this.stopping = false;
     if (this.rssAggregator) {
       this.rssAggregator.onSnapshot = () => this.runNewsCycle("rss-selected", {rssOnly:true});
       // The SQL adapter collects RSS through the scheduled news cycle.
@@ -968,6 +971,8 @@ class RefreshOrchestratorService {
 
   async stop() {
     this.stopped = true;
+    this.stopping = true;
+    this.rssSelectionPending = false;
     this.nextNewsRunAt=null;
     if (this.newsTimerHandle) {
       clearTimeout(this.newsTimerHandle);

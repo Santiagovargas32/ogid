@@ -100,6 +100,25 @@ test('entity and outbox cursors preserve a frozen cut through concurrent correct
   while(changes.hasMore){changes=f.store.changes({limit:3,cursor:changes.nextCursor});assert.equal(changes.asOfSequence,outboxUpper);emissions.push(...changes.items);}assert.equal(emissions.length,12);assert.equal(new Set(emissions.map(x=>x.sequence)).size,12);assert.ok(f.store.changes({sinceSequence:changes.nextSinceSequence}).items.length>=2);
  }finally{f.close();}
 });
+test('new unsupported reports advance the cursor without hydrating historical article bodies',()=>{
+ const f=fixture();try{
+  for(let n=0;n<160;n++)f.archive.save(article('cold-excluded-'+n,{classification:{language:'ru'}}));
+  const prepare=f.db.prepare.bind(f.db);
+  f.db.prepare=sql=>{assert.ok(!sql.includes('FROM article_revisions'),'ineligible new reports must not read old article payloads');return prepare(sql);};
+  drain(f.store);const news=f.store.status().streams.find(s=>s.stream==='news');
+  assert.equal(news.processedEntries,160);assert.equal(news.excludedEntries,160);assert.equal(news.hasMore,false);assert.equal(f.store.status().outboxSequence,0);
+ }finally{f.close();}
+});
+
+test('an unsupported correction of an existing source still invalidates its alert and evidence',()=>{
+ const f=fixture();try{
+  f.archive.save(article('supported-before'));drain(f.store);
+  f.archive.save(article('supported-before',{revision:2,contentRevision:2,classification:{language:'ru'}}));drain(f.store);
+  const alert=JSON.parse(f.db.prepare("SELECT payload_json FROM geopolitical_alerts WHERE alert_id='news:supported-before'").get().payload_json);
+  assert.equal(alert.verification,'needs-review');assert.equal(alert.sourceRevision,2);assert.equal(alert.qualityReason,'source-ineligible');
+ }finally{f.close();}
+});
+
 test('synthetic and unsupported inputs are excluded while negation/future remain attributed reports',()=>{
  const f=fixture();try{
   f.archive.save(article('synthetic',{synthetic:true}));f.archive.save(article('unsupported',{classification:{language:'ru'}}));f.archive.save(article('denied',{title:'No missile strike in Kyiv'}));f.archive.save(article('future',{title:'Missile strike in Kyiv may happen tomorrow'}));drain(f.store);

@@ -12,7 +12,7 @@ test("startup hydration uses the boot deadline without extending writes or later
  await persistence.flush();
  const hydration=calls.filter(c=>c.operation==='runtime.load');assert.equal(hydration.length,4);
  assert.ok(hydration.every(c=>c.options.timeoutMs===300 && c.options.queueTimeoutMs===300));
- assert.ok(calls.filter(c=>c.operation==='runtime.save').every(c=>c.options===undefined));
+ assert.ok(calls.filter(c=>c.operation==='runtime.save').every(c=>typeof c.options.requestId==='string'&&c.options.timeoutMs===undefined&&c.options.queueTimeoutMs===undefined));
  await marketHistoryStore.loadSnapshot();assert.equal(calls.at(-1).options,undefined);assert.equal(manager.options.timeoutMs,30);
 });
 
@@ -58,9 +58,36 @@ test("an older failed save cannot overwrite a newer successful save",async()=>{
     return Promise.resolve({persisted:true});
   }});
   const old=persistence.save("market",{});
-  await persistence.save("market",{});
-  rejectOld(storageError("SQLITE_BUSY"));await assert.rejects(old);
+  await Promise.resolve();
+  const latest=persistence.save("market",{});
+  rejectOld(storageError("SQLITE_BUSY"));await assert.rejects(old);await latest;
   await persistence.flush();assert.equal(persistence.failure,null);
+});
+
+test('latest-state writes coalesce successors, preserve accepted ordering and freeze input payloads',async()=>{
+ const writes=[],release=[];
+ const persistence=new PipelinePersistence({request:(_operation,input)=>{writes.push(input.payload.revision);return new Promise(resolve=>release.push(resolve));}});
+ const first=persistence.save('market',{revision:1});await Promise.resolve();
+ const second=persistence.save('market',{revision:2}),payload={revision:3},third=persistence.save('market',payload);payload.revision=4;
+ assert.equal(second,third);assert.deepEqual(writes,[1]);release[0]({persisted:true});await first;
+ await new Promise(resolve=>setImmediate(resolve));assert.deepEqual(writes,[1,3]);
+ release[1]({persisted:true});await Promise.all([second,third]);await persistence.flush();
+ assert.equal(persistence.pending.size,0);assert.equal(persistence.writes.scopes.size,0);
+});
+
+test('definite queue expiry retries the same append-only receipt once and flush waits for its commit',async()=>{
+ const receipts=[];let commits=0;
+ const persistence=new PipelinePersistence({request:async(_operation,_input,{requestId})=>{
+  receipts.push(requestId);if(receipts.length===1)throw storageError('STORAGE_QUEUE_TIMEOUT');commits++;return {persisted:true};
+ }});
+ await persistence.save('awareness-audit',{recordedAt:'2026-10-27T17:00:00Z',event:{id:'preserved'}});await persistence.flush();
+ assert.equal(receipts.length,2);assert.equal(receipts[0],receipts[1]);assert.equal(commits,1);assert.equal(persistence.failure,null);
+});
+
+test('uncertain writes remain failures and are never retried by snapshot coalescing',async()=>{
+ let requests=0;const persistence=new PipelinePersistence({request:async()=>{requests++;throw storageError('STORAGE_OUTCOME_UNKNOWN');}});
+ await assert.rejects(persistence.save('market',{}),{code:'STORAGE_OUTCOME_UNKNOWN'});
+ await assert.rejects(persistence.flush(),{code:'STORAGE_OUTCOME_UNKNOWN'});assert.equal(requests,1);
 });
 
 const appendOnlyRecords={

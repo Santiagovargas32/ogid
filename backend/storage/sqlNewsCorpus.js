@@ -104,17 +104,25 @@ export class SqlNewsCorpus {
       };
       // Publication index bounds the scan. No pagination snapshots, full archive
       // hydration, or synchronous writes are created by this read.
-      const references=reader.prepare("SELECT rowid,revision,last_seen_at FROM articles INDEXED BY articles_projection_window WHERE published_at>=? AND published_at<=? ORDER BY published_at DESC,article_id DESC").iterate(from,asOf);
       const captureStarted=performance.now();
+      // SQLite sorts only covering-index metadata, and can spill it to disk.
+      // Stream payloads globally by rowid; do not hydrate all references in JS.
+      const references=reader.prepare(`SELECT rowid,revision,last_seen_at,
+        row_number() OVER (ORDER BY published_at DESC,article_id DESC)-1 AS semantic_order
+        FROM articles INDEXED BY articles_projection_window WHERE published_at>=? AND published_at<=? ORDER BY rowid`).iterate(from,asOf);
+      const locations=[];
       for(const row of physicalPages(reader,'articles',references,this.payloadCache)){
-        frozen.add(row);
+        locations[row.semantic_order]=frozen.add(row);
         if(performance.now()-captureStarted>30000)throw Object.assign(Error('News capture deadline'),{code:'STORAGE_CAPTURE_TIMEOUT'});
         if(frozen.count%128===0)await new Promise(resolve=>setImmediate(resolve));
       }
       reader.exec("COMMIT");captureMs=performance.now()-captureStarted;
       // Classification/ranking now reads a detached immutable cut. Neither a
       // provider update nor retention can change it; WAL is free to checkpoint.
-      for (const row of frozen.rows()) {
+      // Ranking and duplicate selection retain the original publication order.
+      // Random reads here touch only detached scratch data, after releasing WAL.
+      for (const location of locations) {
+        const row=frozen.get(location);
         scanned++;
         const stored = JSON.parse(row.payload_json);
         if (!stored.title?.trim() || !stored.url || stored.synthetic || ["synthetic","fallback","seeded"].includes(stored.dataMode) || stored.provenance?.synthetic) continue;

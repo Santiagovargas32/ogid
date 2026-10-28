@@ -17,7 +17,14 @@ export class FrozenRows {
     if(data.length>this.maxRowBytes || this.bytes+data.length>this.maxBytes)
       throw Object.assign(Error('Frozen input budget exceeded; no partial result'),{code:'STORAGE_CAPTURE_TOO_LARGE'});
     let offset=0;while(offset<data.length)offset+=writeSync(this.fd,data,offset,data.length-offset);
-    this.bytes+=data.length;this.count++;
+    const location={offset:this.bytes,length:data.length};
+    this.bytes+=data.length;this.count++;return location;
+  }
+  get({offset,length}) {
+    if(!Number.isSafeInteger(offset)||!Number.isSafeInteger(length)||offset<0||length<1||length>this.maxRowBytes||offset+length>this.bytes)throw Error('Invalid frozen row location');
+    const buffer=Buffer.allocUnsafe(length);let read=0;
+    while(read<length){const n=readSync(this.fd,buffer,read,length-read,offset+read);if(!n)throw Error('Incomplete frozen input');read+=n;}
+    return JSON.parse(buffer.toString('utf8'));
   }
   *rows() {
     const buffer=Buffer.alloc(64*1024),decoder=new StringDecoder('utf8');let position=0,pending='';

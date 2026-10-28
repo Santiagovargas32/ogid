@@ -3,11 +3,14 @@ import { MARKET_PROVIDER_SCHEMA_VERSION } from "../services/market/marketSnapsho
 import { createLogger } from "../utils/logger.js";
 import { stableHash } from "../utils/stableHash.js";
 import { RUNTIME_POLICY } from "../config/runtimePolicy.js";
+import {randomUUID} from 'node:crypto';
+import {setTimeout as wait} from 'node:timers/promises';
+import {ScopedWork} from './scopedWork.js';
 const log=createLogger("backend/storage/pipelinePersistence");
 const appendOnlyKinds=new Set(["awareness-audit","awareness-poll","quotes"]);
 
 export class PipelinePersistence {
-  constructor(manager){this.manager=manager;this.pending=new Set();this.pendingKeys=new Map();this.outcomes=new Map();this.sequence=0;this.deferredStages=new Map();}
+  constructor(manager){this.manager=manager;this.pending=new Set();this.pendingKeys=new Map();this.outcomes=new Map();this.sequence=0;this.deferredStages=new Map();this.writes=new ScopedWork();}
   deferStageWrites(){this.stagesDeferred=true;}
   resumeStageWrites(){
     this.stagesDeferred=false;
@@ -28,7 +31,22 @@ export class PipelinePersistence {
     const sequence=++this.sequence;
     this.pendingKeys.set(key,(this.pendingKeys.get(key) || 0)+1);
     const settle=error=>{if((this.outcomes.get(key)?.sequence || 0)<sequence)this.outcomes.set(key,{sequence,error});};
-    const task=this.manager.request("runtime.save",{kind,payload});this.pending.add(task);
+    const input={kind,payload:structuredClone(payload)},requestId=randomUUID();
+    const write=async()=>{
+      for(let attempt=0;;attempt++){
+        try{return await this.manager.request("runtime.save",input,{requestId});}
+        catch(error){
+          // Queue expiry is definite non-execution. Reuse the same durable
+          // receipt on this one retry; uncertain writes must remain failures.
+          if(error.code!=='STORAGE_QUEUE_TIMEOUT'||attempt)throw error;
+          await wait(25);
+        }
+      }
+    };
+    // Snapshots/stages retain one accepted save and one latest successor.
+    // Append-only facts keep every distinct record and never coalesce.
+    const replaceable=['pipeline-stage','provider-quota','market','ai-budget'].includes(kind)||(kind==='awareness'&&!payload.events?.length);
+    const task=replaceable?this.writes.run(key,sequence,write,{bytes:Buffer.byteLength(JSON.stringify(input))}):write();this.pending.add(task);
     task.then(()=>settle(null),error=>{
       settle(error);
       log.error("pipeline_persistence_failed",{kind,code:error.code,causeCode:error.causeCode,command:error.diagnostic});

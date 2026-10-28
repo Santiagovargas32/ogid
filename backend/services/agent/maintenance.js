@@ -22,7 +22,7 @@ export class AgentMaintenance {
       if(this.running&&!this.stopping){
         const failed=this.controlError||this.status.domains?.alerts?.state==='degraded';
         const delay=failed?60000:this.alertsPending
-          ?Math.min(60000,Math.max(100,Math.ceil((this.alertPageMs||0)*9)))
+          ?Math.min(1000,Math.max(100,Math.ceil(this.alertPageMs||0)))
           :this.analyticalTask?1000:60000;
         this.status.nextEligibleAt=new Date(this.now()+delay).toISOString();
         this.timer=setTimeout(()=>{this.timer=null;void this.tick();},delay);this.timer.unref?.();
@@ -76,7 +76,8 @@ export class AgentMaintenance {
           const result=await work();
           if(domain==='alerts'){
             this.alertsPending=result?.hasMore===true;
-            // Include transport/queue/commit time, not just time inside SQLite.
+            // Include queue/commit time, but let bounded pages return to the
+            // fair writer queue instead of idling a minute behind new input.
             this.alertPageMs=Math.max(performance.now()-started,result?.durationMs||0);
           }
           if(revision&&!(domain==='alerts'&&this.alertsPending))this.completedInputs.set(domain,revision);

@@ -84,6 +84,9 @@ export class NewsArchive {
       const provenanceByKey = new Map((previous?.provenances || []).map(p => [hash([p.provider, p.sourceId || p.publisher, p.url]), p]));
       provenanceByKey.set(hash([provenance.provider, provenance.sourceId || provenance.publisher, provenance.url]), provenance);
       const record = { ...article, id, originalIds: [...new Set([...(previous?.originalIds || []), raw.id, ...(raw.aliases || [])].filter(Boolean))],
+        // The primary discovery route is stable. Additional feeds remain in
+        // provenances; polling a known route is not another editorial revision.
+        discoverySourceId: previous?.discoverySourceId || article.discoverySourceId || null,
         sourceRole: raw.sourceRole || raw.role || raw.source?.role || previous?.sourceRole || null,
         leadImageUrl: safeUrl(raw.leadImageUrl || raw.imageUrl || raw.urlToImage) || previous?.leadImageUrl || null,
         analysisFeatures: raw.analysisFeatures || previous?.analysisFeatures || null,

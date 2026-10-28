@@ -35,7 +35,7 @@ test('cold configuration buffers stage upserts without acknowledging before the 
  let commit;const writes=[];const p=new PipelinePersistence({request:async(_op,input)=>{writes.push(input);await new Promise(r=>{commit=r;});}});
  p.deferStageWrites();let acknowledged=false;
  const one=p.save('pipeline-stage',{id:'storage',stage:{reason:'configure.registry'}}),two=p.save('pipeline-stage',{id:'storage',stage:{reason:'configure.completed'}});one.then(()=>{acknowledged=true;});
- assert.equal(writes.length,0);p.resumeStageWrites();assert.equal(writes.length,1);assert.equal(writes[0].payload.stage.reason,'configure.completed');assert.equal(acknowledged,false);
+ assert.equal(writes.length,0);p.resumeStageWrites();await Promise.resolve();assert.equal(writes.length,1);assert.equal(writes[0].payload.stage.reason,'configure.completed');assert.equal(acknowledged,false);
  commit();await Promise.all([one,two]);assert.equal(acknowledged,true);await p.flush();
 });
 

@@ -262,6 +262,14 @@ test('rapid input changes are coalesced without regenerating the analytical corp
   now=60000;await m.tick();assert.equal(analytical,2);
  }finally{await m.stop();}
 });
+test('a slow committed journal page does not impose a minute of idle time while backlog remains',async()=>{
+ const m=new AgentMaintenance({enabled:true,call:async()=>({hasMore:true,durationMs:4000,processed:100}),business:{advanced:{getSnapshot:async()=>{}},conditions:{getSnapshot:async()=>{}},forecasts:{evaluate:async()=>{}}}});
+ try{
+  m.start();await m.task;
+  const pause=Date.parse(m.status.nextEligibleAt)-Date.now();
+  assert.ok(pause>=0&&pause<=1000,`backlog pause was ${pause}ms`);
+ }finally{await m.stop();}
+});
 test('stopping maintenance drains its accepted analytical operation and starts no later domains',async()=>{
  let release,entered,conditions=0;const gate=new Promise(r=>{release=r;}),started=new Promise(r=>{entered=r;});
  const m=new AgentMaintenance({enabled:true,call:async()=>({hasMore:false}),business:{advanced:{getSnapshot:async()=>{entered();await gate;}},conditions:{getSnapshot:async()=>{conditions++;}},forecasts:{evaluate:async()=>{}}}});

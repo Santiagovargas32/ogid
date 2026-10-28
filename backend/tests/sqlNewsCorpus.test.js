@@ -16,6 +16,36 @@ import { BusinessRuntime } from "../storage/businessRuntime.js";
 const at="2026-10-09T18:00:00.000Z";
 const article=(id, extra={})=>({id:`source-${id}`,title:`Russia military conflict update number ${id}`,url:`https://example.org/news/${id}`,provider:"rss",sourceName:"Fixture source",publishedAt:at,usagePolicy:"standard-link-out",...extra});
 
+test('rediscovery through known feeds preserves the primary discovery source without producing revisions',()=>{
+ const dir=mkdtempSync(join(tmpdir(),'ogid-rediscovery-')),db=new Database(join(dir,'fixture.sqlite'));db.pragma('journal_mode=WAL');migrate(db);
+ let now=Date.parse(at);const archive=new SqlNewsArchive(db,{now:()=>now});
+ const item=sourceId=>article('same',{sourceId,discoverySourceId:sourceId,publisher:'Reuters',url:'https://www.reuters.com/world/fixture',provenance:{sourceId,fetchedAt:new Date(now).toISOString()}});
+ try{
+  archive.ingest([item('feed-a')]);const id=archive.getItem('source-same').article.id;
+  archive.ingest([item('feed-b')]);const revision=archive.getRecord(id).revision,head=db.prepare('SELECT max(sequence) n FROM news_comparison_changes').get().n;
+  for(let n=0;n<12;n++){now+=60000;archive.ingest([item(n%2?'feed-a':'feed-b')]);}
+  const current=archive.getRecord(id);assert.equal(current.discoverySourceId,'feed-a');assert.equal(current.provenances.length,2);
+  assert.equal(current.revision,revision);assert.equal(db.prepare('SELECT max(sequence) n FROM news_comparison_changes').get().n,head);
+  assert.equal(current.archiveLastSeenAt,new Date(now).toISOString());
+  archive.ingest([{...item('feed-a'),title:'Russia issues a corrected military conflict report'}]);
+  assert.equal(archive.getRecord(id).revision,revision+1);
+ }finally{archive.close();db.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+test('cold projection reads follow physical row order and retain publication-order deduplication',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'ogid-cold-projection-')),db=new Database(join(dir,'fixture.sqlite'));db.pragma('journal_mode=WAL');migrate(db);
+ const archive=new SqlNewsArchive(db,{now:()=>Date.parse(at)}),corpus=new SqlNewsCorpus(archive,{payloadCacheBytes:0}),readOrder=[],prepare=Database.prototype.prepare;
+ try{
+  archive.ingest(Array.from({length:400},(_,n)=>article(n,{publishedAt:new Date(Date.parse(at)-(n*137%400)*1000).toISOString()})));
+  archive.ingest([article('duplicate-old',{title:'Russia military duplicate report',publishedAt:new Date(Date.parse(at)-10000).toISOString()}),article('duplicate-new',{title:'Russia military duplicate report'})]);
+  Database.prototype.prepare=function(sql){const statement=prepare.call(this,sql);if(sql.startsWith('SELECT rowid,payload_json FROM articles WHERE rowid IN')){const iterate=statement.iterate;statement.iterate=function*(...args){for(const row of iterate.apply(this,args)){readOrder.push(row.rowid);yield row;}};}return statement;};
+  const result=await corpus.read({now:Date.parse(at)});
+  assert.equal(readOrder.length,402);assert.ok(readOrder.every((id,i)=>!i||id>readOrder[i-1]),'cold payload hydration must be globally sequential');
+  assert.equal(result.meta.duplicateCount,1);
+  assert.ok(result.marketSignalCorpus.some(row=>row.url.endsWith('duplicate-new')));assert.ok(!result.marketSignalCorpus.some(row=>row.url.endsWith('duplicate-old')));
+ }finally{Database.prototype.prepare=prepare;corpus.close();archive.close();db.close();rmSync(dir,{recursive:true,force:true});}
+});
+
 test("projection rereads only changed row versions across new transactions and minute windows",async()=>{
  const dir=mkdtempSync(join(tmpdir(),'ogid-projection-cache-')),db=new Database(join(dir,'db.sqlite'));db.pragma('journal_mode=WAL');migrate(db);
  let now=Date.parse(at),bodyReads=0;const archive=new SqlNewsArchive(db,{now:()=>now}),corpus=new SqlNewsCorpus(archive,{watchlistCountries:['RU']});
@@ -25,12 +55,12 @@ test("projection rereads only changed row versions across new transactions and m
   Database.prototype.prepare=function(sql){
    const stmt=original.call(this,sql);
    if(sql.startsWith('SELECT rowid,payload_json FROM articles WHERE rowid IN')){const iterate=stmt.iterate;stmt.iterate=function*(ids){for(const row of iterate.call(this,ids)){bodyReads++;yield row;}};}
-   if(sql.startsWith('SELECT rowid,revision,last_seen_at FROM articles')){const iterate=stmt.iterate,database=this;stmt.iterate=function(...args){plans.push(original.call(database,'EXPLAIN QUERY PLAN '+sql).all(...args));return iterate.apply(this,args);};}
+   if(sql.startsWith('SELECT rowid,revision,last_seen_at')){const iterate=stmt.iterate,database=this;stmt.iterate=function(...args){plans.push(original.call(database,'EXPLAIN QUERY PLAN '+sql).all(...args));return iterate.apply(this,args);};}
    return stmt;
   };
   await corpus.read({now});assert.equal(bodyReads,320);
   bodyReads=0;now+=60000;const cached=await corpus.read({now});assert.equal(bodyReads,0);
-  assert.ok(plans.every(plan=>plan.some(p=>p.detail.includes('USING COVERING INDEX articles_projection_window'))));
+  assert.ok(plans.length>0&&plans.every(plan=>plan.some(p=>p.detail.includes('USING COVERING INDEX articles_projection_window'))));
   archive.ingest([article(0,{title:'Russia updated military conflict report'})]);bodyReads=0;
   const changed=await corpus.read({now});assert.equal(bodyReads,1);assert.ok(changed.signalCorpus.some(a=>a.title==='Russia updated military conflict report'));
   const revision=archive.getItem('source-0').article.revision;

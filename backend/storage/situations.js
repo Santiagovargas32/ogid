@@ -151,6 +151,11 @@ export class SituationStore{
   const ref=this.db.prepare('SELECT length(CAST(payload_json AS BLOB)) bytes FROM news_comparison_publication_versions WHERE article_id=? AND article_revision=?').get(articleId,revision);
   if(!ref)return null;if(ref.bytes>MAX_BYTES)fail('SITUATION_SOURCE_TOO_LARGE',undefined,413);
   const v=parse(this.db.prepare('SELECT payload_json FROM news_comparison_publication_versions WHERE article_id=? AND article_revision=?').get(articleId,revision).payload_json);
+  // Most archived reports do not qualify for this consumer. A new ineligible
+  // source needs no historical article body or group resolution. Corrections
+  // to an existing member still take the full invalidation/projection path.
+  if((!v.eventType||v.classificationStatus!=='evaluated')&&!this.db.prepare("SELECT 1 FROM situation_members WHERE stream='news' AND source_id=?").get(articleId))
+    return {sourceId:articleId,sourceRevision:revision,eligible:false};
   const a=this.db.prepare('SELECT group_id,origin_override,review_id FROM news_comparison_assignments WHERE article_id=? AND change_sequence<=? ORDER BY change_sequence DESC LIMIT 1').get(articleId,sequence);
   const originReview=a?.origin_override?this.db.prepare("SELECT a.review_id FROM news_comparison_assignments a JOIN news_comparison_reviews r ON r.review_id=a.review_id WHERE a.article_id=? AND a.origin_override=? AND a.change_sequence<=? AND json_extract(r.payload_json,'$.action')='origin' ORDER BY a.change_sequence DESC LIMIT 1").get(articleId,a.origin_override,sequence)?.review_id||null:null;
   const content=this.db.prepare("SELECT json_extract(payload_json,'$.contentRevision') content_revision,json_extract(payload_json,'$.threatLevel') threat_level,json_extract(payload_json,'$.synthetic') synthetic,json_extract(payload_json,'$.provenance.synthetic') provenance_synthetic,json_extract(payload_json,'$.dataMode') data_mode,json_extract(payload_json,'$.provider') provider FROM article_revisions WHERE article_id=? AND revision=?").get(articleId,revision);

@@ -19,7 +19,9 @@ export function storageOperationContract(operation,input={}) {
   if(operation==='runtime.load' && !['awareness','maintenance-inputs','dashboard-analysis','advanced-job'].includes(input.kind))role='writer';
   if(operation==='agent.snapshot' || operation==='domain.call' && (analysis.has(input.service) || input.service==='forecasts' && input.method==='evaluate' || input.service==='news' && input.method==='getProjection'))role='analysis';
   const workClass=operation==='snapshot.renew'?'control':operation==='agent.call' && controls.has(input.method)?'control':
-    operation==='agent.call'&&input.method==='alertSync'?'maintenance':
+    // Journal pages are bounded business commits. Waiting for every acquisition
+    // workflow to end would starve them while RSS releases the writer for I/O.
+    operation==='agent.call'&&input.method==='alertSync'?'commit':
     ['snapshot.recover','domain.indexPage','storage.checkpoint','storage.verify','storage.import'].includes(operation) || operation==='domain.call' && input.service==='news' && input.method==='enrichEditorialPage'?'maintenance':
     acquisition?'acquisition':['market.persist.admit','market.persist.page','analysis.persist','runtime.save','pipeline.record'].includes(operation)?'commit':pureRead?'read':'calculation';
   return {role,pureRead,workClass,effects:pureRead?'read-only':acquisition?'acquisition-and-commit':'may-commit',acquisition};
