@@ -1,6 +1,22 @@
 # Estado actual de OGID — leer primero
 
-Actualizado **28/10/2026**, tras revisar D2/D3. Plan **v6**. Rama `feat/agentic-intelligence`; código **[124050a](https://github.com/Santiagovargas32/ogid/commit/124050a932d6895cfc2e6ff73284d7c4e7c22fcb)**. Este documento acompaña un commit documental posterior. Alcance de esta sesión: cerrar/publicar trabajo verificado y documentación; no desarrollar otro ajuste, arrancar servicios ni iniciar E/F.
+Actualizado **28/10/2026**, lote **D/0.2** local sobre `c19ac4be6e463732ee03f1968dcc46536aa9e1d0`, rama `feat/agentic-intelligence`. Plan **v7**. Cambios autorizados de implementación, pausa, pruebas y operación corta; **sin publicación, commit, push, merge, despliegue ni E/F**. Detalle y tabla de reconciliación: **[CIERRE-D02.md](CIERRE-D02.md)**.
+
+**Núcleo con IA off; no apto para empezar E.** Pausa ya configurada y conservada: AGENT_MODE y los tres hijos off, AI_PROVIDER=none/AI_MODE=off, AGENT_TASK_MODES={} sin cambios. AgentMaintenance habilitado por business. Esquema real 029, contrato 1.12.0, instalaciones backend/MCP matched sin modificar locks. Base reparada y llama.cpp conservados.
+
+Implementado: reconciliar leases vencidos sin reclamar trabajo IA; bloquear snapshots IA en off; consultar cursor durable antes de reanudar velas; distinguir fallos de velas/proyección y hacer visible la persistencia sin resolver en drain y shutdownReport; correlacionar requestId durable con despacho sin payloads. No se reimplementan A–D ni se crea otra cola.
+
+La cohorte A real **PID 1088798** terminó automáticamente el **28/10 a las 19:58:48.235 UTC**, por **STORAGE_OUTCOME_UNKNOWN / STORAGE_EXECUTION_TIMEOUT** en commit/btrfs_sync_log, con cuatro fases sin confirmar; el controlador **no envió señal**. B **PID 1104931** reinició con npm start y recibió un único SIGTERM, pero falló un lector con resultado incierto durante drain: su reporte vacío no acredita cierre limpio. Ese punto ciego quedó corregido después y probado con fixture. Al cierre operativo no hay backend/owners; llama.cpp conservado. No confundir la caída de Code con una causa física demostrada.
+
+Último corte durable: artículos **163.637**, news **240834/240962** (**128 secuencias pendientes**, no pérdidas), awareness **3823/3823**, dominio/outbox **24668/24668**. Cero referencias ausentes/duplicaciones en lo comprobado; 298 jobs de velas completos, sin pendientes. Intentos/snapshots/publicaciones IA sin incremento. El intento D3 vencido sigue incomplete con fence/attempts/snapshot conservados. Últimas correcciones verificadas con fixtures, sin atribuirles retrospectivamente A/B. Resultados y pruebas en CIERRE-D02.
+
+**Diff final:** backend **1.119/1.119**, MCP **33/33**, check/build e inventarios **98/107** correctos. Comprobación de host 20:36:20 UTC: cero jobs IA nuevos desde A, esquema 029, backend/owners ausentes y puerto 3000 cerrado. Últimas correcciones de proyecciones duplicadas y cierre con lector incierto verificadas con fixtures; aceptación operativa abierta.
+
+**Única siguiente acción:** cerrar la investigación acotada de E/S en host con latencia/cola del dispositivo y actividad por proceso correlacionadas con app, y resolver el alcance de los episodios D3 sin identidad antes de reconsiderar E. No iniciar observación formal de 24 h en este lote.
+
+## Checkpoint histórico D3 — anterior a D/0.2
+
+El resto de este corte documenta la revisión D3 y su base `124050a`; no sustituye el lote local ni autoriza repetir sus acciones. Los PID, cifras y configuración siguientes pertenecen a esa cohorte.
 
 **A–D implementadas e integradas. D3 drenó el backlog; la estabilidad de almacenamiento falló al final de la ejecución extendida.** 0.2 y aceptación operativa abiertas; E/F y entrega final pendientes. No rehacer A/B/C/D, instalaciones ni enriquecimiento baseline por usar cifras históricas.
 

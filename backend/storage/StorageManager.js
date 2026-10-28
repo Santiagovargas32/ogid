@@ -264,7 +264,7 @@ export class StorageManager extends EventEmitter {
     try { encoded = JSON.stringify({ operation, input, requestId }); } catch { return Promise.reject(error("STORAGE_INVALID_COMMAND")); }
     const bytes = Buffer.byteLength(encoded);
     const agentInput=operation==='agent.call'?input.args:input;
-    const diagnostic={operation,service:commandLabel(input.service),method:commandLabel(input.method),kind:commandLabel(input.kind),
+    const diagnostic={operation,requestId:/^[A-Za-z0-9._:-]{1,128}$/.test(requestId||'')?requestId:null,service:commandLabel(input.service),method:commandLabel(input.method),kind:commandLabel(input.kind),
       jobId:typeof agentInput?.jobId==='string'?agentInput.jobId.slice(0,128):null,fence:Number.isSafeInteger(agentInput?.fence)?agentInput.fence:null};
     // Link a delayed heartbeat to its durable heartbeat:<renewalId> receipt.
     // Keep owner, progress and arbitrary command arguments out of diagnostics.

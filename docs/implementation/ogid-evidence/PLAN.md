@@ -1,10 +1,10 @@
 # OGID: implementación por entregas
 
-Versión 6, 28/10/2026: A–D integradas; ajuste técnico 124050a, D3 con backlog drenado y fallo final de E/S. Estado y siguientes acciones en ESTADO.md; resumen autónomo en [RESUMEN-ACTUAL-2026-10-28.md](RESUMEN-ACTUAL-2026-10-28.md). Fuente: [diagnóstico](../../OGID-diagnostico-direccion-y-plan-2026-10-25.md). Entrada de reanudación: [ESTADO.md](ESTADO.md).
+Versión 7, 28/10/2026: A–D integradas; lote D/0.2 local sobre c19ac4b, IA off, reconciliación y cierre verificables. [CIERRE-D02.md](CIERRE-D02.md) distingue fixtures, host y bloqueos. E/F no iniciadas. Fuente: [diagnóstico](../../OGID-diagnostico-direccion-y-plan-2026-10-25.md). Entrada de reanudación: [ESTADO.md](ESTADO.md).
 
 ## Dirección y alcance autorizado
 
-Evolucionar hacia situaciones, afirmaciones y evidencias trazables conservando RSS, archivo, mercados, SQLite, dashboard y MCP. A/B/C y el cierre de instalaciones/enriquecimiento del 26/10 están publicados. **D inicial se publicó en df50aae**, con pruebas y backend/UI/MCP reales; mantenimiento/correlador y ajuste **124050a** completan el código actual. D3 acredita puesta al día con adquisición; estabilidad y aceptación global abiertas. La sesión vigente autoriza publicar el código ya verificado y alinear documentación, sin nuevos ajustes ni E/F.
+Evolucionar hacia situaciones, afirmaciones y evidencias trazables conservando RSS, archivo, mercados, SQLite, dashboard y MCP. A/B/C y el cierre de instalaciones/enriquecimiento del 26/10 están publicados. **D inicial se publicó en df50aae**, con pruebas y backend/UI/MCP reales; mantenimiento/correlador y ajuste **124050a** completan el código publicado. La sesión vigente autoriza L0–L3 de D/0.2, incluidas operación corta y pausa local; excluye publicación, merge, despliegue, promoción, E/F y observación formal de 24 h. La espera E/S se reproduce con IA off; aceptación global abierta.
 
 Secuencia acordada: **D → E → F → validación final**, con pruebas durante cada entrega. Antes de ampliar E, se recomienda un lote D/0.2 focalizado en espera de E/S, persistencia de mercado y reanudación tras D3. El backlog está drenado y el rechazo de tamaño del correlador no se reproduce en D2/D3; no tratarlos como defectos actuales sin evidencia nueva. Es una continuación de integración, no reiniciar el plan. La recuperación ya terminó; el usuario mantiene el backup manual y autorizó migraciones aditivas directas sin condicionar cada lote a otro backup/integridad previa. No retomar copias/forense. Arranque, publicación y promoción conservan su autorización específica; los prompts históricos son referencias.
 
@@ -35,7 +35,7 @@ Pruebas: AP/Japan/Capitol; RSS source; cinco idiomas; negación/futuro/opinión;
 
 ## Puertas y reversión
 
-Núcleo e IA se aceptan por separado. Mantener shadow. Una observación de 24 h requiere candidato identificado, muestras y continuidad; cambiar artefactos abre otra cohorte. Un reinicio prueba recuperación, no continuidad. Medir objetivos de latencia con carga/hardware declarados; no elevar límites para obtener verde.
+Núcleo e IA se aceptan por separado. **D/0.2 conserva IA off**; reactivar shadow requiere alcance posterior. Una observación de 24 h requiere candidato identificado, muestras y continuidad; cambiar artefactos abre otra cohorte. Un reinicio prueba recuperación, no continuidad. Medir objetivos de latencia con carga/hardware declarados; no elevar límites para obtener verde.
 
 Reversión lógica: desactivar capacidades nuevas o volver a proyecciones compatibles; conservar las escrituras nuevas y código compatible con esquema vigente. No reemplazar base activa por imagen anterior ni editar migraciones aplicadas. Para C se aplican directamente por autorización del usuario; la verificación de comportamiento posterior usa fixtures. El usuario realizará el backup y controles operativos manualmente.
 
@@ -49,7 +49,7 @@ Lecturas públicas de catálogo/detalle de evaluaciones y cobertura con presupue
 
 Cierre técnico de B documentado en ESTADO. Matriz inicial e instrucciones de importación en [FUENTES.md](FUENTES.md). No hay dataset político incorporado. La reversión conserva 024 y su conocimiento en el guard de migraciones; no ejecutar un checkout anterior que sólo conozca 023 sobre un esquema 024. Mantener los registros y correcciones append-only.
 
-## Estado operativo y secuencia vigente
+## Checkpoint operativo D3 y secuencia histórica anterior a D/0.2
 
 Base reparada seleccionada por .env, **esquema efectivo 029**; 001–029 inmutables y siguiente número libre 030. Original dañado preservado; no reactivarlo. Código actual **124050a** sobre mantenimiento 4bf31a6 y correlador c5c1ea0; D inicial **df50aae**, contrato **1.12.0**, 98 rutas/107 operaciones. D se describe en [CIERRE-D.md](CIERRE-D.md); [ENTREGA-D.md](ENTREGA-D.md) es su diseño previo, conservado como referencia.
 

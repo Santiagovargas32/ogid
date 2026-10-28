@@ -82,6 +82,7 @@ export const AGENT_METHODS = [
   "cancel",
   "memory",
   "reconcileCandidates",
+  "expireLeases",
   "resume",
   "control",
   "workerReport",
@@ -619,11 +620,7 @@ export class AgentRepository {
           this.db.prepare("UPDATE agent_jobs SET status='superseded',updated_at=?,error_code='AGENT_PROMPT_UPDATED' WHERE job_id=?").run(stamp(this.now()),old.job_id);
           this.enqueue({task:old.task,scope:old.scope,model:old.model,key:stableHash(['prompt-upgrade',old.job_id,PROMPT_VERSION]),sessionId:old.session_id,messageId:old.message_id,input:parse(old.input_json),priority:old.priority});
         }
-        this.db
-          .prepare(
-            "UPDATE agent_jobs SET status='incomplete',error_code='AGENT_LEASE_EXPIRED',updated_at=? WHERE status IN ('running','validating','waiting-model') AND lease_owner IS NOT NULL AND lease_until<=?",
-          )
-          .run(stamp(this.now()), this.now());
+        this.expireLeases();
         const candidates = this.db
           .prepare(
             "SELECT * FROM agent_jobs WHERE (status='queued' OR (status='waiting-model' AND lease_owner IS NULL)) AND task IN (SELECT value FROM json_each(?)) AND attempts<3 AND (priority<20 OR created_at<=?) AND (session_id IS NULL OR NOT EXISTS(SELECT 1 FROM agent_jobs other WHERE other.session_id=agent_jobs.session_id AND (other.status IN ('running','validating','waiting-model') OR (other.opencode_id IS NOT NULL AND ((other.status='cancelled' AND coalesce(json_extract(other.input_json,'$.cancellationAcknowledged'),0)=0) OR (other.status='incomplete' AND coalesce(json_extract(other.input_json,'$.interruptAcknowledged'),0)=0)))))) ORDER BY priority - ((?-julianday(created_at))*24*60),created_at LIMIT 128",
@@ -686,6 +683,18 @@ export class AgentRepository {
       )
       .all()
       .map((r) => this.wire(r));
+  }
+  expireLeases() {
+    // Deterministic reconciliation is also available with automatic IA off.
+    // Do not claim, enqueue, replay a POST, or infer completion from expiry.
+    return this.db.transaction(()=>{
+      const at=this.now(),jobs=this.db.prepare("SELECT job_id,fence FROM agent_jobs WHERE status IN ('running','validating','waiting-model') AND lease_owner IS NOT NULL AND lease_until<=? LIMIT 128").all(at);
+      for(const job of jobs){
+        this.db.prepare("UPDATE agent_jobs SET status='incomplete',error_code='AGENT_LEASE_EXPIRED',updated_at=? WHERE job_id=? AND fence=?").run(stamp(at),job.job_id,job.fence);
+        this.db.prepare("UPDATE agent_runs SET status='incomplete',finished_at=? WHERE job_id=? AND fence=? AND finished_at IS NULL").run(stamp(at),job.job_id,job.fence);
+      }
+      return {expired:jobs.length,hasMore:jobs.length===128};
+    }).immediate();
   }
   pendingCancellations() {
     return this.db

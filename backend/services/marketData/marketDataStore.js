@@ -47,6 +47,9 @@ export class MarketDataStoreAdapter {
     this.persistenceChains = new Map();
     this.persistenceReceipts=new Map();
     this.pendingProjections=new Set();
+    this.persistenceFailures=new Map();
+    this.projectionOutcomes=new Map();
+    this.projectionSequence=0;
     this.persistenceStatus = {completed:0,failed:0,lastError:null,lastCompletedAt:null};
   }
 
@@ -107,9 +110,22 @@ export class MarketDataStoreAdapter {
         const result = admission?await this.candleStore.waitForPersistence(admission):typeof this.candleStore.upsert === "function"
           ? await this.candleStore.upsert(candles, { now: observationTime })
           : await this.candleStore.append(candles, { now: observationTime });
-        const projection=Promise.resolve().then(()=>this.onPersisted?.({candles,persistence:result}));
+        const scope=`${normalizedSymbol}|${interval}`,sequence=++this.projectionSequence;
+        const outcome=this.projectionOutcomes.get(scope)||{pending:0,error:null};
+        const projectionRequired=Boolean(outcome.error||outcome.pending);
+        outcome.sequence=sequence;outcome.pending++;this.projectionOutcomes.set(scope,outcome);
+        const projection=Promise.resolve().then(()=>this.onPersisted?.({candles,persistence:result,projectionRequired}));
         this.pendingProjections.add(projection);
-        projection.catch(this.onPersistenceError).finally(()=>this.pendingProjections.delete(projection));
+        const settle=error=>{
+          if(outcome.sequence===sequence)outcome.error=error;
+        };
+        projection.then(()=>settle(null),error=>{
+          this.#reportFailure(error,{phase:'indicators',scope,commitId:admission?.commitId||null,jobIds:admission?.jobIds||[]});
+          settle(error);
+        }).finally(()=>{
+          this.pendingProjections.delete(projection);outcome.pending--;
+          if(!outcome.pending&&!outcome.error)this.projectionOutcomes.delete(scope);
+        }).catch(()=>{});
         return result;
       };
       const persistence = this.persistAsync
@@ -219,6 +235,7 @@ export class MarketDataStoreAdapter {
     this.pendingPersistence.add(task);
     this.persistenceChains.set(key,task);
     task.then(result => {
+      this.persistenceFailures.delete(commitId);
       Object.assign(receipt,result,{pending:false,committed:true});
       this.persistenceStatus.completed++;
       this.persistenceStatus.lastCompletedAt=new Date().toISOString();
@@ -226,7 +243,8 @@ export class MarketDataStoreAdapter {
       Object.assign(receipt,{pending:false,committed:false,errorCode:error.code||'MARKET_PERSISTENCE_FAILED'});
       this.persistenceStatus.failed++;
       this.persistenceStatus.lastError=error.code || "MARKET_PERSISTENCE_FAILED";
-      this.onPersistenceError(error);
+      this.persistenceFailures.set(commitId,{receipt,persist,error});
+      this.#reportFailure(error,{phase:'candles',scope:key,commitId,jobIds:admission.jobIds||[]});
     }).finally(() => {
       this.pendingPersistence.delete(task);
       if(this.persistenceChains.get(key)===task)this.persistenceChains.delete(key);
@@ -244,8 +262,38 @@ export class MarketDataStoreAdapter {
     throw Object.assign(Error('Durable market ACK unavailable'),{code:receipt.errorCode||'MARKET_COMMIT_ACK_UNKNOWN'});
   }
 
-  getPersistenceStatus() { return {...this.persistenceStatus,pending:this.pendingPersistence.size,readThrough:this.readThrough,asynchronous:this.persistAsync}; }
-  async flushPersistence() { while(this.pendingPersistence.size||this.pendingProjections.size)await Promise.allSettled([...this.pendingPersistence,...this.pendingProjections]); }
+  #reportFailure(error,correlation) {
+    // Correlation only: no candles, provider payload or credentials in logs.
+    error.persistenceCorrelation=correlation;
+    this.onPersistenceError(error,correlation);
+  }
+
+  getPersistenceStatus() { return {...this.persistenceStatus,pending:this.pendingPersistence.size,projectionsPending:this.pendingProjections.size,
+    unresolved:this.persistenceFailures.size+[...this.projectionOutcomes.values()].filter(v=>v.error).length,
+    readThrough:this.readThrough,asynchronous:this.persistAsync}; }
+  async flushPersistence() {
+    const drain=async()=>{while(this.pendingPersistence.size||this.pendingProjections.size)await Promise.allSettled([...this.pendingPersistence,...this.pendingProjections]);};
+    await drain();
+    // The durable coordinator reads the job/cursor before any resumed write.
+    // A recovered ACK clears only this admission, never another observation.
+    for(const [id,failure]of this.persistenceFailures){
+      if(!failure.receipt.durable)continue;
+      try{
+        const result=await failure.persist();
+        Object.assign(failure.receipt,result,{pending:false,committed:true});
+        this.persistenceFailures.delete(id);
+      }catch(error){
+        error.persistenceCorrelation ||= failure.error.persistenceCorrelation;
+        failure.error=error;
+      }
+    }
+    await drain();
+    const failures=[...this.persistenceFailures.values()].map(v=>v.error)
+      .concat([...this.projectionOutcomes.values()].filter(v=>v.error).map(v=>v.error));
+    if(failures.length)throw Object.assign(new AggregateError(failures,'Market persistence remains unconfirmed'),{
+      code:'MARKET_PERSISTENCE_UNCONFIRMED',persistenceFailures:failures.slice(0,20).map(e=>({code:e.code||'MARKET_PERSISTENCE_FAILED',...e.persistenceCorrelation})),
+      failureCount:failures.length});
+  }
 
   #cachedEntry(key) {
     const entry = this.cache.get(key);
