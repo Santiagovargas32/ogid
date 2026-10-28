@@ -600,9 +600,9 @@ export function createAppServer(overrides = {}) {
     intervals: [config.market?.intradayCandles?.interval || "1h", "1h", "1wk", "1mo"]
   });
   const marketDataStore = new MarketDataStoreAdapter({ candleStore: dailyCandleStore,readThrough:!business,persistAsync:Boolean(business),
-    onPersistenceError:error=>log.error("market_observations_persist_failed",{code:error.code || "MARKET_PERSISTENCE_FAILED"}),
-    onPersisted:business ? async({candles,persistence})=>{
-      if(!persistence.inserted && !persistence.updated)return;
+    onPersistenceError:(error,correlation)=>log.error("market_observations_persist_failed",{code:error.code || "MARKET_PERSISTENCE_FAILED",...correlation}),
+    onPersisted:business ? async({candles,persistence,projectionRequired})=>{
+      if(!persistence.inserted && !persistence.updated && !projectionRequired)return;
       for(const candle of new Map(candles.map(c=>[`${c.instrumentId}|${c.interval}`,c])).values())
         await business.call("indicators","calculate",[{instrumentId:candle.instrumentId,interval:candle.interval,adjustmentMode:"splits",limit:500}]);
     } : null
@@ -923,6 +923,10 @@ export function createAppServer(overrides = {}) {
         aiCoordinator.syncProjection();
       }
       if(business){
+        let reconciliation;
+        do{reconciliation=await app.locals.agentCall('expireLeases');
+          if(reconciliation.expired)log.info('agent_expired_leases_reconciled',reconciliation);
+        }while(reconciliation.hasMore);
         const control=await app.locals.agentCall('control');app.locals.agentPaused=control.paused;
         if(control.backgroundModel){
           if(readyModel(agentConfig.manifest.models.find(m=>`llamacpp/${m.alias}`===control.backgroundModel)))agentConfig.backgroundModel=control.backgroundModel;
@@ -1007,7 +1011,9 @@ export function createAppServer(overrides = {}) {
       const drain=async (work,phase='cleanup')=>{
         try{await work();}
         catch(error){
-          if(phase.startsWith('persistence.') && storageManager.state==='failed' &&
+          if(error.persistenceFailures){
+            unconfirmedPersistence.push({phase,code:error.code,failures:error.persistenceFailures,failureCount:error.failureCount});failures.push(error);
+          }else if(phase.startsWith('persistence.') && storageManager.state==='failed' &&
               ['STORAGE_NOT_READY','STORAGE_WORKER_FAILED','STORAGE_OUTCOME_UNKNOWN','STORAGE_READ_TIMEOUT','STORAGE_ANALYSIS_UNAVAILABLE'].includes(error.code))
             unconfirmedPersistence.push({phase,code:error.code,causeCode:error.causeCode || null});
           else failures.push(error);
@@ -1048,12 +1054,24 @@ export function createAppServer(overrides = {}) {
       await httpDrained;
       await Promise.allSettled([...activeCycles]);
       await drain(()=>marketDataStore.flushPersistence(),'persistence.market');
+      await drain(()=>storageManager.marketWrites?.flush(),'persistence.market-jobs');
       await drain(()=>monitor.flush(),'persistence.monitor');
       await drain(()=>pipelinePersistence?.flush(),'persistence.pipeline');
       } finally { await drain(()=>storageManager.close()); }
-      app.locals.shutdownReport={primaryCause:storageManager.getStatus().failure || null,unconfirmedPersistence,cleanupErrors:failures.map(error=>({code:error.code || 'CLEANUP_FAILED'}))};
+      const storageStatus=storageManager.getStatus();
+      // A reader can have submitted writer RPCs before its deadline expires.
+      // Closing its handles does not reconcile those effects. Keep this
+      // uncertainty even when the business writer itself closed successfully.
+      const readerUncertainty=storageStatus.failure?[]:['analysis','queries'].flatMap(role=>{
+        const failure=storageStatus[role]?.failure;
+        return failure?.code==='STORAGE_OUTCOME_UNKNOWN'?[{phase:`persistence.${role}`,code:failure.code,causeCode:failure.causeCode,
+          commands:(failure.unconfirmedCommands||[]).slice(0,20).map(({requestId,id,operation,service,method,jobId,fence,phase})=>({requestId,id,operation,service,method,jobId,fence,phase}))}]:[];
+      });
+      unconfirmedPersistence.push(...readerUncertainty);
+      app.locals.shutdownReport={primaryCause:storageStatus.failure || null,unconfirmedPersistence,cleanupErrors:failures.map(error=>({code:error.code || 'CLEANUP_FAILED'}))};
       log.info("server_stopped",app.locals.shutdownReport);
       if(failures.length)throw failures[0];
+      if(readerUncertainty.length)throw Object.assign(Error('Reader persistence remains unconfirmed'),{code:'STORAGE_OUTCOME_UNKNOWN'});
       })();
       return stopTask;
     }

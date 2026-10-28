@@ -45,7 +45,7 @@ test("SQL archive errors remain diagnostics and do not turn successful Yahoo dat
   const adapter=new MarketDataStoreAdapter({now,readThrough:false,persistAsync:true,onPersistenceError:error=>errors.push(error.code),candleStore:{upsert:async()=>{throw Object.assign(new Error("offline"),{code:"STORAGE_NOT_READY"});}}});
   const service=new MarketDataService({now,store:adapter,yahooClient:{chart:async()=>({quotes:[bar(105)]})}});
   const dataset=await service.fetchYahooCandles("NVDA",{period:"1mo",interval:"1d"});
-  await adapter.flushPersistence();
+  await assert.rejects(adapter.flushPersistence(),{code:'MARKET_PERSISTENCE_UNCONFIRMED'});
   assert.equal(dataset.candles[0].dataMode,"observed");
   assert.equal(dataset.stale,false);
   assert.deepEqual(errors,["STORAGE_NOT_READY"]);

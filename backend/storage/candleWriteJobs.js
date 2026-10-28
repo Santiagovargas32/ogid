@@ -43,12 +43,14 @@ export class CandleWriteCoordinator {
     if(!this.accepting)return Promise.reject(Object.assign(Error('Closing'),{code:'STORAGE_NOT_READY'}));
     clearTimeout(this.timers.get(jobId));this.timers.delete(jobId);
     const task=this.chain.catch(()=>{}).then(async()=>{
-      let result;
-      do{result=await this.manager.localRequest('market.persist.page',{jobId});await new Promise(r=>setImmediate(r));}while(result.pending&&this.accepting);
+      // Reconcile a lost ACK/uncertain commit from the durable cursor first.
+      // A complete job needs no write; a pending job resumes its next page.
+      let result=await this.manager.localRequest('market.persist.status',{jobId});
+      while(result.pending&&this.accepting){result=await this.manager.localRequest('market.persist.page',{jobId});await new Promise(r=>setImmediate(r));}
       this.attempts.delete(jobId);if(this.lastError?.jobId===jobId)this.lastError=null;return result;
     }).catch(error=>{
       this.lastError={code:error.code||'MARKET_PERSISTENCE_FAILED',jobId,at:new Date().toISOString()};
-      if(this.accepting){const attempt=(this.attempts.get(jobId)||0)+1;this.attempts.set(jobId,attempt);const timer=setTimeout(()=>{this.timers.delete(jobId);this.dispatch(jobId).catch(()=>{});},Math.min(60000,1000*2**Math.min(attempt,6)));timer.unref();this.timers.set(jobId,timer);}throw error;
+      if(this.accepting&&this.manager.state==='ready'){const attempt=(this.attempts.get(jobId)||0)+1;this.attempts.set(jobId,attempt);const timer=setTimeout(()=>{this.timers.delete(jobId);this.dispatch(jobId).catch(()=>{});},Math.min(60000,1000*2**Math.min(attempt,6)));timer.unref();this.timers.set(jobId,timer);}throw error;
     }).finally(()=>this.tasks.delete(jobId));
     this.chain=task;this.tasks.set(jobId,task);task.catch(()=>{});return task;
   }
@@ -67,6 +69,17 @@ export class CandleWriteCoordinator {
         if(this.accepting)page=await this.manager.localRequest('market.persist.pending',{after:page.at(-1).jobId});
       }
     })().catch(error=>{this.lastError={code:error.code||'MARKET_RECOVERY_FAILED',at:new Date().toISOString()};}).finally(()=>{this.recovery=null;});
+  }
+  async flush(){
+    await this.recovery;
+    let page=await this.manager.localRequest('market.persist.pending',{});
+    while(page.length){
+      const results=await Promise.allSettled(page.map(({jobId})=>this.dispatch(jobId)));
+      const failed=results.find(r=>r.status==='rejected');
+      if(failed)throw failed.reason;
+      page=await this.manager.localRequest('market.persist.pending',{after:page.at(-1).jobId});
+    }
+    await Promise.all(this.tasks.values());
   }
   async close(){this.accepting=false;for(const t of this.timers.values())clearTimeout(t);this.timers.clear();await Promise.allSettled(this.tasks.values());}
 }

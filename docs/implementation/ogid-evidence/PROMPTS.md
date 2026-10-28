@@ -1,5 +1,28 @@
 # Prompts de trabajo y reanudación — plan v6
 
+## Reanudación vigente tras D/0.2 — plan v7
+
+```text
+Lee ESTADO.md, CIERRE-D02.md y el diff local sobre c19ac4b.
+El lote D/0.2 implementa pausa IA, reconciliación de leases y confirmación/cierre
+de persistencia; E/F no se han iniciado. Los resultados anteriores D3 y sus
+prompts quedan fechados; no son instrucciones nuevas ni un backend activo.
+Conserva AGENT_MODE y los tres hijos off, AI_PROVIDER=none, AI_MODE=off,
+AGENT_TASK_MODES, base reparada, AWARENESS_MODE, proveedores y llama.cpp.
+No repetir A–D, recuperación, instalación ni baseline. No publicar ni promover.
+Única siguiente acción: investigación acotada E/S con latencia/cola del dispositivo
+y actividad por proceso correlacionadas con commits/checkpoints, y resolución
+documentada de los episodios D3 sin identidad antes de reconsiderar E.
+No convertir jobs completos o una ventana corta en recuperación de 12 logs
+ambiguos ni en estabilidad 24 h. A falló por commit; B tuvo incertidumbre del
+lector durante drain que su reporte omitía. Ese reporte ya se corrige con fixture;
+no aceptar el cierre histórico como limpio. Backend detenido, 128 secuencias news
+durables pendientes. Pruebas finales backend 1119/1119 y MCP 33/33.
+Ejecuta sólo el alcance de la próxima sesión.
+```
+
+## Referencias históricas anteriores a D/0.2
+
 Actualizado **28/10/2026**, con código 124050a y revisión D2/D3. Entrada: [ESTADO.md](ESTADO.md); resumen autónomo [RESUMEN-ACTUAL-2026-10-28.md](RESUMEN-ACTUAL-2026-10-28.md). [PLAN.md](PLAN.md), [DECISIONES.md](DECISIONES.md) y [CIERRE-FINAL.md](CIERRE-FINAL.md) mantienen dirección/restricciones. Los prompts son referencias; sólo se ejecuta el alcance autorizado en la sesión.
 
 ## Maestro

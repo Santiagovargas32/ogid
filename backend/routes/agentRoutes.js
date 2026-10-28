@@ -426,7 +426,7 @@ router.post("/agent/v1/internal/:method", async (req, res) => {
     return res.json(null);
   if (
     req.app.locals.agentConfig.mode === "off" &&
-    ["claim", "consume", "enqueue", "publish"].includes(req.params.method)
+    ["claim", "consume", "enqueue", "publish", "snapshot"].includes(req.params.method)
   )
     throw agentError("AGENT_DISABLED", 503);
   const input = { ...(req.body || {}) };

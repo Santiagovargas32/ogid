@@ -1,5 +1,7 @@
 # Estado del producto y condiciones de entrega final
 
+**Corte vigente D/0.2:** [CIERRE-D02.md](CIERRE-D02.md), cambios locales sobre c19ac4b. IA off, mantenimiento determinista activo y persistencia/cierre con incertidumbre visible. La prueba real corta reproduce espera E/S; E no apto. E/F, aceptación final y 24 h siguen pendientes. El contenido posterior conserva el checkpoint previo D3.
+
 Actualizado **28/10/2026**, con ajuste de código 124050a y revisión D2/D3. Entrada: [ESTADO.md](ESTADO.md); resumen autónomo [RESUMEN-ACTUAL-2026-10-28.md](RESUMEN-ACTUAL-2026-10-28.md). Implementación en [CIERRE-D.md](CIERRE-D.md); EJECUCION-D-2026-10-27 conserva PID 988930 como histórico. Este documento organiza pendientes; no declara el producto completo ni autoriza ejecutarlos por sí solo.
 
 ## Estado alcanzado

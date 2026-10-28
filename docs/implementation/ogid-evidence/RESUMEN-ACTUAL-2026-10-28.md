@@ -1,5 +1,7 @@
 # OGID — resumen de producto, fallos y continuidad al 28/10/2026
 
+**Actualización posterior: D/0.2 local sobre c19ac4b, sin publicación.** IA y sus tres hijos off; mantenimiento determinista conservado. Hay correcciones de reconciliación, bloqueo de snapshots en off y reporte de persistencia/cierre. La cohorte real reproduce espera E/S del lector con IA apagada; no apto para E. Estado y resultados nuevos en [ESTADO.md](ESTADO.md) y [CIERRE-D02.md](CIERRE-D02.md). El resto de este resumen conserva el checkpoint D3 previo, con sus denominadores y límites históricos.
+
 Corte autónomo para preparar un prompt o plan focalizado. Entrada vigente: [ESTADO.md](ESTADO.md); dirección: [diagnóstico del 25/10](../../OGID-diagnostico-direccion-y-plan-2026-10-25.md) y [PLAN v6](PLAN.md). Los prompts documentales son referencias; la sesión fija qué ejecutar.
 
 **A–D están implementadas e integradas con backend, SQLite, dashboard y MCP. D3 demostró puesta al día bajo adquisición y añadió 10.692 publicaciones. El backend terminó detenido por espera de E/S durante commit. E/F y aceptación final pendientes.** Código y pruebas correctos no equivalen a estabilidad ni utilidad IA aceptadas.

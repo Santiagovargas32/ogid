@@ -1,5 +1,7 @@
 # Entrega D — cierre de implementación e integración
 
+Continuación **D/0.2 del 28/10**, cambios locales sobre c19ac4b: [CIERRE-D02.md](CIERRE-D02.md). Incluye pausa IA, reconciliación y cierre con fallos visibles; presión E/S reproducida con IA off. Este cierre conserva las pruebas históricas de D; no declara aceptado el lote operativo ni inicia E/F.
+
 Corte: **27/10/2026**. Código publicado **[df50aae](https://github.com/Santiagovargas32/ogid/commit/df50aae482d8bacaf13f81c21dc0aa210b93ba8c)** en `feat/agentic-intelligence`; [CI 40499019337 correcta](https://github.com/Santiagovargas32/ogid/actions/runs/40499019337). Base anterior: `fd1652247892483e332148d9428d709318706ad2`, cierre de dependencias/enriquecimiento A/B/C. Documentación actualizada después de publicar código, con autorización del usuario; no confundir esa autorización con desplegar o promover IA.
 
 Actualización **28/10/2026**: este cierre conserva las pruebas de D inicial; código posterior **124050a**. Entrada actual: [ESTADO.md](ESTADO.md); últimas ejecuciones D2/D3 y límites en [RESUMEN-ACTUAL-2026-10-28.md](RESUMEN-ACTUAL-2026-10-28.md). [EJECUCION-D-2026-10-27.md](EJECUCION-D-2026-10-27.md) conserva la cohorte anterior PID 988930. El [diseño previo](ENTREGA-D.md) se conserva fechado. **Cierre de código/pruebas; la capacidad operativa con adquisición concurrente y las puertas finales no están aceptadas.**

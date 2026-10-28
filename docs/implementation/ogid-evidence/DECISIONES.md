@@ -1,5 +1,14 @@
 # Decisiones vigentes
 
+## Lote D/0.2 autorizado — 28/10/2026
+
+- D55: la sesión autoriza L0–L3 locales sobre c19ac4b y operación corta controlada por npm start; no publicación, E/F, promoción ni 24 h formales. Sustituye el alcance documental de D48 para esta sesión; no altera sus resultados históricos.
+- D56: AGENT_MODE=off, los tres hijos off y AI_PROVIDER=none/AI_MODE=off ya estaban seleccionados al recibir el checkout; se conservan AGENT_TASK_MODES y el resto de configuración. AgentMaintenance sigue habilitado por business. Reconciliar únicamente leases vencidos, sin claim/enqueue/snapshot/inferencia.
+- D57: separar admisión/commit de velas de indicadores posteriores. Drain y shutdownReport deben reflejar fallos actuales por identidad; un contador acumulado de fallos recuperados no invalida un cierre posterior. Consultar job/cursor antes de continuar una página; completo sólo requiere ACK. No crear otra cola ni replay ciego de resultado incierto.
+- D58: los 132 jobs durables de velas D3 están completos; los 12 logs no tienen fase/identidad y no prueban 12 pérdidas ni 12 recuperaciones. Preservar el desconocido por episodio. Resultado final RSS parcial no se convierte en éxito por backlog cero. Tabla y evidencias en [CIERRE-D02.md](CIERRE-D02.md).
+- D59: presión de E/S reproducida con IA off; no atribuir causa física ni corregirla aumentando límites. Mantener el bloqueo operativo y medir dispositivo/procesos antes de otra ampliación. Distinguir bytes lógicos estimados, E/S del proceso, WAL físico y deuda de checkpoint. E continúa no apto.
+- D60: B reinició y drenó tras un único SIGTERM, pero registró incertidumbre del lector que el reporte final omitía. No aceptar ese cierre vacío. Conservar la incertidumbre del lector al liberar handles y devolver error; una adquisición duplicada tampoco limpia una proyección sin reconstruirla. Ambas correcciones finales son de fixture, sin atribuirles retrospectivamente los arranques A/B. Backend detenido, 128 secuencias news durables pendientes al cortar.
+
 Registro cronológico: los estados operativos describen su fecha, no el presente. D27 sustituyó las precondiciones iniciales de copia; D33/D34 cerraron la recuperación; D35 cerró la publicación C. **D37–D39 conservan el cierre del punto 2; D40–D47 incorporan D y la última ejecución. Consultar ESTADO.md para procesos/cifras actuales.**
 
 
