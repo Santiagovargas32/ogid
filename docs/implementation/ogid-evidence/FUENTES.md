@@ -1,6 +1,6 @@
 # Fuentes, perfiles, evaluaciones y cobertura — B/E
 
-Actualizado el 27/10/2026. Matriz diseñada el 26/10; siguiente piloto E pendiente. Estado actual en [ESTADO.md](ESTADO.md); evidencia de la última ejecución en [EJECUCION-D-2026-10-27.md](EJECUCION-D-2026-10-27.md). Fuente de verdad del catálogo: `backend/services/news/newsSourceCatalog.js`; consultar `news.source-coverage` y `/sources.html` para las ventanas actuales. No constituye una auditoría de acceso ni cobertura operativa.
+Actualizado el **28/10/2026**. Matriz diseñada el 26/10; piloto E pendiente. Estado en [ESTADO.md](ESTADO.md); últimas ejecuciones D2/D3 y cobertura conocida en [RESUMEN-ACTUAL-2026-10-28.md](RESUMEN-ACTUAL-2026-10-28.md). EJECUCION-D-2026-10-27 conserva la cohorte anterior PID 988930. Fuente de verdad del catálogo: `backend/services/news/newsSourceCatalog.js`; consultar `news.source-coverage` y `/sources.html` para las ventanas actuales. No constituye una auditoría de acceso ni cobertura operativa.
 
 | Ámbito | Base configurada | Idiomas / perspectivas | Carencia que debe medir E |
 |---|---|---|---|
@@ -9,6 +9,8 @@ Actualizado el 27/10/2026. Matriz diseñada el 26/10; siguiente piloto E pendien
 | Transversal | RSS editoriales y descubrimiento existentes | Cinco idiomas de clasificación A; otros explícitamente pendientes/no soportados | Ediciones y perspectivas documentadas, propiedad, política de acceso y salud por fuente |
 
 Los recuentos de consultas e idiomas declarados se calculan desde el catálogo; los de publicaciones, editores, idiomas observados y menciones de países, desde facetas del archivo anterior a selección editorial. Las menciones no son coordenadas ni incidentes confirmados. Los países editoriales provienen sólo de perfiles con referencias y pueden atribuir un artículo a varios países. Las ventanas se refieren a recepción. El backfill sólo hace parcial la cobertura mientras siga pendiente; su estado vigente está en ESTADO.md. Completarlo no demuestra ausencia de sucesos ni cobertura periodística exhaustiva.
+
+D3 incorporó 10.692 publicaciones nuevas para la base y ésta alcanzó 163.334 artículos; algunas incorporaciones tienen fecha de publicación antigua. No es cobertura completa de noticias nuevas ni una medición del piloto E. El baseline A/B/C está enriquecido; desconocidos de editor/idioma no se han recalculado para ese total.
 
 Separar previstos/configurados, habilitados, consultados con éxito y sanos. B muestra los dos primeros y deja la salud operativa como no medida en esta vista. E deberá unir métricas del scheduler y muestras de adquisición para acreditar los otros dos; no asignar `healthy` por existir en el catálogo.
 
@@ -29,7 +31,7 @@ Cada evaluación conserva editor/edición exactos, evaluador, ámbito político,
 
 El código de adquisición normaliza y archiva noticias, resuelve el editor mediante registro/aliases exactos/dominios/metadata admitida cuando hay evidencia suficiente, clasifica el artículo y actualiza facetas/comparaciones/journal. D consume cambios y conserva evidencias, situaciones candidatas y revisiones. **No hay un disparador de evaluación política por cantidad de noticias ni un analizador automático de tendencia del medio implementado.** La IA shadow actual tampoco alimenta este registro de ratings.
 
-En el corte readonly **27/10/2026 13:32:33 UTC**, `news_source_assessments=0` y `news_publisher_profiles=0`. Por ello identificar Reuters y edición reuters.com conserva «sin evaluar», propietario/países/idiomas desconocidos. «23publicaciones» en una vista era un recuento de su ventana de recepción, no tamaño de muestra mínimo ni evaluación lanzada. Estos datos no impiden adquirir noticias ni mostrar sus identidades/clasificaciones.
+En el corte readonly **27/10/2026 13:32:33 UTC**, `news_source_assessments=0` y `news_publisher_profiles=0`; esos recuentos no se recalcularon en la revisión D3. Por ello identificar Reuters y edición reuters.com conserva «sin evaluar», propietario/países/idiomas desconocidos. «23publicaciones» en una vista era un recuento de su ventana de recepción, no tamaño de muestra mínimo ni evaluación lanzada. Estos datos no impiden adquirir noticias ni mostrar sus identidades/clasificaciones.
 
 - **Identidad del editor/edición:** la edición de esta versión es el dominio explícito del registro; no equivale a edición geográfica o idioma inferidos. Reconocer el dominio permite asociar registros, no atribuir una posición política.
 - **Perfil documentado:** propietario/grupo, países editoriales e idiomas del medio con referencias y fecha de revisión. Se importa separado del rating; el idioma de artículos observados y las menciones de países no rellenan estos campos por sí solos.

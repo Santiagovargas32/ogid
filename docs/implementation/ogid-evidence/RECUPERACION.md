@@ -1,6 +1,6 @@
 # Recuperación de la base operativa — 26/10/2026
 
-**Corte histórico fechado.** Los recuentos, instalaciones y procesos de este informe pertenecen a su cierre; el estado posterior (punto 2, D y ejecución del 27/10) se consulta en [ESTADO.md](ESTADO.md). No retomar sus pendientes si ya figuran cerrados allí.
+**Corte histórico fechado.** Los recuentos, instalaciones y procesos de este informe pertenecen a su cierre; el estado posterior (punto 2, D y revisión D3 del 28/10) se consulta en [ESTADO.md](ESTADO.md). No retomar sus pendientes si ya figuran cerrados allí.
 
 
 Estado: **cerrada, reparación exacta sin pérdida de registros**. Entrada de continuidad: [ESTADO.md](ESTADO.md). El usuario autorizó intentar reparar y, si hacía falta, crear otra base con lo recuperable y usarla como operativa.

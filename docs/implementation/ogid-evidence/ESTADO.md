@@ -1,74 +1,59 @@
 # Estado actual de OGID — leer primero
 
-Actualización documental: **27/10/2026**, después del cierre de la ejecución PID 988930. Plan **v5**. Rama `feat/agentic-intelligence`; código publicado **[df50aae482d8bacaf13f81c21dc0aa210b93ba8c](https://github.com/Santiagovargas32/ogid/commit/df50aae482d8bacaf13f81c21dc0aa210b93ba8c)**, [CI 40499019337 correcta](https://github.com/Santiagovargas32/ogid/actions/runs/40499019337). Esta actualización documental se publica aparte del código; no introduce cambios de runtime ni implica arranque o aceptación operativa.
+Actualizado **28/10/2026**, tras revisar D2/D3. Plan **v6**. Rama `feat/agentic-intelligence`; código **[124050a](https://github.com/Santiagovargas32/ogid/commit/124050a932d6895cfc2e6ff73284d7c4e7c22fcb)**. Este documento acompaña un commit documental posterior. Alcance de esta sesión: cerrar/publicar trabajo verificado y documentación; no desarrollar otro ajuste, arrancar servicios ni iniciar E/F.
 
-**A–D implementadas; D publicada y comprobada con backend/UI/MCP reales.** El producto completo y la aceptación operativa siguen pendientes. La ejecución más reciente dejó backlog del consumidor D, episodios largos de almacenamiento y fallos de IA; el cierre limpio no los resuelve. Siguiente entrega de producto: **E**, precedida por un lote acotado de las brechas D/0.2 observadas cuando se autorice retomar código. No rehacer A/B/C/D ni repetir suites cerradas sin cambios/fallos.
+**A–D implementadas e integradas. D3 drenó el backlog; la estabilidad de almacenamiento falló al final de la ejecución extendida.** 0.2 y aceptación operativa abiertas; E/F y entrega final pendientes. No rehacer A/B/C/D, instalaciones ni enriquecimiento baseline por usar cifras históricas.
 
-## Entrada única y documentos
+Resumen autónomo para preparar el siguiente prompt: **[RESUMEN-ACTUAL-2026-10-28.md](RESUMEN-ACTUAL-2026-10-28.md)**. [PLAN.md](PLAN.md), [DECISIONES.md](DECISIONES.md) y [PROMPTS.md](PROMPTS.md) contienen dirección/restricciones; [CIERRE-D.md](CIERRE-D.md) y [CIERRE-FINAL.md](CIERRE-FINAL.md), implementación y aceptación pendiente; [FUENTES.md](FUENTES.md), identidad/evaluaciones/piloto E. Inventario generado [API-MCP.md](../../../integrations/ogid-mcp/API-MCP.md), JSON ejecutable al lado.
 
-| Documento | Función y alcance |
-|---|---|
-| [ESTADO.md](ESTADO.md) | Identidad, estado actual, limitaciones y próxima acción |
-| [CIERRE-D.md](CIERRE-D.md) | Qué implementa D, contratos, pruebas, replay y puesta en servicio comprobada |
-| [EJECUCION-D-2026-10-27.md](EJECUCION-D-2026-10-27.md) | Último observador, log completo, resultados por intento, cierre y corte actual de datos |
-| [CIERRE-FINAL.md](CIERRE-FINAL.md) | Qué falta para terminar producto y validaciones, con puertas separadas |
-| [PLAN.md](PLAN.md) | Dirección, entregas y criterios de aceptación v5 |
-| [DECISIONES.md](DECISIONES.md) | Decisiones cronológicas; D40–D47 incorporan D y esta actualización |
-| [PROMPTS.md](PROMPTS.md) | Reanudación y próximo lote sin depender del chat |
-| [FUENTES.md](FUENTES.md) | Identidad, perfiles, evaluaciones políticas, cobertura y piloto E |
-| [API-MCP.md](../../../integrations/ogid-mcp/API-MCP.md) | Inventario generado de rutas, operaciones, parámetros y permisos 1.12.0 |
+El [diagnóstico del 25/10](../../OGID-diagnostico-direccion-y-plan-2026-10-25.md) fija la dirección. CIERRE-C, RECUPERACION, HISTORICO-CONTINUIDAD y EJECUCION-D-2026-10-27 son cortes históricos; ENTREGA-D es diseño previo. Sus procesos/backlog/esquemas/suites no sustituyen este estado. ESTADO v5 se conserva en Git.
 
-El [diagnóstico del 25/10](../../OGID-diagnostico-direccion-y-plan-2026-10-25.md), [CIERRE-C.md](CIERRE-C.md), [RECUPERACION.md](RECUPERACION.md) y [HISTORICO-CONTINUIDAD.md](HISTORICO-CONTINUIDAD.md) son cortes históricos. [ENTREGA-D.md](ENTREGA-D.md) conserva el diseño previo y enlaza su cierre; sus frases históricas «D pendiente», «025» o «siguiente 026» no describen el presente. El corte anterior de ESTADO está conservado en HISTORICO-CONTINUIDAD.
+## Identidad, instalación, base y proceso
 
-## Identidad, base y procesos
+- D inicial `df50aae`; mantenimiento separado `4bf31a6`; correlador compacto `c5c1ea0`; ajuste de consumo/persistencia/lecturas **124050a**. Publicación mediante conector, sin merge ni despliegue implícitos.
+- D3 ejecutó los últimos archivos cuando aún había diff sobre c5c1ea0. ArtifactHash **`0f825dcc7aad4a103fc90a7ff9864784d75476a5fe2b321435bc38613545a86c`**, coincidente con el código de cierre. El SHA se creó después de D3; el hash local no certifica toda la instalación/configuración/UI/datos.
+- Contrato **1.12.0**, **98 rutas / 107 operaciones**; esquema efectivo **029** según schema_migrations, no PRAGMA user_version. 001–029 inmutables; siguiente disponible 030. Este ajuste no cambia esquema, dependencias ni configuración.
+- Manifiesto backend contrastado el 28/10: Node **22.23.3**, **matched / 0 discrepancias**. Instalaciones backend/MCP y enriquecimiento baseline cerrados en `fd165224`; no repetir npm ci sin cambio/desfase. Auditorías y CI anteriores son resultados fechados; la CI del nuevo commit se consulta por su SHA.
+- `.env` conserva `/home/fedora/.local/share/ogid/db/ogid-repaired-20261026-183735.sqlite`, en Btrfs `/dev/sda3[/home]`. Recuperación exacta del 26/10 cerrada; original dañado preservado. No imponer copias/recuperación como precondición; backup manual del usuario.
+- Último backend **PID 1047352**, iniciado por el usuario con npm start. Cierre automático **28/10 18:15:31.100 UTC**, causa **STORAGE_OUTCOME_UNKNOWN / STORAGE_DISPATCH_TIMEOUT**, **dos fases de persistencia sin confirmar**, cleanupErrors vacío. No fue un cierre limpio ni una señal enviada por la revisión.
+- Comprobación posterior: PID ausente, puerto 3000 sin aceptar conexiones y **0 owners escritores**. Un intento IA sigue registrado running con lease vencido; no prueba un proceso activo ni finalización durable. No se arrancó/reanudó/reparó trabajo durante el análisis.
 
-- Contrato **1.12.0**, **98 rutas / 107 operaciones**; esquema efectivo **029**, migraciones 026–029 aplicadas e inmutables. Siguiente número disponible: 030, sólo si un cambio lo necesita. Inventario ejecutable `integrations/ogid-mcp/API-MCP.contract.json`; `npm run inventory:check` lo valida. En esta actualización se regenera también API-MCP.md desde el registro y se valida con `inventory:check-markdown`; no editar los inventarios a mano.
-- ArtifactHash backend observado: `e5b5425d9468ae524e099a30e2938fa6203dfd26555e5ee0f554e43a53bea058`. Identifica archivos de runtime, no atesta configuración, datos, UI ni instalación. La última ejecución observó ese mismo artefacto; la identidad del código y la del proceso son datos distintos.
-- `.env` selecciona `/home/fedora/.local/share/ogid/db/ogid-repaired-20261026-183735.sqlite`. Recuperación exacta cerrada; no volver al original dañado ni repetir copias/forense como precondición. Backup manual a cargo del usuario.
-- Backend **detenido**: único SIGTERM al PID verificado 988930; `server_stopped` **13:19:52.778 UTC**, `primaryCause:null`, `unconfirmedPersistence:[]`, `cleanupErrors:[]`. Sus hijos terminaron; puerto 3000 libre. Corte readonly posterior: **0 propietarios escritores, 0 trabajos activos, 0 handles de SQLite**; llama.cpp preservado. Observador detenido por el usuario antes del backend.
-- El trabajo IA activo quedó **incomplete / ABORT_ERR**, cancelado por el cierre. No contarlo como finalización semántica ni como corrupción de persistencia. Túnel/adaptador MCP se conservan; sin backend, CONNECTION_FAILED es esperado. Las operaciones nuevas requieren refrescar el catálogo de una conexión que aún conserve el enum antiguo; stdio research real sí pasó.
-- Arranque exclusivamente `cd backend && npm start`; hijos gobernados por `.env`, conservar llama.cpp y shadow. No systemd. Un escritor de negocio, lectores readonly/query_only, límites/fences/leases y evidencia inmutable.
+Un escritor, lectores readonly/query_only, FULL, límites, fences, leases y reparación única conservados. Arranque sólo `cd backend && npm start`, hijos según .env, conservar llama.cpp, sin systemd. IA shadow; publicar código no la promueve.
 
-Dependencias del cierre: Node operativo **22.23.3**, Express **5.3.0**, Helmet **8.3.0**, ws **8.22.0**, Yahoo Finance **4.0.5**, SDK MCP cliente/servidor **2.4.0**, Zod **4.6.7**, dotenv **16.6.1**. Manifiesto de arranque matched, **0 discrepancias**; CI D pasó ambas auditorías runtime. Son resultados fechados, no una garantía permanente. No repetir npm ci sin cambios/fallos o desfase comprobado.
-
-## Datos: corte readonly del 27/10 a las 13:32:33 UTC
+## Datos — consultas readonly del 28/10/2026, 18:33–18:36 UTC
 
 | Superficie | Resultado |
 |---|---|
-| Noticias / facetas B / publicaciones C | **150.671 / 150.671 / 150.671** |
-| Afirmaciones extractivas atribuidas C | **220.677**; no son hechos verificados |
-| Situaciones / incidentes explícitos | **12.032 / 0**; contextos candidatos, no incidentes inventados |
-| Versiones de evidencia D / outbox | **12.435 / 14.113**; son registros distintos, no tienen que coincidir |
-| Alertas actuales | **161**; hay adquisición posterior al baseline de 157 |
-| Evaluaciones políticas / perfiles editoriales | **0 / 0**; «sin evaluar» y campos desconocidos son correctos |
-| Consumidor news | **170.399 procesado / 186.736 disponible**, distancia **16.337**; continuación null, error null |
-| Consumidor awareness | **3.097 / 3.097**, sin backlog; revisiones no elegibles para D según la política de clases/fuentes, no cobertura de incidentes acreditada |
+| Artículos / revisiones | **163.334 / 535.538** |
+| Publicaciones de comparación C | **163.334** |
+| Incorporados durante D3 | **10.692** nuevos para la base; pueden tener publicación antigua |
+| Consumidor news | **240.462 / 240.462**, continuación/error null |
+| Consumidor awareness | **3.813 / 3.813**, continuación/error null; entradas excluidas por la política D |
+| Dominio / outbox | **24.649 / 24.649** |
+| Alertas heredadas | **176**, no incidentes físicos verificados |
+| Señales | **11.748** filas de buckets; snapshot **18:12:03.906 UTC** |
 
-La distancia de secuencias no es número de incidentes ni recuento exacto de filas si hay huecos. `state:ready` e inicialización completa coexisten con **hasMore:true**: no confundirlos con backlog cero. Último avance news registrado **13:13:17.992 UTC**; los pendientes se conservan tras apagar. No se ejecutó otro replay/backfill durante esta actualización documental.
+Los cursores coinciden con las cabeceras durables. No confirman el trabajo RSS/mercado que quedó en vuelo. Lecturas y referencias comprobadas no constituyen una nueva validación global de integridad.
 
-El lote del 26/10 enriqueció **146.475** noticias bajo los métodos vigentes y verificó conservación global de IDs/fechas/contentRevision y muestras congeladas. Es un baseline, no el tamaño actual. Sus 141.959 editores pendientes, 34.161 unknown-language y 2.671 unsupported-language son cifras de aquel corte; no se han recalculado para la última ejecución. Más noticias no generan por sí solas una evaluación política; perfiles y evaluaciones requieren importación documentada. Detalle en FUENTES.
+El baseline enriqueció **146.475/146.475** el 26/10 conservando identidad/fechas/contentRevision/snapshots. Sus 141.959 editores pendientes, 34.161 unknown-language y 2.671 unsupported-language no se han recalculado para el corpus actual. La adquisición nueva usa el flujo normal A/B/C/D; no rehacer el baseline. Evaluaciones/perfiles: último recuento documentado **0/0 el 27/10 13:32 UTC**, no recalculado en D3. Más noticias no producen evaluaciones políticas.
 
-## Verificación y límites actuales
+## Verificación y ejecución
 
-D: backend **1.089/1.089** y una prueba adicional de reinicio real del escritor/lectores; MCP **33/33**, build/check/inventario y CI correctos. Ráfagas news 613 y awareness 527, retry/ACK perdido, atomicidad, correcciones/cortes, merge/split e IA off cubiertos. Firefox 1280/390 px sobre fixture y después sobre la base real: dashboard, fuentes, comparaciones, situaciones/evidencias, foco/scroll y WebSocket. Primer arranque real del lote: unos **29 s**; la última ejecución registró server_started unos **34 s** después de iniciar el proceso. No repetir estas suites por editar MD.
+Candidato de 124050a: backend **1.110/1.110**, MCP **33/33**, build/check e inventario **98/107** correctos; corpus real readonly de **5.407** filas con proyecciones completas iguales al lector previo. Caché/E/S del sistema sin controlar: no acredita 10× de velocidad ni un SLO. En este cierre documental se revisan evidencias/diff/enlaces/publicación; no se repiten suites cerradas ni se atribuye CI antigua al nuevo commit.
 
-Último observador: **71 muestras**, 12:02:55.223–13:13:35.090 UTC (~1 h 10 min 40 s), **200 en health/ready/admin-agent en todas**, backendChanges=0, recuperaciones de lectores=0. Se interrumpió: **completedObservation=false**. No es una aceptación de 24 h. Resultado durable por intento del arranque: **5 completados, 6 fallidos y 1 incompleto por cierre**, detallados por tarea en EJECUCION-D; no sumar contadores históricos ni llamadas del broker.
+**D2 histórico:** el backlog creció de 16.417 a 27.684 en la hora y acabó en 30.509 tras el cierre solicitado. Timeouts y error de limpieza motivaron el ajuste posterior.
 
-**Abiertos y medidos en el log completo:** SQL lento hasta **9.781 ms**, commits hasta **20.605 ms**, checkpoints hasta **22.109 ms**, 8 muestras con algún heartbeat de almacenamiento >15 s, **68** rechazos del correlador `STORAGE_COMMAND_TOO_LARGE`, y backlog D señalado arriba. No hay causa física demostrada. No elevar límites ni atribuir el atraso a una causa concreta sin reproducir. IA: rechazos `AGENT_UNVERIFIED_NUMBER`/`AGENT_UNKNOWN_EVIDENCE`, una ejecución incierta con señal de lease y un turno fallido; conservación de guardias, no aceptación semántica.
+**D3:** observador de **61 muestras**, 27/10 **19:00:03.250–20:00:02.960 UTC**; health/ready 61/61, agente 60/61 y situaciones 60/61, con un timeout de cada una. Misma identidad, 0 cambios de backend y 0 recuperaciones de lectores en esa hora. News **30.533 → 0** pendientes; primera muestra al día **19:03:14.734**. **35.542** revisiones procesadas frente a **5.009** producidas durante la ventana. Log del backend hasta **28/10 18:15:31**, unas **23 h 16 min** desde el inicio: no son 23 h de observador ni 24 h aceptadas.
 
-## Secuencia y siguiente acción
+Tramo durable nuevo D3: **9.905** revisiones/outbox y **5.323** registros de evidencia, sin referencias ausentes ni emisiones new-report sin evidencia en lo comprobado. No son incidentes confirmados. Correlador sin STORAGE_COMMAND_TOO_LARGE registrado, con señales persistidas; no tratar ese defecto como reproducido actualmente.
 
-| Entrega | Estado y aceptación pendiente |
-|---|---|
-| 0 | Identidad, mantenimiento determinista, recuperación e instalaciones implementados; **0.2 y aceptación operativa abiertos** |
-| A | Publicada 9cbdef2; enriquecimiento baseline cerrado, EN/ES/FR/DE/PT y desconocidos explícitos; ampliaciones evaluadas en E |
-| B | Publicada 9a3aa2f; importador/perfiles/medidor/cobertura implementados; ningún dataset político real incorporado |
-| C | Publicada 40a027d; comparaciones/afirmaciones/histórico; agrupación no acredita independencia ni ocurrencia |
-| D | Publicada **df50aae**, código y pruebas cerrados; **backlog/capacidad bajo adquisición y aceptación operativa pendientes** |
-| E | Siguiente entrega: fuentes/perfiles/enriquecimiento permitido y piloto Ucrania/Mar Negro + mar Rojo |
-| F | Síntesis, cronologías e impactos sobre evidencia elegible; evaluación por tarea |
-| Final | Pruebas progresivas, candidato identificado sin cambios durante 24 h continuas y puerta IA separada |
+## Fallos abiertos y siguiente acción
 
-Secuencia acordada: **D → E → F → validación final**, con pruebas por entrega. Antes de ampliar el piloto E, el próximo lote de código recomendado es reproducir y acotar **backlog D + rechazos del correlador**, coordinando el mantenimiento y los trabajos analíticos existentes. Confirmar cursor/efectos/outbox y costes de cola/SQL/commit/checkpoint; no reiniciar el plan, saltar entradas ni aumentar guardias. No arrancar operación ni publicar por esta actualización de documentación; la sesión siguiente fija el alcance.
+1. **E/S y escritor:** transacción de **85,538 s** en fase commit, hilo en btrfs_sync_log; lectores en blk_mq_get_tag, PSI full avg10 ≈71 %. Fallaron primero análisis/consultas y después expiró un heartbeat despachado. STORAGE_NOT_READY es consecuencia. Causa física exacta no establecida; el registro no demuestra un nuevo checksum Btrfs.
+2. **Persistencia/reanudación:** 12 eventos market_observations_persist_failed / STORAGE_QUEUE_TIMEOUT; dos fases finales sin confirmar (history-cancellation, pipeline); RSS interrumpido e intento IA con lease vencido. Falta recuperación real con recibos/fences, sin replay ciego de resultados inciertos.
+3. **IA:** **197 intentos job/fence = 34 completed + 160 failed + 2 incomplete + 1 sin cerrar**. Las 34 publicaciones son shadow; sin revisión semántica. Fallos de números/evidencia/formato/instrumento y preparación/modelo detallados en el resumen.
+4. **Producto/final:** E/F sin implementar; contratos/UI/rendimiento/recuperación integrados y 24 h finales pendientes. Fixtures previos de reinicio/ACK/ráfagas no acreditan recuperación real tras este fallo.
 
-Evidencias privadas: `.implementation-evidence/2026-10-27/D/`, `D-release/`, `shutdown-988930/`, `docs-update/`, y `.agent-validation/shadow-24h-D-20261027-130254/` + `shadow-backend-D-20261027-130208.log`. Los MD contienen el resumen portable; no publicar bases, logs, secretos ni artefactos voluminosos.
+**Siguiente acción al autorizar código:** lote D/0.2 focalizado en presión de E/S/confirmación y persistencia de mercado, partiendo de D3. Correlacionar app, commits/checkpoints y esperas del host; reducir trabajo repetido conservando cobertura/durabilidad. Verificar reanudación real y carga; continuar **E → F → validación final**. No repetir el backlog drenado ni otra recuperación sin evidencia nueva.
+
+Evidencia privada: `.implementation-evidence/2026-10-27/D2/review.json`, `D2-fix/result.json` y `.implementation-evidence/2026-10-28/D3-review/review.json`; logs/observador en el resumen. No publicar bases, logs, credenciales, modelos ni artefactos privados.

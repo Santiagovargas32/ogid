@@ -1,6 +1,6 @@
 # Entrega D — diseño previo y enlace al cierre actual
 
-**Actualización del 27/10/2026:** D está implementada/publicada en **df50aae**, contrato **1.12.0**, esquema efectivo **029**, siguiente migración disponible: 030. Leer [CIERRE-D.md](CIERRE-D.md) para implementación/pruebas, [EJECUCION-D-2026-10-27.md](EJECUCION-D-2026-10-27.md) para la última ejecución y [ESTADO.md](ESTADO.md) para pendientes. Backlog/capacidad D bajo adquisición y aceptación operativa permanecen abiertos; E/F siguen después.
+**Actualización del 28/10/2026:** D inicial publicada en **df50aae**, ajustes hasta **124050a**, contrato **1.12.0**, esquema **029**, siguiente disponible 030. Leer [CIERRE-D.md](CIERRE-D.md), [RESUMEN-ACTUAL-2026-10-28.md](RESUMEN-ACTUAL-2026-10-28.md) y [ESTADO.md](ESTADO.md). D3 drenó backlog bajo adquisición; estabilidad de E/S/reanudación pendientes. EJECUCION-D-2026-10-27 es histórico. E/F siguen después; el diseño que se conserva abajo no es una orden de reimplementar D.
 
 ## Diseño histórico de entrada — anterior a implementar D
 

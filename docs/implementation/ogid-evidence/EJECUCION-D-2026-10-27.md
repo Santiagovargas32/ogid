@@ -1,5 +1,7 @@
 # Ejecución D del 27/10/2026 — observador, backend y cierre
 
+**Cohorte histórica PID 988930, anterior a D2/D3.** Sus pendientes y cierre describen este ensayo. Estado posterior y fallo de E/S del 28/10 en [RESUMEN-ACTUAL-2026-10-28.md](RESUMEN-ACTUAL-2026-10-28.md); entrada vigente [ESTADO.md](ESTADO.md). No reutilizar aquí «última ejecución» como referencia a D3.
+
 Actualizado con lectura documental y SQLite readonly el **27/10/2026, 13:32–13:34 UTC**. Código vigente [df50aae](https://github.com/Santiagovargas32/ogid/commit/df50aae482d8bacaf13f81c21dc0aa210b93ba8c), contrato 1.12.0 / esquema 029. El cierre de implementación está en [CIERRE-D.md](CIERRE-D.md); estado y siguiente acción en [ESTADO.md](ESTADO.md).
 
 Conclusión: **backend disponible en todas las muestras y cierre ordenado, con limitaciones operativas y semánticas abiertas**. Observador interrumpido, no prueba de 24 horas ni aceptación IA. Este informe incorpora evidencia disponible; no se han reproducido/fijado fallos ni arrancado servicios para redactarlo.
