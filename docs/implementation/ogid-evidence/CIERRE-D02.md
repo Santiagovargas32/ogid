@@ -1,12 +1,14 @@
 # Lote D/0.2 — estabilización acotada
 
-28/10/2026. Base revisada `c19ac4be6e463732ee03f1968dcc46536aa9e1d0`, rama `feat/agentic-intelligence`, checkout inicialmente limpio; código anterior `124050a`. Cambios locales sin commit ni publicación. A–D permanecen integradas; E/F no iniciadas. La sesión autoriza pausa local, implementación, pruebas y arranques/cierres mediante `cd backend && npm start`; no promoción, push, merge ni despliegue.
+28/10/2026. Base de implementación `c19ac4be6e463732ee03f1968dcc46536aa9e1d0`, código anterior `124050a`. D/0.2 se publicó después: checkout revisado `dcde8bd959d504cf5a240ef47de4c18419ce5ac2`, rama `feat/agentic-intelligence`, árbol `103233d276ebed42cdf30f24cd1501adf4117200`, compartido por `504df67` y `cfea52f`. A–D permanecen integradas; E/F no iniciadas. El diagnóstico posterior de E/S autorizó un arranque/cierre mediante `cd backend && npm start`; su resultado se conserva por separado. El 29/10 se autoriza publicar ese avance y los MDs mediante el conector GitHub; no merge, promoción, despliegue ni nuevos arranques. Las identidades A/B de este cierre son históricas y se conservan.
+
+**Continuación operativa C-IO y corte durable del 29/10:** [CIERRE-D02-IO.md](CIERRE-D02-IO.md), [KAN-8](https://santiagovargasmunoz.atlassian.net/browse/KAN-8) En progreso. El artefacto final se operó después en C-IO y volvió a fallar bajo presión; cierre con seis proyecciones sin confirmar. Los resultados A/B siguientes conservan su significado histórico. La evidencia cruda C-IO en /tmp se perdió tras el reinicio posterior del host; no se presenta como aceptación ni se repiten arranques.
 
 ## Identidad y pausa
 
 Node **22.23.3**, contrato **1.12.0**, hash **d17de83ae09b45b6859544697a4cfd5905b03b8e09be2e14da850cb4a7e08d16**, inventario **98 rutas / 107 operaciones**. Instalación backend: 138 paquetes runtime, MCP: 3; ambas matched, cero discrepancias frente a locks. No reinstalaciones, upgrades, auditorías ni cambios de locks. Esquema efectivo **029/29 migraciones** por schema_migrations; sin migración nueva y 001–029 intactas.
 
-Artefacto final local **`97d6ace9070bfdcc9c1392dda016146af6c013899567e58cbd5e2969bc2be706`**, hash de archivos de arranque, sin atestación ni commit nuevo. Distinto de los artefactos de las dos cohortes, que se conservan identificadas más abajo. Este último incorpora las dos regresiones descubiertas al cerrar el lote y está probado con fixtures.
+Artefacto final **`97d6ace9070bfdcc9c1392dda016146af6c013899567e58cbd5e2969bc2be706`**, hash de archivos de arranque publicado en el árbol anterior, sin atestación criptográfica. Distinto de los artefactos de las dos cohortes, que se conservan identificadas más abajo. Este último incorpora las dos regresiones descubiertas al cerrar el lote y se probó con fixtures después de B; la publicación no cambia esa cobertura histórica. CI del merge **40768313007**, correcta según el corte remoto revisado aportado al encargo; no se repiten suites por esta corrección de continuidad.
 
 Base seleccionada conservada: `/home/fedora/.local/share/ogid/db/ogid-repaired-20261026-183735.sqlite`. No se abre la imagen dañada ni se reabre la recuperación. Preflight del host: ningún backend/owner escritor; proceso Node ajeno en `/home/fedora` conservado y dos llama-server conservados. No se señalizan grupos de procesos.
 
@@ -91,13 +93,13 @@ Cobertura reutilizada: modo off con mantenimiento/adquisición/situaciones, fuen
 
 Evidencias privadas en `.implementation-evidence/2026-10-28/D02/`: identidad/configuración permitida, lecturas antes/después, contexto D3, observación y logs completos A/B, pruebas y result.json. El hash del .env permanece igual; no versionar logs, .env, DB ni muestras crudas. La evidencia portable es este documento y ESTADO.
 
-**Estado para E: no apto** mientras permanezcan la incertidumbre individual de los 12 episodios y el bloqueo de almacenamiento sin resolver. No se declara estabilidad de 24 h ni aceptación semántica IA. Una ventana corta y un reinicio no certifican la ejecución D3.
+**Estado para E: no apto** por bloqueo de almacenamiento y aceptación operativa sin resolver; C-IO añade seis proyecciones identificadas sin confirmar y evidencia incompleta. Los 12 episodios D3 conservan su incertidumbre histórica: no se exige reconstruir identidades que no se registraron ni se declaran recuperados por coincidencia temporal. No se rebaja la puerta operativa ni se declara estabilidad de 24 h o aceptación semántica IA. Una ventana corta y un reinicio no certifican D3.
 
 | Nivel | Resultado |
 |---|---|
 | Implementado | Pausa respetada, leases vencidos, recibos/cursores, fallos de proyección y cierre con incertidumbre visible |
 | Probado con fixture | ACK total/parcial perdido, recuperación sin duplicación, proyección fallida/duplicados, lector incierto al cerrar, IA off y núcleo activo; suites indicadas |
 | Verificado en host | Base/owner/esquema, cero IA nueva, progreso de adquisición/mercado/situaciones, reinicio y dos cierres observados; ambos con fallos, B mostró un reporte incompleto |
-| Aceptado | **No**: E/S y resultados inciertos abiertos; último artefacto de cierre no se presenta como operado en host |
+| Aceptado | **No**: E/S y resultados inciertos abiertos. El último artefacto no se ejecutó en A/B; se operó después en C-IO con fallo y sin cierre limpio, según su cierre separado |
 
 Reversión compatible: conservar esquema 029, jobs, snapshots, cursores, outbox y revisiones; mantener los seis interruptores IA en off. Los cambios de código son reversibles una vez detenido el backend; volver a 124050a reintroduce los puntos ciegos de cierre, por lo que no equivale a una aceptación. La configuración anterior recibida ya era off y se preservó; no reactivar proveedores/IA por inferencia ni borrar datos para revertir.
