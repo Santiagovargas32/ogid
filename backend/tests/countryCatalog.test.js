@@ -22,7 +22,7 @@ test("country catalog covers map seed countries and detects their unambiguous al
   const requiredCodes = ["AE", "NL", "GB", "SA", "CD", "AR", "BO", "CL", "EG", "DE", "SG", "JO", "KW", "BH", "OM", "DJ", "IT", "MY", "ID", "PA", "KZ"];
   const supportedCodes = new Set(COUNTRY_CATALOG.map((country) => country.iso2));
 
-  assert.equal(BASELINE_COUNTRIES.length, 21);
+  assert.equal(BASELINE_COUNTRIES.length, 22);
 
   requiredCodes.forEach((iso2) => {
     assert.ok(supportedCodes.has(iso2), `${iso2} should be supported`);
@@ -40,4 +40,14 @@ test("ambiguous person and nationality aliases do not create country claims", ()
   assert.equal(detectCountryMentions("A Jordanian statement was issued in Amman.").includes("JO"), true);
   assert.equal(detectCountryMentions("Congolese officials met abroad.").includes("CD"), false);
   assert.equal(detectCountryMentions("Officials in the Democratic Republic of the Congo met in Kinshasa.").includes("CD"), true);
+});
+
+test('Spain is detected in English and Spanish and can be selected as a country filter',async()=>{
+  const {parseCountries,filterNewsByCountries}=await import('../utils/filters.js');
+  for(const text of ['Spain announces its policy','España anuncia su política','Espana anuncia su politica','Spanish officials meet in Madrid'])assert.ok(detectCountryMentions(text).includes('ES'));
+  assert.equal(detectCountryMentions('Officials meet in Lisbon').includes('ES'),false);
+  assert.deepEqual(parseCountries('ES',['US']),['ES']);
+  const rows=[{id:'spain',countryMentions:detectCountryMentions('News from España')},{id:'us',countryMentions:['US']}];
+  assert.deepEqual(filterNewsByCountries(rows,parseCountries('ES')).map(row=>row.id),['spain']);
+  assert.ok(Number.isFinite(getCountryByIso2('ES').lat));
 });

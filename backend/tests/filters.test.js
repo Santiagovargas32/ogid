@@ -12,7 +12,7 @@ test("parseCountries handles ALL and defaults", () => {
   const all = parseCountries("ALL", ["US"]);
   assert.ok(all.includes("US"));
   assert.ok(all.includes("IR"));
-  assert.equal(all.length, 21);
+  assert.equal(all.length, 22);
   assert.deepEqual(parseCountries("AE", ["US"]), ["US"]);
 });
 

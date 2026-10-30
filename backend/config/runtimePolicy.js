@@ -9,6 +9,7 @@ export const RUNTIME_POLICY = freeze({
   refreshIntervalMs: 30000,
   watchlistCountries: [
     "US",
+    "ES",
     "IL",
     "IR",
     "RU",

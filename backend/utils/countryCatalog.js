@@ -1,5 +1,12 @@
 const COUNTRY_ROWS = [
   {
+    iso2: "ES",
+    name: "Spain",
+    lat: 40.4168,
+    lng: -3.7038,
+    aliases: ["españa", "espana", "spanish", "madrid"]
+  },
+  {
     iso2: "US",
     name: "United States",
     lat: 38.9072,
@@ -305,7 +312,7 @@ function buildAliases(country) {
 }
 
 const BASELINE_ISO2 = new Set([
-  "US", "RU", "CN", "UA", "IL", "IR", "SY", "IQ", "AF", "KP", "KR", "TW", "IN", "PK", "TR", "YE", "SD", "ET", "VE", "CO", "MM"
+  "US", "ES", "RU", "CN", "UA", "IL", "IR", "SY", "IQ", "AF", "KP", "KR", "TW", "IN", "PK", "TR", "YE", "SD", "ET", "VE", "CO", "MM"
 ]);
 
 const AMBIGUOUS_DETECTION_ALIASES = Object.freeze({

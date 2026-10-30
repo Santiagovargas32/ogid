@@ -108,14 +108,14 @@ test("advanced map and intelligence routes return bounded additive payloads", as
     assert.equal(ciiResponse.status, 200);
     assert.equal(ciiPayload.ok, true);
     assert.ok(Array.isArray(ciiPayload.data.ranking));
-    assert.equal(ciiPayload.data.ranking.length, 21);
+    assert.equal(ciiPayload.data.ranking.length, 22);
 
     const hotspotsResponse = await fetch(`${baseUrl}/api/intel/hotspots-v2`);
     const hotspotsPayload = await hotspotsResponse.json();
     assert.equal(hotspotsResponse.status, 200);
     assert.equal(hotspotsPayload.ok, true);
     assert.ok(Array.isArray(hotspotsPayload.data.hotspots));
-    assert.equal(hotspotsPayload.data.hotspots.length, 21);
+    assert.equal(hotspotsPayload.data.hotspots.length, 22);
 
     const historyBeforeRead = structuredClone(runtime.app.locals.signalCorrelator.history);
     const anomaliesResponse = await fetch(`${baseUrl}/api/intel/anomalies`);
