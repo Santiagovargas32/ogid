@@ -25,7 +25,7 @@ export function mcpOperatorAuth(req, res, next) {
   const credential = credentials.find(row => matchToken(row.token, token));
   const requestPath = new URL(req.originalUrl, "http://local").pathname;
   const dynamic = operation?.path.includes(":id");
-  const pathId = dynamic ? decodeURIComponent(requestPath.split("/").at(-1)) : null;
+  const pathId = dynamic ? decodeURIComponent(requestPath.split("/")[operation.path.split("/").indexOf(":id")]) : null;
   let expectedPath;
   try { expectedPath = operation ? operationPath(operation, { id: pathId }) : null; } catch { expectedPath = null; }
   if (!operation || operation.profile !== "operator" || req.method !== operation.method || requestPath !== expectedPath || !credential?.scopes.includes(operation.scope))

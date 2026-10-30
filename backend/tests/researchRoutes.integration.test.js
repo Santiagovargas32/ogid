@@ -43,7 +43,7 @@ test("inventario: todas las rutas JSON montadas tienen contrato y permiso; rutas
   const agentSource=readFileSync(dir+'agentRoutes.js','utf8');
   const agentRoutes=[...agentSource.matchAll(/router\.(get|post|put|delete|patch)\s*\(\s*(["'`])([^"'`]+)\2/g)].map(m=>`${m[1].toUpperCase()} /api${m[3]}`);
   const mounted = new Set([...enumerate("index.js", "/api"),...agentRoutes]); const registered = new Set([...OGID_OPERATIONS.map(op => `${op.method} ${op.path}`),...AGENT_PRIVATE_ROUTES]);
-  assert.deepEqual([...mounted].sort(), [...registered].sort()); assert.equal(OPERATIONS_VERSION, "1.13.0");
+  assert.deepEqual([...mounted].sort(), [...registered].sort()); assert.equal(OPERATIONS_VERSION, "1.14.0");
   for (const operation of OGID_OPERATIONS) { assert.ok(operation.scope); assert.ok(operation.effects); assert.ok(operation.projection); assert.equal(operation.parameters.additionalProperties, false); assert.ok(["research", "operator"].includes(operation.profile)); }
 });
 test("todas las lecturas MCP sobre backend real: almacenadas, sin refresh/cuotas, identidades y separación operador", async () => {

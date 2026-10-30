@@ -11,7 +11,8 @@ const controls = new Set(['heartbeat','cancel','interruptClaim','cancelAcknowled
 export function storageOperationContract(operation,input={}) {
   const acquisition=['news.collect','news.supplemental','rss.fetch'].includes(operation) || operation==='domain.call' &&
     (input.service==='rss' && input.method==='refresh' || ['sources','history'].includes(input.service) && input.method==='run');
-  const pureRead=['market.persist.pending','market.persist.status','market.project.pending','market.project.status','agent.read','scenarios.prepare','runtime.load','storage.status'].includes(operation) ||
+  const controlRead=['agent.call','agent.read'].includes(operation)&&input.method==='runControl';
+  const pureRead=controlRead||['market.persist.pending','market.persist.status','market.project.pending','market.project.status','agent.read','scenarios.prepare','runtime.load','storage.status'].includes(operation) ||
     operation==='domain.call' && Boolean(queries[input.service]?.includes(input.method));
   let role='writer';
   if(pureRead)role=operation==='scenarios.prepare'?'analysis':'queries';
@@ -20,7 +21,7 @@ export function storageOperationContract(operation,input={}) {
   if(operation==='agent.snapshot' || operation==='domain.call' && (analysis.has(input.service) || input.service==='forecasts' && input.method==='evaluate' || input.service==='news' && input.method==='getProjection'))role='analysis';
   if(operation==='market.project.calculate')role='analysis';
   const domainControl=operation==='domain.call'&&(input.service==='sources'&&input.method==='stop'||input.service==='history'&&input.method==='cancel');
-  const workClass=['snapshot.renew','snapshot.fail'].includes(operation)||domainControl?'control':operation==='agent.call' && controls.has(input.method)?'control':
+  const workClass=controlRead?'control':['snapshot.renew','snapshot.fail'].includes(operation)||domainControl?'control':operation==='agent.call' && controls.has(input.method)?'control':
     // Journal pages are bounded business commits. Waiting for every acquisition
     // workflow to end would starve them while RSS releases the writer for I/O.
     operation==='agent.call'&&input.method==='alertSync'?'commit':

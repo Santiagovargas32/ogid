@@ -1,6 +1,6 @@
 // Registro compartido: contratos de transporte, permisos e inventario API→MCP.
 // Sin imports de runtime ni secretos. Los parámetros son valores tipados; nunca URLs/rutas libres.
-export const OPERATIONS_VERSION = "1.13.0";
+export const OPERATIONS_VERSION = "1.14.0";
 import {DOSSIER_PROPOSE,DOSSIER_REVIEW} from '../services/news/sourceDossierSchema.js';
 import {SOURCE_IMPORT_PROPERTIES,SOURCE_IMPORT_REQUIRED} from '../services/news/sourceAssessmentSchema.js';
 import {COMPARISON_REVIEW_PROPERTIES,COMPARISON_REVIEW_REQUIRED} from '../services/news/comparisonSchema.js';
@@ -46,6 +46,10 @@ function op(id, method, path, parameters = {}, options = {}) {
 const costly = { profile: "operator", scope: "provider:query", effects: "provider requests and cache updates", cost: "provider quota/rate limits" };
 const mutation = (scope) => ({ profile: "operator", scope, effects: "mutation", cost: "see runtime quotas" });
 export const OGID_OPERATIONS = Object.freeze([
+  op('analyst.request','POST','/api/admin/situation-analyses',{}, {...mutation('analyst:write'),body:{requestId:{...str(),pattern:'^[A-Za-z0-9._:-]+$'},situationId:str(),baselineAnalysisId:str()},bodyRequired:['requestId','situationId'],projection:'public'}),
+  op('analyst.list','GET','/api/admin/situation-analyses',{situationId:str(),cursor:str(4096),limit,maxBytes:int(4096,65536)},{profile:'operator',scope:'analyst:read',projection:'public'}),
+  op('analyst.detail','GET','/api/admin/situation-analyses/:id',{}, {pathParameters:schema({id:str()},['id']),profile:'operator',scope:'analyst:read',projection:'public'}),
+  op('analyst.sections','GET','/api/admin/situation-analyses/:id/sections',{section:choice('synthesis','timeline','changes','impacts','contradictions','limitations','missingEvidence'),cursor:str(4096),limit,maxBytes:int(4096,65536)}, {required:['section'],pathParameters:schema({id:str()},['id']),profile:'operator',scope:'analyst:read',projection:'public'}),
   op('situations.list','GET','/api/situations',{kind:choice('situation','incident'),timeField:choice('changed','occurred','published'),from:date,to:date,cursor:str(4096),limit,maxBytes:int(4096,262144)},{retention:'stable domain-sequence cut; candidate situations and explicitly reviewed incidents; event time may be unknown'}),
   op('situations.status','GET','/api/situations/status',{}, {retention:'durable source cursors, bootstrap and explicit backlog/error; no provider or model calls'}),
   op('situations.changes','GET','/api/situation-changes',{sinceSequence:int(0,Number.MAX_SAFE_INTEGER),cursor:str(4096),limit,maxBytes:int(4096,262144)},{retention:'durable idempotent outbox; historical changes explicit; reading does not ACK delivery'}),

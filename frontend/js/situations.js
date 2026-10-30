@@ -57,3 +57,5 @@ function schedule(){clearTimeout(statusTimer);if(document.hidden)return;statusTi
 document.addEventListener('visibilitychange',()=>{if(document.hidden)clearTimeout(statusTimer);else{void engineStatus();schedule();}});
 window.addEventListener('pagehide',()=>{clearTimeout(statusTimer);controller?.abort();});
 void load();void engineStatus();schedule();
+
+if(entityId){const a=link('Revisar análisis shadow',`/analyst.html?situationId=${encodeURIComponent(entityId)}`);document.querySelector('main').append(a);}

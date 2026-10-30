@@ -1,7 +1,7 @@
 // Guidance rather than an allowlist: continuations retain every frozen ID.
 export async function repairCatalog(call,snapshotId,job,{maxBytes=8192,maxPages=8}={}) {
   const result={snapshotId,items:[],continuations:[]};let bytes=128;
-  for(const domain of job.task==='instrument_outlook'?['technical.get','coverage']:['coverage','technical.get']){
+  for(const domain of job.task==='situation_analysis'?['situation-source','coverage']:job.task==='instrument_outlook'?['technical.get','coverage']:['coverage','technical.get']){
     let cursor=0,pages=0,more=true;
     while(more&&pages++<maxPages){
       const page=await call('evidence',{snapshotId,domain,cursor,limit:20});

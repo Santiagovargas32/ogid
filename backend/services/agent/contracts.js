@@ -1,3 +1,4 @@
+import {analysisSchema,validateAnalysis,normalizeAnalysis,assertAnalysis,ANALYSIS_INSTRUCTIONS} from '../situations/analysisSchema.js';
 import Ajv from "ajv";
 import { AppError } from "../../utils/error.js";
 import { numericFactProblem } from './evidencePaths.js';
@@ -5,6 +6,7 @@ import {numericNarrativeProblem} from './numericSemantics.js';
 export const PROMPT_VERSION = "ogid-analyst-v1.9";
 export const PUBLICATION_CONTRACT_VERSION = 'typed-numeric-facts-v2';
 export const TASKS = [
+  "situation_analysis",
   "global_intelligence_brief",
   "geopolitical_alert_assessment",
   "market_outlook_global",
@@ -173,6 +175,7 @@ export const validatePublication = ajv.compile(publicationSchema);
 // same const advertised in the generation contract, never cached per job.
 const taskValidators = new Map();
 export function publicationSchemaForJob(job) {
+  if(job.task==='situation_analysis')return {...analysisSchema,properties:{...analysisSchema.properties,situationId:{const:job.scope}}};
   const outlook = ['instrument_outlook','market_outlook_global'].includes(job.task);
   const directional = { not: { const: 'unavailable' } };
   return {
@@ -198,6 +201,7 @@ export function publicationSchemaForJob(job) {
   };
 }
 export function validatePublicationForJob(value, job) {
+  if(job.task==='situation_analysis'){const valid=validateAnalysis(value)&&value.situationId===job.scope;validatePublicationForJob.errors=validateAnalysis.errors||[];return valid;}
   if (!TASKS.includes(job.task) || job.task==='contextual_chat') {
     validatePublicationForJob.errors=[{instancePath:'/task',keyword:'enum',params:{}}];
     return false;
@@ -219,6 +223,7 @@ export function parsePublication(text) {
   return JSON.parse(block ? block[1] : value);
 }
 export function taskInstructions(job) {
+  if(job.task==='situation_analysis')return ANALYSIS_INSTRUCTIONS;
   const specific={
     instrument_outlook:'Sólo el instrumento indicado. Incluye intradayScenarios; si no hay técnica elegible, dirección unavailable. No incluyas alertAssessments salvo [].',
     market_outlook_global:'Sólo la watchlist cubierta. No incluyas intradayScenarios ni alertAssessments salvo [].',
@@ -229,6 +234,7 @@ export function taskInstructions(job) {
   return specific[job.task] || '';
 }
 export function publicationExample(job,evidenceId) {
+  if(job.task==='situation_analysis')return null;
   if(!evidenceId || job.task==='contextual_chat')return null;
   const value={schemaVersion:'ogid-agent-publication-v1',task:job.task,summary:'La evidencia consultada no permite una dirección comprobable.',direction:'unavailable',sentiment:'unavailable',stability:'unavailable',horizonHours:24,probability:null,confidenceKind:'qualitative-uncalibrated',evidenceIds:[evidenceId],contradictions:[],invalidation:[],limitations:['Cobertura limitada; consultar el snapshot.'],technicalFacts:[]};
   if(['instrument_outlook','market_outlook_global'].includes(job.task))Object.assign(value,{drivers:[],scenarios:[],alternatives:[],missingEvidence:['Falta evidencia elegible para una dirección.'],target:'absolute-return-direction; first available daily close after 24h',methods:{sentiment:'qualitative-evidence-synthesis-v1',stability:'qualitative-watchlist-v1'}});
@@ -284,6 +290,7 @@ export function safeValidationDetails(raw) {
   return Object.keys(clean).length ? clean : null;
 }
 export function normalizePublicationEvidence(value) {
+  if(value?.task==='situation_analysis')return normalizeAnalysis(value);
   if(!validatePublication(value))throw agentError('AGENT_INVALID_PUBLICATION');
   // Normalize explicit references, never values. Every ID and numeric fact
   // still passes the same membership, temporal, quality and exact validation.
@@ -311,6 +318,7 @@ export function assertPublication(
   value,
   { job, snapshot, lookup, now = Date.now() },
 ) {
+  if(job.task==='situation_analysis')return assertAnalysis(value,{job,snapshot,lookup,now});
   if (!validatePublication(value))
     throw agentError("AGENT_INVALID_PUBLICATION");
   if (value.task !== job.task) throw agentError("AGENT_TASK_MISMATCH");

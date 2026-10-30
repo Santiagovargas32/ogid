@@ -11,6 +11,7 @@ import { tokenMatches } from "../services/agent/broker.js";
 import {
   OGID_OPERATIONS,
   parseOperationQuery,
+  validateValue,
 } from "../contracts/ogidOperations.js";
 const router = Router();
 const call = (req, method, args = {}) => req.app.locals.agentCall(method, args);
@@ -65,6 +66,28 @@ function available(req, res, next) {
     return next(agentError("AGENT_STORAGE_UNAVAILABLE", 503));
   next();
 }
+// Operator MCP and local/token admin use the same application contracts.
+const analysisRoute=(operationId,service,write=false)=>async(req,res)=>{
+ const operation=OGID_OPERATIONS.find(op=>op.id===operationId);
+ let input;
+ try{input=parseOperationQuery(req.query,operation);}catch{throw agentError('AGENT_INVALID_ARGUMENTS');}
+ if(req.params.id){if(!/^[A-Za-z0-9._:-]{1,128}$/.test(req.params.id))throw agentError('AGENT_INVALID_ARGUMENTS');input.id=req.params.id;}
+ if(write){
+  const config=req.app.locals.agentConfig;
+  if(taskMode(config,'situation_analysis')!=='shadow')throw agentError('AGENT_DISABLED',503);
+  const data=body(req,['requestId','situationId','baselineAnalysisId']);
+  if(!validateValue(data,operation.body))throw agentError('AGENT_INVALID_ARGUMENTS');
+  input={...data,model:config.backgroundModel};
+ }
+ res.json({ok:true,data:await call(req,service,input)});
+};
+router.post('/admin/situation-analyses',available,admin,analysisRoute('analyst.request','analysisRequest',true));
+router.get('/admin/situation-analyses',available,admin,analysisRoute('analyst.list','analysisList'));
+router.get('/admin/situation-analyses/:id/sections',available,admin,analysisRoute('analyst.sections','analysisSections'));
+router.get('/admin/situation-analyses/:id',available,admin,analysisRoute('analyst.detail','analysisDetail'));
+async function frozenAccess(req,_res,next){
+ try{const access=await call(req,'analysisSnapshotAccess',{snapshotId:req.query.snapshotId});if(access.restricted&&!isAdminAuthorized(req,req.app.locals.config?.security))throw agentError('ADMIN_AUTH_REQUIRED',401);next();}catch(error){next(error);}
+}
 const ownedArgs = (req) => ({
   deviceId: req.agentDevice.deviceId,
   sessionId: req.params.id,
@@ -112,6 +135,7 @@ router.use(
     }
   },
 );
+router.use(['/agent/v1/evidence','/agent/v1/evidence/chunk','/agent/v1/clusters'],available,frozenAccess);
 router.get("/agent/v1/capabilities", async (req, res) =>
   res.json({
     ...publicCapabilities(req.app.locals.agentConfig),
@@ -399,7 +423,7 @@ const internalMethods = new Set([
   "alertSync",
   "progress",
   "reconcileCandidates",
-  "resume",
+  "resume", "runControl",
   "workerReport",
   "pendingCancellations",
   "cancelAcknowledged",
@@ -468,7 +492,7 @@ router.post("/agent/v1/internal/:method", async (req, res) => {
       req.app.locals.marketWatchlistService?.selectedInstrumentIds || [];
   }
   if (req.params.method === "publish") {
-    const job = await call(req, "run", { jobId: input.jobId, internal: true });
+    const job = await call(req, input.task==='situation_analysis'?"runControl":"run", { jobId: input.jobId, internal: true });
     input.mode = taskMode(req.app.locals.agentConfig, job.task);
     if (input.mode === "off") throw agentError("AGENT_DISABLED", 503);
   }

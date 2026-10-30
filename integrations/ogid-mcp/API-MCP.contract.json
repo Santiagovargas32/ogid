@@ -1,7 +1,206 @@
 {
-  "contractVersion": "1.13.0",
-  "routes": 104,
+  "contractVersion": "1.14.0",
+  "routes": 108,
   "operations": [
+    {
+      "profile": "operator",
+      "scope": "analyst:write",
+      "effects": "mutation",
+      "cost": "see runtime quotas",
+      "body": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._:-]+$"
+          },
+          "situationId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "baselineAnalysisId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "requestId",
+          "situationId"
+        ],
+        "additionalProperties": false
+      },
+      "bodyRequired": [
+        "requestId",
+        "situationId"
+      ],
+      "projection": "public",
+      "id": "analyst.request",
+      "method": "POST",
+      "path": "/api/admin/situation-analyses",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "tool": "ogid_operator"
+    },
+    {
+      "profile": "operator",
+      "scope": "analyst:read",
+      "projection": "public",
+      "id": "analyst.list",
+      "method": "GET",
+      "path": "/api/admin/situation-analyses",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "situationId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "maxBytes": {
+            "type": "integer",
+            "minimum": 4096,
+            "maximum": 65536
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "tool": "ogid_operator"
+    },
+    {
+      "pathParameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "profile": "operator",
+      "scope": "analyst:read",
+      "projection": "public",
+      "id": "analyst.detail",
+      "method": "GET",
+      "path": "/api/admin/situation-analyses/:id",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "tool": "ogid_operator"
+    },
+    {
+      "required": [
+        "section"
+      ],
+      "pathParameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "profile": "operator",
+      "scope": "analyst:read",
+      "projection": "public",
+      "id": "analyst.sections",
+      "method": "GET",
+      "path": "/api/admin/situation-analyses/:id/sections",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "section": {
+            "type": "string",
+            "enum": [
+              "synthesis",
+              "timeline",
+              "changes",
+              "impacts",
+              "contradictions",
+              "limitations",
+              "missingEvidence"
+            ]
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "maxBytes": {
+            "type": "integer",
+            "minimum": 4096,
+            "maximum": 65536
+          }
+        },
+        "required": [
+          "section"
+        ],
+        "additionalProperties": false
+      },
+      "body": null,
+      "effects": "stored/local-calculation",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "tool": "ogid_operator"
+    },
     {
       "retention": "stable domain-sequence cut; candidate situations and explicitly reviewed incidents; event time may be unknown",
       "id": "situations.list",

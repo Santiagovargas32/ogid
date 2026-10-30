@@ -4,7 +4,7 @@ import { setTimeout as wait } from "node:timers/promises";
 
 // Reads and a fenced lease renewal can be repeated after a lost response.
 // Admission, publication, state changes and inference remain single-attempt.
-const repeatable = new Set(["status","run","memory","evidence","evidenceChunk","clusters","workerHealth","reconcileCandidates","pendingCancellations","heartbeat"]);
+const repeatable = new Set(["runControl","status","run","memory","evidence","evidenceChunk","clusters","workerHealth","reconcileCandidates","pendingCancellations","heartbeat"]);
 
 // Worker credential grants only the typed internal operations, never admin.
 export const internalDeadline=method=>method==="snapshot"?395000:["evidence","evidenceChunk","clusters","memory"].includes(method)?185000:method==="heartbeat"?50000:125000;

@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="es">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>OGID · Revisión del analista</title><link rel="stylesheet" href="/css/sourceAssessments.css"></head>
+<body class="sources-page">
+<nav aria-label="Vistas"><a href="/admin.html">Administración</a> · <a href="/situations.html">Situaciones</a></nav>
+<main><h1>Revisión del analista</h1><p>Resultados shadow bajo demanda. Las síntesis conservan relatos atribuidos; los impactos son hipótesis. La revisión no publica resultados al público.</p>
+<form id="analyst-form" class="source-controls"><label>Situación <input id="analyst-situation" required maxlength="128"></label><label>Análisis anterior opcional <input id="analyst-baseline" maxlength="128"></label><button type="submit">Solicitar análisis shadow</button><button id="analyst-refresh" type="button">Actualizar estado</button></form>
+<p id="analyst-status" role="status" aria-live="polite"></p><div id="analyst-jobs"></div><section id="analyst-results" class="source-grid" aria-label="Análisis"></section><button id="analyst-more" hidden>Cargar más análisis</button>
+</main><script type="module" src="/js/situationAnalyst.js"></script></body></html>

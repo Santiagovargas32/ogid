@@ -1,3 +1,4 @@
+import {requestAnalysis,prepareAnalysis,commitAnalysisDependencies,analysisCurrentness,readAnalyses} from './situationAnalyses.js';
 import {SituationStore} from './situations.js';
 import { randomUUID, createHash, randomBytes } from "node:crypto";
 import { performance } from 'node:perf_hooks';
@@ -50,8 +51,9 @@ const safeId = (v) =>
 const admitted = (id) =>
   AWARENESS_SOURCES.find((s) => s.sourceId === id)?.admissionState === "active";
 export const AGENT_READER_METHODS = new Set(["evidence","evidenceChunk","clusters","memory",
-  "messages","deviceAuth","run","status","publications","sessions","workerHealth","sessionAccess","alerts","alertRevisions"]);
+  "runControl","analysisList","analysisDetail","analysisSections","analysisSnapshotAccess","messages","deviceAuth","run","status","publications","sessions","workerHealth","sessionAccess","alerts","alertRevisions"]);
 export const AGENT_METHODS = [
+  "runControl", "analysisRequest", "analysisList", "analysisDetail", "analysisSections", "analysisSnapshotAccess",
   "sessionAccess",
   "progress",
   "status",
@@ -95,6 +97,11 @@ export class AgentRepository {
   constructor(runtime, { now = Date.now, debounceMs = 30000, random = Math.random } = {}) {
     Object.assign(this, { runtime, db: runtime.db, now, debounceMs, random });
   }
+  analysisRequest(input){return requestAnalysis(this,input,input.model);}
+  analysisList(input){return readAnalyses(this,input);}
+  analysisDetail(input){return readAnalyses(this,input);}
+  analysisSections(input){return readAnalyses(this,input);}
+  analysisSnapshotAccess({snapshotId}){return {restricted:this.snapshotInfo(snapshotId).coverage.situationId!==undefined};}
   recovery(model) {
     return (this.runtime.load('agent-recovery-v1')||[]).find(e=>e.model===model&&e.contractHash===OPERATIONS_HASH)||{model,contractHash:OPERATIONS_HASH,consecutiveFailures:0};
   }
@@ -416,6 +423,7 @@ export class AgentRepository {
           "SELECT payload_json FROM agent_publications WHERE publication_id=?",
         )
         .get(id);
+      if(pub&&parse(pub.payload_json).proposal?.task==='situation_analysis')throw agentError('AGENT_INVALID_CONTEXT');
       if (pub)
         return {
           kind: "publication",
@@ -1004,6 +1012,7 @@ export class AgentRepository {
         // Pin the reader's consistent view before choosing its temporal cut.
         const job = this.fenced(input);
         if (job.snapshot_id) return {existing:this.snapshotInfo(job.snapshot_id)};
+        if(job.task==='situation_analysis')return prepareAnalysis(this,job,{rowSink,maxPreparationMs});
         const snapshotId = randomUUID(),
           asOf = stamp(this.now()),
           since = stamp(this.now() - 86400000),
@@ -1474,6 +1483,7 @@ export class AgentRepository {
       snapshot = this.snapshotInfo(job.snapshot_id);
     if (!["shadow", "visible"].includes(input.mode))
       throw agentError("AGENT_INVALID_MODE");
+    if(job.task==='situation_analysis'&&input.mode!=='shadow')throw agentError('AGENT_INVALID_MODE');
     const proposal = assertPublication(input.proposal, {
       job: { task: job.task, scope: job.scope,promptVersion:job.prompt_version },
       snapshot,
@@ -1567,6 +1577,7 @@ export class AgentRepository {
           publishedAt: at,
           validUntil,
           forecastId,
+          ...(job.task==='situation_analysis'?{currentnessAtPublication:analysisCurrentness(this,job.snapshot_id)}:{}),
           proposal,
         };
         this.db
@@ -1582,7 +1593,8 @@ export class AgentRepository {
             input.mode,
             json(payload),
           );
-        this.db.prepare("INSERT INTO agent_memory VALUES(?,?,?,?)").run(
+        if(job.task==='situation_analysis')commitAnalysisDependencies(this,publicationId,job.snapshot_id,proposal);
+        if(job.task!=='situation_analysis')this.db.prepare("INSERT INTO agent_memory VALUES(?,?,?,?)").run(
           job.scope,
           publicationId,
           at,
@@ -1650,6 +1662,7 @@ export class AgentRepository {
     return committed;
   }
   publicationCurrentness(snapshotId,proposal) {
+    if(proposal?.task==='situation_analysis')return analysisCurrentness(this,snapshotId);
     const all=(proposal?.evidenceIds||[]).filter(x=>/^(news|event|alert):/.test(x)),items=[];
     for(const evidenceId of all.slice(0,100)){
       const match=/^(news|event|alert):(.*):(\d+)$/.exec(evidenceId);if(!match)continue;
@@ -1674,6 +1687,7 @@ export class AgentRepository {
     includeShadow = false,
   }) {
     const clauses = [
+        "task!='situation_analysis'",
         "mode IN ('visible'" + (includeShadow ? ",'shadow'" : "") + ")",
       ],
       args = [];
@@ -1822,6 +1836,11 @@ export class AgentRepository {
       this.db.prepare('INSERT INTO geopolitical_alert_state VALUES(?,?,?,?) ON CONFLICT(device_id,alert_id) DO UPDATE SET read_revision=CASE WHEN excluded.read_revision=0 THEN 0 ELSE max(read_revision,excluded.read_revision) END,archived=excluded.archived').run(deviceId,alertId,read?acknowledged:0,Number(archived));
       return {updated:true,acknowledgedRevision:acknowledged};
     });
+  }
+  runControl({jobId}) {
+    const row=this.db.prepare('SELECT job_id jobId,status,fence,task FROM agent_jobs WHERE job_id=?').get(jobId);
+    if(!row)throw agentError('AGENT_RUN_NOT_FOUND',404);
+    return row;
   }
   run({ jobId, deviceId, internal = false }) {
     const r = this.job(jobId);

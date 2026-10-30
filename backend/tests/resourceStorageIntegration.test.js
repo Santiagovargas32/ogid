@@ -102,3 +102,18 @@ test('the shared heavy reservation serializes reader lanes and releases before a
     await Promise.all([first,second]);assert.equal(pressure.status().heavyActive,0);
   }finally{for(const lane of lanes){lane.state='closed';await lane.close();}}
 });
+
+test('bounded analyst control remains readable under critical pressure while full job and corpus stay deferred',async()=>{
+ const directory=mkdtempSync(join(tmpdir(),'ogid-analyst-control-')),pressure=new ResourceAdmission({enabled:true});pressure.observe(healthy);
+ const manager=new StorageManager({enabled:true,businessEnabled:true,databasePath:join(directory,'db.sqlite'),pressure});
+ try{
+  await manager.start();await manager.request('domain.configure',config);
+  const job=await manager.request('agent.call',{method:'enqueue',args:{task:'situation_analysis',scope:'fixture',model:'llamacpp/fixture',key:'control-fixture',input:{text:'PRIVATE'}}});
+  pressure.observe({...healthy,memoryFull:20,ioFull:60});
+  const state=await manager.request('agent.call',{method:'runControl',args:{jobId:job.jobId}});
+  assert.deepEqual(state,{jobId:job.jobId,status:'queued',fence:0,task:'situation_analysis'});
+  assert.equal(JSON.stringify(state).includes('PRIVATE'),false);
+  await assert.rejects(manager.request('agent.call',{method:'run',args:{jobId:job.jobId,internal:true}}),{code:'STORAGE_RESOURCE_PRESSURE'});
+  await assert.rejects(manager.request('agent.call',{method:'evidence',args:{snapshotId:'not-loaded'}}),{code:'STORAGE_RESOURCE_PRESSURE'});
+ }finally{await manager.close();await pressure.close();rmSync(directory,{recursive:true,force:true});}
+});

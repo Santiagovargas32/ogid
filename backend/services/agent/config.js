@@ -81,7 +81,7 @@ export function loadAgentConfig(env = process.env, override = {}) {
   const taskModes = Object.fromEntries(
     TASKS.map((task) => [
       task,
-      mode === "off" ? "off" : suppliedModes[task] || mode,
+      mode === "off" ? "off" : task==='situation_analysis' ? (suppliedModes[task]==='shadow'?'shadow':'off') : suppliedModes[task] || mode,
     ]),
   );
   const backgroundModel =
