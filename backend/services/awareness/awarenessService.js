@@ -423,6 +423,7 @@ export class AwarenessService {
   }
 
   async pollSource(source) {
+    try{this.admission?.assert('acquisition');}catch(error){if(error.code!=='STORAGE_RESOURCE_PRESSURE')throw error;this.resourceDeferred=true;return {sourceId:source.sourceId,changed:[],status:'deferred'};}
     const startedAt = this.now();
     const previous = this.getAdminSnapshot().sourceStatus.find((status) => status.sourceId === source.sourceId) || {};
     const admissionState = previous.admissionState || normalizeAwarenessAdmissionState(source);
@@ -579,6 +580,8 @@ export class AwarenessService {
   async runCycle(trigger = "scheduled-awareness") {
     if (this.mode === "off") return { status: "disabled", trigger, snapshot: this.syncProjection() };
     if (this.inFlight) return this.inFlight;
+    try{this.admission?.assert('acquisition');}catch(error){if(error.code!=='STORAGE_RESOURCE_PRESSURE')throw error;this.resourceDeferred=true;return {status:'deferred',trigger,snapshot:this.syncProjection()};}
+    this.resourceDeferred=false;
     this.inFlight = (async () => {
       const sources = this.eligibleSources();
       const settled = await Promise.allSettled(sources.map((source) => this.globalSemaphore.use(() =>

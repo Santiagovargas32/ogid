@@ -8,6 +8,7 @@ import { AppError } from "../utils/error.js";
 import { getInstrumentById, listVerifiedInstruments } from "../services/market/instrumentRegistry.js";
 import { sanitizeSensitiveData } from "../utils/sanitize.js";
 import {assessClosedCandle,CANDLE_VALIDATION_VERSION} from '../services/market/candleValidation.js';
+import { requireMarketProjection } from './marketProjections.js';
 
 export function readMeta(db, key, fallback) {
   const row = db.prepare("SELECT value_json FROM runtime_meta WHERE key=?").get(key);
@@ -150,12 +151,12 @@ export class SqlCandleStore {
   }
   append(values, options) { return this.write(values,options,false); }
   upsert(values, options) { return this.write(values,options,true); }
-  write(values = [], { now = new Date(), importing = false } = {}, update) {
+  write(values = [], { now = new Date(), importing = false, projectionJobId = null } = {}, update) {
     now = new Date(now);
     const counts = { inserted:0, ...(update ? {updated:0} : {}), duplicates:0,rejectedOpen:0 };
     if (!this.enabled) { counts.duplicates=values.length; return counts; }
     return this.db.transaction(() => {
-      const changedScopes=new Set();
+      const changedScopes=new Map();
       for (const raw of values) {
         if (Date.parse(raw.closeTime)>now.getTime()) { counts.rejectedOpen++; continue; }
         let c = sanitizeSensitiveData(raw); const key=this.key(c);
@@ -168,9 +169,17 @@ export class SqlCandleStore {
         this.db.prepare("INSERT OR IGNORE INTO candle_revisions VALUES(?,?,?,?,?,?,?,?)").run(...key,c.revision || 1,c.fetchedAt || now.toISOString(),JSON.stringify(c));
         this.recordValidation(c,key);
         const revisionKey=`candles.revision:${this.datasetId}:${c.instrumentId}:${c.interval}:${key[2]}`;
-        changedScopes.add(revisionKey);
+        changedScopes.set(revisionKey,{datasetId:this.datasetId,instrumentId:c.instrumentId,interval:c.interval,adjustmentMode:key[2]});
       }
-      for(const key of changedScopes)writeMeta(this.db,key,readMeta(this.db,key,0)+1);
+      const projectionScopes=new Map();
+      for(const [key,scope] of changedScopes){
+        writeMeta(this.db,key,readMeta(this.db,key,0)+1);
+        projectionScopes.set(JSON.stringify(scope),scope);
+        if(scope.interval==='5min')for(const row of this.db.prepare("SELECT interval FROM market_projection_state WHERE dataset_id=? AND instrument_id=? AND adjustment_mode=? AND interval IN ('15min','30min','1h')").all(scope.datasetId,scope.instrumentId,scope.adjustmentMode)){
+          const derived={...scope,interval:row.interval};projectionScopes.set(JSON.stringify(derived),derived);
+        }
+      }
+      for(const scope of projectionScopes.values())requireMarketProjection(this.db,scope,{sourceJobId:projectionJobId});
       return counts;
     }).immediate();
   }

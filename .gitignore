@@ -36,7 +36,6 @@ docs/performance
 # Mantener los nuevos Markdown fuera del repositorio.
 *.md
 # Instrucciones, planes, seguimiento y evidencias personales de esta implementación.
-/AGENTS.md
 /docs/agentic-intelligence/
 /docs/OGID-Analisis-y-Prompt-Codex-6.1-xhigh.md
 /docs/OGID — Production Hardening & Agentic .md
@@ -93,3 +92,6 @@ docs/OGID-Prompt-Codex-GPT-6.1-xhigh.md
 !/docs/implementation/ogid-evidence/RESUMEN-ACTUAL-2026-10-28.md
 !/docs/implementation/ogid-evidence/CIERRE-D02.md
 !/docs/implementation/ogid-evidence/CIERRE-D02-IO.md
+
+# Instrucciones del proyecto solicitadas por el usuario; excepción acotada.
+!/AGENTS.md

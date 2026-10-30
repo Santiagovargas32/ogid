@@ -15,16 +15,23 @@ import {createSqlActivityBuffer,readSqlActivity} from './sqlActivity.js';
 import {createCommitBuffer} from './commitActivity.js';
 import {WalCheckpoint} from './walCheckpoint.js';
 import {readNativeWait} from './nativeWait.js';
+import {ResourceAdmission,pressureError,pressureAllows} from './resourceAdmission.js';
+import {MarketProjectionCoordinator} from './marketProjections.js';
 const error = code => Object.assign(new Error(code), { code, statusCode: 503 });
 const commandLabel = value => typeof value === "string" ? value.slice(0,128) : null;
 const OPERATIONS = new Set(["agent.call", "agent.snapshot", "agent.read", "storage.status", "storage.verify", "storage.checkpoint", "pipeline.record", "domain.configure", "domain.registry", "domain.indexPage", "domain.call", "scenarios.prepare", "storage.import", "runtime.save", "runtime.load", "rss.fetch", "news.collect", "news.supplemental", "analysis.persist", "snapshot.prepare", "snapshot.claim", "snapshot.fail", "snapshot.pending", "snapshot.renew","snapshot.recover","market.persist.admit","market.persist.page","market.persist.pending","market.persist.status"]);
 const ISOLATED_NEWS_METHODS = new Set(["getProjection","getFeed","getLiveFeed","search","getItem","getHistory","coverage","sourceAssessments","sourceAssessment","sourceCoverage","comparisons","comparison","comparisonClaim","comparisonChanges"]);
 const CPU_SERVICES = new Set(["market","technical","indicators","conditions","advanced","map","portfolio","scenarios","forecasts","coupling","signals"]);
+for(const method of ['pending','status','calculate','fail','reconcile'])OPERATIONS.add(`market.project.${method}`);
 
 export class StorageManager extends EventEmitter {
   constructor(options = {}) {
     super();
     this.options = {...storageConfig(options),writerToken:randomUUID()};
+    this.ownsPressure=!options.pressure;
+    this.pressure=options.pressure||new ResourceAdmission({enabled:options.resourcePressureEnabled??(this.options.businessEnabled&&!this.options.analysisWorker&&process.env.NODE_ENV!=='test')});
+    this.resourcePump=()=>queueMicrotask(()=>this.pump());
+    this.pressure.on('available',this.resourcePump);this.pressure.on('change',this.resourcePump);
     this.sqlActivityBuffer=createSqlActivityBuffer();this.commitBuffer=createCommitBuffer();
     this.walPressureBuffer=new SharedArrayBuffer(4);
     this.state = this.options.enabled ? "new" : "disabled";
@@ -44,7 +51,7 @@ export class StorageManager extends EventEmitter {
       reconciliation: { pending: this.reconciliations.size > 0, ...this.reconciliationMetrics,
         commands: [...this.reconciliations.values()].map(entry => this.describeCommand(entry, "reconciling")) },
       failure:this.failureContext || null,
-      walCheckpoint:this.checkpoint?.status() || null,
+      walCheckpoint:this.checkpoint?.status() || null,resourcePressure:this.pressure.status(),marketProjections:this.marketProjections?.status()||null,
       databasePath:this.options.databasePath, worker:this.workerDiagnostics ? {...this.workerDiagnostics,database,sqlActivity:this.failureContext?.sqlActivity||readSqlActivity(this.sqlActivityBuffer)} : null, lastExpiredCommand:this.lastExpiredCommand || null,
       eventIndex:{...(this.eventIndexState||this.workerDiagnostics?.eventIndex||{}),scheduling:this.eventIndexScheduling||null,...(this.eventIndexError?{state:"failed",errorCode:this.eventIndexError}:{})},
       activeCommands:[...this.active.values()].map(entry=>this.describeCommand(entry)),
@@ -85,11 +92,12 @@ export class StorageManager extends EventEmitter {
     if (this.state === "disabled" || this.state === "ready") return this.getStatus();
     if (this.state === "starting") return this.startPromise;
     if (this.state !== "new") throw error("STORAGE_NOT_READY");
+    if(this.ownsPressure)await this.pressure.start();
     this.state = "starting";
     this.startPromise = new Promise((resolve, reject) => { this.readyResolve = resolve; this.readyReject = reject; });
     this.startTimer = setTimeout(() => this.fail(error("STORAGE_START_TIMEOUT")), this.options.startupTimeoutMs);
     try {
-      this.worker = new Worker(new URL("./storageWorker.js", import.meta.url), { workerData: {...this.options,sqlActivityBuffer:this.sqlActivityBuffer,commitBuffer:this.commitBuffer,walPressureBuffer:this.walPressureBuffer}, execArgv: [] });
+      this.worker = new Worker(new URL("./storageWorker.js", import.meta.url), { workerData: {...this.options,resourcePressureBuffer:this.pressure.enabled?this.pressure.buffer:null,sqlActivityBuffer:this.sqlActivityBuffer,commitBuffer:this.commitBuffer,walPressureBuffer:this.walPressureBuffer}, execArgv: [] });
       this.worker.on("message", message => this.handleMessage(message));
       this.worker.on("error", () => this.fail(error("STORAGE_WORKER_FAILED")));
       this.worker.on("exit", code => {
@@ -104,7 +112,7 @@ export class StorageManager extends EventEmitter {
       try{await this.checkpoint.start();this.checkpoint.observe(this.metadata.walBytes);await this.checkpoint.request();}
       catch(reason){this.fail(reason);throw reason;}
     }
-    if(this.options.businessEnabled&&!this.options.analysisWorker)this.marketWrites=new CandleWriteCoordinator(this);
+    if(this.options.businessEnabled&&!this.options.analysisWorker){this.marketWrites=new CandleWriteCoordinator(this);this.marketProjections=new MarketProjectionCoordinator(this);}
     if(this.options.businessEnabled && this.options.isolateAnalysis && !this.options.analysisWorker) {
       this.analysisManager = this.createAnalysisManager();
       await this.analysisManager.start();
@@ -117,7 +125,7 @@ export class StorageManager extends EventEmitter {
   createAnalysisManager(role="analysis") {
       // A snapshot releases SQLite before awaiting its writer RPC pages. Keep a
       // second slot for one calculation while those pages are being committed.
-      const reader = new StorageManager({...this.options,analysisWorker:true,readerRole:role,maxInFlight:2});
+      const reader = new StorageManager({...this.options,analysisWorker:true,readerRole:role,maxInFlight:2,pressure:this.pressure});
       reader.rpcHandler=(operation,input)=>operation === "analysis.persist"
         ? this.localRequest(operation,input) : this.rpcHandler?.(operation,input);
       if(role==="analysis")reader.on("stage",(...args)=>this.emit("stage",...args));
@@ -163,6 +171,7 @@ export class StorageManager extends EventEmitter {
   }
   request(operation, input = {}, { requestId = randomUUID(), timeoutMs = storageCommandTimeout(this.options,operation,input), queueTimeoutMs = this.options.queueTimeoutMs, signal } = {}) {
     if(this.closingRequested)return Promise.reject(error("STORAGE_NOT_READY"));
+    try{this.pressure.assert(storageOperationContract(operation,input).resourceClass);}catch(reason){return Promise.reject(reason);}
     if(operation==='agent.call' && input.method==='claim' && this.reconciliations.size)return Promise.reject(error('STORAGE_CONTROL_RECONCILING'));
     if (this.state !== "ready") return this.localRequest(operation,input,{requestId,timeoutMs,queueTimeoutMs});
     // A claim needs the evidence reader next. Keep jobs queued during reader
@@ -171,6 +180,7 @@ export class StorageManager extends EventEmitter {
       return Promise.reject(Object.assign(error("STORAGE_ANALYSIS_UNAVAILABLE"),{causeCode:this.analysisManager.metrics.lastErrorCode,diagnostic:{worker:"analysis",state:this.analysisManager.state}}));
     if(operation==="agent.call" && input.method==="claim" && this.queryManager && this.queryManager.state!=="ready")
       return Promise.reject(Object.assign(error("STORAGE_QUERIES_UNAVAILABLE"),{diagnostic:{worker:"queries",state:this.queryManager.state}}));
+    if(this.analysisManager && operation==='market.project.calculate')return this.analysisManager.request(operation,input,{requestId,timeoutMs,queueTimeoutMs});
     if(this.analysisManager && operation==="agent.call" && input.method==="snapshot")return this.analysisManager.request("agent.snapshot",input.args,{requestId,timeoutMs:storageCommandTimeout(this.options,"agent.snapshot"),queueTimeoutMs});
     if(this.queryManager && operation==="agent.call" && AGENT_READER_METHODS.has(input.method))return this.queryManager.coalescedRead("agent.read",input,{requestId,timeoutMs:storageCommandTimeout(this.options,"agent.read"),queueTimeoutMs});
     if(this.queryManager && storageOperationContract(operation,input).pureRead && storageOperationContract(operation,input).role==='queries')return this.queryManager.coalescedRead(operation,input,{requestId,timeoutMs,queueTimeoutMs,signal});
@@ -218,8 +228,8 @@ export class StorageManager extends EventEmitter {
         let result;
         try{result=await this.localRequest('domain.indexPage',{});}
         catch(reason){
-          if(reason.code!=='STORAGE_WAL_BACKPRESSURE')throw reason;
-          this.eventIndexScheduling={state:'waiting',reason:'wal-checkpoint'};
+          if(!['STORAGE_WAL_BACKPRESSURE','STORAGE_RESOURCE_PRESSURE'].includes(reason.code))throw reason;
+          this.eventIndexScheduling={state:'waiting',reason:reason.code==='STORAGE_RESOURCE_PRESSURE'?'resource-pressure':'wal-checkpoint'};
           await wait(RUNTIME_POLICY.storage.maintenanceIntervalMs,undefined,{signal:this.eventIndexAbort.signal});continue;
         }
         this.eventIndexState=result;
@@ -251,6 +261,8 @@ export class StorageManager extends EventEmitter {
   }
   localRequest(operation, input = {}, { requestId = randomUUID(), timeoutMs = storageCommandTimeout(this.options,operation,input), queueTimeoutMs = this.options.queueTimeoutMs } = {}) {
     const workClass=storageWorkClass(operation,input),control=workClass==='control';
+    const resourceClass=storageOperationContract(operation,input).resourceClass;
+    try{this.pressure.assert(resourceClass);}catch(reason){return Promise.reject(reason);}
     if(operation==='agent.call' && input.method==='heartbeat')queueTimeoutMs=Math.min(queueTimeoutMs,35000);
     if (!OPERATIONS.has(operation)) return Promise.reject(error("STORAGE_UNKNOWN_OPERATION"));
     if (this.state !== "ready") return Promise.reject(Object.assign(error("STORAGE_NOT_READY"), {
@@ -286,13 +298,19 @@ export class StorageManager extends EventEmitter {
     return new Promise((resolve, reject) => {
       const slow = ["rss.fetch", "news.collect", "news.supplemental"].includes(operation) || (operation === "domain.call" && (["rss","advanced","map"].includes(input.service) || ["run","import"].includes(input.method)));
       const cpu = operation === "scenarios.prepare" || (operation === "domain.call" && (CPU_SERVICES.has(input.service) || (input.service === "news" && ISOLATED_NEWS_METHODS.has(input.method))));
-      const entry = { id: randomUUID(), encoded, bytes, resolve, reject, slow, cpu,capture:operation==='agent.snapshot',workClass,control,pureRead:this.options.analysisWorker && isPureRead(operation,input),workflow:isAcquisitionWorkflow(operation,input),queuedAt:Date.now(),timeoutMs,queueTimeoutMs,diagnostic:{...diagnostic,workClass} };
+      const entry = { id: randomUUID(), encoded, bytes, resolve, reject, slow, cpu,capture:operation==='agent.snapshot',resourceClass,heavy:resourceClass==='heavy',workClass,control,pureRead:this.options.analysisWorker && isPureRead(operation,input),workflow:isAcquisitionWorkflow(operation,input),queuedAt:Date.now(),timeoutMs,queueTimeoutMs,diagnostic:{...diagnostic,workClass,resourceClass} };
       entry.timer = setTimeout(() => this.expire(entry), queueTimeoutMs);
       this.pendingBytes += bytes; this.queue.push(entry); this.pump();
     });
   }
   pump() {
     if (!["ready", "closing"].includes(this.state)) return;
+    const pressure=this.pressure.status();
+    for(const entry of [...this.queue])if(!pressureAllows(pressure,entry.resourceClass)){
+      this.queue.splice(this.queue.indexOf(entry),1);clearTimeout(entry.timer);this.pendingBytes-=entry.bytes;
+      this.pressure.withdraw(entry.id);
+      this.metrics.rejected++;this.recordCommand(entry,'deferred','STORAGE_RESOURCE_PRESSURE');entry.reject(pressureError(pressure));
+    }
     // Accepted commands retain their slots and outcomes. A delayed renewal is
     // not permission to dispatch another mutation into an uncertain writer.
     if (this.reconciliations.size) return;
@@ -309,12 +327,14 @@ export class StorageManager extends EventEmitter {
       // must not consume the two legacy slow slots and starve other sources.
       // Four cooperative acquisitions still leave room for commits and control.
       const acquisitionLimit=Math.min(4,Math.max(1,this.options.maxInFlight-2));
-      const eligible=e=>(e.diagnostic.workClass!=='maintenance'||!this.active.size&&!this.queue.some(other=>other!==e&&other.diagnostic.workClass!=='maintenance'))&&(!e.workflow || acquisitionCount<acquisitionLimit)&&
+      const locallyEligible=e=>(e.diagnostic.workClass!=='maintenance'||!this.active.size&&!this.queue.some(other=>other!==e&&other.diagnostic.workClass!=='maintenance'))&&(!e.workflow || acquisitionCount<acquisitionLimit)&&
         (!this.options.analysisWorker || ((!e.capture || cpuCount===0) && (!e.cpu || !captureActive)))&&
         (!e.slow || e.workflow || slowCount<Math.min(2,this.options.maxInFlight))&&
         (e.control || this.options.maxInFlight<=2 || this.active.size<this.options.maxInFlight-1)&&
         (!e.cpu || cpuCount<this.options.maxCpuInFlight)&&(!e.capture || !captureActive)&&
         (this.options.analysisWorker || e.control || e.workflow || e.cpu || !sqlActive);
+      for(const entry of this.queue)if(entry.heavy)this.pressure.offer(entry.id,entry.queuedAt,locallyEligible(entry));
+      const eligible=e=>locallyEligible(e)&&(!e.heavy||this.pressure.eligible(e.id));
       const heartbeat=this.queue.findIndex(e=>eligible(e)&&e.control&&e.diagnostic.method==='heartbeat');
       const waitingBusiness=this.queue.findIndex(e=>eligible(e)&&!e.control);
       const urgent=heartbeat>=0?heartbeat:(this.controlBurst || 0)>=4&&waitingBusiness>=0?-1:this.queue.findIndex(e=>eligible(e)&&e.control);
@@ -323,6 +343,7 @@ export class StorageManager extends EventEmitter {
       const index=urgent>=0?urgent:aged>=0?aged:quick>=0?quick:this.queue.findIndex(eligible);
       if(index < 0)break;
       const [entry] = this.queue.splice(index,1);this.controlBurst=entry.control?(this.controlBurst || 0)+1:0; this.active.set(entry.id, entry);
+      if(entry.heavy)this.pressure.acquire(entry.id);
       entry.dispatchedAt=Date.now();
       try { this.worker.postMessage({ id: entry.id, encoded: entry.encoded, queueDeadline:entry.queuedAt+entry.queueTimeoutMs }); }
       catch { this.fail(error("STORAGE_WORKER_FAILED")); return; }
@@ -335,7 +356,7 @@ export class StorageManager extends EventEmitter {
     if(message.type==="telemetry"){this.workerDiagnostics=message.worker;this.checkpoint?.observe(message.worker.walBytes);return;}
     if(message.type==='command-phase'){
       const entry=this.active.get(message.id);
-      if(entry && message.phase==='capture-completed'){entry.capture=false;entry.captureMs=message.captureMs;this.pump();}
+      if(entry && ['capture-completed','persisting'].includes(message.phase)){entry.capture=false;entry.cpu=false;entry.captureMs=message.captureMs??entry.captureMs;this.pressure.release(entry.id);this.pump();}
       return;
     }
     if(message.type==="command-progress"){
@@ -374,21 +395,26 @@ export class StorageManager extends EventEmitter {
     }
     const entry = this.active.get(message.id); if (!entry) return;
     this.active.delete(message.id); clearTimeout(entry.timer); this.pendingBytes -= entry.bytes;
+    this.pressure.release(entry.id);
     if (this.reconciliations.delete(entry.id)) {
       this.reconciliationMetrics.resolved++;
       this.emit("control-reconciled", { command: this.describeCommand(entry), code: message.error?.code || null });
     }
-    this.recordCommand(entry,message.error?"failed":"completed",message.error?.code || null,{executionMs:message.durationMs ?? (entry.startedAt?Date.now()-entry.startedAt:null),cpuMs:message.cpuMs ?? null,outputBytes:message.outputBytes ?? null,commitMs:message.commitMs ?? null,validationMs:message.validationMs ?? null});
+    this.recordCommand(entry,message.error?.code==='STORAGE_RESOURCE_PRESSURE'?'deferred':message.error?"failed":"completed",message.error?.code || null,{executionMs:message.durationMs ?? (entry.startedAt?Date.now()-entry.startedAt:null),cpuMs:message.cpuMs ?? null,outputBytes:message.outputBytes ?? null,commitMs:message.commitMs ?? null,validationMs:message.validationMs ?? null});
     const {jobId:ignoredJob,fence:ignoredFence,...operationDiagnostic}=entry.diagnostic;
     const operationKey=JSON.stringify(operationDiagnostic);
     if (message.error) {
       const code=message.error.code;
+      if(code==='STORAGE_RESOURCE_PRESSURE'){
+        this.metrics.rejected++;entry.reject(Object.assign(pressureError(this.pressure.status()),{notExecuted:message.error.notExecuted===true}));this.pump();return;
+      }
       const category=code.startsWith("AGENT_")?"validation":/^(SIGNAL_ITEM_TOO_LARGE|NEWS_ITEM_TOO_LARGE|OUTPUT_TOO_LARGE)$/.test(code)?'transport':this.options.analysisWorker?'calculation':/^(SQLITE_|STORAGE_IDEMPOTENCY)/.test(code)?'write':'query';
       this.metrics.failuresByCategory[category]++;this.metrics.lastErrorCategory=category;this.metrics.lastErrorAt=new Date().toISOString();
       this.activeErrors.set(operationKey,{...entry.diagnostic,code,category,at:this.metrics.lastErrorAt});
       if(this.activeErrors.size>50)this.activeErrors.delete(this.activeErrors.keys().next().value);
       this.metrics.failed++; this.metrics.lastErrorCode = message.error.code; entry.reject(Object.assign(error(message.error.code), { statusCode: message.error.statusCode || 503, message: message.error.message || message.error.code, causeCode: message.error.causeCode, diagnostic: message.error.diagnostic,details:message.error.details || null })); }
     else {this.metrics.lastSuccessAt=new Date().toISOString();this.metrics.lastOutputBytes=message.outputBytes ?? null;
+      if(!this.options.analysisWorker&&(entry.diagnostic.operation==='market.persist.page'||entry.diagnostic.operation==='domain.call'&&entry.diagnostic.service==='candles'&&['append','upsert'].includes(entry.diagnostic.method))&&(message.result?.inserted||message.result?.updated))this.marketProjections?.schedule(0);
       this.activeErrors.delete(operationKey);
       if(['domain.call','agent.snapshot','scenarios.prepare'].includes(entry.diagnostic.operation))this.emit('productive');
       this.metrics.lastQueueMs = (entry.startedAt || Date.now()) - entry.queuedAt; this.metrics.lastExecutionMs=message.durationMs;this.metrics.lastTotalMs=Date.now()-entry.queuedAt;this.metrics.lastCpuMs=message.cpuMs ?? null; this.metadata = message.status; this.metrics.completed++; this.metrics.lastDurationMs = message.durationMs; entry.resolve(message.result); }
@@ -434,6 +460,7 @@ export class StorageManager extends EventEmitter {
     const index = this.queue.indexOf(entry);
     if (index < 0) return;
     clearTimeout(entry.timer);this.queue.splice(index, 1); this.pendingBytes -= entry.bytes; this.metrics.failed++;
+    this.pressure.withdraw(entry.id);
     this.recordCommand(entry,"failed","STORAGE_QUEUE_TIMEOUT");
     entry.reject(error("STORAGE_QUEUE_TIMEOUT"));
   }
@@ -448,11 +475,13 @@ export class StorageManager extends EventEmitter {
     this.readyReject?.(reason); this.closeReject?.(reason);
     this.metrics.failed += this.active.size + this.queue.length;
     for (const entry of this.active.values()) { const code=entry.pureRead?'STORAGE_READ_TIMEOUT':'STORAGE_OUTCOME_UNKNOWN';clearTimeout(entry.timer); this.recordCommand(entry,"failed",code);entry.reject(Object.assign(error(code),{causeCode:reason.causeCode || reason.code,diagnostic:reason.diagnostic})); }
-    this.active.clear();
+    const resourceOwners=[...this.active.keys()];this.active.clear();
     this.reconciliations.clear();
-    for (const entry of this.queue.splice(0)) { clearTimeout(entry.timer); this.recordCommand(entry,"failed","STORAGE_WORKER_FAILED");entry.reject(Object.assign(error("STORAGE_WORKER_FAILED"),{causeCode:reason.causeCode || reason.code,diagnostic:reason.diagnostic})); }
+    for (const entry of this.queue.splice(0)) { this.pressure.withdraw(entry.id);clearTimeout(entry.timer); this.recordCommand(entry,"failed","STORAGE_WORKER_FAILED");entry.reject(Object.assign(error("STORAGE_WORKER_FAILED"),{causeCode:reason.causeCode || reason.code,diagnostic:reason.diagnostic})); }
     this.pendingBytes = 0;
     this.termination = Promise.all([this.worker?.terminate(),this.checkpoint?.close()]).then(()=>{
+      for(const id of resourceOwners)this.pressure.release(id);
+      this.pressure.off('available',this.resourcePump);this.pressure.off('change',this.resourcePump);
       if(!this.options.analysisWorker){try{releaseTerminatedWriter(this.options.databasePath,this.options.writerToken);}catch(error){this.metrics.ownershipCleanupError=error.code || 'STORAGE_LEASE_RELEASE_FAILED';}}
     });
     // An analysis waiting for its persistence RPC cannot finish after the
@@ -467,6 +496,12 @@ export class StorageManager extends EventEmitter {
     catch { this.fail(error("STORAGE_CLOSE_FAILED")); }
   }
   async close() {
+    this.closingRequested=true;
+    await this.marketProjections?.stop();
+    try{return await this.closeWorkers();}
+    finally{this.pressure.off('available',this.resourcePump);this.pressure.off('change',this.resourcePump);if(this.ownsPressure)await this.pressure.close();}
+  }
+  async closeWorkers() {
     this.closingRequested=true;this.eventIndexAbort?.abort();if(this.eventIndexTask)await this.eventIndexTask;this.analysisRecoveryAbort?.abort();this.queryRecoveryAbort?.abort();
     if(this.queryRecovery)await this.queryRecovery.catch(()=>{});
     if(this.analysisRecovery)await this.analysisRecovery.catch(()=>{});

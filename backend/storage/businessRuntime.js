@@ -36,6 +36,7 @@ import { AgentRepository } from "./agentRepository.js";
 import { SqlRssCanonicalState } from "./rssCanonicalState.js";
 import { checkOperation, committedOperationItems } from "../services/shared/operationContext.js";
 import {SituationStore} from './situations.js';
+import {MarketProjectionRepository} from './marketProjections.js';
 
 const METHODS={market:["analyze"],awareness:["parseSource","getSnapshot","reconcile","setSourceStale"],store:["view","getRow"],news:["ingest","enrichEditorialPage","sourceAssessments","sourceAssessment","sourceCoverage","comparisons","comparison","comparisonClaim","comparisonChanges","importSourceAssessments","reviewComparison","recordContext","search","getItem","getHistory","coverage","getProjection","getFeed","getLiveFeed"],events:["ingest","search","replayAwareness"],alerts:["acknowledge","delta","getChange","acknowledgeChanges","recoverCheckpoint"],sources:["status","run","holdings","stop"],history:["create","get","run","coverage","coverageState","coverageStates","ensureCatchup","repairPlan","cancel"],imports:["datasets","datasetsPage","import"],technical:["get"],indicators:["calculate"],coupling:["calculate"],scenarios:["refresh","list","remove"],forecasts:["evaluate","record"],portfolio:["getContext"],rss:["getSnapshot","refresh"],conditions:["getSnapshot"],map:["getDashboardMapAssets","getLayerBundle","getConfig"],advanced:["getSnapshot"],signals:["recordSnapshot","recordMeasurement","getAnomalies"],candles:["query","append","upsert","latest","has","hasCandle","hydrate","coverageSummary"]};
 export class BusinessRuntime {
@@ -379,6 +380,10 @@ export class BusinessRuntime {
   }
   persistDerived({owner,fence,type,record,checkpoint,jobId,result,candidates,input}={}){
     if(this.analysisOnly)throw new AppError("Persistencia reservada al worker principal.",503,"STORAGE_INVALID_COMMAND");
+    if(type==='market-projection'){
+      this.marketProjections ||= new MarketProjectionRepository(this);
+      return this.marketProjections.publish(input);
+    }
     if(type === "agent-snapshot"){
       this.agent ||= new AgentRepository(this);
       return this.agent.snapshotWrite(input);

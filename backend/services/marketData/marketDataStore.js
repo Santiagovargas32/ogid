@@ -36,13 +36,13 @@ function equivalentBar(left, right) {
 }
 
 export class MarketDataStoreAdapter {
-  constructor({ candleStore = null, now = () => new Date(), maxCacheEntries = 256, readThrough = true, persistAsync = false, onPersistenceError = () => {}, onPersisted = null } = {}) {
+  constructor({ candleStore = null, now = () => new Date(), maxCacheEntries = 256, readThrough = true, persistAsync = false, onPersistenceError = () => {}, onPersisted = null, flushProjections = null, projectionStatus = null } = {}) {
     this.candleStore = candleStore || new DailyCandleStore({ intervals: ["1day", "1h", "30min", "15min", "5min", "1wk", "1mo"] });
     this.now = now;
     this.maxCacheEntries = Math.max(1, Number(maxCacheEntries) || 256);
     this.cache = new Map();
     this.writeChains = new Map();
-    Object.assign(this, {readThrough,persistAsync,onPersistenceError,onPersisted});
+    Object.assign(this, {readThrough,persistAsync,onPersistenceError,onPersisted,flushProjections,projectionStatus});
     this.pendingPersistence = new Set();
     this.persistenceChains = new Map();
     this.persistenceReceipts=new Map();
@@ -241,7 +241,8 @@ export class MarketDataStoreAdapter {
       this.persistenceStatus.lastCompletedAt=new Date().toISOString();
     }, error => {
       Object.assign(receipt,{pending:false,committed:false,errorCode:error.code||'MARKET_PERSISTENCE_FAILED'});
-      this.persistenceStatus.failed++;
+      if(error.code==='STORAGE_RESOURCE_PRESSURE'&&receipt.durable)this.persistenceStatus.deferred=(this.persistenceStatus.deferred||0)+1;
+      else this.persistenceStatus.failed++;
       this.persistenceStatus.lastError=error.code || "MARKET_PERSISTENCE_FAILED";
       this.persistenceFailures.set(commitId,{receipt,persist,error});
       this.#reportFailure(error,{phase:'candles',scope:key,commitId,jobIds:admission.jobIds||[]});
@@ -269,8 +270,9 @@ export class MarketDataStoreAdapter {
   }
 
   getPersistenceStatus() { return {...this.persistenceStatus,pending:this.pendingPersistence.size,projectionsPending:this.pendingProjections.size,
-    unresolved:this.persistenceFailures.size+[...this.projectionOutcomes.values()].filter(v=>v.error).length,
-    readThrough:this.readThrough,asynchronous:this.persistAsync}; }
+    deferredDurable:[...this.persistenceFailures.values()].filter(v=>v.deferred).length,
+    unresolved:[...this.persistenceFailures.values()].filter(v=>!v.deferred).length+[...this.projectionOutcomes.values()].filter(v=>v.error).length,
+    readThrough:this.readThrough,asynchronous:this.persistAsync,durableProjections:this.projectionStatus?.()||null}; }
   async flushPersistence() {
     const drain=async()=>{while(this.pendingPersistence.size||this.pendingProjections.size)await Promise.allSettled([...this.pendingPersistence,...this.pendingProjections]);};
     await drain();
@@ -279,20 +281,26 @@ export class MarketDataStoreAdapter {
     for(const [id,failure]of this.persistenceFailures){
       if(!failure.receipt.durable)continue;
       try{
+        failure.deferred=false;
         const result=await failure.persist();
         Object.assign(failure.receipt,result,{pending:false,committed:true});
         this.persistenceFailures.delete(id);
       }catch(error){
         error.persistenceCorrelation ||= failure.error.persistenceCorrelation;
         failure.error=error;
+        if(error.code==='STORAGE_RESOURCE_PRESSURE'&&this.candleStore.inspectPersistence){
+          const durable=await this.candleStore.inspectPersistence(failure.receipt);
+          if(durable.durable&&durable.pending){failure.deferred=true;Object.assign(failure.receipt,{pending:true,committed:false,deferred:true});}
+        }
       }
     }
     await drain();
-    const failures=[...this.persistenceFailures.values()].map(v=>v.error)
+    const failures=[...this.persistenceFailures.values()].filter(v=>!v.deferred).map(v=>v.error)
       .concat([...this.projectionOutcomes.values()].filter(v=>v.error).map(v=>v.error));
     if(failures.length)throw Object.assign(new AggregateError(failures,'Market persistence remains unconfirmed'),{
       code:'MARKET_PERSISTENCE_UNCONFIRMED',persistenceFailures:failures.slice(0,20).map(e=>({code:e.code||'MARKET_PERSISTENCE_FAILED',...e.persistenceCorrelation})),
       failureCount:failures.length});
+    await this.flushProjections?.();
   }
 
   #cachedEntry(key) {

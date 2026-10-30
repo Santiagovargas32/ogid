@@ -53,7 +53,7 @@ export function storageConfig(overrides = {}, env = process.env) {
 
 export function storageCommandTimeout(options,operation,input={}) {
   if(operation==='agent.call' && input.method==='heartbeat')return Math.min(5000,options.timeoutMs);
-  const key=operation === "domain.call" ? `${operation}:${input.service}:${input.method}` : operation;
+  const key=operation === 'market.project.calculate'?'domain.call:indicators:calculate':operation === "domain.call" ? `${operation}:${input.service}:${input.method}` : operation;
   return options.commandTimeouts?.[key] ?? (operation === "domain.call" && ["run","import","refresh"].includes(input.method)
     ? options.networkTimeoutMs : options.timeoutMs);
 }

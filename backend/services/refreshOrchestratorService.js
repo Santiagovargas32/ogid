@@ -84,6 +84,7 @@ function mergeArticleCorpora(...corpora) {
 
 class RefreshOrchestratorService {
   constructor({
+    admission = null,
     stateManager,
     socketServer,
     config,
@@ -98,6 +99,15 @@ class RefreshOrchestratorService {
     awarenessService = null
   }) {
     this.stateManager = stateManager;
+    this.admission=admission;
+    this.resourceDeferred=new Set();
+    this.resumeResources=()=>{
+      if(this.stopped||this.admission?.status().state!=='normal')return;
+      for(const domain of this.resourceDeferred){
+        this.resourceDeferred.delete(domain);
+        void (domain==='news'?this.runNewsCycle('resource-recovered'):this.runMarketCycle('resource-recovered')).catch(()=>{});
+      }
+    };
     this.socketServer = socketServer;
     this.config = config;
     this.rssAggregator = rssAggregator;
@@ -375,6 +385,7 @@ class RefreshOrchestratorService {
       if (options.rssOnly) { this.rssSelectionPending = true; this.cycleMetrics.rssCoalesced++; }
       return this.newsTask;
     }
+    try{this.admission?.assert('acquisition');}catch(error){this.resourceDeferred.add('news');return Promise.reject(error);}
     const task = (async () => {
       await this.executeNewsCycle(trigger, options);
       // An RSS notification arriving during a provider fetch must use the newest
@@ -383,7 +394,7 @@ class RefreshOrchestratorService {
         this.rssSelectionPending = false;
         await this.executeNewsCycle("rss-selected-coalesced", { rssOnly: true });
       }
-    })().finally(() => { this.newsTask = null; });
+    })().catch(error=>{if(error.code==='STORAGE_RESOURCE_PRESSURE')this.resourceDeferred.add('news');throw error;}).finally(() => { this.newsTask = null; });
     this.newsTask = task;
     this.pendingCycles.add(task);
     task.then(() => this.pendingCycles.delete(task), () => this.pendingCycles.delete(task));
@@ -681,8 +692,10 @@ class RefreshOrchestratorService {
   }
 
   runMarketCycle(trigger = "scheduled-market", options = {}) {
+    if(this.stopping)return Promise.resolve({skipped:true,reason:'stopping'});
     if (this.marketTask) { this.cycleMetrics.marketJoined++; return this.marketTask; }
-    const task = this.executeMarketCycle(trigger, options).finally(() => { this.marketTask = null; });
+    try{this.admission?.assert('acquisition');}catch(error){this.resourceDeferred.add('market');return Promise.reject(error);}
+    const task = this.executeMarketCycle(trigger, options).catch(error=>{if(error.code==='STORAGE_RESOURCE_PRESSURE')this.resourceDeferred.add('market');throw error;}).finally(() => { this.marketTask = null; });
     this.marketTask = task;
     this.pendingCycles.add(task);
     task.then(() => this.pendingCycles.delete(task), () => this.pendingCycles.delete(task));
@@ -940,6 +953,7 @@ class RefreshOrchestratorService {
     if (!this.stopped) return;
     this.stopped = false;
     this.stopping = false;
+    this.admission?.on('change',this.resumeResources);
     if (this.rssAggregator) {
       this.rssAggregator.onSnapshot = () => this.runNewsCycle("rss-selected", {rssOnly:true});
       // The SQL adapter collects RSS through the scheduled news cycle.
@@ -970,6 +984,7 @@ class RefreshOrchestratorService {
   }
 
   async stop() {
+    this.admission?.off('change',this.resumeResources);
     this.stopped = true;
     this.stopping = true;
     this.rssSelectionPending = false;

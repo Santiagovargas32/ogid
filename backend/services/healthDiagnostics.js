@@ -5,6 +5,8 @@ export function healthDiagnostics(locals,meta={},now=Date.now()){
   const add=(dimension,origin,code,details={})=>{const existing=causes.find(c=>c.dimension===dimension&&c.origin===origin&&c.code===code);if(existing){Object.assign(existing,details);return;}if(causes.length<32)causes.push({dimension,origin,code,observedAt:new Date(now).toISOString(),...details});};
   for(const [name,w]of [['writer',storage],['analysis',storage?.analysis],['queries',storage?.queries]])if(w&&!['ready','disabled'].includes(w.state))add('operational',name,w.lastErrorCode||'STORAGE_NOT_READY',{state:w.state});
   if(storage?.reconciliation?.pending)add('operational','writer','STORAGE_RECONCILING');
+  if(storage?.resourcePressure&&storage.resourcePressure.state!=='normal')add('operational','resources','STORAGE_RESOURCE_PRESSURE',{state:storage.resourcePressure.state,critical:storage.resourcePressure.critical,reason:storage.resourcePressure.reason});
+  if(storage?.marketProjections?.failed)add('operational','market-projections','MARKET_PERSISTENCE_UNCONFIRMED',{pending:storage.marketProjections.pending,failed:storage.marketProjections.failed});
   for(const [id,s]of Object.entries(stages)){
     if(s.enabled===false)continue;
     const qualityReason=['data-stale','data-unavailable','content-publication-expired','insufficient-coverage'].includes(s.reason);

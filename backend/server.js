@@ -1,4 +1,4 @@
-import {writeFileSync,renameSync} from "node:fs";
+import {writeFileSync,renameSync,readFileSync} from "node:fs";
 import "./config/loadEnvironment.js";
 import { RUNTIME_POLICY as POLICY } from "./config/runtimePolicy.js";
 import { randomUUID } from "node:crypto";
@@ -601,17 +601,16 @@ export function createAppServer(overrides = {}) {
   });
   const marketDataStore = new MarketDataStoreAdapter({ candleStore: dailyCandleStore,readThrough:!business,persistAsync:Boolean(business),
     onPersistenceError:(error,correlation)=>log.error("market_observations_persist_failed",{code:error.code || "MARKET_PERSISTENCE_FAILED",...correlation}),
-    onPersisted:business ? async({candles,persistence,projectionRequired})=>{
-      if(!persistence.inserted && !persistence.updated && !projectionRequired)return;
-      for(const candle of new Map(candles.map(c=>[`${c.instrumentId}|${c.interval}`,c])).values())
-        await business.call("indicators","calculate",[{instrumentId:candle.instrumentId,interval:candle.interval,adjustmentMode:"splits",limit:500}]);
-    } : null
+    onPersisted:business ? ()=>storageManager.marketProjections?.schedule(0) : null,
+    flushProjections:business ? ()=>storageManager.marketProjections?.flush() : null,
+    projectionStatus:business ? ()=>storageManager.marketProjections?.status() : null
   });
   const marketDataService = overrides.marketDataService || config.market.marketDataService || new MarketDataService({
     yahooClient: overrides.yahooClient || new YahooClient({ timeoutMs: config.market.timeoutMs }),
     store: marketDataStore
   });
   config.market.marketDataService = marketDataService;
+  marketDataService.admission=storageManager.pressure;
   const marketSearchRateLimiter = overrides.marketSearchRateLimiter || new SlidingWindowRateLimiter({ maxRequests: 30, windowMs: 60_000, maxKeys: 1_000 });
   const researchSources = overrides.researchSources || loadResearchSources(process.env.RESEARCH_SOURCES_FILE);
   const marketWatchlistService = new MarketWatchlistService({
@@ -769,6 +768,7 @@ export function createAppServer(overrides = {}) {
   aiCoordinator.syncProjection();
   mediaStreamService.setSocketServer(socketServer);
   const orchestrator = new RefreshOrchestratorService({
+    admission:storageManager.pressure,
     newsArchive,
     stateManager,
     socketServer,
@@ -859,6 +859,7 @@ export function createAppServer(overrides = {}) {
   };
   app.locals.agentModels=new AgentModelSelection({config:agentConfig,call:app.locals.agentCall,opencode:new OpenCodeClient({baseUrl:agentConfig.opencodeUrl,password:agentConfig.opencodePassword}),...(agentConfig.managed.broker?{onVerified:manifest=>{if(!process.env.AGENT_MODEL_MANIFEST)return;const file=path.resolve(__dirname,process.env.AGENT_MODEL_MANIFEST),temporary=file+'.next';writeFileSync(temporary,JSON.stringify(manifest,null,2)+'\n',{mode:0o600});renameSync(temporary,file);},brokerInventory:async()=>(await brokerRequest('/v1/models')).data,activate:async(model,signal)=>(await brokerRequest('/v1/models/activate',{body:{model:model.replace(/^llamacpp\//,'')},signal})).model}:{})});
   app.locals.agentMaintenance = new AgentMaintenance({call:app.locals.agentCall,business,
+    admission:storageManager.pressure,
     dependencies:()=>storageManager.request("runtime.load",{kind:"maintenance-inputs"}),
     instruments:()=>marketWatchlistService.selectedInstrumentIds,
     enabled:Boolean(business)});
@@ -868,11 +869,24 @@ export function createAppServer(overrides = {}) {
   app.locals.marketSearchRateLimiter = marketSearchRateLimiter;
   app.locals.aiCoordinator = aiCoordinator;
   app.locals.awarenessService = awarenessService;
+  awarenessService.admission=storageManager.pressure;
   if(business){app.locals.awarenessQuery=filters=>business.call("awareness","getSnapshot",[{mode:awarenessService.mode,filters,publicView:true}]);awarenessService.parseSource=(...args)=>business.call("awareness","parseSource",args);}
   app.locals.awarenessStore = awarenessStore;
+  storageManager.pressure.on('change',status=>{
+    if(status.state!=='normal'||app.locals.initializing||!runtimeMetrics.ready)return;
+    if(awarenessService.resourceDeferred&&!awarenessService.stopped)void awarenessService.runCycle('resource-recovered').catch(error=>log.warn('awareness_recovery_failed',{code:error.code}));
+    if(secSourceAgent.state?.errorCode==='STORAGE_RESOURCE_PRESSURE')void secSourceAgent.tick();
+  });
   app.locals.marketConditionsService = marketConditionsService;
   let startTask = null;
   let stopTask = null;
+  const startupAbort=new AbortController();
+  const startupWork=async work=>{
+    for(;;){
+      await storageManager.pressure.waitReady(startupAbort.signal);
+      try{return await work();}catch(error){if(error.code!=='STORAGE_RESOURCE_PRESSURE')throw error;}
+    }
+  };
 
   businessContext = () => ({snapshot:stateManager.getAnalysisSnapshot(),newsFromStorage:true,awareness:awarenessService.getSnapshot({limit:100},{publicView:true}),selectedInstrumentIds:marketWatchlistService.selectedInstrumentIds,intradayMetrics:intradayCandleService.getMetrics()});
   const sourceAcquisition=overrides.sourceAcquisition||new SourceAcquisition();
@@ -916,9 +930,9 @@ export function createAppServer(overrides = {}) {
         // Providers import the versioned catalog locally; retain feed overrides,
         // but avoid transferring the complete catalog with each configuration.
         delete workerNews.sourceCatalog;
-        try {await storageManager.request("domain.configure", { requireImport:POLICY.storage.requireImport,instruments:listVerifiedInstruments(),apiLimits:config.apiLimits,news:JSON.parse(JSON.stringify(workerNews)),researchSources,rootDir:config.market.historyDir,candlesEnabled:dailyCandleStore.enabled,intradayEnabled:config.market.intradayCandles.enabled,awarenessMode:config.awareness.mode,signalPolicy:overrides.signalPolicy || loadSignalPolicy(process.env.RESEARCH_SIGNAL_POLICY_FILE),rss:{rssFeeds:config.news.rssFeeds,news:{rssAggregateIntervalMs:config.news.rssAggregateIntervalMs,rssAggregateFeedsPerRun:config.news.rssAggregateFeedsPerRun,rssAggregateMaxItems:config.news.rssAggregateMaxItems},timeoutMs:config.news.timeoutMs,pipelineMode:config.news.rssPipelineMode},newsRetentionDays:config.news.retentionDays});}
+        try {await startupWork(()=>storageManager.request("domain.configure", { requireImport:POLICY.storage.requireImport,instruments:listVerifiedInstruments(),apiLimits:config.apiLimits,news:JSON.parse(JSON.stringify(workerNews)),researchSources,rootDir:config.market.historyDir,candlesEnabled:dailyCandleStore.enabled,intradayEnabled:config.market.intradayCandles.enabled,awarenessMode:config.awareness.mode,signalPolicy:overrides.signalPolicy || loadSignalPolicy(process.env.RESEARCH_SIGNAL_POLICY_FILE),rss:{rssFeeds:config.news.rssFeeds,news:{rssAggregateIntervalMs:config.news.rssAggregateIntervalMs,rssAggregateFeedsPerRun:config.news.rssAggregateFeedsPerRun,rssAggregateMaxItems:config.news.rssAggregateMaxItems},timeoutMs:config.news.timeoutMs,pipelineMode:config.news.rssPipelineMode},newsRetentionDays:config.news.retentionDays}));}
         finally {pipelinePersistence.resumeStageWrites();}
-        await newsArchive.coverage();
+        await startupWork(()=>newsArchive.coverage());
         await pipelinePersistence.hydrate({awarenessStore,aiStore,aiBudget,marketHistoryStore,quotaTracker:apiQuotaTracker});
         aiCoordinator.syncProjection();
       }
@@ -934,7 +948,7 @@ export function createAppServer(overrides = {}) {
         }
       }
       const hydratedWatchlist = await marketWatchlistService.hydrate();
-      if(business)await storageManager.request("domain.registry",{instruments:listVerifiedInstruments()});
+      if(business)await startupWork(()=>storageManager.request("domain.registry",{instruments:listVerifiedInstruments()}));
       config.market.tickers = hydratedWatchlist.selectedSymbols;
       config.news.marketTickers = hydratedWatchlist.selectedSymbols;
       const hydratedQueryPacks = normalizeNewsQueryPacks(config.news.queryPackGroups, { marketTickers: hydratedWatchlist.selectedSymbols });
@@ -943,8 +957,13 @@ export function createAppServer(overrides = {}) {
       stateManager.setMarketTickers(hydratedWatchlist.selectedSymbols);
       await marketHistoryStore.hydrateState(stateManager);
       stateManager.setMarketTickers(hydratedWatchlist.selectedSymbols);
-      await dailyCandleStore.hydrate();
-      if(business) await orchestrator.runNewsCycle("startup-storage",{storageOnly:true,skipSecondary:true});
+      await startupWork(()=>dailyCandleStore.hydrate());
+      if(business) await startupWork(()=>orchestrator.runNewsCycle("startup-storage",{storageOnly:true,skipSecondary:true}));
+      if(business&&overrides.reconcileMarketJobs){
+        const reconciled=await storageManager.request('market.project.reconcile',{jobIds:overrides.reconcileMarketJobs});
+        log.info('market_projection_reconciliation',{jobs:reconciled});
+      }
+      await storageManager.marketProjections?.start();
       await monitor.flush();
       await pipelinePersistence?.flush();
       if(storageManager.options.enabled){
@@ -1007,6 +1026,7 @@ export function createAppServer(overrides = {}) {
     stop() {
       if (stopTask) return stopTask;
       stopTask = (async () => {
+      startupAbort.abort(Object.assign(Error('Startup stopped'),{code:'STORAGE_NOT_READY'}));
       const failures=[],unconfirmedPersistence=[];
       const drain=async (work,phase='cleanup')=>{
         try{await work();}
@@ -1026,6 +1046,7 @@ export function createAppServer(overrides = {}) {
       // Close admission immediately. Waiting for an accepted analysis must not
       // leave acquisition timers running and submitting more work during drain.
       const maintenanceStopped=drain(()=>app.locals.agentMaintenance.stop());
+      const projectionsStopped=drain(()=>storageManager.marketProjections?.stop(),'persistence.projection-stop');
       const cyclesStopped=drain(()=>orchestrator.stop());
       const rssStopped=drain(()=>rssAggregator.stop?.(),'persistence.rss-drain');
       const sourcesStopped=Promise.all([drain(()=>awarenessService.stop()),drain(()=>secSourceAgent.stop(),'persistence.source-cancellation'),drain(()=>intradayCandleService.stop(),'persistence.history-cancellation')]);
@@ -1044,6 +1065,7 @@ export function createAppServer(overrides = {}) {
         drain(()=>mediaStreamService.stop()), drain(()=>marketDataService.close?.())
       ]);
       await maintenanceStopped;
+      await projectionsStopped;
       await sourcesStopped;
       await drain(()=>sourceAcquisition.close());
       await rssStopped;
@@ -1055,6 +1077,7 @@ export function createAppServer(overrides = {}) {
       await Promise.allSettled([...activeCycles]);
       await drain(()=>marketDataStore.flushPersistence(),'persistence.market');
       await drain(()=>storageManager.marketWrites?.flush(),'persistence.market-jobs');
+      await drain(()=>storageManager.marketProjections?.flush(),'persistence.market-projections');
       await drain(()=>monitor.flush(),'persistence.monitor');
       await drain(()=>pipelinePersistence?.flush(),'persistence.pipeline');
       } finally { await drain(()=>storageManager.close()); }
@@ -1068,7 +1091,7 @@ export function createAppServer(overrides = {}) {
           commands:(failure.unconfirmedCommands||[]).slice(0,20).map(({requestId,id,operation,service,method,jobId,fence,phase})=>({requestId,id,operation,service,method,jobId,fence,phase}))}]:[];
       });
       unconfirmedPersistence.push(...readerUncertainty);
-      app.locals.shutdownReport={primaryCause:storageStatus.failure || null,unconfirmedPersistence,cleanupErrors:failures.map(error=>({code:error.code || 'CLEANUP_FAILED'}))};
+      app.locals.shutdownReport={primaryCause:storageStatus.failure || null,unconfirmedPersistence,deferredPersistence:{marketProjections:storageStatus.marketProjections?.pending||0,marketCandlesDeferred:Boolean(storageStatus.marketPersistence?.deferred)},cleanupErrors:failures.map(error=>({code:error.code || 'CLEANUP_FAILED'}))};
       log.info("server_stopped",app.locals.shutdownReport);
       if(failures.length)throw failures[0];
       if(readerUncertainty.length)throw Object.assign(Error('Reader persistence remains unconfirmed'),{code:'STORAGE_OUTCOME_UNKNOWN'});
@@ -1079,6 +1102,12 @@ export function createAppServer(overrides = {}) {
 }
 
 export async function run(overrides = {}) {
+  const reconcileIndex=process.argv.indexOf('--reconcile-market-jobs');
+  if(reconcileIndex>=0){
+    const jobIds=JSON.parse(readFileSync(process.argv[reconcileIndex+1],'utf8'));
+    if(!Array.isArray(jobIds)||jobIds.length>64||!jobIds.length||jobIds.some(id=>!/^market-[a-f0-9]{64}$/.test(id)))throw Error('Invalid market reconciliation job list');
+    overrides={...overrides,reconcileMarketJobs:jobIds};
+  }
   const runtime = createAppServer(overrides);
   let shuttingDown = false;
 
@@ -1112,6 +1141,7 @@ export async function run(overrides = {}) {
   runtime.storageManager.on("control-reconciled",event=>log.info("storage_control_reconciled",event));
   runtime.storageManager.on("index-failed",event=>log.warn("event_index_build_failed",event));
   runtime.storageManager.on("analysis-recovered",event=>log.info("analysis_worker_recovered",event));
+  runtime.storageManager.pressure.on('change',event=>log.info('resource_pressure_changed',event));
 
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));

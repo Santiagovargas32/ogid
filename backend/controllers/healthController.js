@@ -31,7 +31,7 @@ export function getHealth(req, res) {
     ok: true,
     data: {
       status:diagnostics.operational.status==='ok'&&diagnostics.quality.status==='ok'?'ok':'degraded',diagnostics,
-      storage: administrative ? storage : storage && {state:storage.state,businessStorage:storage.businessStorage,lastErrorCode:storage.lastErrorCode,queue:storage.queue,queries:storage.queries&&{state:storage.queries.state,queue:storage.queries.queue,lastErrorCode:storage.queries.lastErrorCode},analysis:storage.analysis&&{state:storage.analysis.state,queue:storage.analysis.queue,lastErrorCode:storage.analysis.lastErrorCode}},
+      storage: administrative ? storage : storage && {state:storage.state,businessStorage:storage.businessStorage,lastErrorCode:storage.lastErrorCode,resourcePressure:storage.resourcePressure&&{state:storage.resourcePressure.state,critical:storage.resourcePressure.critical,reason:storage.resourcePressure.reason,ageMs:storage.resourcePressure.ageMs},marketProjections:storage.marketProjections&&{pending:storage.marketProjections.pending,failed:storage.marketProjections.failed,active:storage.marketProjections.active,lastCompletedAt:storage.marketProjections.lastCompletedAt},queue:storage.queue,queries:storage.queries&&{state:storage.queries.state,queue:storage.queries.queue,lastErrorCode:storage.queries.lastErrorCode},analysis:storage.analysis&&{state:storage.analysis.state,queue:storage.analysis.queue,lastErrorCode:storage.analysis.lastErrorCode}},
       pipeline: res.app.locals.pipelineMonitor?.snapshot() || {},
       server:{pid:process.pid,nodeVersion:process.version,startedAt:SERVER_STARTED_AT,memory:process.memoryUsage()},
       build: BACKEND_BUILD,

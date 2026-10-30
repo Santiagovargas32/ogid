@@ -21,7 +21,9 @@ export function errorHandler(error, req, res, _next) {
   const code = error.code || "INTERNAL_ERROR";
   const message = statusCode < 500 ? error.message : "Internal server error";
 
-  log.error("request_failed", {
+  const deferred=code==='STORAGE_RESOURCE_PRESSURE';
+  if(deferred){res.locals.resourceDeferred=true;res.setHeader('Retry-After',String(Math.max(1,Math.ceil((error.retryAfterMs||1000)/1000))));}
+  if(!deferred)log.error("request_failed", {
     requestId: req.requestId,
     method: req.method,
     path: req.originalUrl,
@@ -37,7 +39,7 @@ export function errorHandler(error, req, res, _next) {
     ok: false,
     error: {
       code,
-      message,
+      message:deferred?'Work deferred until resources recover':message,
       details: error.details || null,
       requestId: req.requestId
     }

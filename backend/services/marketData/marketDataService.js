@@ -210,6 +210,7 @@ export class MarketDataService {
       return this.#dataset(normalizedSymbol, range, stored.bars, { cached: true, stale: false, fetchedAt: stored.storedAt,persistence });
     }
 
+    this.admission?.assert('acquisition');
     try {
       const raw = await this.yahooClient.chart(normalizedSymbol, {
         period1: range.period1,
@@ -345,6 +346,7 @@ export class MarketDataService {
 
     }
 
+    this.admission?.assert('acquisition');
     try {
       const raw = await this.yahooClient.search(normalizedQuery, { quotesCount: bounded, newsCount: 0 });
       const normalizedResults = normalizeYahooSearchResults(raw, { limit: bounded });
@@ -380,6 +382,7 @@ export class MarketDataService {
   }
 
   async fetchQuotes(symbols) {
+    this.admission?.assert('acquisition');
     const values = [...new Set((Array.isArray(symbols) ? symbols : [symbols]).map(normalizeYahooSymbol))];
     if (values.length === 0) return [];
     const raw = await this.yahooClient.quote(values);

@@ -207,6 +207,21 @@ export const RUNTIME_POLICY = freeze({
     maintenanceTimeoutMs: 300000,
     checkpointSoftBytes: 4194304,
     checkpointHardBytes: 134217728,
+    resourcePressure: {
+      sampleIntervalMs: 1000,
+      staleMs: 10000,
+      badSamples: 3,
+      lowAvailableBytes: 1073741824,
+      criticalAvailableBytes: 536870912,
+      memoryFull: 5,
+      ioFull: 20,
+      criticalMemoryFull: 10,
+      criticalIoFull: 50,
+      resumeAvailableBytes: 1610612736,
+      resumeMemoryFull: 1,
+      resumeIoFull: 5,
+      recoveryMs: 30000
+    },
     commandTimeouts: {
       "agent.snapshot": 300000,
       "agent.read": 90000,

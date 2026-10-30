@@ -25,6 +25,7 @@ export function createBusinessAdapters(manager, {rootDir,enabled=true,rssEnabled
   for(const method of ["append","upsert"])candles[method]=(values,options)=>batches(values,batch=>call("candles",method,[batch,options]),{maxItems:500,maxBytes:Math.max(1,Math.min(2097152,manager.options.maxCommandBytes-1024))});
   candles.persistDeferred=(values,options)=>manager.marketWrites.admit(values,options);
   candles.waitForPersistence=receipt=>manager.marketWrites.wait(receipt);
+  candles.inspectPersistence=receipt=>manager.marketWrites.inspect(receipt);
   const map=proxy("map",["getDashboardMapAssets","getLayerBundle","getConfig"],{context:true});
   map.getDashboardMapAssets=(input={})=>call("map","getDashboardMapAssets",[{snapshot:input.snapshot?{news:input.snapshot.news,countries:input.snapshot.countries,hotspots:input.snapshot.hotspots,meta:input.snapshot.meta}:null}],{context:true});
   const signals=proxy("signals",["recordSnapshot","getAnomalies"]);

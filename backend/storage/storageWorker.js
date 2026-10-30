@@ -25,6 +25,8 @@ import { isAcquisitionWorkflow } from "./config.js";
 import {assertStorageVolume} from './volumeGuard.js';
 import {storageExecutionContext,walWriteGuard} from './walPressure.js';
 import {nativeThreadId} from './nativeWait.js';
+import {MarketProjectionRepository} from './marketProjections.js';
+import {readPressure,pressureAllows,pressureError} from './resourceAdmission.js';
 const nativeId=nativeThreadId();
 let database, migrations, version, runtime;
 let diagnostics,lastDiagnosticsCompletedAt=0,lastCompletedCommand,lastFailedCommand;
@@ -38,13 +40,14 @@ function telemetry(){
   // Historical counts are read work, never part of the business writer's
   // heartbeat. Sample only an idle reader, and schedule from completion: a cold
   // sample taking longer than the interval must not trigger continuous rescans.
-  const canSample=workerData.analysisWorker ? runtime?.services && !activeCommands.size : !workerData.businessEnabled;
+  const pressureReady=!workerData.resourcePressureBuffer||readPressure(workerData.resourcePressureBuffer).state==='normal';
+  const canSample=pressureReady&&(workerData.analysisWorker ? runtime?.services && !activeCommands.size : !workerData.businessEnabled);
   if(canSample && (!diagnostics || Date.now()-lastDiagnosticsCompletedAt>=RUNTIME_POLICY.storage.diagnosticsIntervalMs)){
     diagnostics=readDatabaseDiagnostics(database);lastDiagnosticsCompletedAt=Date.now();
   }
 }
 const rpcPending=new Map();
-function rpc(operation,input){return new Promise((resolve,reject)=>{const id=randomUUID(),timer=setTimeout(()=>{rpcPending.delete(id);reject(Object.assign(new Error("Provider deadline"),{code:"STORAGE_PROVIDER_TIMEOUT"}));},RUNTIME_POLICY.storage.providerTimeoutMs);rpcPending.set(id,{resolve,reject,timer});parentPort.postMessage({type:"rpc",id,operation,input});});}
+function rpc(operation,input){return new Promise((resolve,reject)=>{const commandId=storageExecutionContext.getStore()?.commandId;if(operation==='analysis.persist'&&commandId)parentPort.postMessage({type:'command-phase',id:commandId,phase:'persisting'});const id=randomUUID(),timer=setTimeout(()=>{rpcPending.delete(id);reject(Object.assign(new Error("Provider deadline"),{code:"STORAGE_PROVIDER_TIMEOUT"}));},RUNTIME_POLICY.storage.providerTimeoutMs);rpcPending.set(id,{resolve,reject,timer});parentPort.postMessage({type:"rpc",id,operation,input});});}
 const fail = code => { throw Object.assign(new Error(code), { code }); };
 function size(file) { try { return statSync(file).size; } catch (error) { if (error.code === "ENOENT") return 0; throw error; } }
 function status() {
@@ -60,6 +63,12 @@ function pipelineRecord(input) {
   return { runId: input.runId, persisted: true };
 }
 function execute(operation, input, requestId, commandId) {
+  if(operation.startsWith('market.project.')){
+    const method=operation.split('.').at(-1);
+    if(workerData.analysisWorker&&!['status','pending','calculate'].includes(method))fail('STORAGE_READ_ONLY');
+    runtime.marketProjections ||= new MarketProjectionRepository(runtime);
+    return runtime.marketProjections[method](input);
+  }
   if(operation === "agent.read"){
     if(!workerData.analysisWorker || !AGENT_READER_METHODS.has(input.method))fail("STORAGE_INVALID_COMMAND");
     runtime.agent ||= new AgentRepository(runtime);
@@ -196,6 +205,10 @@ try {
       // An expired message may have waited behind synchronous SQLite work.
       // Reject it before announcing execution or performing any write.
       if(Number.isFinite(envelope.queueDeadline) && Date.now()>=envelope.queueDeadline)fail("STORAGE_QUEUE_TIMEOUT");
+      if(workerData.resourcePressureBuffer){
+        const pressure=readPressure(workerData.resourcePressureBuffer);
+        if(!pressureAllows(pressure,storageOperationContract(message.operation,message.input).resourceClass))throw pressureError(pressure);
+      }
       const start = performance.now();
       // Attribute thread CPU only when no other command overlaps this interval.
       const epoch=++commandEpoch;
@@ -205,7 +218,7 @@ try {
         jobId:typeof agentInput?.jobId==='string'?agentInput.jobId.slice(0,128):null,fence:Number.isSafeInteger(agentInput?.fence)?agentInput.fence:null,startedAt:new Date().toISOString()};
       activeCommands.set(message.id,command);parentPort.postMessage({type:"command-started",id:message.id,startedAt:Date.now()});
       let result;runtime.lastCommitMs=null;runtime.lastValidationMs=null;
-      await storageExecutionContext.run({control:storageOperationContract(message.operation,message.input).workClass==='control'},async()=>{
+      await storageExecutionContext.run({commandId:message.id,control:storageOperationContract(message.operation,message.input).workClass==='control'},async()=>{
       if (["pipeline.record","runtime.save"].includes(message.operation)) {
         const requestId = message.requestId;
         if (!/^[A-Za-z0-9._:-]{1,128}$/.test(requestId || "")) fail("STORAGE_INVALID_REQUEST_ID");
@@ -230,9 +243,9 @@ try {
       lastCompletedCommand={...command,completedAt:new Date().toISOString(),durationMs:performance.now()-start,cpuMs};
     } catch (error) {
       lastFailedCommand={...activeCommands.get(message.id),failedAt:new Date().toISOString(),code:error.code || "STORAGE_COMMAND_FAILED"};
-      log.error("storage_command_failed",{operation:message.operation,service:message.input?.service,method:message.input?.method,jobId:activeCommands.get(message.id)?.jobId,fence:activeCommands.get(message.id)?.fence,code:error.code || "STORAGE_COMMAND_FAILED",stack:error.stack});
+      if(error.code!=='STORAGE_RESOURCE_PRESSURE')log.error("storage_command_failed",{operation:message.operation,service:message.input?.service,method:message.input?.method,jobId:activeCommands.get(message.id)?.jobId,fence:activeCommands.get(message.id)?.fence,code:error.code || "STORAGE_COMMAND_FAILED",stack:error.stack});
       const code = /^[A-Z][A-Z0-9_]{1,63}$/.test(error.code || "") ? error.code : "STORAGE_COMMAND_FAILED";
-      parentPort.postMessage({ id: message.id, error: { code, statusCode: error.statusCode || 503, message: error.statusCode < 500 ? error.message : code, causeCode: error.causeCode, diagnostic: error.diagnostic,details:error.statusCode<500?error.details:null } });
+      parentPort.postMessage({ id: message.id, error: { code, statusCode: error.statusCode || 503, message: error.statusCode < 500 ? error.message : code, causeCode: error.causeCode, diagnostic: error.diagnostic,notExecuted:error.notExecuted===true,details:error.statusCode<500||code==='STORAGE_RESOURCE_PRESSURE'?error.details:null } });
     }finally{activeCommands.delete(message.id);workflows.delete(message.id);}
   });
 } catch (error) {

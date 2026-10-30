@@ -21,7 +21,7 @@ export class CandleWriteJobs {
       if(!row)throw Object.assign(Error('Unknown candle job'),{code:'MARKET_PERSISTENCE_UNKNOWN'});
       if(row.status==='complete')return this.status({jobId});
       const j=JSON.parse(row.job_json),page=j.candles.slice(j.cursor,j.cursor+10);
-      const options={...j.options,...(j.options.now?{now:new Date(j.options.now)}:{})};
+      const options={...j.options,...(j.options.now?{now:new Date(j.options.now)}:{}),projectionJobId:jobId};
       const result=this.runtime.services.candles.upsert(page,options);
       j.cursor+=page.length;for(const k of ['inserted','updated','duplicates'])j[k]+=(result[k]||0);
       this.db.prepare('UPDATE acquisition_jobs SET status=?,updated_at=?,job_json=? WHERE job_id=?').run(j.cursor>=j.candles.length?'complete':'pending',new Date().toISOString(),JSON.stringify(j),jobId);
@@ -30,8 +30,11 @@ export class CandleWriteJobs {
   }
 }
 export class CandleWriteCoordinator {
-  constructor(manager){this.manager=manager;this.tasks=new Map();this.timers=new Map();this.attempts=new Map();this.chain=Promise.resolve();this.accepting=true;this.lastError=null;}
-  status(){return {active:this.tasks.size,retries:this.timers.size,lastError:this.lastError,source:'acquisition_jobs',kind};}
+  constructor(manager){this.manager=manager;this.tasks=new Map();this.timers=new Map();this.attempts=new Map();this.chain=Promise.resolve();this.accepting=true;this.lastError=null;
+    this.resumeResources=()=>{if(this.accepting&&this.resourceDeferred&&this.manager.pressure.status().state==='normal'){this.resourceDeferred=false;void this.recover().catch(error=>{this.lastError={code:error.code};});}};
+    this.manager.pressure?.on('change',this.resumeResources);
+  }
+  status(){return {active:this.tasks.size,retries:this.timers.size,deferred:Boolean(this.resourceDeferred),lastError:this.lastError,source:'acquisition_jobs',kind};}
   async admit(candles,options){
     const jobIds=[];let page=[],bytes=0;
     const send=async()=>{if(!page.length)return;const r=await this.manager.localRequest('market.persist.admit',{candles:page,options});jobIds.push(r.jobId);this.dispatch(r.jobId);page=[];bytes=0;};
@@ -50,6 +53,7 @@ export class CandleWriteCoordinator {
       this.attempts.delete(jobId);if(this.lastError?.jobId===jobId)this.lastError=null;return result;
     }).catch(error=>{
       this.lastError={code:error.code||'MARKET_PERSISTENCE_FAILED',jobId,at:new Date().toISOString()};
+      if(error.code==='STORAGE_RESOURCE_PRESSURE'){this.resourceDeferred=true;throw error;}
       if(this.accepting&&this.manager.state==='ready'){const attempt=(this.attempts.get(jobId)||0)+1;this.attempts.set(jobId,attempt);const timer=setTimeout(()=>{this.timers.delete(jobId);this.dispatch(jobId).catch(()=>{});},Math.min(60000,1000*2**Math.min(attempt,6)));timer.unref();this.timers.set(jobId,timer);}throw error;
     }).finally(()=>this.tasks.delete(jobId));
     this.chain=task;this.tasks.set(jobId,task);task.catch(()=>{});return task;
@@ -58,6 +62,10 @@ export class CandleWriteCoordinator {
     const rows=await Promise.all(receipt.jobIds.map(id=>this.dispatch(id)));
     if(rows.some(r=>!r.committed))throw Object.assign(Error('ACK not confirmed'),{code:'MARKET_COMMIT_ACK_UNKNOWN'});
     return rows.reduce((r,v)=>{for(const k of ['inserted','updated','duplicates'])r[k]+=v[k]||0;return r;},{committed:true,pending:false,inserted:0,updated:0,duplicates:0,jobIds:receipt.jobIds});
+  }
+  async inspect(receipt){
+    const rows=await Promise.all(receipt.jobIds.map(jobId=>this.manager.localRequest('market.persist.status',{jobId})));
+    return {durable:true,pending:rows.some(row=>row.pending),committed:rows.every(row=>row.committed),jobs:rows};
   }
   async recover(){
     if(this.recovery)return;
@@ -72,6 +80,7 @@ export class CandleWriteCoordinator {
   }
   async flush(){
     await this.recovery;
+    if(this.manager.pressure&&this.manager.pressure.status().state!=='normal'){await Promise.allSettled(this.tasks.values());this.resourceDeferred=true;return this.status();}
     let page=await this.manager.localRequest('market.persist.pending',{});
     while(page.length){
       const results=await Promise.allSettled(page.map(({jobId})=>this.dispatch(jobId)));
@@ -81,5 +90,5 @@ export class CandleWriteCoordinator {
     }
     await Promise.all(this.tasks.values());
   }
-  async close(){this.accepting=false;for(const t of this.timers.values())clearTimeout(t);this.timers.clear();await Promise.allSettled(this.tasks.values());}
+  async close(){this.accepting=false;this.manager.pressure?.off('change',this.resumeResources);for(const t of this.timers.values())clearTimeout(t);this.timers.clear();await Promise.allSettled(this.tasks.values());}
 }

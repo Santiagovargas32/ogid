@@ -21,6 +21,7 @@ export class SecSourceAgent {
     if(this.stopping)return Promise.resolve(this.getStatus());
     if(this.task)return this.task;
     this.task=this.run().catch(error=>{
+      if(error.code==='STORAGE_RESOURCE_PRESSURE'){this.update({status:'degraded',errorCode:error.code,reason:'Acquisition deferred until resources recover'});return this.getStatus();}
       this.update({status:"failed",errorCode:error.code || "SEC_AGENT_FAILED",reason:"SEC acquisition failed; stored data remains available"});
       return this.getStatus();
     }).finally(()=>{this.task=null;});

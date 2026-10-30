@@ -107,6 +107,7 @@ export function requestLogger(req, res, next) {
   let recorded=false;
   const record = outcome => {
     if(recorded)return;recorded=true;
+    if(res.locals?.resourceDeferred)return;
     const ended = process.hrtime.bigint();
     const durationMs = Number(ended - started) / 1_000_000;
     requestLog.info("http_request", {

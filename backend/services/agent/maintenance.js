@@ -7,8 +7,9 @@ import { expectedPublicableCandle, providerPublicationPolicy } from '../market/c
 // One timer drives bounded durable work. One analytical sweep may run alongside
 // it on the existing readers; slow analysis cannot hold the next journal page.
 export class AgentMaintenance {
-  constructor({call,business,context,dependencies=null,now=Date.now,instruments=()=>[],enabled=false}) {
-    Object.assign(this,{call,business,context,dependencies,now,instruments,enabled});
+  constructor({call,business,context,dependencies=null,now=Date.now,instruments=()=>[],enabled=false,admission=null}) {
+    Object.assign(this,{call,business,context,dependencies,now,instruments,enabled,admission});
+    this.resumeResources=()=>{if(this.running&&this.admission.status().state==='normal')void this.tick();};
     this.status={state:'idle',lastSuccessAt:null,errorCode:null};
     this.completedInputs=new Map();
   }
@@ -38,10 +39,11 @@ export class AgentMaintenance {
     const failure=Object.values(domains).find(d=>d.state==='degraded');
     const running=Object.keys(domains).find(name=>domains[name].state==='running');
     const errorCode=this.controlError||this.analyticalError||failure?.errorCode||null;
-    this.status={...this.status,state:this.stopping?'stopped':errorCode?'degraded':running?'running':'ready',
+    const deferred=this.analyticalDeferred||Object.values(domains).some(d=>d.state==='deferred');
+    this.status={...this.status,state:this.stopping?'stopped':errorCode?'degraded':running?'running':deferred?'deferred':'ready',
       currentDomain:running||null,errorCode,
       analytical:{running:Boolean(this.analyticalTask),nextEligibleAt:this.analyticalNextAt?new Date(this.analyticalNextAt).toISOString():null},
-      lastSuccessAt:!this.stopping&&!errorCode&&!running&&!this.alertsPending?new Date(this.now()).toISOString():this.status.lastSuccessAt};
+      lastSuccessAt:!this.stopping&&!errorCode&&!running&&!deferred&&!this.alertsPending?new Date(this.now()).toISOString():this.status.lastSuccessAt};
   }
   async run({force=false}={}) {
     if(!this.enabled||this.stopping)return;
@@ -84,7 +86,7 @@ export class AgentMaintenance {
           this.status.domains={...this.status.domains,[domain]:{state:'ready',inputRevision:revision,lastSuccessAt:new Date(this.now()).toISOString(),
             ...(domain==='alerts'&&result?{hasMore:result.hasMore,processed:result.processed,streams:result.streams,bootstrap:result.bootstrap}:{} )}};
         }catch(error){
-          this.status.domains={...this.status.domains,[domain]:{state:'degraded',errorCode:error.code||'AGENT_PREREQUISITE_UNAVAILABLE',lastSuccessAt:previous?.lastSuccessAt||null}};
+          this.status.domains={...this.status.domains,[domain]:{state:error.code==='STORAGE_RESOURCE_PRESSURE'?'deferred':'degraded',errorCode:error.code||'AGENT_PREREQUISITE_UNAVAILABLE',lastSuccessAt:previous?.lastSuccessAt||null}};
         }
       }
     };
@@ -92,7 +94,8 @@ export class AgentMaintenance {
       ...(!this.editorialComplete&&this.business.news?.enrichEditorialPage?[["editorial",async()=>{const r=await this.business.news.enrichEditorialPage({});this.editorialComplete=r.complete===true;}]]:[]),
       ['alerts',()=>this.call('alertSync')],
     ]);
-    if(!this.stopping&&!this.analyticalTask&&(force||!this.analyticalNextAt||now>=this.analyticalNextAt)){
+    this.analyticalDeferred=Boolean(this.admission&&this.admission.status().state!=='normal');
+    if(!this.analyticalDeferred&&!this.stopping&&!this.analyticalTask&&(force||!this.analyticalNextAt||now>=this.analyticalNextAt)){
       this.analyticalError=null;
       this.analyticalTask=execute([
         ['advanced',()=>this.business.advanced.getSnapshot({})],
@@ -110,8 +113,10 @@ export class AgentMaintenance {
   start() {
     if(!this.enabled||this.running)return;
     this.running=true;this.stopping=false;void this.tick();
+    this.admission?.on('change',this.resumeResources);
   }
   async stop() {
+    this.admission?.off('change',this.resumeResources);
     this.stopping=true;this.running=false;clearTimeout(this.timer);this.timer=null;
     this.status.nextEligibleAt=null;
     await this.task;await this.analyticalTask;this.refreshStatus();
