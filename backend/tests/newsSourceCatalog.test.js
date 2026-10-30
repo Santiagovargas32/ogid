@@ -25,19 +25,19 @@ function cloneEntries() {
 
 test("canonical source catalog has the exact inventory split", () => {
   const summary = summarizeNewsSourceCatalog();
-  assert.equal(summary.total, 501);
-  assert.deepEqual(summary.byType, { rss: 66, generated_search: 435, discovery: 0 });
-  assert.equal(summary.enabledRss, 66);
+  assert.equal(summary.total, 503);
+  assert.deepEqual(summary.byType, { rss: 68, generated_search: 435, discovery: 0 });
+  assert.equal(summary.enabledRss, 68);
   assert.equal(summary.disabledRss, 0);
-  assert.equal(new Set(NEWS_SOURCE_CATALOG.entries.map((entry) => entry.sourceId)).size, 501);
+  assert.equal(new Set(NEWS_SOURCE_CATALOG.entries.map((entry) => entry.sourceId)).size, 503);
   assert.equal(NEWS_SOURCE_CATALOG.entries.every((entry) => entry.instrumentIds.length === 0), true);
 });
 
 test("legacy RSS projection preserves order, URLs and enabled state", () => {
   const projection = projectLegacyRssFeeds();
-  const stableProjection = projection.map(({ label, url, disabled, reason }) => ({ label, url, disabled, reason }));
+  const stableProjection = projection.slice(0,66).map(({ label, url, disabled, reason }) => ({ label, url, disabled, reason }));
   assert.equal(digest(stableProjection), LEGACY_RSS_PROJECTION_SHA256);
-  assert.equal(projection.length, 66);
+  assert.equal(projection.length, 68);
   assert.deepEqual(projection.slice(0, 3).map(({ label }) => label), [
     "U.S. Defense Releases",
     "U.S. Defense Contracts",

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 export const NEWS_SOURCE_CATALOG_SCHEMA_VERSION = 1;
-export const NEWS_SOURCE_CATALOG_VERSION = "1.1.0";
+export const NEWS_SOURCE_CATALOG_VERSION = "1.2.0";
 export const NEWS_SOURCE_CATALOG_METHOD_VERSION = "news-source-catalog-v1";
 
 const RSS_SOURCE_ROWS = Object.freeze([
@@ -252,6 +252,10 @@ function deepFreeze(value) {
 
 const entries = [
   ...RSS_SOURCE_ROWS.map(rssEntry),
+  ...[
+    ['rss-kyiv-independent','The Kyiv Independent','https://kyivindependent.com/news-archive/rss/','editorial'],
+    ['rss-gcaptain','gCaptain','https://gcaptain.com/feed/','editorial']
+  ].map(row=>({...rssEntry(row),provenance:{...baseMetadata({priority:100,cadenceMs:900000,policyId:'rss-default-v1'}).provenance,origin:'pilot-e',reference:row[2]}})),
   ...GENERATED_COUNTRY_TERMS.flatMap((country) => GENERATED_TOPIC_TERMS.map((topic) => generatedSearchEntry(country, topic)))
 ];
 

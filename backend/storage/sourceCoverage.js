@@ -1,6 +1,7 @@
 import {publisherEdition} from '../services/news/sourceAssessments.js';
 import {NEWS_SOURCE_CATALOG} from '../services/news/newsSourceCatalog.js';
 import {AppError} from '../utils/error.js';
+import {pilotCoverage} from './pilotCoverage.js';
 
 export function saveEditorialFacet(db,article) {
   const countries=JSON.stringify([...new Set((article.countryMentions||[]).filter(c=>/^[A-Z]{2}$/.test(c)))].sort().slice(0,250));
@@ -37,7 +38,7 @@ export function sourceCoverage(db,assessments,input={}) {
       summary:{...totals,...facets,unknownPublisherArticles:totals.articles-facets.resolvedPublisherArticles,ownerGroups:owners.size,unknownOwnerArticles,unknownEditorialCountryArticles,unratedPublisherEditions:unratedPublishers},
       publishers,languages:languages.slice(0,100),mentionedCountries:mentionedCountries.slice(0,100),editorialCountries:[...countries].map(([country,articles])=>({country,articles})),
       catalogue:{entries:NEWS_SOURCE_CATALOG.entries.length,enabledEntries:NEWS_SOURCE_CATALOG.entries.filter(e=>e.enabled).length,generatedSearches:NEWS_SOURCE_CATALOG.entries.filter(e=>e.type==='generated_search').length,operationalHealth:'unknown-here'},
-      configuredLanguages,plannedRegions,
+      configuredLanguages,plannedRegions,pilots:pilotCoverage(db,{from,to,now:assessments.now()}),
       coverage:{partial,pendingFacetArticles:pending,languageGroupsPartial:languages.length>100,countryGroupsPartial:mentionedCountries.length>100,metadataBasis:'current derived editorial metadata; not a historical metadata snapshot'},
       meaning:'Collected archive before editorial selection. Queries are not publishers; owners and origin identifiers are not independent corroboration. Editorial countries are not incident locations.'};
     const payload={ok:true,queriedAt:new Date().toISOString(),origin:'OGID',data,warnings:[],truncated:false};

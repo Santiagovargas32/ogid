@@ -17,9 +17,18 @@ function renderCoverage(data){
   paragraph(root,`Idiomas observados: ${data.languages.map(x=>`${x.language}: ${x.articles}`).join(' · ')||'sin datos'}${data.coverage.languageGroupsPartial?' (lista parcial)':''}.`);
   paragraph(root,`Menciones de países clasificadas en publicaciones: ${data.mentionedCountries.map(x=>`${x.country}: ${x.articles}`).join(' · ')||'sin datos'}${data.coverage.countryGroupsPartial?' (lista parcial)':''}. No son localizaciones verificadas de incidentes; una publicación puede mencionar varios países.`);
   paragraph(root,`Países editoriales documentados: ${data.editorialCountries.map(x=>`${x.country}: ${x.articles}`).join(' · ')||'desconocidos'}. Un artículo puede pertenecer a varios países editoriales.`);
-  paragraph(root,`Catálogo: ${data.catalogue.entries} entradas, ${data.catalogue.enabledEntries} habilitadas, ${data.catalogue.generatedSearches} búsquedas configuradas. La salud operativa no se mide en esta vista.`);
+  paragraph(root,`Catálogo: ${data.catalogue.entries} entradas, ${data.catalogue.enabledEntries} habilitadas, ${data.catalogue.generatedSearches} búsquedas configuradas. La salud de las fuentes del piloto se detalla abajo.`);
   paragraph(root,`Idiomas declarados en el catálogo: ${data.configuredLanguages.map(x=>`${x.language}: ${x.entries}`).join(' · ')}. No demuestran el idioma observado.`);
-  for(const region of data.plannedRegions)paragraph(root,`${region.region}: ${region.configuredQueries} consultas previstas. Cobertura de reportería todavía no acreditada; pendiente del piloto.`);
+  for(const region of data.plannedRegions)paragraph(root,`${region.region}: ${region.configuredQueries} consultas configuradas; su cantidad no acredita cobertura de reportería.`);
+  for(const pilot of data.pilots||[]){
+    root.append(node('h3',pilot.label));
+    paragraph(root,`${pilot.configured} fuentes configuradas · ${pilot.enabled} habilitadas · ${pilot.consulted} consultadas · ${pilot.healthy} con salud reciente. Estado de adquisición a ${pilot.observedAt}.`);
+    paragraph(root,`Búsquedas de descubrimiento: ${pilot.discoveryQueries.configured} configuradas, ${pilot.discoveryQueries.consulted} consultadas y ${pilot.discoveryQueries.healthy} con salud reciente. Las búsquedas no son editores.`);
+    const s=pilot.archiveSample;paragraph(root,`Muestra por menciones de país (${pilot.selection.countryMentions.join(', ')}): ${s.articles} publicaciones${s.partial?' de las 1.000 más recientes; muestra parcial':''}, ${s.publishers} editores, ${s.unknownPublisherArticles} con editor desconocido. No acredita ubicación de incidentes ni coordenadas marítimas.`);
+    paragraph(root,`Idiomas: ${s.languages.map(x=>`${x.language}: ${x.articles}`).join(' · ')||'sin datos'}. Reportes adicionales con cadena de origen compartida: ${s.sharedOriginReports}; origen desconocido: ${s.unknownOriginArticles}. No equivalen a corroboraciones independientes.`);
+    paragraph(root,`Publicación → recepción: p95 ${s.publicationToReception.p95Ms===null?'sin datos':`${Math.round(s.publicationToReception.p95Ms/1000)} s`} sobre ${s.publicationToReception.samples} fechas válidas de la muestra. RU/UK pendientes de evaluación propia.`);
+    const details=node('details');details.append(node('summary','Estado de las fuentes'));for(const source of pilot.sources)paragraph(details,`${source.name} · ${source.enabled?'habilitada':'deshabilitada'} · ${source.health} · última consulta ${source.lastAttemptAt||'sin consultar'} · HTTP ${source.httpStatus??'desconocido'}`);root.append(details);
+  }
   paragraph(root,'Los metadatos editoriales son los derivados actuales; esta ventana no reconstruye su estado histórico.');
   for(const publisher of data.publishers)paragraph(root,`${publisher.name}${publisher.edition?` (${publisher.edition})`:''}: ${publisher.articles} publicaciones · última recepción ${publisher.lastReceivedAt} · ${sourceAssessmentLabel({status:publisher.assessmentStatus,rating:publisher.rating}).label}.`);
 }
