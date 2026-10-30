@@ -448,11 +448,11 @@ function renderPipelineStatus(payload = {}) {
       nextRun: market.nextRecommendedRunAt ? `${formatShortTime(market.nextRecommendedRunAt)} (${formatDurationMs(market.nextDelayMs)})` : "--",
       lastRun: formatShortTime(market.lastCompletedAt),
       duration: formatDurationMs(market.lastDurationMs),
-      status: market.lastStatus || "idle",
+      status: market.resourcePending ? "aplazado por recursos" : market.lastStatus || "idle",
       mode: market.requestMode || "--",
       provider: market.provider || "--",
       lastError:
-        market.disabledReason ||
+        market.lastErrorCode || market.lastError || market.disabledReason ||
         market.lastUpstreamError ||
         ((market.usedStaleQuotes || []).length ? `stale:${(market.usedStaleQuotes || []).length}` : "--")
     },
@@ -462,10 +462,10 @@ function renderPipelineStatus(payload = {}) {
       nextRun: news.nextRecommendedRunAt ? `${formatShortTime(news.nextRecommendedRunAt)} (${formatDurationMs(news.nextDelayMs)})` : "--",
       lastRun: formatShortTime(news.lastCompletedAt),
       duration: formatDurationMs(news.lastDurationMs),
-      status: `${news.lastStatus || "idle"}${news.stage ? ` / ${news.stage}` : ""}`,
+      status: `${news.resourcePending ? "aplazado por recursos" : news.lastStatus || "idle"}${news.stage ? ` / ${news.stage}` : ""}`,
       mode: news.pageSize ? `page:${news.pageSize}` : "--",
       provider: news.provider || "--",
-      lastError: news.lastError || (news.attempts || []).filter((item) => item.status === "error").map((item) => item.provider).join(", ") || "--"
+      lastError: news.lastErrorCode || news.lastError || (news.attempts || []).filter((item) => item.status === "error").map((item) => item.provider).join(", ") || "--"
     },
     {
       pipeline: "awareness",
@@ -473,10 +473,10 @@ function renderPipelineStatus(payload = {}) {
       nextRun: Number.isFinite(awarenessNext) ? formatShortTime(new Date(awarenessNext).toISOString()) : "--",
       lastRun: Number.isFinite(awarenessLast) ? formatShortTime(new Date(awarenessLast).toISOString()) : "--",
       duration: formatDurationMs(Math.max(0, ...awarenessEnabled.map((source) => Number(source.latencyMs || 0)))),
-      status: awarenessErrors.length || awarenessRuntimeBlocked.length ? "degraded" : awareness.mode === "off" ? "disabled" : "ok",
+      status: awareness.runtime?.resourcePending ? "aplazado por recursos" : awarenessErrors.length || awarenessRuntimeBlocked.length ? "degraded" : awareness.mode === "off" ? "disabled" : "ok",
       mode: `rev:${Number(awareness.revision || 0)}`,
       provider: `active:${Number(awarenessAdmissionCounts.active || 0)} shadow:${Number(awarenessAdmissionCounts.shadow || 0)} probing:${Number(awarenessAdmissionCounts.probing || 0)} blocked:${Number(awarenessAdmissionCounts.blocked || 0)}`,
-      lastError: [...awarenessErrors, ...awarenessRuntimeBlocked].map((source) => `${source.sourceId}:${source.error || source.blockedReason || source.status}`).join(", ") || "--"
+      lastError: awareness.runtime?.resourcePending ? awareness.runtime.code || "STORAGE_RESOURCE_PRESSURE" : [...awarenessErrors, ...awarenessRuntimeBlocked].map((source) => `${source.sourceId}:${source.error || source.blockedReason || source.status}`).join(", ") || "--"
     }
   ];
 

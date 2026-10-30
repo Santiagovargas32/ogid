@@ -1902,7 +1902,7 @@ function mountWebSocket() {
         return;
       }
       if (message.type === "error") {
-        console.error("Realtime update error:", message.data);
+        console[message.data?.recoverable?"info":"error"]("Realtime update error:", message.data);
       }
     }
   });

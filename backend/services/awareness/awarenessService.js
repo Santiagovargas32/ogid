@@ -1,3 +1,4 @@
+import {CycleContinuation,isResourcePressure} from '../shared/cycleContinuation.js';
 import { awarenessMarketArticles } from "./marketArticles.js";
 import { createHash } from "node:crypto";
 import { createLogger } from "../../utils/logger.js";
@@ -222,6 +223,7 @@ export class AwarenessService {
     persistent403Threshold = DEFAULT_PERSISTENT_403_THRESHOLD,
     forbiddenCooldownMs = DEFAULT_FORBIDDEN_COOLDOWN_MS
   } = {}) {
+    this.sourceContinuations=new Map();
     this.mode = normalizeMode(mode);
     this.store = store;
     this.stateManager = stateManager;
@@ -272,6 +274,8 @@ export class AwarenessService {
   getSnapshot(filters = {}, { publicView = true } = {}) {
     return this.store.getSnapshot({ mode: this.mode, filters, publicView });
   }
+
+  resourceStatus(){return {resourcePending:Boolean(this.resourceDeferred),pendingSources:this.sourceContinuations.size,code:this.resourceDeferred?'STORAGE_RESOURCE_PRESSURE':null,phase:this.resourceDeferred?this.lastResourcePhase || 'admission':null,reason:this.resourceDeferred?this.lastResourceReason || null:null,state:this.admission?.status().state || 'normal'};}
 
   getAdminSnapshot() {
     return this.getSnapshot({}, { publicView: false });
@@ -422,8 +426,19 @@ export class AwarenessService {
     return response;
   }
 
-  async pollSource(source) {
-    try{this.admission?.assert('acquisition');}catch(error){if(error.code!=='STORAGE_RESOURCE_PRESSURE')throw error;this.resourceDeferred=true;return {sourceId:source.sourceId,changed:[],status:'deferred'};}
+  async pollSource(source){
+    let continuation=this.sourceContinuations.get(source.sourceId);
+    if(!continuation){continuation=new CycleContinuation(this.pollSteps(source),this.admission);this.sourceContinuations.set(source.sourceId,continuation);}
+    try{const result=await continuation.run();this.sourceContinuations.delete(source.sourceId);return result;}
+    catch(error){
+      if(!isResourcePressure(error)){this.sourceContinuations.delete(source.sourceId);throw error;}
+      this.resourceDeferred=true;this.lastResourcePhase=continuation.phase;this.lastResourceReason=error.details?.reason;
+      log.info('awareness_cycle_deferred',{sourceId:source.sourceId,code:error.code,phase:continuation.phase,reason:error.details?.reason});
+      return {sourceId:source.sourceId,changed:[],status:'deferred',code:error.code,phase:continuation.phase};
+    }
+  }
+
+  *pollSteps(source) {
     const startedAt = this.now();
     const previous = this.getAdminSnapshot().sourceStatus.find((status) => status.sourceId === source.sourceId) || {};
     const admissionState = previous.admissionState || normalizeAwarenessAdmissionState(source);
@@ -449,11 +464,11 @@ export class AwarenessService {
     if (previous.lastModified) headers["If-Modified-Since"] = previous.lastModified;
     let diagnostic = null;
     try {
-      const response = await this.request(source, resolveSourceRequestUrl(source, startedAt), headers);
+      const response = (yield {phase:'source-request',kind:'acquisition',work:()=>this.request(source,resolveSourceRequestUrl(source,startedAt),headers)});
       const latencyMs = Math.max(0, this.now() - startedAt);
       diagnostic = responseDiagnostic(response);
       if (response.status === 304) {
-        const fresh = await this.store.setSourceStale(source.sourceId, false);
+        const fresh = (yield {phase:'source-fresh',work:()=>this.store.setSourceStale(source.sourceId,false)});
         this.store.recordPoll(source.sourceId, {
           attemptedAt: new Date(startedAt).toISOString(),
           completedAt: new Date(this.now()).toISOString(),
@@ -478,7 +493,7 @@ export class AwarenessService {
       }
       if (!response.ok) {
         try {
-          const bodyBytes = await readLimitedBytes(response);
+          const bodyBytes = (yield {phase:'source-diagnostic',kind:'commit',work:()=>readLimitedBytes(response)});
           diagnostic = responseDiagnostic(response, bodyBytes);
         } catch (diagnosticError) {
           diagnostic = responseDiagnostic(response, null, { truncated: diagnosticError?.message === "awareness-response-too-large" });
@@ -490,14 +505,14 @@ export class AwarenessService {
         });
       }
       if (!allowedContentType(source, response.headers?.get?.("content-type"))) throw new Error("awareness-content-type-invalid");
-      const body = await readLimitedText(response);
+      const body = (yield {phase:'source-body',kind:'commit',work:()=>readLimitedText(response)});
       const observedAt = new Date(this.now()).toISOString();
-      const events = await (this.parseSource || parseAwarenessSource)(body, source, { observedAt });
+      const events = (yield {phase:'source-parse',work:()=>(this.parseSource || parseAwarenessSource)(body,source,{observedAt})});
       const emptyResultAllowed = source.emptyResultPolicy === "healthy";
       if (!events.length && Number(previous.eventCount || 0) > 0 && !emptyResultAllowed) {
         throw new Error("awareness-parser-empty-after-data");
       }
-      const reconciliation = await this.store.reconcile(events, { sourceId: source.sourceId });
+      const reconciliation = (yield {phase:'source-persist',work:()=>this.store.reconcile(events, {sourceId:source.sourceId})});
       const timing = sourceEventTiming(events, this.now());
       const outcome = events.length ? "ok" : emptyResultAllowed ? "empty-valid" : "empty";
       this.store.recordPoll(source.sourceId, {
@@ -572,7 +587,7 @@ export class AwarenessService {
         requestId: (error.diagnostic || diagnostic)?.requestId || null,
         blocked
       });
-      const stale = await this.store.setSourceStale(source.sourceId, true);
+      const stale = (yield {phase:'source-stale',work:()=>this.store.setSourceStale(source.sourceId,true)});
       return { sourceId: source.sourceId, changed: stale.changed || [], status: blocked ? "blocked" : "error", error: error.message };
     }
   }
@@ -580,10 +595,10 @@ export class AwarenessService {
   async runCycle(trigger = "scheduled-awareness") {
     if (this.mode === "off") return { status: "disabled", trigger, snapshot: this.syncProjection() };
     if (this.inFlight) return this.inFlight;
-    try{this.admission?.assert('acquisition');}catch(error){if(error.code!=='STORAGE_RESOURCE_PRESSURE')throw error;this.resourceDeferred=true;return {status:'deferred',trigger,snapshot:this.syncProjection()};}
+    try{this.admission?.assert('acquisition');}catch(error){if(!isResourcePressure(error))throw error;this.resourceDeferred=true;this.lastResourcePhase='admission';this.lastResourceReason=error.details?.reason;log.info('awareness_cycle_deferred',{code:error.code,phase:'admission',reason:error.details?.reason,trigger});return {status:'deferred',code:error.code,trigger,snapshot:this.syncProjection()};}
     this.resourceDeferred=false;
     this.inFlight = (async () => {
-      const sources = this.eligibleSources();
+      const sources = [...new Map([...this.sources.filter(source=>this.sourceContinuations.has(source.sourceId)),...this.eligibleSources()].map(source=>[source.sourceId,source])).values()];
       const settled = await Promise.allSettled(sources.map((source) => this.globalSemaphore.use(() =>
         this.hostSemaphore(source.hostname).use(() => this.pollSource(source),this.shutdownController.signal),this.shutdownController.signal)));
       const failed=settled.find(result=>result.status==="rejected");if(failed)throw failed.reason;
@@ -591,9 +606,9 @@ export class AwarenessService {
       const changed = results.flatMap((result) => result.changed || []);
       const snapshot = this.broadcast(changed, { backfill: trigger === "startup-awareness", trigger });
       log.info("awareness_cycle_completed", { trigger, sourceCount: sources.length, changedCount: changed.length, revision: snapshot.revision, mode: this.mode });
-      return { status: results.some((result) => ["error", "blocked"].includes(result.status)) ? "partial" : "ok", trigger, results, snapshot };
+      return { code:this.resourceDeferred?'STORAGE_RESOURCE_PRESSURE':null, status: this.resourceDeferred?'deferred':results.some((result) => ["error", "blocked"].includes(result.status)) ? "partial" : "ok", trigger, results, snapshot };
     })();
-    try { return await this.inFlight; } finally { this.inFlight = null; }
+    try { return await this.inFlight; } finally { this.inFlight = null;if(this.resourceDeferred&&!this.stopped&&this.admission?.status().state==='normal')queueMicrotask(()=>void this.runCycle('resource-recovered').catch(error=>log.warn('awareness_recovery_failed',{code:error.code}))); }
   }
 
   ingestFinancialArticles(articles = [], { backfill = false, trigger = "financial-news-ingest" } = {}) {
@@ -632,6 +647,9 @@ export class AwarenessService {
     this.timer = null;
     this.shutdownController.abort(new DOMException('Awareness shutdown','AbortError'));
     await Promise.allSettled([this.inFlight]);
+    this.deferredAtShutdown=[...this.sourceContinuations].map(([sourceId,continuation])=>({sourceId,phase:continuation.phase,durable:false}));
+    for(const continuation of this.sourceContinuations.values())await continuation.close();
+    this.sourceContinuations.clear();
   }
 }
 

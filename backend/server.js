@@ -806,7 +806,7 @@ export function createAppServer(overrides = {}) {
   const activeCycles=new Set();
   if(business)for(const method of ["runNewsCycle","runMarketCycle"]){const runCycle=orchestrator[method].bind(orchestrator);orchestrator[method]=(...args)=>{const task=runCycle(...args);activeCycles.add(task);task.finally(()=>activeCycles.delete(task)).catch(()=>{});return task;};}
   orchestrator.storageFlush = () => pipelinePersistence?.flush();
-  if(business){const refresh=awarenessService.runCycle?.bind(awarenessService);if(refresh)awarenessService.runCycle=async(...args)=>{const result=await refresh(...args);await pipelinePersistence.flush();return result;};}
+  if(business){const refresh=awarenessService.runCycle?.bind(awarenessService);if(refresh)awarenessService.runCycle=async(...args)=>{try{const result=await refresh(...args);monitor.update('awareness',{status:result.status==='deferred'?'degraded':result.status==='disabled'?'disabled':result.status==='partial'?'degraded':'completed',errorCode:result.code || null,reason:result.status==='deferred'?'waiting for resources':null,...(result.status==='ok'?{lastSuccessAt:new Date().toISOString()}:{})});await pipelinePersistence.flush();return result;}catch(error){monitor.update('awareness',{status:'failed',errorCode:error.code || 'AWARENESS_FAILED',reason:error.message});throw error;}};}
   orchestrator.researchCycle = async () => {
     const publicEvents=awarenessService.getSnapshot({limit:100},{publicView:true});
     if(publicEvents.mode === "visible") await researchGuard("awarenessEvents",()=>eventLedger.ingest([...publicEvents.recent,...publicEvents.upcoming].map(e=>({...e,url:e.canonicalUrl,eventTime:e.scheduledAt})),{sourceId:"awareness"}));
@@ -1091,7 +1091,7 @@ export function createAppServer(overrides = {}) {
           commands:(failure.unconfirmedCommands||[]).slice(0,20).map(({requestId,id,operation,service,method,jobId,fence,phase})=>({requestId,id,operation,service,method,jobId,fence,phase}))}]:[];
       });
       unconfirmedPersistence.push(...readerUncertainty);
-      app.locals.shutdownReport={primaryCause:storageStatus.failure || null,unconfirmedPersistence,deferredPersistence:{marketProjections:storageStatus.marketProjections?.pending||0,marketCandlesDeferred:Boolean(storageStatus.marketPersistence?.deferred)},cleanupErrors:failures.map(error=>({code:error.code || 'CLEANUP_FAILED'}))};
+      app.locals.shutdownReport={primaryCause:storageStatus.failure || null,unconfirmedPersistence,deferredPersistence:{cycleContinuations:orchestrator.deferredAtShutdown || [],awarenessContinuations:awarenessService.deferredAtShutdown || [],marketProjections:storageStatus.marketProjections?.pending||0,marketCandlesDeferred:Boolean(storageStatus.marketPersistence?.deferred)},cleanupErrors:failures.map(error=>({code:error.code || 'CLEANUP_FAILED'}))};
       log.info("server_stopped",app.locals.shutdownReport);
       if(failures.length)throw failures[0];
       if(readerUncertainty.length)throw Object.assign(Error('Reader persistence remains unconfirmed'),{code:'STORAGE_OUTCOME_UNKNOWN'});

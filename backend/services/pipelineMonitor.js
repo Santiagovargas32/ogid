@@ -1,7 +1,7 @@
 import {createLogger} from '../utils/logger.js';
 const log=createLogger('backend/pipeline');
 import { performance } from 'node:perf_hooks';
-const RECOVERABLE=new Set(['SQLITE_BUSY','STORAGE_BACKPRESSURE','STORAGE_QUEUE_TIMEOUT','STORAGE_READ_TIMEOUT','STORAGE_ANALYSIS_UNAVAILABLE','YAHOO_TIMEOUT','REQUEST_TIMEOUT']);
+const RECOVERABLE=new Set(['STORAGE_RESOURCE_PRESSURE','SQLITE_BUSY','STORAGE_BACKPRESSURE','STORAGE_QUEUE_TIMEOUT','STORAGE_READ_TIMEOUT','STORAGE_ANALYSIS_UNAVAILABLE','YAHOO_TIMEOUT','REQUEST_TIMEOUT']);
 export class PipelineMonitor {
   constructor({ publish=()=>{},persist=null }={}) {this.stages=new Map();this.tasks=new Map();this.publish=publish;this.persist=persist;this.pending=new Set();this.policies=new Map([['storage',{kind:'initialization'}]]);}
   register(id, {kind = 'periodic', staleMs = 600000} = {}) {
@@ -35,7 +35,7 @@ export class PipelineMonitor {
       this.update(id,{status:'running',queue:0,lastRunAt:new Date().toISOString(),errorCode:null,reason:null});
       try{const value=await work();const outcome=counts(value);
         this.update(id,{status:outcome.degraded?'degraded':'completed',lastSuccessAt:outcome.degraded?this.stages.get(id).lastSuccessAt:new Date().toISOString(),durationMs:performance.now()-started,processed:outcome.processed || 0,discarded:outcome.discarded || 0,reason:outcome.reason || null,revision:revision(value)});return value;
-      }catch(error){this.update(id,{status:RECOVERABLE.has(error.code)?'degraded':/STORAGE_|SQLITE_|RESEARCH_CAPACITY/.test(error.code || '')?'blocked':'failed',durationMs:performance.now()-started,errorCode:error.code || 'PIPELINE_FAILED',reason:RECOVERABLE.has(error.code)?'recoverable; next scheduled run':'requires recovery'});throw error;}
+      }catch(error){this.update(id,{status:RECOVERABLE.has(error.code)?'degraded':/STORAGE_|SQLITE_|RESEARCH_CAPACITY/.test(error.code || '')?'blocked':'failed',durationMs:performance.now()-started,errorCode:error.code || 'PIPELINE_FAILED',reason:error.code==='STORAGE_RESOURCE_PRESSURE'?'waiting for resources':RECOVERABLE.has(error.code)?'recoverable; next scheduled run':'requires recovery'});throw error;}
     }).finally(()=>this.tasks.delete(id));this.tasks.set(id,task);return task;
   }
   schedule(id,{nextRunAt,intervalMs}){

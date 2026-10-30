@@ -15,13 +15,13 @@ export function createBusinessAdapters(manager, {rootDir,enabled=true,rssEnabled
   news.recordContext=snapshot=>call("news","recordContext",[{meta:{lastRefreshAt:snapshot.meta?.lastRefreshAt,dataQuality:snapshot.meta?.dataQuality},countries:snapshot.countries,impact:{items:snapshot.impact?.items || []}}]);
   const originalCoverage=news.coverage;news.coverage=async(...args)=>{coverage=await originalCoverage(...args);return coverage;};
   news.records={get size(){return coverage.totalStored;}};
-  async function batches(values,work,{maxItems=100,maxBytes=128000}={}){
+  async function batches(values,work,{maxItems=100,maxBytes=128000,progress={}}={}){
     if(!values?.length)return work([]);
-    let batch=[],bytes=0,combined={};
-    async function flush(){if(!batch.length)return;const result=await work(batch);for(const [key,value]of Object.entries(result || {}))combined[key]=typeof value==="number"&&key!=="revision"?(combined[key] || 0)+value:value;batch=[];bytes=0;}
-    for(const row of values || []){const size=Buffer.byteLength(JSON.stringify(row));if(batch.length&&(bytes+size>maxBytes||batch.length>=maxItems))await flush();batch.push(row);bytes+=size;}await flush();return combined;
+    let batch=[],bytes=0,combined=progress.combined ||= {};
+    async function flush(){if(!batch.length)return;const result=await work(batch);for(const [key,value]of Object.entries(result || {}))combined[key]=typeof value==="number"&&key!=="revision"?(combined[key] || 0)+value:value;progress.offset=(progress.offset || 0)+batch.length;batch=[];bytes=0;}
+    for(const row of (values || []).slice(progress.offset || 0)){const size=Buffer.byteLength(JSON.stringify(row));if(batch.length&&(bytes+size>maxBytes||batch.length>=maxItems))await flush();batch.push(row);bytes+=size;}await flush();return combined;
   }
-  news.ingest=async(values,options)=>{const result=await batches(values,batch=>call("news","ingest",[batch,options]));coverage=await originalCoverage();return result;};
+  news.ingest=async(values,options,progress={})=>{const result=await batches(values,batch=>call("news","ingest",[batch,options]),{progress});coverage=await originalCoverage();return result;};
   const candles={...proxy("candles",["query","has","hasCandle","latest","hydrate","coverageSummary"]),enabled,rootDir};
   for(const method of ["append","upsert"])candles[method]=(values,options)=>batches(values,batch=>call("candles",method,[batch,options]),{maxItems:500,maxBytes:Math.max(1,Math.min(2097152,manager.options.maxCommandBytes-1024))});
   candles.persistDeferred=(values,options)=>manager.marketWrites.admit(values,options);

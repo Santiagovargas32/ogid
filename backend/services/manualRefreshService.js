@@ -56,6 +56,7 @@ class ManualRefreshService {
       };
     }
 
+    this.orchestrator.admission?.assert('acquisition');
     const nowMs = Date.now();
     if (this.inFlight) {
       const retryAfterMs = Math.max(1_000, this.resolveGlobalRetryAfterMs(nowMs));
@@ -113,6 +114,7 @@ class ManualRefreshService {
       .catch((error) => {
         log.error("manual_refresh_failed", {
           refreshId,
+          code:error.code,
           message: error.message
         });
       })

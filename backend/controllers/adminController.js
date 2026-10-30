@@ -355,6 +355,9 @@ export function getPipelineStatus(_req, res) {
         lastStartedAt: marketCycle.lastStartedAt || null,
         lastCompletedAt: marketCycle.lastCompletedAt || null,
         lastDurationMs: marketCycle.lastDurationMs ?? null,
+        lastErrorCode:marketCycle.lastErrorCode || null,
+        resourcePending:Boolean(marketCycle.resourcePending),resourceReason:marketCycle.resourceReason || null,
+        lastError:marketCycle.lastError || null,
         lastStatus: marketEnabled ? marketCycle.lastStatus || "idle" : marketCycle.lastStatus || "disabled",
         provider: providerChain || (marketEnabled ? config.market?.provider || "unknown" : "disabled"),
         providerChain,
@@ -418,6 +421,8 @@ export function getPipelineStatus(_req, res) {
         nextProviderRunAt:orchestrator?.nextPaidCollectAt ? new Date(orchestrator.nextPaidCollectAt).toISOString() : null,
         nextRssRunAt:orchestrator?.nextRssCollectAt ? new Date(orchestrator.nextRssCollectAt).toISOString() : null,
         rss:{execution:config.news?.rssWorkerFetch?"worker":"backend",catalogSize:rssCatalog.length,availableFeedCount:rssCatalog.filter(feed=>feed.enabled).length,maxFeedsPerCycle:config.news?.rssWorkerFetch?18:null,concurrency:4,deadlineMs:60000,catalog:rssCatalog},
+        lastErrorCode:newsCycle.lastErrorCode || null,
+        resourcePending:Boolean(newsCycle.resourcePending),resourceReason:newsCycle.resourceReason || null,
         lastStatus: newsCycle.lastStatus || "idle",
         provider: newsSourceMeta.provider || "unknown",
         pageSize: newsPolicy.pageSize,
@@ -434,6 +439,7 @@ export function getPipelineStatus(_req, res) {
         snapshots: newsProviderSnapshots
       },
       awareness: {
+        runtime:res.app.locals.awarenessService?.resourceStatus?.() || null,
         schemaVersion: awarenessSnapshot.schemaVersion,
         mode: awarenessSnapshot.mode,
         revision: awarenessSnapshot.revision,

@@ -1,3 +1,4 @@
+import {compactError} from './errorEnvelope.js';
 import { WebSocket, WebSocketServer } from "ws";
 import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
@@ -197,6 +198,7 @@ export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000,
     lastConnection: null,
     lastDisconnection: null
   };
+  const errorNotices=new Map();
   const metrics = { upgradeRejected: 0, envelopes: 0, bytes: 0, dropped: 0, maxBufferedBytes: 0, heartbeatTimeouts: 0, closeCodes: {} };
   function observe(sample) {
     metrics.maxBufferedBytes = Math.max(metrics.maxBufferedBytes, sample.bufferedBefore || 0, sample.bufferedAfter || 0,sample.bufferedAfterSend || 0);
@@ -209,7 +211,11 @@ export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000,
     transportSamples.push(sample); if (transportSamples.length > 20) transportSamples.shift();
   }
   function send(client, type, data, meta = {}, coalesceKey = null) {
-    const started = performance.now(); const envelope = createEnvelope(type, data, meta);
+    const started = performance.now();
+    if(type==='error')({data,meta}=compactError(data,meta));
+    let envelope=createEnvelope(type,data,meta);
+    if(type==='error'&&Buffer.byteLength(envelope)>(transportLimits.maxMessageBytes || TRANSPORT_DEFAULTS.maxMessageBytes))
+      envelope=createEnvelope('error',{message:'Operation failed',code:data.code,requestId:data.requestId});
     return client.boundedTransport.enqueue(envelope, { event: type, revision: data?.revision ?? sync.revision, coalesceKey, serializationMs: performance.now() - started });
   }
 
@@ -367,7 +373,15 @@ export function createSocketServer({ server, path = "/ws", heartbeatMs = 15_000,
         }else publishState(resources);
         return;
       }
-      for (const client of clients) send(client, type, data, meta);
+      let coalesceKey=null;
+      if(type==='error'&&data?.recoverable){
+        const key=`${meta.domain || data.domain || 'system'}:${data.code}`;
+        const previous=errorNotices.get(key),now=Date.now();
+        if(previous&&now-previous.at<1000){previous.count++;metrics.suppressedErrorNotices=(metrics.suppressedErrorNotices || 0)+1;return;}
+        if(errorNotices.size>=32)errorNotices.delete(errorNotices.keys().next().value);
+        errorNotices.set(key,{at:now,count:(previous?.count || 0)+1});coalesceKey=`error:${key}`;
+      }
+      for (const client of clients) send(client, type, data, meta,coalesceKey);
     },
     clientCount() {
       return clients.size;
