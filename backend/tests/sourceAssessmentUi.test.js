@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {SourceAssessmentCache,sourceAssessmentLabel,paintSourceAssessment} from '../../frontend/js/sourceAssessmentModel.js';
+test('reviewed inconclusive evaluations are distinct from not yet evaluated and never acquire a central marker',()=>{
+ const value=sourceAssessmentLabel({status:'unrated',ownEvaluation:{dossierId:'reviewed',revision:2,political:{status:'insufficient-evidence',rating:null,scope:'regional-reporting'}}});assert.equal(value.position,-1);assert.match(value.label,/evaluada/);assert.match(value.href,/dossierId=reviewed/);
+});
+test('an elaborated pending dossier is not presented as an absent evaluation',()=>{const value=sourceAssessmentLabel({publisherId:'bbc',edition:'bbc.co.uk',ownEvaluationStatus:'pending-review'});assert.equal(value.position,-1);assert.match(value.text,/pendiente de revisión/);assert.equal(value.text.includes('sin evaluar'),false);});
 test('the medium meter has no central marker for unknown, disagreement or incompatible contexts',()=>{
   for(const status of ['unrated','not-applicable','unmapped','disputed','different-contexts','partial','unresolved','loading','unavailable']){
     const value=sourceAssessmentLabel({status,rating:'center'});assert.equal(value.position,-1);assert.ok(!value.text.includes('neutral'));

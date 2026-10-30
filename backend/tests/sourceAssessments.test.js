@@ -51,7 +51,7 @@ test('024 upgrades schema 023 additively without rewriting article originals or 
     for(const name of readdirSync(new URL('../storage/migrations/',import.meta.url)))if(Number(name.slice(0,3))<=23)copyFileSync(new URL(`../storage/migrations/${name}`,import.meta.url),join(dir,name));
     migrate(db,dir);const checksums=db.prepare('SELECT * FROM schema_migrations ORDER BY version').all();
     db.prepare("INSERT INTO articles VALUES('legacy','Historical original',NULL,NULL,NULL,?,?,1,'headline-only-link-out','{}')").run(at,at);
-    const originals=db.prepare('SELECT * FROM articles').all();assert.equal(migrate(db).length,30);
+    const originals=db.prepare('SELECT * FROM articles').all();assert.equal(migrate(db).length,31);
     assert.deepEqual(db.prepare('SELECT * FROM schema_migrations WHERE version<=23 ORDER BY version').all(),checksums);
     assert.deepEqual(db.prepare('SELECT * FROM articles').all(),originals);assert.equal(db.prepare('SELECT count(*) AS n FROM news_editorial_facets').get().n,0);
     assert.equal(db.pragma('integrity_check',{simple:true}),'ok');assert.deepEqual(db.pragma('foreign_key_check'),[]);

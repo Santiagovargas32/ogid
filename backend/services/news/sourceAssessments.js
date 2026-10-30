@@ -4,6 +4,7 @@ import {SOURCE_ASSESSMENT_METHOD,SOURCE_IMPORT_SCHEMA} from './sourceAssessmentS
 import {validateValue} from '../../contracts/ogidOperations.js';
 import {AppError} from '../../utils/error.js';
 import {stableHash} from '../../utils/stableHash.js';
+import {publishedSourceEvaluation,evaluationSummary,sourceEvaluationState} from '../../storage/sourceDossiers.js';
 
 const json = JSON.stringify;
 const hash = value => createHash('sha256').update(json(value)).digest('hex');
@@ -77,7 +78,7 @@ export class SourceAssessments {
     if(Date.parse(knownAt)>this.now()+300000||Date.parse(asOf)>this.now()+300000)fail('SOURCE_ASSESSMENT_FUTURE_CUT');
     return {asOf,knownAt};
   }
-  revision(){return this.db?{assessments:this.db.prepare('SELECT coalesce(max(sequence),0) AS n FROM news_source_assessments').get().n,profiles:this.db.prepare('SELECT coalesce(max(sequence),0) AS n FROM news_publisher_profiles').get().n}:{assessments:0,profiles:0};}
+  revision(){return this.db?{assessments:this.db.prepare('SELECT coalesce(max(sequence),0) AS n FROM news_source_assessments').get().n,profiles:this.db.prepare('SELECT coalesce(max(sequence),0) AS n FROM news_publisher_profiles').get().n,evaluations:this.db.prepare('SELECT coalesce(max(sequence),0) AS n FROM source_evaluation_reviews').get().n,dossiers:this.db.prepare('SELECT coalesce(max(sequence),0) AS n FROM source_evaluation_dossiers').get().n}:{assessments:0,profiles:0,evaluations:0,dossiers:0};}
   profile(publisherId,edition,{asOf,knownAt},upper) {
     const row=this.db?.prepare("SELECT payload_json FROM news_publisher_profiles WHERE publisher_id=? AND edition=? AND sequence<=? AND recorded_at<=? AND json_extract(payload_json,'$.verifiedAt')<=? ORDER BY revision DESC LIMIT 1").get(publisherId,edition,upper,knownAt,asOf);
     return row?JSON.parse(row.payload_json):null;
@@ -90,7 +91,9 @@ export class SourceAssessments {
     const partial=rows.length>100;
     const status=partial?'partial':!eligible.length?'unrated':contexts.size>1?'different-contexts':ratings.has('unmapped')?'unmapped':ratings.size>1?'disputed':ratings.has('not-applicable')?'not-applicable':'rated';
     const profile=this.profile(publisherId,edition,cut,upper.profiles);
-    return {publisherId,edition,name:this.registry.find(p=>p.publisherId===publisherId)?.name||publisherId,status,
+    const ownEvaluation=this.db?evaluationSummary(publishedSourceEvaluation(this.db,publisherId,edition,cut,upper.evaluations||0)):null;
+    const ownEvaluationStatus=this.db?sourceEvaluationState(this.db,publisherId,edition,cut.knownAt,upper.dossiers||0,upper.evaluations||0):null;
+    return {publisherId,edition,name:this.registry.find(p=>p.publisherId===publisherId)?.name||publisherId,status,ownEvaluation,ownEvaluationStatus,
       rating:status==='rated'?eligible[0].rating:null,evaluationCount:eligible.length,partial,
       evaluations:eligible.slice(0,5).map(r=>({assessmentId:r.assessmentId,revision:r.revision,evaluatorId:r.evaluatorId,evaluatorName:r.evaluatorName,politicalScope:r.politicalScope,rating:r.rating,originalRating:r.originalRating,methodId:r.methodId,methodVersion:r.methodVersion,assessedAt:r.assessedAt,validFrom:r.validFrom,...(r.validUntil?{validUntil:r.validUntil}:{})})),
       moreEvaluations:eligible.length>5,

@@ -111,7 +111,7 @@ test('additive migration upgrades schema 029 without modifying existing snapshot
     assert.equal(migrate(db,migrations).length,29);
     db.prepare('INSERT INTO runtime_snapshots VALUES(?,?,?)').run('retained','2026-10-28T00:00:00Z',JSON.stringify({id:'old-id',revision:42}));
     const before=db.prepare('SELECT * FROM runtime_snapshots').all();
-    assert.equal(migrate(db).length,30);
+    assert.equal(migrate(db).length,31);
     assert.deepEqual(db.prepare('SELECT * FROM runtime_snapshots').all(),before);
     assert.equal(new MarketProjectionRepository(new BusinessRuntime(db)).pending().length,0);
   }finally{db.close();rmSync(directory,{recursive:true,force:true});}

@@ -1,6 +1,6 @@
 {
-  "contractVersion": "1.12.0",
-  "routes": 98,
+  "contractVersion": "1.13.0",
+  "routes": 104,
   "operations": [
     {
       "retention": "stable domain-sequence cut; candidate situations and explicitly reviewed incidents; event time may be unknown",
@@ -1136,6 +1136,1166 @@
       "id": "news.source-assessments.import",
       "method": "POST",
       "path": "/api/admin/news/source-assessments/import",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_operator"
+    },
+    {
+      "effects": "stored human-approved evaluations only; political and journalism dimensions separate",
+      "id": "news.source-evaluations",
+      "method": "GET",
+      "path": "/api/news/source-evaluations",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "publisherId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "edition": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "asOf": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "knownAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30
+          },
+          "maxBytes": {
+            "type": "integer",
+            "minimum": 4096,
+            "maximum": 262144
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "pathParameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "effects": "stored approved evidence and frozen sample pages; no providers",
+      "id": "news.source-evaluation",
+      "method": "GET",
+      "path": "/api/news/source-evaluations/:id",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000000
+          },
+          "section": {
+            "type": "string",
+            "enum": [
+              "overview",
+              "evidence",
+              "sample",
+              "observations"
+            ]
+          },
+          "asOf": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "knownAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30
+          },
+          "maxBytes": {
+            "type": "integer",
+            "minimum": 4096,
+            "maximum": 262144
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "profile": "research",
+      "scope": "read:stored",
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_query"
+    },
+    {
+      "profile": "operator",
+      "scope": "news:assessments:write",
+      "effects": "stored proposals and review status; read only",
+      "id": "news.source-evaluations.pending",
+      "method": "GET",
+      "path": "/api/admin/news/source-evaluations",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "publisherId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "edition": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "asOf": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "knownAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30
+          },
+          "maxBytes": {
+            "type": "integer",
+            "minimum": 4096,
+            "maximum": 262144
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_operator"
+    },
+    {
+      "profile": "operator",
+      "scope": "news:assessments:write",
+      "pathParameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "effects": "stored draft pages; read only",
+      "id": "news.source-evaluation.pending",
+      "method": "GET",
+      "path": "/api/admin/news/source-evaluations/:id",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000000
+          },
+          "section": {
+            "type": "string",
+            "enum": [
+              "overview",
+              "evidence",
+              "sample",
+              "observations"
+            ]
+          },
+          "asOf": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "knownAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30
+          },
+          "maxBytes": {
+            "type": "integer",
+            "minimum": 4096,
+            "maximum": 262144
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "body": null,
+      "cost": "no-provider",
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_operator"
+    },
+    {
+      "profile": "operator",
+      "scope": "news:assessments:write",
+      "effects": "mutation",
+      "cost": "one immutable dossier / 64 KiB; no model or provider calls",
+      "body": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+          },
+          "dossier": {
+            "type": "object",
+            "properties": {
+              "dossierId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+              },
+              "revision": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "methodVersion": {
+                "type": "string",
+                "enum": [
+                  "ogid-source-review-v1"
+                ]
+              },
+              "author": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "asOf": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "validFrom": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "permission": {
+                "type": "object",
+                "properties": {
+                  "basis": {
+                    "type": "string",
+                    "enum": [
+                      "self-authored",
+                      "licensed",
+                      "permission"
+                    ]
+                  },
+                  "reference": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  },
+                  "redistributionAllowed": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "basis",
+                  "reference",
+                  "redistributionAllowed"
+                ],
+                "additionalProperties": false
+              },
+              "profile": {
+                "type": "object",
+                "properties": {
+                  "publisherId": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+                  },
+                  "edition": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000000
+                  },
+                  "verifiedAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "editorialCountries": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[A-Z]{2}$"
+                    },
+                    "maxItems": 10,
+                    "uniqueItems": true
+                  },
+                  "languages": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[a-z]{2,3}$"
+                    },
+                    "maxItems": 10,
+                    "uniqueItems": true
+                  },
+                  "ownerGroupId": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+                  },
+                  "ownerGroupName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "evidenceUrls": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 500
+                    },
+                    "maxItems": 5,
+                    "uniqueItems": true
+                  }
+                },
+                "required": [
+                  "publisherId",
+                  "edition",
+                  "revision",
+                  "verifiedAt",
+                  "editorialCountries",
+                  "languages",
+                  "evidenceUrls"
+                ],
+                "additionalProperties": false
+              },
+              "profileStatements": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "field": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 80
+                    },
+                    "value": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 600
+                    },
+                    "basis": {
+                      "type": "string",
+                      "enum": [
+                        "publisher-declared",
+                        "observed",
+                        "external-document"
+                      ]
+                    },
+                    "evidenceIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+                      },
+                      "maxItems": 10
+                    }
+                  },
+                  "required": [
+                    "field",
+                    "value",
+                    "basis",
+                    "evidenceIds"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxItems": 15
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+                    },
+                    "url": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 500
+                    },
+                    "retrievedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "basis": {
+                      "type": "string",
+                      "enum": [
+                        "publisher-declared",
+                        "observed",
+                        "external-document"
+                      ]
+                    },
+                    "note": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 600
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "url",
+                    "retrievedAt",
+                    "basis",
+                    "note"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxItems": 40
+              },
+              "sample": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+                    },
+                    "articleId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+                    },
+                    "articleRevision": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "url": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 500
+                    },
+                    "title": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 600
+                    },
+                    "publishedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "receivedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "originChainId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "maxLength": 160
+                    },
+                    "textScope": {
+                      "type": "string",
+                      "enum": [
+                        "headline",
+                        "excerpt",
+                        "permitted-text"
+                      ]
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "news",
+                        "analysis",
+                        "opinion",
+                        "institutional",
+                        "unknown"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "url",
+                    "title",
+                    "publishedAt",
+                    "receivedAt",
+                    "originChainId",
+                    "textScope",
+                    "type"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxItems": 30
+              },
+              "selection": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "limitations": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 600
+                },
+                "maxItems": 15
+              },
+              "political": {
+                "type": "object",
+                "properties": {
+                  "scope": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "supported",
+                      "mixed",
+                      "insufficient-evidence",
+                      "not-applicable"
+                    ]
+                  },
+                  "rating": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      "left",
+                      "center-left",
+                      "center",
+                      "center-right",
+                      "right",
+                      null
+                    ]
+                  },
+                  "summary": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  },
+                  "sampleIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+                    },
+                    "maxItems": 30
+                  },
+                  "evidenceIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+                    },
+                    "maxItems": 15
+                  },
+                  "counterEvidenceIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+                    },
+                    "maxItems": 15
+                  }
+                },
+                "required": [
+                  "scope",
+                  "status",
+                  "rating",
+                  "summary",
+                  "sampleIds",
+                  "evidenceIds",
+                  "counterEvidenceIds"
+                ],
+                "additionalProperties": false
+              },
+              "journalism": {
+                "type": "object",
+                "properties": {
+                  "attribution": {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "backed",
+                          "mixed",
+                          "problems",
+                          "insufficient-evidence"
+                        ]
+                      },
+                      "summary": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1000
+                      },
+                      "evidenceIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+                        },
+                        "maxItems": 10
+                      },
+                      "observations": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "sampleId": {
+                              "type": "string",
+                              "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+                            },
+                            "outcome": {
+                              "type": "string",
+                              "enum": [
+                                "supported",
+                                "problem",
+                                "unobservable"
+                              ]
+                            },
+                            "note": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 500
+                            },
+                            "evidenceIds": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+                              },
+                              "maxItems": 10
+                            }
+                          },
+                          "required": [
+                            "sampleId",
+                            "outcome",
+                            "note",
+                            "evidenceIds"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "maxItems": 30
+                      }
+                    },
+                    "required": [
+                      "status",
+                      "summary",
+                      "evidenceIds",
+                      "observations"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "verifiability": {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "backed",
+                          "mixed",
+                          "problems",
+                          "insufficient-evidence"
+                        ]
+                      },
+                      "summary": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1000
+                      },
+                      "evidenceIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+                        },
+                        "maxItems": 10
+                      },
+                      "observations": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "sampleId": {
+                              "type": "string",
+                              "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+                            },
+                            "outcome": {
+                              "type": "string",
+                              "enum": [
+                                "supported",
+                                "problem",
+                                "unobservable"
+                              ]
+                            },
+                            "note": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 500
+                            },
+                            "evidenceIds": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+                              },
+                              "maxItems": 10
+                            }
+                          },
+                          "required": [
+                            "sampleId",
+                            "outcome",
+                            "note",
+                            "evidenceIds"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "maxItems": 30
+                      }
+                    },
+                    "required": [
+                      "status",
+                      "summary",
+                      "evidenceIds",
+                      "observations"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "time-and-place": {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "backed",
+                          "mixed",
+                          "problems",
+                          "insufficient-evidence"
+                        ]
+                      },
+                      "summary": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1000
+                      },
+                      "evidenceIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+                        },
+                        "maxItems": 10
+                      },
+                      "observations": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "sampleId": {
+                              "type": "string",
+                              "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+                            },
+                            "outcome": {
+                              "type": "string",
+                              "enum": [
+                                "supported",
+                                "problem",
+                                "unobservable"
+                              ]
+                            },
+                            "note": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 500
+                            },
+                            "evidenceIds": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+                              },
+                              "maxItems": 10
+                            }
+                          },
+                          "required": [
+                            "sampleId",
+                            "outcome",
+                            "note",
+                            "evidenceIds"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "maxItems": 30
+                      }
+                    },
+                    "required": [
+                      "status",
+                      "summary",
+                      "evidenceIds",
+                      "observations"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "content-labels": {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "backed",
+                          "mixed",
+                          "problems",
+                          "insufficient-evidence"
+                        ]
+                      },
+                      "summary": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1000
+                      },
+                      "evidenceIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+                        },
+                        "maxItems": 10
+                      },
+                      "observations": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "sampleId": {
+                              "type": "string",
+                              "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+                            },
+                            "outcome": {
+                              "type": "string",
+                              "enum": [
+                                "supported",
+                                "problem",
+                                "unobservable"
+                              ]
+                            },
+                            "note": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 500
+                            },
+                            "evidenceIds": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+                              },
+                              "maxItems": 10
+                            }
+                          },
+                          "required": [
+                            "sampleId",
+                            "outcome",
+                            "note",
+                            "evidenceIds"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "maxItems": 30
+                      }
+                    },
+                    "required": [
+                      "status",
+                      "summary",
+                      "evidenceIds",
+                      "observations"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "corrections": {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "backed",
+                          "mixed",
+                          "problems",
+                          "insufficient-evidence"
+                        ]
+                      },
+                      "summary": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1000
+                      },
+                      "evidenceIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+                        },
+                        "maxItems": 10
+                      },
+                      "observations": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "sampleId": {
+                              "type": "string",
+                              "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+                            },
+                            "outcome": {
+                              "type": "string",
+                              "enum": [
+                                "supported",
+                                "problem",
+                                "unobservable"
+                              ]
+                            },
+                            "note": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 500
+                            },
+                            "evidenceIds": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+                              },
+                              "maxItems": 10
+                            }
+                          },
+                          "required": [
+                            "sampleId",
+                            "outcome",
+                            "note",
+                            "evidenceIds"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "maxItems": 30
+                      }
+                    },
+                    "required": [
+                      "status",
+                      "summary",
+                      "evidenceIds",
+                      "observations"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "attribution",
+                  "verifiability",
+                  "time-and-place",
+                  "content-labels",
+                  "corrections"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "dossierId",
+              "revision",
+              "methodVersion",
+              "author",
+              "asOf",
+              "validFrom",
+              "permission",
+              "profile",
+              "profileStatements",
+              "evidence",
+              "sample",
+              "selection",
+              "limitations",
+              "political",
+              "journalism"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "requestId",
+          "dossier"
+        ],
+        "additionalProperties": false
+      },
+      "bodyRequired": [
+        "requestId",
+        "dossier"
+      ],
+      "id": "news.source-evaluations.propose",
+      "method": "POST",
+      "path": "/api/admin/news/source-evaluations/propose",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "fixed": {},
+      "retention": "current snapshot; consult response coverage",
+      "provenance": "OGID runtime; source metadata",
+      "quality": "preserve mode, dates, stale/synthetic and missing values",
+      "projection": "public",
+      "tool": "ogid_operator"
+    },
+    {
+      "profile": "operator",
+      "scope": "news:assessments:write",
+      "effects": "mutation",
+      "cost": "human review bound to exact revision and content hash; atomic publication",
+      "body": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+          },
+          "dossierId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "contentHash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "approve",
+              "reject",
+              "changes-requested",
+              "withdraw"
+            ]
+          },
+          "reviewer": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "requestId",
+          "dossierId",
+          "revision",
+          "contentHash",
+          "decision",
+          "reviewer",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "bodyRequired": [
+        "requestId",
+        "dossierId",
+        "revision",
+        "contentHash",
+        "decision",
+        "reviewer",
+        "reason"
+      ],
+      "id": "news.source-evaluations.review",
+      "method": "POST",
+      "path": "/api/admin/news/source-evaluations/review",
       "parameters": {
         "type": "object",
         "properties": {},

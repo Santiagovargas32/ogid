@@ -15,6 +15,7 @@ import { physicalPages } from './sqlNewsCorpus.js';
 import {resolveEditorialIdentity,editorialProjection,PUBLISHER_METHOD} from '../services/news/publisherIdentity.js';
 import {classifyRssArticle} from '../services/news/rssClassifier.js';
 import {classificationProjection,NEWS_CLASSIFICATION_VERSION} from '../services/news/newsClassification.js';
+import {SourceDossiers} from './sourceDossiers.js';
 import {SourceAssessments} from '../services/news/sourceAssessments.js';
 import {sourceCoverage,saveEditorialFacet} from './sourceCoverage.js';
 import {NewsComparisons} from './newsComparisons.js';
@@ -71,6 +72,13 @@ export class SqlNewsArchive extends NewsArchive {
   reviewComparison(input){return this.comparisonStore.review(input);}
   sourceAssessments(input={}){return this.sourceAssessmentStore.catalogue(input);}
   sourceAssessment(input={}){return this.sourceAssessmentStore.detail(input);}
+  get dossierStore(){return this._dossierStore ||= new SourceDossiers(this.db,{assessments:this.sourceAssessmentStore,now:this.now});}
+  sourceDossiers(input){return this.dossierStore.list(input);}
+  sourceDossier(input){return this.dossierStore.detail(input);}
+  sourceDossierDrafts(input){return this.dossierStore.list(input,true);}
+  sourceDossierDraft(input){return this.dossierStore.detail(input,true);}
+  proposeSourceDossier(input){return this.dossierStore.propose(input);}
+  reviewSourceDossier(input){return this.dossierStore.review(input);}
   importSourceAssessments(input){return this.sourceAssessmentStore.importBatch(input);}
   sourceCoverage(input={}){return sourceCoverage(this.db,this.sourceAssessmentStore,input);}
   saveSources(article){for(const p of article.provenances||[]){const sid=p.sourceId||`publisher:${p.publisher||p.provider||'unknown'}`;sourceRow(this.db,sid,p);this.db.prepare('INSERT INTO article_sources VALUES(?,?,?,?) ON CONFLICT(article_id,source_id) DO UPDATE SET observed_at=excluded.observed_at,provenance_json=excluded.provenance_json WHERE observed_at IS NOT excluded.observed_at OR provenance_json!=excluded.provenance_json').run(article.id,sid,article.archiveLastSeenAt,JSON.stringify(p));}}

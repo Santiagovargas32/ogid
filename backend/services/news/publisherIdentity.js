@@ -16,6 +16,8 @@ export const PUBLISHERS = Object.freeze([
   ['fox-news', 'Fox News', ['fox', 'fox news', 'fox world'], ['foxnews.com'], .72],
   ['kyiv-independent', 'The Kyiv Independent', ['the kyiv independent','kyiv independent'], ['kyivindependent.com'], .55],
   ['gcaptain', 'gCaptain', ['gcaptain'], ['gcaptain.com'], .55],
+  ['un-news', 'UN News', ['un news','un news global'], ['news.un.org'], .55],
+  ['usni-news', 'USNI News', ['usni news'], ['news.usni.org'], .55],
 ].map(([publisherId, name, aliases, domains, priority]) => Object.freeze({publisherId, name, aliases, domains, priority})));
 
 const clean = value => typeof value === 'string' ? value.replace(/[\x00-\x1f\x7f<>]/g, ' ').trim().slice(0, 160) : null;

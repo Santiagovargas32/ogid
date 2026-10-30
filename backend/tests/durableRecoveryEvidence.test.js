@@ -24,6 +24,6 @@ test('snapshot uses the real schema and refuses a writable connection',()=>{
     db.prepare('INSERT INTO acquisition_jobs VALUES(?,?,?,?,?,?,?)').run('job','receipt','market-persistence','complete','2026-10-29','2026-10-29',JSON.stringify({cursor:1,candles:[{}]}));
     db.prepare('INSERT INTO runtime_snapshots VALUES(?,?,?)').run('rss-canonical-feed:feed','2026-10-29',JSON.stringify({lastCommittedAt:123,lastAttemptAt:100,etag:'etag',contentHash:'content',articles:[{private:'not exported'}]}));
     db.pragma('query_only=ON');const result=recoverySnapshot(db);
-    assert.equal(result.schema,30);assert.deepEqual(result.receipts,[{job_id:'job',request_id:'receipt',status:'complete',cursor:1,items:1}]);assert.equal(result.rss[0].committed,123);assert.equal(result.rss[0].etag,'etag');assert.equal(JSON.stringify(result).includes('not exported'),false);assert.equal(result.outboxMissing,0);
+    assert.equal(result.schema,31);assert.deepEqual(result.receipts,[{job_id:'job',request_id:'receipt',status:'complete',cursor:1,items:1}]);assert.equal(result.rss[0].committed,123);assert.equal(result.rss[0].etag,'etag');assert.equal(JSON.stringify(result).includes('not exported'),false);assert.equal(result.outboxMissing,0);
   }finally{db.close();}
 });

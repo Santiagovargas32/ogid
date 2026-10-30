@@ -90,9 +90,10 @@ test("el contexto semanal compacto cabe en MCP y declara el muestreo sin modific
   assert.equal(extended.structuredContent.data.history.at(-1).observedAt, raw.history.at(-1).observedAt);
 });
 function requiredSample(definition) {
+  const sample=def=>Array.isArray(def.type)?sample({...def,type:def.type[0]}):def.type==='null'?null:def.type==='object'?requiredSample(def):def.type==='array'?Array.from({length:def.minItems??0},()=>sample(def.items)):def.type==='boolean'?true:def.format==='date-time'?'2026-10-06T12:00:00Z':def.type==='integer'?def.minimum||1:def.enum?.[0]??(def.pattern?.includes('{64}')?'a'.repeat(64):'fixture-id');
   return Object.fromEntries((definition.required || []).map(key => {
     const def = definition.properties[key];
-    const value = def.type === "object" ? requiredSample(def) : def.type === "array" ? ["fixture-id"] : def.type === "boolean" ? true : def.format === "date-time" ? "2026-10-06T12:00:00Z" : def.type === "integer" ? def.minimum || 1 : def.enum?.[0] || (key === "q" ? "NVDA" : key === "currency" ? "USD" : "fixture-id");
+    const value = key==='q'?'NVDA':key==='currency'?'USD':sample(def);
     return [key, value];
   }));
 }

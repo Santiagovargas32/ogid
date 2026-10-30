@@ -1,4 +1,5 @@
 import { getSignalChange,getSourceAssessments,getSourceAssessment,getSourceCoverage,importSourceAssessments } from "../controllers/researchController.js";
+import {getSourceEvaluations,getSourceEvaluation,getPendingSourceEvaluations,getPendingSourceEvaluation,proposeSourceEvaluation,reviewSourceEvaluation} from '../controllers/researchController.js';
 import { Router } from "express";
 import {getSituations,getSituation,getSituationRevisions,getSituationChanges,getSituationStatus,reviewSituation} from '../controllers/situationsController.js';
 import {getComparisons,getComparison,getComparisonClaim,getComparisonChanges,reviewComparison} from '../controllers/researchController.js';
@@ -18,6 +19,12 @@ router.post('/admin/news/comparisons/review',reviewComparison);
 router.get('/news/source-assessments',getSourceAssessments);
 router.get('/news/source-assessments/:id',getSourceAssessment);
 router.get('/news/source-coverage',getSourceCoverage);
+router.get('/news/source-evaluations',getSourceEvaluations);
+router.get('/news/source-evaluations/:id',getSourceEvaluation);
+router.get('/admin/news/source-evaluations',getPendingSourceEvaluations);
+router.get('/admin/news/source-evaluations/:id',getPendingSourceEvaluation);
+router.post('/admin/news/source-evaluations/propose',proposeSourceEvaluation);
+router.post('/admin/news/source-evaluations/review',reviewSourceEvaluation);
 router.post('/admin/news/source-assessments/import',importSourceAssessments);
 router.get("/research/forecast-evaluation",getForecastEvaluation);
 router.post("/research/forecasts",registerForecast);

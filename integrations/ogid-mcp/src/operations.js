@@ -5,6 +5,8 @@ import { ReadError } from "./client.js";
 import { VERSION, ADAPTER_BUILD, allowsResearchOperation } from "./config.js";
 
 export function zodSchema(def) {
+  if(Array.isArray(def.type))return z.union(def.type.map(type=>zodSchema({...def,type})));
+  if(def.type==='null')return z.null();
   if (def.type === "object") return z.strictObject(Object.fromEntries(Object.entries(def.properties).map(([name, value]) => [name, (def.required || []).includes(name) ? zodSchema(value) : zodSchema(value).optional()])));
   if (def.type === "array") return z.array(zodSchema(def.items)).min(def.minItems || 0).max(def.maxItems).refine(value => !def.uniqueItems || new Set(value.map(item => JSON.stringify(item))).size === value.length, "Valores duplicados.");
   if (def.type === "boolean") return z.boolean();

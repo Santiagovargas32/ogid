@@ -25,9 +25,11 @@ export function sourceCoverage(db,assessments,input={}) {
     const pending=Math.max(0,totals.articles-facets.projected);
     facets.unknownOriginArticles+=pending;
     const countries=new Map(),owners=new Set();let unknownOwnerArticles=pending,unknownEditorialCountryArticles=pending,unratedPublishers=0;
+    let profiledArticles=0,evaluatedArticles=0;
     const publishers=groups.map(group=>{
       const view=group.publisherId&&group.edition?assessments.view(group.publisherId,group.edition,cut,revision,input.politicalScope):null;
       const profile=view?.profile;
+      if(profile)profiledArticles+=group.articles;if(view?.ownEvaluation)evaluatedArticles+=group.articles;
       if(profile?.ownerGroupId)owners.add(profile.ownerGroupId);else unknownOwnerArticles+=group.articles;
       if(profile?.editorialCountries.length)for(const country of profile.editorialCountries)countries.set(country,(countries.get(country)||0)+group.articles);else unknownEditorialCountryArticles+=group.articles;
       if(group.publisherId&&view?.status!=='rated'&&view?.status!=='not-applicable')unratedPublishers++;
@@ -35,7 +37,8 @@ export function sourceCoverage(db,assessments,input={}) {
     });
     const partial=facets.projected!==totals.articles||languages.length>100||mentionedCountries.length>100;
     const data={methodVersion:'source-coverage-v1',window:{from,to,timeField:'receivedAt'},...cut,revision,
-      summary:{...totals,...facets,unknownPublisherArticles:totals.articles-facets.resolvedPublisherArticles,ownerGroups:owners.size,unknownOwnerArticles,unknownEditorialCountryArticles,unratedPublisherEditions:unratedPublishers},
+      summary:{...totals,...facets,unknownPublisherArticles:totals.articles-facets.resolvedPublisherArticles,ownerGroups:owners.size,unknownOwnerArticles,unknownEditorialCountryArticles,unratedPublisherEditions:unratedPublishers,profiledArticles,publishedEvaluationArticles:evaluatedArticles,
+        evaluatedSubjects:db.prepare('SELECT count(*) n FROM (SELECT publisher_id,edition FROM source_evaluation_dossiers GROUP BY publisher_id,edition)').get().n},
       publishers,languages:languages.slice(0,100),mentionedCountries:mentionedCountries.slice(0,100),editorialCountries:[...countries].map(([country,articles])=>({country,articles})),
       catalogue:{entries:NEWS_SOURCE_CATALOG.entries.length,enabledEntries:NEWS_SOURCE_CATALOG.entries.filter(e=>e.enabled).length,generatedSearches:NEWS_SOURCE_CATALOG.entries.filter(e=>e.type==='generated_search').length,operationalHealth:'unknown-here'},
       configuredLanguages,plannedRegions,pilots:pilotCoverage(db,{from,to,now:assessments.now()}),

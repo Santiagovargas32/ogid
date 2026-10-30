@@ -3,6 +3,8 @@ const labels = {'left':'izquierda','center-left':'centroizquierda','center':'cen
 const states = {unrated:'sin evaluar','not-applicable':'no aplicable',unmapped:'escala sin equivalencia',disputed:'evaluaciones en desacuerdo','different-contexts':'contextos políticos distintos',partial:'evaluaciones parciales',unresolved:'editor pendiente',loading:'consultando',unavailable:'no disponible'};
 
 export function sourceAssessmentLabel(view={status:'loading'}) {
+  if(!view.ownEvaluation&&view.ownEvaluationStatus){const label={'pending-review':'elaborada, pendiente de revisión',reject:'propuesta rechazada','changes-requested':'propuesta pendiente de corrección',withdraw:'evaluación retirada'}[view.ownEvaluationStatus]||'pendiente de publicación';return {label,position:-1,text:`Evaluación del medio: ${label}`,href:`/sources.html?${new URLSearchParams({publisherId:view.publisherId||'',edition:view.edition||''})}`};}
+  if(view.ownEvaluation){const e=view.ownEvaluation,p=e.political,position=p.status==='supported'?ratings.indexOf(p.rating):-1;const label=position>=0?labels[p.rating]:({'insufficient-evidence':'evaluada: evidencia insuficiente',mixed:'evaluación mixta','not-applicable':'evaluada: eje no aplicable',supported:'posición contextual documentada'}[p.status]||'evaluación propia');return {label,position,text:`Tendencia del medio: ${label} · ${p.scope}`,href:`/sources.html?${new URLSearchParams({dossierId:e.dossierId,revision:e.revision})}`};}
   const position=view.status==='rated'?ratings.indexOf(view.rating):-1;
   const label=position>=0?labels[view.rating]:states[view.status]||'sin posición común';
   const contexts=[...new Set((view.evaluations||[]).map(e=>e.politicalScope))];

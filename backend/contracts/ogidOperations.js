@@ -1,6 +1,7 @@
 // Registro compartido: contratos de transporte, permisos e inventario API→MCP.
 // Sin imports de runtime ni secretos. Los parámetros son valores tipados; nunca URLs/rutas libres.
-export const OPERATIONS_VERSION = "1.12.0";
+export const OPERATIONS_VERSION = "1.13.0";
+import {DOSSIER_PROPOSE,DOSSIER_REVIEW} from '../services/news/sourceDossierSchema.js';
 import {SOURCE_IMPORT_PROPERTIES,SOURCE_IMPORT_REQUIRED} from '../services/news/sourceAssessmentSchema.js';
 import {COMPARISON_REVIEW_PROPERTIES,COMPARISON_REVIEW_REQUIRED} from '../services/news/comparisonSchema.js';
 import {SITUATION_REVIEW_PROPERTIES,SITUATION_REVIEW_REQUIRED} from '../services/situations/reviewSchema.js';
@@ -60,6 +61,12 @@ export const OGID_OPERATIONS = Object.freeze([
   op('news.source-assessment','GET','/api/news/source-assessments/:id',{revision:int(1,1000000),asOf:date,knownAt:date},{pathParameters:schema({id:str(100)},['id']),effects:'pure stored assessment detail; no providers'}),
   op('news.source-coverage','GET','/api/news/source-coverage',{from:date,to:date,knownAt:date,politicalScope:str(80),maxBytes:int(4096,262144)},{effects:'bounded normalized archive facets; no providers; pending backfill explicit'}),
   op('news.source-assessments.import','POST','/api/admin/news/source-assessments/import',{}, {...mutation('news:assessments:write'),body:SOURCE_IMPORT_PROPERTIES,bodyRequired:SOURCE_IMPORT_REQUIRED,cost:'max 25 assessments and 25 profiles / 64 KiB; dry-run default; redistribution permission required'}),
+  op('news.source-evaluations','GET','/api/news/source-evaluations',{publisherId:str(100),edition:str(100),asOf:date,knownAt:date,cursor:str(4096),limit:int(1,30),maxBytes:int(4096,262144)},{effects:'stored human-approved evaluations only; political and journalism dimensions separate'}),
+  op('news.source-evaluation','GET','/api/news/source-evaluations/:id',{revision:int(1,1000000),section:choice('overview','evidence','sample','observations'),asOf:date,knownAt:date,cursor:str(4096),limit:int(1,30),maxBytes:int(4096,262144)},{pathParameters:schema({id:str(100)},['id']),effects:'stored approved evidence and frozen sample pages; no providers'}),
+  op('news.source-evaluations.pending','GET','/api/admin/news/source-evaluations',{publisherId:str(100),edition:str(100),asOf:date,knownAt:date,cursor:str(4096),limit:int(1,30),maxBytes:int(4096,262144)},{profile:'operator',scope:'news:assessments:write',effects:'stored proposals and review status; read only'}),
+  op('news.source-evaluation.pending','GET','/api/admin/news/source-evaluations/:id',{revision:int(1,1000000),section:choice('overview','evidence','sample','observations'),asOf:date,knownAt:date,cursor:str(4096),limit:int(1,30),maxBytes:int(4096,262144)},{profile:'operator',scope:'news:assessments:write',pathParameters:schema({id:str(100)},['id']),effects:'stored draft pages; read only'}),
+  op('news.source-evaluations.propose','POST','/api/admin/news/source-evaluations/propose',{}, {...mutation('news:assessments:write'),body:DOSSIER_PROPOSE,bodyRequired:Object.keys(DOSSIER_PROPOSE),cost:'one immutable dossier / 64 KiB; no model or provider calls'}),
+  op('news.source-evaluations.review','POST','/api/admin/news/source-evaluations/review',{}, {...mutation('news:assessments:write'),body:DOSSIER_REVIEW,bodyRequired:Object.keys(DOSSIER_REVIEW),cost:'human review bound to exact revision and content hash; atomic publication'}),
   op("intel.advanced.status","GET","/api/intel/advanced-snapshot/status",{jobId:str()},{required:["jobId"],effects:"stored pure read; no job admission"}),
   op("agent.capabilities", "GET", "/api/agent/v1/capabilities"),
   op("agent.brief", "GET", "/api/agent/v1/brief", {}, {projection:"agent-bundle"}),
@@ -148,6 +155,8 @@ export function validIsoDate(value) {
   return month >= 1 && month <= 12 && day >= 1 && day <= new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
 export function validateValue(value, definition) {
+  if(Array.isArray(definition.type))return definition.type.some(type=>validateValue(value,{...definition,type}));
+  if(definition.type==='null')return value===null;
   if (definition.enum && !definition.enum.includes(value)) return false;
   if (definition.type === "object") return value && !Array.isArray(value) && typeof value === "object"
     && (definition.required || []).every(key => value[key] !== undefined)

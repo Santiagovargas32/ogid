@@ -48,9 +48,9 @@ export function permittedArticle(value, now = new Date().toISOString()) {
   };
 }
 const privateKey = /token|secret|password|api.?key|authorization|cookie|requestUrls?|responsePreview|fullText|\bcontent\b|rawBody|prompt|headers|diagnostic|endpoint|baseUrl|stateFile|snapshotPath|historyDir|persistenceError|lastError|lastUpstreamError|errorMessage|lastDiagnostic|lastPoll|logs|stack|command|providerErrors|recentCycleErrors|transportDiagnostics|^error$|^message$|^body$|^payload$|^rawArticles$|^attempts$/i;
-export function publicProjection(value, depth = 0, textLimit = 2000) {
+export function publicProjection(value, depth = 0, textLimit = 2000, sourceEvaluation = false) {
   if (depth > 18) return null;
-  if (Array.isArray(value)) return value.map(item => publicProjection(item, depth + 1, textLimit));
+  if (Array.isArray(value)) return value.map(item => publicProjection(item, depth + 1, textLimit,sourceEvaluation));
   if (!value || typeof value !== "object") {
     if (typeof value !== "string") return value ?? null;
     if (/^https?:\/\//i.test(value)) return safeUrl(value);
@@ -58,14 +58,16 @@ export function publicProjection(value, depth = 0, textLimit = 2000) {
     return cleanText(value, textLimit);
   }
   const comparisonPublication=value.methodVersion==='coverage-claims-v1'&&value.articleId&&Array.isArray(value.claimIds);
+  if(sourceEvaluation&&value.textScope&&Object.hasOwn(value,'originChainId')&&value.publishedAt&&value.url)return {...pick(value,['id','articleId','articleRevision','publishedAt','receivedAt','originChainId','textScope','type']),title:cleanText(value.title,600),url:safeUrl(value.url)};
   if (!comparisonPublication && !value.eventId && value.title && (value.publishedAt !== undefined || value.provider) && value.url) {
     return { ...permittedArticle(value), ...publicProjection(pick(value, ["originalIds", "archiveFirstSeenAt", "archiveLastSeenAt", "archiveChangedAt", "contentRevision", "revision", "provenances", "matchReasons", "materiality", "claimStatus"]), depth + 1) };
   }
-  const result = Object.fromEntries(Object.entries(value).filter(([key]) => !privateKey.test(key)).map(([key, entry]) => [key, publicProjection(entry, depth + 1, textLimit)]));
+  const result = Object.fromEntries(Object.entries(value).filter(([key]) => !privateKey.test(key)).map(([key, entry]) => [key, publicProjection(entry, depth + 1, textLimit,sourceEvaluation)]));
   if ("changePct" in result && (result.price == null || result.synthetic || ["synthetic", "fallback"].includes(result.dataMode))) result.changePct = null;
   return result;
 }
 export function projectOperation(operation, data) {
+  if(operation.id?.startsWith('news.source-evaluation'))return publicProjection(data,0,2000,true);
   // These typed endpoints already project permitted fields in the writer.
   // Applying the legacy text projection here would corrupt base64 chunks and
   // silently truncate recoverable evidence and validated publications.
