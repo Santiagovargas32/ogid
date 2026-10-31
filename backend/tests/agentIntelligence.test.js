@@ -86,11 +86,11 @@ test("unknown citations identify the missing snapshot ID through the internal cl
  await assert.rejects(client('publish'),e=>e.code==='AGENT_UNKNOWN_EVIDENCE' && e.details.evidenceId===id && !JSON.stringify(e.details).includes('PRIVATE'));
 });
 
-test("queued old prompts are superseded with a correctly versioned job while active runs keep their identity",()=>{
+test("queued old prompts are superseded without creating inference while active runs keep their identity",()=>{
  const f=fixture();try{
   const active=job(f),old=f.repo.enqueue({task:'instrument_outlook',scope:'fixture-scope',model:'llamacpp/fixture',key:'old-prompt',priority:10});
   f.db.prepare("UPDATE agent_jobs SET prompt_version='ogid-analyst-v1.1' WHERE job_id=?").run(old.jobId);
-  const next=f.repo.claim({owner:'new-owner'});assert.notEqual(next.jobId,old.jobId);assert.equal(next.promptVersion,PROMPT_VERSION);
+  const next=f.repo.claim({owner:'new-owner'});assert.equal(next,null);
   assert.equal(f.repo.run({jobId:old.jobId,internal:true}).status,'superseded');assert.equal(f.repo.run({jobId:active.jobId,internal:true}).fence,active.fence);
  }finally{f.close();}
 });
@@ -104,8 +104,8 @@ test('an interrupted old generation requires its fenced cancellation ACK before 
   const ticket=f.repo.interruptClaim(old);assert.ok(ticket);
   assert.throws(()=>f.repo.cancelAcknowledged({...old,fence:old.fence-1,...ticket}),{code:'AGENT_LEASE_LOST'});
   f.repo.cancelAcknowledged({...old,...ticket});
-  const replacement=f.repo.resume({jobId:old.jobId});assert.equal(replacement.upgraded,true);
-  const next=f.repo.claim({owner:'new-owner'});assert.equal(next.jobId,replacement.jobId);assert.equal(next.promptVersion,PROMPT_VERSION);assert.equal(next.snapshotId,null);assert.equal(next.opencodeId,null);
+  const replacement=f.repo.resume({jobId:old.jobId});assert.equal(replacement.superseded,true);
+  const next=f.repo.claim({owner:'new-owner'});assert.equal(next,null);
   assert.equal(f.repo.run({jobId:old.jobId,internal:true}).status,'superseded');assert.equal(f.db.prepare('SELECT count(*) AS n FROM agent_runs WHERE job_id=?').get(old.jobId).n,1);
   assert.throws(()=>f.repo.resume({jobId:old.jobId}),{code:'AGENT_RECONCILIATION_DENIED'});
  }finally{f.close();}
@@ -244,7 +244,7 @@ test("worker stops completed duplicate tool calls while allowing pagination and 
     }
   }
 });
-test("background work leaves admission capacity for chat without interrupting active work",async()=>{
+test("all tasks including chat execute serially without interrupting active work",async()=>{
  const queued=[{jobId:'background-one',task:'global_intelligence_brief'},{jobId:'background-two',task:'market_outlook_global'},{jobId:'chat',task:'contextual_chat'}],started=[],releases=[];
  const worker=new IntelligenceWorker({model:'llamacpp/fixture',opencode:{verify:async()=>{}},call:async(method,args)=>{
   if(['reconcileCandidates','pendingCancellations'].includes(method))return [];
@@ -252,7 +252,7 @@ test("background work leaves admission capacity for chat without interrupting ac
   return {};
  }});
  worker.execute=async job=>{started.push(job.jobId);await new Promise(r=>releases.push(r));};
- try{await worker.tick();await worker.tick();await worker.tick();assert.deepEqual(started,['background-one','chat']);assert.equal(queued[0].jobId,'background-two');}
+ try{await worker.tick();await worker.tick();await worker.tick();assert.deepEqual(started,['background-one']);assert.equal(queued[0].jobId,'background-two');}
  finally{for(const release of releases)release();await Promise.all(worker.tasks);}
 });
 
@@ -279,7 +279,8 @@ test("outbox backpressure still permits queued work and remote cancellations to 
   worker.execute = async (job) => calls.push(`execute:${job.jobId}`);
   await worker.tick();
   await Promise.all(worker.tasks);
-  assert.equal(worker.admissionError, "AGENT_BACKPRESSURE");
+  assert.equal(worker.admissionError, null);
+  assert.ok(!calls.includes("consume"));
   assert.ok(calls.includes("cancelAcknowledged"));
   assert.ok(calls.includes("remote-cancel"));
   assert.ok(calls.includes("execute:queued"));
@@ -514,7 +515,7 @@ test("snapshot window preserves publication precedence, unknown dates and the la
             JSON.stringify({ ...payload, publishedAt: at(2) }),
           );
     }
-    const snap = f.repo.snapshot(job(f));
+    const j=job(f),snap = f.repo.snapshot(j);
     const rows = f.repo.evidence({
       snapshotId: snap.snapshotId,
       domain: "news",
@@ -541,6 +542,7 @@ test("snapshot window preserves publication precedence, unknown dates and the la
       model: manifest.defaultModel,
       key: "scoped",
     });
+    f.repo.cancel({...j,internal:true});
     const scoped = f.repo.claim({ owner: "scope-owner" });
     const cut = f.repo.snapshot({
       jobId: scoped.jobId,
@@ -592,43 +594,15 @@ test("leases fence stale owners, survive repository replacement and do not blind
     f.close();
   }
 });
-test("outbox enqueue and checkpoint roll back together; later consumption is idempotent", () => {
-  const f = fixture();
-  try {
-    f.db
-      .prepare(
-        "INSERT INTO outbox(change_id,entity_kind,entity_id,revision,observed_at,payload_json) VALUES(?,?,?,?,?,?)",
-      )
-      .run(
-        "fixture",
-        "article-revision",
-        "one",
-        1,
-        new Date().toISOString(),
-        "{}",
-      );
-    f.db.exec(
-      "CREATE TRIGGER reject_agent_job BEFORE INSERT ON agent_jobs BEGIN SELECT RAISE(ABORT,'injected'); END",
-    );
-    assert.throws(
-      () => f.repo.consume({ model: "llamacpp/fixture" }),
-      /injected/,
-    );
-    assert.equal(
-      f.db
-        .prepare(
-          "SELECT count(*) AS n FROM consumer_checkpoints WHERE consumer_id='agent-outbox-v1'",
-        )
-        .get().n,
-      0,
-    );
-    f.db.exec("DROP TRIGGER reject_agent_job");
-    assert.equal(f.repo.consume({ model: "llamacpp/fixture" }).jobs.length, 2);
-    assert.equal(f.repo.consume({ model: "llamacpp/fixture" }).jobs.length, 0);
-  } finally {
-    f.close();
-  }
+test('outbox changes do not enqueue inference or acknowledge business changes',()=>{
+ const f=fixture();try{
+ f.db.prepare("INSERT INTO outbox(change_id,entity_kind,entity_id,revision,observed_at,payload_json) VALUES('one','article-revision','one',1,?,'{}')").run(new Date().toISOString());
+ const before=f.db.prepare('SELECT * FROM consumer_checkpoints').all();
+ for(let i=0;i<3;i++)assert.deepEqual(f.repo.consume({model:manifest.defaultModel}).jobs,[]);
+ assert.equal(f.db.prepare('SELECT count(*) n FROM agent_jobs').get().n,0);assert.deepEqual(f.db.prepare('SELECT * FROM consumer_checkpoints').all(),before);
+ }finally{f.close();}
 });
+
 test("publication rejects invented references and probability, commits atomically and replays once", () => {
   const f = fixture();
   try {
@@ -1231,14 +1205,14 @@ test("outbox does not coalesce new evidence into a frozen waiting-model executio
         )
         .run(id, "article-revision", id, 1, new Date().toISOString(), "{}");
     insert("first");
-    f.repo.consume({ model: manifest.defaultModel });
+    f.repo.enqueue({task:"global_intelligence_brief",model:manifest.defaultModel,key:"explicit",priority:10});
     const active = f.repo.claim({ owner: "a" });
     f.repo.snapshot({ ...active, owner: "a" });
     f.repo.state({ ...active, owner: "a", status: "waiting-model" });
     insert("second");
     const next = f.repo.consume({ model: manifest.defaultModel });
-    assert.ok(next.jobs.length);
-    assert.ok(next.jobs.every((j) => j.jobId !== active.jobId));
+    assert.deepEqual(next.jobs,[]);
+    assert.ok(f.repo.run({jobId:active.jobId,internal:true}).snapshotId);
   } finally {
     f.close();
   }

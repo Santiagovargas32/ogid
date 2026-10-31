@@ -50,7 +50,7 @@ test("failed model probes remain disabled and expose only a safe diagnostic",asy
  assert.equal((await service.list({refresh:true})).models.find(m=>m.alias==='unchecked').validation.errorCode,null);
 });
 
-test("model selection persists across npm-style restarts, replaces pending automatic work and preserves active runs and chat",async()=>{
+test("model selection persists across npm-style restarts, does not create pending automatic work and preserves active runs and chat",async()=>{
  const dir=mkdtempSync(join(tmpdir(),"ogid-model-selection-"));let runtime;
  const options={host:"127.0.0.1",port:0,disableBackgroundRefresh:true,storage:{enabled:true,businessEnabled:true,databasePath:join(dir,"db.sqlite")},market:{provider:"",historyPersist:false,historyDir:dir},news:{providers:[],rssFeeds:[]},security:{adminApiToken:"admin-fixture",allowLocalAdmin:false},agent:{mode:"shadow",manifest,backgroundModel:manifest.defaultModel}};
  try{
@@ -66,9 +66,9 @@ test("model selection persists across npm-style restarts, replaces pending autom
   assert.equal((await fetch(base+"/api/admin/agent/model",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"llamacpp/second"})})).status,401);
   assert.equal((await send("llamacpp/second",{Origin:"https://untrusted.invalid"})).status,403);
   runtime.app.locals.agentModelWarning="AGENT_SAVED_MODEL_UNVERIFIED";
-  const changed=await send("llamacpp/second");assert.equal(changed.status,200);assert.equal((await changed.json()).data.requeued,1);
+  const changed=await send("llamacpp/second");assert.equal(changed.status,200);assert.equal((await changed.json()).data.requeued,0);
   assert.equal(runtime.app.locals.agentModelWarning,undefined);
-  assert.equal((await call("run",{jobId:queued.jobId,internal:true})).status,"superseded");
+  assert.equal((await call("run",{jobId:queued.jobId,internal:true})).status,"queued");
   assert.equal((await call("run",{jobId:active.jobId,internal:true})).model,manifest.defaultModel);
   assert.equal((await call("run",{jobId:chat.jobId,internal:true})).model,manifest.defaultModel);
   assert.equal((await call("run",{jobId:active.jobId,internal:true})).status,"running");
@@ -81,11 +81,11 @@ test("model selection persists across npm-style restarts, replaces pending autom
  }finally{await runtime?.stop();rmSync(dir,{recursive:true,force:true});}
 });
 
-test("worker adopts the backend default for subsequent jobs without changing a claimed job",async()=>{
+test("worker does not consume outbox or override the model of explicit jobs",async()=>{
  const worker=new IntelligenceWorker({model:"llamacpp/first",opencode:{verify:async()=>{}},call:async method=>{
   if(method==="consume")return {model:"llamacpp/second"};
   if(["reconcileCandidates","pendingCancellations"].includes(method))return [];
   if(method==="claim")return null;
  }});
- await worker.tick();assert.equal(worker.model,"llamacpp/second");worker.stop();
+ await worker.tick();assert.equal(worker.model,"llamacpp/first");worker.stop();
 });

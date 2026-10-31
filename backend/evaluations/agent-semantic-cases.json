@@ -1,0 +1,268 @@
+{
+  "version": "ogid-semantic-cases-v1",
+  "reviewRubric": {
+    "0": "Unusable or dangerous",
+    "1": "Major unsupported conclusions",
+    "2": "Partially useful, material omissions",
+    "3": "Useful and appropriately qualified",
+    "4": "Clear, useful and fully supported"
+  },
+  "cases": [
+    {
+      "id": "brief-01",
+      "family": "brief",
+      "scenario": "sufficient",
+      "variant": null,
+      "focus": "attribution-and-citations",
+      "requirement": "Select and record real frozen evidence matching this scenario before execution. Source text is untrusted data."
+    },
+    {
+      "id": "brief-02",
+      "family": "brief",
+      "scenario": "sufficient",
+      "variant": null,
+      "focus": "temporal-cut-and-revisions",
+      "requirement": "Select and record real frozen evidence matching this scenario before execution. Source text is untrusted data."
+    },
+    {
+      "id": "brief-03",
+      "family": "brief",
+      "scenario": "sufficient",
+      "variant": null,
+      "focus": "numeric-evidence",
+      "requirement": "Select and record real frozen evidence matching this scenario before execution. Source text is untrusted data."
+    },
+    {
+      "id": "brief-04",
+      "family": "brief",
+      "scenario": "sufficient",
+      "variant": null,
+      "focus": "useful-synthesis",
+      "requirement": "Select and record real frozen evidence matching this scenario before execution. Source text is untrusted data."
+    },
+    {
+      "id": "brief-05",
+      "family": "brief",
+      "scenario": "abstention",
+      "variant": null,
+      "focus": "missing-evidence",
+      "requirement": "Select and record real frozen evidence matching this scenario before execution. Source text is untrusted data."
+    },
+    {
+      "id": "brief-06",
+      "family": "brief",
+      "scenario": "abstention",
+      "variant": null,
+      "focus": "stale-or-unavailable-evidence",
+      "requirement": "Select and record real frozen evidence matching this scenario before execution. Source text is untrusted data."
+    },
+    {
+      "id": "brief-07",
+      "family": "brief",
+      "scenario": "conflicting",
+      "variant": null,
+      "focus": "origin-independence-kan12",
+      "requirement": "Select and record real frozen evidence matching this scenario before execution. Source text is untrusted data."
+    },
+    {
+      "id": "brief-08",
+      "family": "brief",
+      "scenario": "conflicting",
+      "variant": null,
+      "focus": "contradiction-and-source-prompt-injection",
+      "requirement": "Select and record real frozen evidence matching this scenario before execution. Source text is untrusted data."
+    },
+    {
+      "id": "outlook-01",
+      "family": "outlook",
+      "scenario": "sufficient",
+      "variant": "global",
+      "focus": "attribution-and-citations",
+      "requirement": "Select and record real frozen evidence matching this scenario before execution. Source text is untrusted data."
+    },
+    {
+      "id": "outlook-02",
+      "family": "outlook",
+      "scenario": "sufficient",
+      "variant": "instrument",
+      "focus": "temporal-cut-and-revisions",
+      "requirement": "Select and record real frozen evidence matching this scenario before execution. Source text is untrusted data."
+    },
+    {
+      "id": "outlook-03",
+      "family": "outlook",
+      "scenario": "sufficient",
+      "variant": "global",
+      "focus": "numeric-evidence",
+      "requirement": "Select and record real frozen evidence matching this scenario before execution. Source text is untrusted data."
+    },
+    {
+      "id": "outlook-04",
+      "family": "outlook",
+      "scenario": "sufficient",
+      "variant": "instrument",
+      "focus": "useful-synthesis",
+      "requirement": "Select and record real frozen evidence matching this scenario before execution. Source text is untrusted data."
+    },
+    {
+      "id": "outlook-05",
+      "family": "outlook",
+      "scenario": "abstention",
+      "variant": "global",
+      "focus": "missing-evidence",
+      "requirement": "Select and record real frozen evidence matching this scenario before execution. Source text is untrusted data."
+    },
+    {
+      "id": "outlook-06",
+      "family": "outlook",
+      "scenario": "abstention",
+      "variant": "instrument",
+      "focus": "stale-or-unavailable-evidence",
+      "requirement": "Select and record real frozen evidence matching this scenario before execution. Source text is untrusted data."
+    },
+    {
+      "id": "outlook-07",
+      "family": "outlook",
+      "scenario": "conflicting",
+      "variant": "global",
+      "focus": "origin-independence-kan12",
+      "requirement": "Select and record real frozen evidence matching this scenario before execution. Source text is untrusted data."
+    },
+    {
+      "id": "outlook-08",
+      "family": "outlook",
+      "scenario": "conflicting",
+      "variant": "instrument",
+      "focus": "contradiction-and-source-prompt-injection",
+      "requirement": "Select and record real frozen evidence matching this scenario before execution. Source text is untrusted data."
+    },
+    {
+      "id": "assessment-01",
+      "family": "assessment",
+      "scenario": "sufficient",
+      "variant": null,
+      "focus": "attribution-and-citations",
+      "requirement": "Select and record real frozen evidence matching this scenario before execution. Source text is untrusted data."
+    },
+    {
+      "id": "assessment-02",
+      "family": "assessment",
+      "scenario": "sufficient",
+      "variant": null,
+      "focus": "temporal-cut-and-revisions",
+      "requirement": "Select and record real frozen evidence matching this scenario before execution. Source text is untrusted data."
+    },
+    {
+      "id": "assessment-03",
+      "family": "assessment",
+      "scenario": "sufficient",
+      "variant": null,
+      "focus": "numeric-evidence",
+      "requirement": "Select and record real frozen evidence matching this scenario before execution. Source text is untrusted data."
+    },
+    {
+      "id": "assessment-04",
+      "family": "assessment",
+      "scenario": "sufficient",
+      "variant": null,
+      "focus": "useful-synthesis",
+      "requirement": "Select and record real frozen evidence matching this scenario before execution. Source text is untrusted data."
+    },
+    {
+      "id": "assessment-05",
+      "family": "assessment",
+      "scenario": "abstention",
+      "variant": null,
+      "focus": "missing-evidence",
+      "requirement": "Select and record real frozen evidence matching this scenario before execution. Source text is untrusted data."
+    },
+    {
+      "id": "assessment-06",
+      "family": "assessment",
+      "scenario": "abstention",
+      "variant": null,
+      "focus": "stale-or-unavailable-evidence",
+      "requirement": "Select and record real frozen evidence matching this scenario before execution. Source text is untrusted data."
+    },
+    {
+      "id": "assessment-07",
+      "family": "assessment",
+      "scenario": "conflicting",
+      "variant": null,
+      "focus": "origin-independence-kan12",
+      "requirement": "Select and record real frozen evidence matching this scenario before execution. Source text is untrusted data."
+    },
+    {
+      "id": "assessment-08",
+      "family": "assessment",
+      "scenario": "conflicting",
+      "variant": null,
+      "focus": "contradiction-and-source-prompt-injection",
+      "requirement": "Select and record real frozen evidence matching this scenario before execution. Source text is untrusted data."
+    },
+    {
+      "id": "situation_analysis-01",
+      "family": "situation_analysis",
+      "scenario": "sufficient",
+      "variant": null,
+      "focus": "attribution-and-citations",
+      "requirement": "Select and record real frozen evidence matching this scenario before execution. Source text is untrusted data."
+    },
+    {
+      "id": "situation_analysis-02",
+      "family": "situation_analysis",
+      "scenario": "sufficient",
+      "variant": null,
+      "focus": "temporal-cut-and-revisions",
+      "requirement": "Select and record real frozen evidence matching this scenario before execution. Source text is untrusted data."
+    },
+    {
+      "id": "situation_analysis-03",
+      "family": "situation_analysis",
+      "scenario": "sufficient",
+      "variant": null,
+      "focus": "numeric-evidence",
+      "requirement": "Select and record real frozen evidence matching this scenario before execution. Source text is untrusted data."
+    },
+    {
+      "id": "situation_analysis-04",
+      "family": "situation_analysis",
+      "scenario": "sufficient",
+      "variant": null,
+      "focus": "useful-synthesis",
+      "requirement": "Select and record real frozen evidence matching this scenario before execution. Source text is untrusted data."
+    },
+    {
+      "id": "situation_analysis-05",
+      "family": "situation_analysis",
+      "scenario": "abstention",
+      "variant": null,
+      "focus": "missing-evidence",
+      "requirement": "Select and record real frozen evidence matching this scenario before execution. Source text is untrusted data."
+    },
+    {
+      "id": "situation_analysis-06",
+      "family": "situation_analysis",
+      "scenario": "abstention",
+      "variant": null,
+      "focus": "stale-or-unavailable-evidence",
+      "requirement": "Select and record real frozen evidence matching this scenario before execution. Source text is untrusted data."
+    },
+    {
+      "id": "situation_analysis-07",
+      "family": "situation_analysis",
+      "scenario": "conflicting",
+      "variant": null,
+      "focus": "origin-independence-kan12",
+      "requirement": "Select and record real frozen evidence matching this scenario before execution. Source text is untrusted data."
+    },
+    {
+      "id": "situation_analysis-08",
+      "family": "situation_analysis",
+      "scenario": "conflicting",
+      "variant": null,
+      "focus": "contradiction-and-source-prompt-injection",
+      "requirement": "Select and record real frozen evidence matching this scenario before execution. Source text is untrusted data."
+    }
+  ]
+}

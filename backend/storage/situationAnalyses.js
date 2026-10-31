@@ -22,7 +22,7 @@ export function requestAnalysis(repo,{requestId,situationId,baselineAnalysisId},
  }).immediate();
 }
 export function prepareAnalysis(repo,job,{rowSink,maxPreparationMs}){
- const started=performance.now(),asOf=new Date(repo.now()).toISOString(),snapshotId=randomUUID(),upper=repo.situations.upper();
+ const started=performance.now(),asOf=JSON.parse(job.input_json).context?.capturedAt||new Date(repo.now()).toISOString(),snapshotId=randomUUID(),upper=JSON.parse(job.input_json).context?.domainSequence??repo.situations.upper();
  const rows={evidence:[],clusters:[],members:[]},counts={evidence:0,clusters:0,members:0},hashes=[],instruments=new Set();let bytes=0;
  const input=JSON.parse(job.input_json),baseline=input.baselineAnalysisId?read(repo.db,'SELECT payload_json FROM agent_publications WHERE publication_id=?',input.baselineAnalysisId):null;
  const add=(id,domain,data)=>{

@@ -85,8 +85,14 @@ router.post('/admin/situation-analyses',available,admin,analysisRoute('analyst.r
 router.get('/admin/situation-analyses',available,admin,analysisRoute('analyst.list','analysisList'));
 router.get('/admin/situation-analyses/:id/sections',available,admin,analysisRoute('analyst.sections','analysisSections'));
 router.get('/admin/situation-analyses/:id',available,admin,analysisRoute('analyst.detail','analysisDetail'));
-async function frozenAccess(req,_res,next){
- try{const access=await call(req,'analysisSnapshotAccess',{snapshotId:req.query.snapshotId});if(access.restricted&&!isAdminAuthorized(req,req.app.locals.config?.security))throw agentError('ADMIN_AUTH_REQUIRED',401);next();}catch(error){next(error);}
+async function frozenAccess(req,res,next){
+ try{const access=await call(req,'analysisSnapshotAccess',{snapshotId:req.query.snapshotId});
+  if(access.restricted&&!isAdminAuthorized(req,req.app.locals.config?.security)){
+   if(!access.sessionId)throw agentError('ADMIN_AUTH_REQUIRED',401);
+   await new Promise((resolve,reject)=>device(req,res,error=>error?reject(error):resolve()));
+   await call(req,'sessionAccess',{sessionId:access.sessionId,deviceId:req.agentDevice.deviceId});
+  }next();
+ }catch(error){next(error);}
 }
 const ownedArgs = (req) => ({
   deviceId: req.agentDevice.deviceId,
@@ -235,7 +241,7 @@ router.post("/agent/v1/chat/sessions", device, async (req, res) => {
   const { model, title } = body(req, ["model", "title"]);
   const config = req.app.locals.agentConfig;
   if (
-    taskMode(config, "contextual_chat") === "off" ||
+    !Object.values(config.taskModes).some(mode=>mode!=="off") ||
     !catalogModel(
       config.manifest.models.find((m) => `llamacpp/${m.alias}` === model),
     )
@@ -248,6 +254,13 @@ router.post("/agent/v1/chat/sessions", device, async (req, res) => {
       title,
     }),
   );
+});
+router.post('/agent/v1/chat/sessions/:id/requests',device,async(req,res)=>{
+ const input=body(req,['key','family','scope','context']);
+ const task={brief:'global_intelligence_brief',outlook:input.scope&&input.scope!=='global'?'instrument_outlook':'market_outlook_global',assessment:'geopolitical_alert_assessment',situation_analysis:'situation_analysis'}[input.family];
+ if(!task)throw agentError('AGENT_INVALID_ARGUMENTS');
+ if(taskMode(req.app.locals.agentConfig,task)!=='shadow')throw agentError('AGENT_DISABLED',503);
+ res.status(202).json(await call(req,'requestAgent',{...input,...ownedArgs(req)}));
 });
 router.get("/agent/v1/chat/sessions/:id/messages", device, async (req, res) =>
   res.json(
@@ -266,10 +279,10 @@ router.post(
   async (req, res) => {
     if (taskMode(req.app.locals.agentConfig, "contextual_chat") === "off")
       throw agentError("AGENT_DISABLED", 503);
-    const { text, context, key } = body(req, ["text", "context", "key"]);
+    const { text, context, key,appContext } = body(req, ["text", "context", "key","appContext"]);
     res
       .status(202)
-      .json(await call(req, "send", { ...ownedArgs(req), text, context, key }));
+      .json(await call(req, "send", { ...ownedArgs(req), text, context, key,appContext }));
   },
 );
 router.get("/agent/v1/chat/sessions/:id/events", device, async (req, res) => {
@@ -492,8 +505,9 @@ router.post("/agent/v1/internal/:method", async (req, res) => {
       req.app.locals.marketWatchlistService?.selectedInstrumentIds || [];
   }
   if (req.params.method === "publish") {
-    const job = await call(req, input.task==='situation_analysis'?"runControl":"run", { jobId: input.jobId, internal: true });
+    const job = await call(req, "runControl", { jobId: input.jobId, internal: true });
     input.mode = taskMode(req.app.locals.agentConfig, job.task);
+    if(input.mode!=="off")input.mode="shadow";
     if (input.mode === "off") throw agentError("AGENT_DISABLED", 503);
   }
   res.json(await call(req, req.params.method, input));

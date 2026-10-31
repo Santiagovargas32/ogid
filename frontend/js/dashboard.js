@@ -1947,7 +1947,7 @@ async function bootstrap() {
   initNewsDrawer();
   bindNewsControls();
   renderMarketConditionsWindowSelector();
-  teardownHandlers.push(mountAgentIntelligence({getWatchlist:async()=>{if(!marketWatchlistLoaded)await stateSynchronizer?.requestSnapshot();return marketWatchlistLoaded?marketWatchlistModel:null;},deferUntilInterested:true}));
+  teardownHandlers.push(mountAgentIntelligence({getContext:()=>({view:"dashboard",countries:[...selectedCountries],instrumentIds:marketWatchlistModel?.selectedInstrumentIds||[]}),getWatchlist:async()=>{if(!marketWatchlistLoaded)await stateSynchronizer?.requestSnapshot();return marketWatchlistLoaded?marketWatchlistModel:null;},deferUntilInterested:true}));
   advancedIntelligenceController = startAdvancedIntelligence({ api, getCountries: selectedCountryQueryValue,deferUntilInterested:true });
   teardownHandlers.push(() => advancedIntelligenceController?.stop());
   awarenessController = mountAwarenessCenter({ api,deferUntilInterested:true });

@@ -2,7 +2,7 @@
 import {fillAgentModels} from "./agentModels.js";
 import {observeInterest} from './interest.js';
 import {request as coordinatedRequest} from './api.js';
-export function mountAgentIntelligence({getWatchlist=()=>null,deferUntilInterested=false}={}) {
+export function mountAgentIntelligence({getWatchlist=()=>null,getContext=()=>({view:"dashboard"}),deferUntilInterested=false}={}) {
   const byId = (id) => document.getElementById(id);
   let csrf = "",
     sessionId = "",
@@ -41,12 +41,22 @@ export function mountAgentIntelligence({getWatchlist=()=>null,deferUntilInterest
     b.addEventListener("click", handler);
     return b;
   };
-  const drawer = document.createElement("dialog");
+  const drawer = document.createElement("section");
   drawer.className = "agent-chat-dialog";
   drawer.setAttribute("aria-labelledby", "agent-chat-title");
   drawer.innerHTML =
     '<header class="agent-chat-header"><h2 id="agent-chat-title">OGID Analyst</h2><button type="button" data-close aria-label="Cerrar chat">×</button></header><p data-status role="status">Comprobando acceso…</p><div class="agent-chat-controls"><select data-model aria-label="Modelo"></select><select data-session aria-label="Conversación"><option value="">Nueva conversación</option></select><button data-new type="button">Nueva</button><button data-authorize type="button">Autorizar dispositivo</button></div><p data-context>Contexto: global · Horizonte evaluable: 24 h</p><div data-messages class="agent-chat-messages" role="log" aria-live="polite"></div><form><label for="agent-chat-input">Consulta al analista</label><textarea id="agent-chat-input" rows="3" required></textarea><div><button type="submit">Enviar</button><button data-cancel type="button">Cancelar generación</button></div></form>';
-  document.body.append(drawer);
+  drawer.id='agent-analyst-panel';drawer.hidden=true;drawer.setAttribute('role','tabpanel');
+  const host=byId('panel-situational');
+  const tabs=node('div',null,'agent-chat-controls');tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','Alertas y analista');
+  const alertsTab=button('Alertas',()=>setPanel(false)),analystTab=button('Analista',()=>open());
+  alertsTab.id='agent-alerts-tab';analystTab.id='agent-analyst-tab';
+  for(const tab of [alertsTab,analystTab]){tab.setAttribute('role','tab');tabs.append(tab);}
+  alertsTab.setAttribute('aria-controls','geopolitical-alert-inbox');analystTab.setAttribute('aria-controls',drawer.id);drawer.setAttribute('aria-labelledby',analystTab.id);
+  host?.querySelector('header')?.after(tabs);(host||document.body).append(drawer);
+  function setPanel(active){drawer.hidden=!active;const inbox=byId('geopolitical-alert-inbox');if(inbox)inbox.hidden=active;alertsTab.setAttribute('aria-selected',String(!active));analystTab.setAttribute('aria-selected',String(active));alertsTab.tabIndex=active?-1:0;analystTab.tabIndex=active?0:-1;if(!active)events?.close();else if(sessionId)connect();}
+  tabs.onkeydown=e=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();const active=e.key==='End'||(e.key!=='Home'&&drawer.hidden);if(active){open();analystTab.focus();}else{setPanel(false);alertsTab.focus();}}};
+  setPanel(false);
   const status = drawer.querySelector("[data-status]"),
     messages = drawer.querySelector("[data-messages]"),
     select = drawer.querySelector("[data-model]"),
@@ -80,18 +90,55 @@ export function mountAgentIntelligence({getWatchlist=()=>null,deferUntilInterest
   );
   moreSessions.hidden = true;
   sessionSelect.after(moreSessions);
-  drawer.querySelector("[data-close]").onclick = () => drawer.close();
+  drawer.querySelector("[data-close]").onclick = () => setPanel(false);
   function open(ids = []) {
     context = ids;
     drawer.querySelector("[data-context]").textContent =
       `Contexto adjunto: ${ids.join(", ") || "global"} · Horizonte evaluable: 24 h`;
-    drawer.showModal();
+    setPanel(true);
+    updateContext();
+    void loadSelections().catch(showError);
     void initialize().then(async()=>{
       try{const d=await request('/api/agent/v1/access');csrf=d.csrf;await loadSessions();}catch{/* Enrollment remains explicit. */}
     }).catch(showError);
     void loadModels().catch(showError);
     input.focus();
   }
+  const scopeSelect=node('select');scopeSelect.setAttribute('aria-label','Instrumento para outlook');scopeSelect.append(new Option('Watchlist observada','global'));
+  const situationSelect=node('select');situationSelect.setAttribute('aria-label','Situación');situationSelect.append(new Option('Seleccionar situación',''));
+  const alertSelect=node('select');alertSelect.setAttribute('aria-label','Alerta');alertSelect.append(new Option('Seleccionar alerta',''));
+  const actions=node('div',null,'agent-chat-controls');
+  for(const [label,family] of [['Brief','brief'],['Outlook','outlook'],['Assessment','assessment'],['Situación','situation_analysis']])actions.append(button(label,()=>void requestEvaluation(family).catch(showError)));
+  drawer.querySelector('[data-context]').after(scopeSelect,situationSelect,alertSelect,actions);
+  function appContext(){return {...getContext(),...(situationSelect.value?{situationId:situationSelect.value}:{}),...(alertSelect.value?{alertId:alertSelect.value}:{} )};}
+  function updateContext(){drawer.querySelector('[data-context]').textContent=`Contexto al enviar: ${(appContext().countries||[]).join(", ")||"global"} · ${scopeSelect.selectedOptions[0]?.textContent||"watchlist"}${situationSelect.value?" · "+situationSelect.selectedOptions[0]?.textContent:""}${alertSelect.value?" · "+alertSelect.selectedOptions[0]?.textContent:""}. Privado · shadow.`;}
+  for(const select of [scopeSelect,situationSelect,alertSelect])select.onchange=updateContext;
+  async function loadSelections(){
+    const watchlist=await getWatchlist();scopeSelect.replaceChildren(new Option('Watchlist observada','global'));
+    for(const i of watchlist?.instruments||[])scopeSelect.append(new Option(i.symbol||i.canonicalSymbol||i.instrumentId,i.instrumentId));
+    const situations=await request('/api/situations?limit=20');situationCursor=situations.nextCursor;moreSituations.hidden=!situations.hasMore;const selected=situationSelect.value;situationSelect.replaceChildren(new Option('Seleccionar situación',''));
+    for(const item of situations.items||[])situationSelect.append(new Option(item.title||item.id,item.id));situationSelect.value=selected;
+    if(csrf){const alerts=await request('/api/alerts/v1/geopolitical?limit=20');selectionAlertCursor=alerts.nextCursor;moreTargetAlerts.hidden=!alerts.hasMore;const chosen=alertSelect.value;alertSelect.replaceChildren(new Option('Seleccionar alerta',''));for(const a of alerts.items||[])alertSelect.append(new Option(a.title||a.alertId,a.alertId));alertSelect.value=chosen;}updateContext();
+  }
+  async function ensureSession(title){if(!csrf)throw Error('Autoriza primero este dispositivo');if(!sessionId){const value=await request('/api/agent/v1/chat/sessions',{method:'POST',body:JSON.stringify({model,title:title.slice(0,80)})});sessionId=value.sessionId;await loadSessions();connect();}}
+  let situationCursor=null,selectionAlertCursor=null;
+  const moreSituations=button('Más situaciones',()=>void loadMoreTargets('situation').catch(showError));
+  const moreTargetAlerts=button('Más alertas',()=>void loadMoreTargets('alert').catch(showError));
+  moreSituations.hidden=true;moreTargetAlerts.hidden=true;situationSelect.after(moreSituations);alertSelect.after(moreTargetAlerts);
+  async function loadMoreTargets(kind){
+    const situation=kind==='situation',cursor=situation?situationCursor:selectionAlertCursor,select=situation?situationSelect:alertSelect;
+    if(!cursor)return;const page=await request((situation?'/api/situations':'/api/alerts/v1/geopolitical')+'?limit=20&cursor='+encodeURIComponent(cursor));
+    for(const item of page.items||[])select.append(new Option(item.title||item.id||item.alertId,situation?item.id:item.alertId));
+    if(situation){situationCursor=page.nextCursor;moreSituations.hidden=!page.hasMore;}else{selectionAlertCursor=page.nextCursor;moreTargetAlerts.hidden=!page.hasMore;}
+  }
+  let pendingEvaluation=null;
+  async function requestEvaluation(family){
+    const scope=family==='outlook'?scopeSelect.value:family==='assessment'?alertSelect.value:family==='situation_analysis'?situationSelect.value:'global';if(!scope)throw Error('Selecciona primero el objeto que quieres evaluar');
+    await ensureSession(family);const descriptor=appContext(),fingerprint=JSON.stringify({sessionId,family,scope,context:descriptor});
+    if(pendingEvaluation?.fingerprint!==fingerprint)pendingEvaluation={fingerprint,key:crypto.randomUUID()};
+    const result=await request(`/api/agent/v1/chat/sessions/${sessionId}/requests`,{method:'POST',body:JSON.stringify({family,scope,context:descriptor,key:pendingEvaluation.key})});pendingEvaluation=null;runId=result.jobId;status.textContent='En cola · contexto fijado';await history();
+  }
+  async function showResult(jobId){const run=await request(`/api/agent/v1/runs/${jobId}`);const p=run.publication;if(!p)return;const result=showMessage('assistant',`Shadow · ${p.evidenceAsOf} · ${p.proposal.summary}`);if(p.currentness?.current===false)result.append(node('p','Evidencia revisada: requiere nueva evaluación.'));for(const key of ['synthesis','timeline','changes','impacts','contradictions','drivers','scenarios','limitations','missingEvidence'])if(p.proposal[key]?.length){const section=node('details');section.append(node('summary',({synthesis:'Síntesis',timeline:'Cronología',changes:'Cambios',impacts:'Impactos',contradictions:'Contradicciones',drivers:'Factores',scenarios:'Escenarios',limitations:'Limitaciones',missingEvidence:'Evidencia ausente'})[key]));for(const item of p.proposal[key])section.append(node('p',typeof item==='string'?item:[item.text||item.description||item.summary,item.occurredAt||item.publishedAt].filter(Boolean).join(' · ')));result.append(section);}result.append(button('Ver fuentes',()=>void showEvidence(p).catch(showError)));}
   function showMessage(role, text) {
     const article = node(
       "article",
@@ -146,6 +193,8 @@ export function mountAgentIntelligence({getWatchlist=()=>null,deferUntilInterest
       (a, b) => a.sequence - b.sequence,
     )) {
       const article = showMessage(m.role, m.text);
+      if(m.jobId)article.append(button("Abrir evaluación",()=>void showResult(m.jobId).catch(showError)));
+      if(m.context&&!Array.isArray(m.context))article.append(node("small",`Contexto fijado: ${(m.context.countries||[]).join(", ")||"global"} · ${m.context.capturedAt||m.createdAt}`));
       if (m.snapshotId && m.evidenceIds?.length)
         article.append(
           button("Ver fuentes", () =>
@@ -166,7 +215,7 @@ export function mountAgentIntelligence({getWatchlist=()=>null,deferUntilInterest
   }
   function connect() {
     events?.close();
-    if (!sessionId) return;
+    if (!sessionId || drawer.hidden || document.hidden) return;
     const eventSession = sessionId;
     events = new EventSource(`/api/agent/v1/chat/sessions/${sessionId}/events`);
     events.addEventListener("update", async (e) => {
@@ -269,6 +318,7 @@ export function mountAgentIntelligence({getWatchlist=()=>null,deferUntilInterest
       csrf = d.csrf;
       status.textContent = "Dispositivo autorizado";
       await loadSessions();
+      await loadSelections();
       await refresh();
     } catch (e) {
       showError(e);
@@ -292,7 +342,8 @@ export function mountAgentIntelligence({getWatchlist=()=>null,deferUntilInterest
         await loadSessions();
         connect();
       }
-      const fingerprint = JSON.stringify({ sessionId, text, context });
+      const descriptor=appContext();
+      const fingerprint = JSON.stringify({ sessionId, text, context,appContext:descriptor });
       if (pendingSend?.fingerprint !== fingerprint)
         pendingSend = {
           fingerprint,
@@ -303,7 +354,7 @@ export function mountAgentIntelligence({getWatchlist=()=>null,deferUntilInterest
       const key = pendingSend.key;
       const d = await request(
         `/api/agent/v1/chat/sessions/${sessionId}/messages`,
-        { method: "POST", body: JSON.stringify({ key, text, context }) },
+        { method: "POST", body: JSON.stringify({ key, text, context,appContext:descriptor }) },
       );
       runId = d.jobId;
       pendingSend = null;
@@ -603,7 +654,7 @@ export function mountAgentIntelligence({getWatchlist=()=>null,deferUntilInterest
     if(hadFocus||moreFocused)window.scrollTo({top:pageY,behavior:'auto'});
   }
   const brief = byId("agent-brief-body");
-  const openChat = button("Abrir chat", () => open());
+  const openChat = button("Abrir analista", () => open());
   openChat.id = "agent-chat-open";
   brief?.before(openChat);
   inbox?.append(
@@ -647,12 +698,16 @@ export function mountAgentIntelligence({getWatchlist=()=>null,deferUntilInterest
   }
   if(deferUntilInterested)interest=observeInterest(brief?.closest('article')||brief,active=>{if(active)void initialize();});
   else void initialize();
+  const visibility=()=>{if(document.hidden)events?.close();else if(!drawer.hidden){void history().catch(showError);connect();}};
+  document.addEventListener('visibilitychange',visibility);
+  const contextChange=()=>{if(!drawer.hidden)updateContext();};document.addEventListener('change',contextChange);
   const timer = setInterval(() => void refresh().catch(showError), 30000);
   return () => {
     stopped = true;
     clearInterval(timer);
     interest?.destroy();
     events?.close();
-    drawer.remove();
+    document.removeEventListener("visibilitychange",visibility);document.removeEventListener("change",contextChange);
+    tabs.remove();drawer.remove();
   };
 }

@@ -1,3 +1,4 @@
+import {readEvents} from './eventStream.js';
 import {toolReceipt} from './toolReceipt.js';
 import {terminalFailure,transportFailure} from './failures.js';
 import {agentToolCall} from '../../contracts/ogidOperations.js';
@@ -23,6 +24,27 @@ export class OpenCodeClient {
     this.baseUrl = localUrl(baseUrl).origin;
     this.password = password;
     this.fetch = fetchImpl;
+    this.progressCache=new Map();this.eventHints=new Set();
+  }
+  startEvents(signal) {
+    if(this.eventsTask)return this.eventsTask;
+    this.eventsTask=(async()=>{
+      while(!signal.aborted){
+        try{
+          const response=await this.fetch(this.baseUrl+'/api/event',{signal,redirect:'error',headers:{Authorization:'Basic '+Buffer.from(`opencode:${this.password}`).toString('base64'),Accept:'text/event-stream'}});
+          if(!response.ok){await response.body?.cancel();throw Error('OPENCODE_EVENTS_UNAVAILABLE');}
+          this.eventsConnected=true;
+          await readEvents(response.body,event=>{
+            const encoded=JSON.stringify(event);
+            // Only terminal hints bypass the periodic reconciliation budget.
+            if(['session.idle','session.error'].includes(event?.type))for(const key of this.progressCache.keys())if(encoded.includes(key.split('|')[0]))this.eventHints.add(key);
+          },signal);
+        }catch{this.eventsConnected=false;}
+        finally{this.eventsConnected=false;}
+        if(!signal.aborted)await new Promise(resolve=>{const done=()=>{clearTimeout(timer);signal.removeEventListener('abort',done);resolve();};const timer=setTimeout(done,15000);signal.addEventListener('abort',done,{once:true});});
+      }
+    })().finally(()=>{this.eventsTask=null;});
+    return this.eventsTask;
   }
   async request(path, { method = "GET", body, signal } = {}) {
     signal = AbortSignal.any([
@@ -124,6 +146,7 @@ export class OpenCodeClient {
     }).then((v) => v.data || v);
   }
   async messages(id, signal, untilId) {
+    this.messagePageReads=(this.messagePageReads||0)+1;
     const data = [],
       seen = new Set();
     let cursor;
@@ -146,13 +169,23 @@ export class OpenCodeClient {
       cursor = next;
     } while (true);
   }
-  cancel(id) {
-    return this.request(`/api/session/${encodeURIComponent(id)}/interrupt`, {
+  async cancel(id) {
+    try{return await this.request(`/api/session/${encodeURIComponent(id)}/interrupt`, {
       method: "POST",
       signal: AbortSignal.timeout(10000),
-    });
+    });}catch(error){
+      if(error.code!=='OPENCODE_HTTP_404')throw error;
+      try{await this.session(id,AbortSignal.timeout(10000));}catch(check){
+        if(check.code==='OPENCODE_HTTP_404')return {state:'absent',observedAt:new Date().toISOString(),originalOutcome:'unknown'};
+        throw check;
+      }
+      throw error;
+    }
   }
-  async progress(id, signal, messageId) {
+  async progress(id, signal, messageId, {cache=false}={}) {
+    const cacheKey=`${id}|${messageId}`,cached=this.progressCache.get(cacheKey);
+    if(cache&&cached&&!cached.value.idle&&Date.now()-cached.at<15000&&!this.eventHints.has(cacheKey))return cached.value;
+    this.eventHints.delete(cacheKey);
     const [session, messages] = await Promise.all([
       this.session(id, signal),
       this.messages(id, signal, messageId),
@@ -176,7 +209,7 @@ export class OpenCodeClient {
     const terminalError=Boolean(rejectedRetry || latest?.time?.completed && latest.finish === "error");
     const userTime=boundary>=0?timeline[boundary]?.time?.created:null;
     const inactive=Number.isFinite(userTime)&&[session.time?.idle,session.time?.archived].some(at=>Number.isFinite(at)&&at>=userTime);
-    return {
+    const result = {
       inactive,
       idle: Boolean(
         terminalError || (latest?.time?.completed && session.time?.idle >= latest.time.completed),
@@ -216,5 +249,8 @@ export class OpenCodeClient {
         time: m.time,
       })),
     };
+    if(this.progressCache.size>=128)this.progressCache.delete(this.progressCache.keys().next().value);
+    this.progressCache.set(cacheKey,{at:Date.now(),value:result});
+    return result;
   }
 }

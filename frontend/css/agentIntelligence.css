@@ -1,6 +1,9 @@
 .agent-chat-dialog {
-  width: min(850px, 96vw);
-  max-height: 94vh;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  max-height: 85vh;
+  overflow: auto;
   border: 1px solid #465268;
   border-radius: 12px;
   background: #111b2b;
@@ -92,3 +95,7 @@
     transition: none;
   }
 }
+
+.agent-chat-dialog[hidden] { display: none; }
+.agent-chat-dialog select { max-width:100%; }
+.agent-chat-dialog details { overflow-wrap:anywhere; }

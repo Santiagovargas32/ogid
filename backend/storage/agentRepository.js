@@ -1,3 +1,4 @@
+import {requestAgent,captureContext,validateContext} from './agentRequests.js';
 import {requestAnalysis,prepareAnalysis,commitAnalysisDependencies,analysisCurrentness,readAnalyses} from './situationAnalyses.js';
 import {SituationStore} from './situations.js';
 import { randomUUID, createHash, randomBytes } from "node:crypto";
@@ -63,7 +64,7 @@ export const AGENT_METHODS = [
   "sessions",
   "sessionCreate",
   "messages",
-  "send",
+  "send", "requestAgent",
   "link",
   "enqueue",
   "consume",
@@ -97,11 +98,13 @@ export class AgentRepository {
   constructor(runtime, { now = Date.now, debounceMs = 30000, random = Math.random } = {}) {
     Object.assign(this, { runtime, db: runtime.db, now, debounceMs, random });
   }
+  requestAgent(input){return requestAgent(this,input);}
   analysisRequest(input){return requestAnalysis(this,input,input.model);}
   analysisList(input){return readAnalyses(this,input);}
   analysisDetail(input){return readAnalyses(this,input);}
   analysisSections(input){return readAnalyses(this,input);}
-  analysisSnapshotAccess({snapshotId}){return {restricted:this.snapshotInfo(snapshotId).coverage.situationId!==undefined};}
+  analysisSnapshotAccess({snapshotId}){const session=this.db.prepare('SELECT session_id sessionId FROM agent_jobs WHERE snapshot_id=? AND session_id IS NOT NULL').get(snapshotId);return {sessionId:session?.sessionId,restricted:Boolean(session)||this.snapshotInfo(snapshotId).coverage.situationId!==undefined};}
+
   recovery(model) {
     return (this.runtime.load('agent-recovery-v1')||[]).find(e=>e.model===model&&e.contractHash===OPERATIONS_HASH)||{model,contractHash:OPERATIONS_HASH,consecutiveFailures:0};
   }
@@ -126,15 +129,7 @@ export class AgentRepository {
     if ((paused !== undefined && typeof paused !== "boolean") || (backgroundModel !== undefined && !/^llamacpp\/[A-Za-z0-9._:-]{1,160}$/.test(backgroundModel)))
       throw agentError("AGENT_INVALID_ARGUMENTS");
     return this.db.transaction(()=>{
-      let requeued=0;
-      if(backgroundModel !== undefined && backgroundModel !== saved.backgroundModel){
-        const pending=this.db.prepare("SELECT * FROM agent_jobs WHERE status='queued' AND snapshot_id IS NULL AND task!='contextual_chat' AND model!=? AND json_extract(input_json,'$.outboxSequence') IS NOT NULL").all(backgroundModel);
-        for(const job of pending){
-          this.db.prepare("UPDATE agent_jobs SET status='superseded',updated_at=?,error_code='AGENT_MODEL_CHANGED' WHERE job_id=?").run(stamp(this.now()),job.job_id);
-          this.enqueue({task:job.task,scope:job.scope,model:backgroundModel,key:stableHash(['model-selection',job.job_id,backgroundModel]),input:parse(job.input_json),priority:job.priority});
-          requeued++;
-        }
-      }
+      const requeued=0;
       const next={...saved,...(paused===undefined?{}:{paused}),...(backgroundModel===undefined?{}:{backgroundModel})};
       this.runtime.save("agent-control",next);
       return {...next,...(backgroundModel===undefined?{}:{requeued})};
@@ -357,7 +352,7 @@ export class AgentRepository {
           .get(sessionId) || null,
     };
   }
-  send({ sessionId, deviceId, key, text, context = [] }) {
+  send({ sessionId, deviceId, key, text, context = [], appContext = {} }) {
     this.owned(sessionId, deviceId);
     if (
       !safeId(key) ||
@@ -369,6 +364,7 @@ export class AgentRepository {
       context.some((x) => !safeId(x))
     )
       throw agentError("AGENT_INVALID_MESSAGE");
+    const descriptor=validateContext(appContext);
     return this.db
       .transaction(() => {
         const old = this.db
@@ -378,8 +374,8 @@ export class AgentRepository {
           .get(sessionId, key);
         if (old) {
           if (
-            stableHash(parse(old.payload_json)) !==
-            stableHash({ text, context })
+            stableHash({...parse(old.payload_json),appContext:parse(old.payload_json).appContext||{view:"dashboard",countries:[],instrumentIds:[]}}) !==
+            stableHash({ text, context,appContext:descriptor })
           )
             throw agentError("AGENT_IDEMPOTENCY_CONFLICT", 409);
           return {
@@ -399,7 +395,7 @@ export class AgentRepository {
             sessionId,
             "user",
             stamp(this.now()),
-            json({ text, context }),
+            json({ text, context,appContext:descriptor }),
             key,
           );
         const job = this.enqueue({
@@ -409,20 +405,21 @@ export class AgentRepository {
           key: `chat:${messageId}`,
           sessionId,
           messageId,
-          input: { text, context: this.resolveContext(context) },
+          input: { origin:"user",text, context: this.resolveContext(context,deviceId),appContext:captureContext(this,descriptor) },
           priority: 10,
         });
         return { messageId, jobId: job.jobId };
       })
       .immediate();
   }
-  resolveContext(ids) {
+  resolveContext(ids,deviceId) {
     return ids.map((id) => {
       const pub = this.db
         .prepare(
-          "SELECT payload_json FROM agent_publications WHERE publication_id=?",
+          "SELECT p.payload_json,s.device_id FROM agent_publications p JOIN agent_jobs j ON j.job_id=p.job_id LEFT JOIN agent_sessions s ON s.session_id=j.session_id WHERE p.publication_id=?",
         )
         .get(id);
+      if(pub?.device_id&&pub.device_id!==deviceId)throw agentError('AGENT_INVALID_CONTEXT');
       if(pub&&parse(pub.payload_json).proposal?.task==='situation_analysis')throw agentError('AGENT_INVALID_CONTEXT');
       if (pub)
         return {
@@ -501,88 +498,9 @@ export class AgentRepository {
       );
     return { jobId };
   }
-  consume({ model, instrumentIds = [], enabledTasks = TASKS }) {
-    if (instrumentIds.length > 50) throw agentError("AGENT_INVALID_SCOPE");
-    return this.db
-      .transaction(() => {
-        const ck = "agent-outbox-v1",
-          previous =
-            this.db
-              .prepare(
-                "SELECT sequence FROM consumer_checkpoints WHERE consumer_id=?",
-              )
-              .get(ck)?.sequence || 0;
-        const changes = this.db
-          .prepare(
-            "SELECT * FROM outbox WHERE sequence>? ORDER BY sequence LIMIT 100",
-          )
-          .all(previous);
-        const latest = changes.at(-1)?.sequence || previous;
-        const kinds = new Set(changes.map((x) => x.entity_kind));
-        const requested = [];
-        if (changes.length) {
-          requested.push(
-            ["global_intelligence_brief", "global"],
-            ["market_outlook_global", "global"],
-          );
-          if (kinds.has("official-revision"))
-            requested.push(["geopolitical_alert_assessment", "global"]);
-          for (const id of instrumentIds)
-            if (
-              changes.some(
-                (c) =>
-                  c.entity_id === id ||
-                  c.entity_kind === "article-revision" ||
-                  c.entity_kind === "coverage-revision",
-              )
-            )
-              requested.push(["instrument_outlook", id]);
-        }
-        const jobs = [];
-        for (const [task, scope] of requested.filter(([task]) =>
-          enabledTasks.includes(task),
-        )) {
-          const pending = this.db
-            .prepare(
-              "SELECT job_id FROM agent_jobs WHERE task=? AND scope=? AND status='queued' AND snapshot_id IS NULL",
-            )
-            .get(task, scope);
-          if (pending) {
-            this.db
-              .prepare(
-                "UPDATE agent_jobs SET input_json=?,updated_at=? WHERE job_id=?",
-              )
-              .run(
-                json({
-                  outboxSequence: latest,
-                  selectedInstrumentIds: instrumentIds,
-                }),
-                stamp(this.now()),
-                pending.job_id,
-              );
-            continue;
-          }
-          jobs.push(
-            this.enqueue({
-              task,
-              scope,
-              model,
-              key: stableHash([task, scope, latest, PROMPT_VERSION, model]),
-              input: {
-                outboxSequence: latest,
-                selectedInstrumentIds: instrumentIds,
-              },
-            }),
-          );
-        }
-        if(latest!==previous)this.db
-          .prepare(
-            "INSERT INTO consumer_checkpoints VALUES(?,?,?) ON CONFLICT(consumer_id) DO UPDATE SET sequence=excluded.sequence,acknowledged_at=excluded.acknowledged_at",
-          )
-          .run(ck, latest, stamp(this.now()));
-        return { sequence: latest, jobs, hasMore: changes.length === 100, model };
-      })
-      .immediate();
+  consume({model}={}) {
+    // Compatibility endpoint: outbox changes never create inference work.
+    return {jobs:[],hasMore:false,model,onDemand:true};
   }
   job(id) {
     const r = this.db
@@ -623,12 +541,10 @@ export class AgentRepository {
     return this.db
       .transaction(() => {
         // A crashed/in-doubt attempt is reconciled; never replay its POST blindly.
-        const outdated=this.db.prepare("SELECT * FROM agent_jobs WHERE status='queued' AND opencode_id IS NULL AND prompt_version!=? LIMIT 128").all(PROMPT_VERSION);
-        for(const old of outdated){
-          this.db.prepare("UPDATE agent_jobs SET status='superseded',updated_at=?,error_code='AGENT_PROMPT_UPDATED' WHERE job_id=?").run(stamp(this.now()),old.job_id);
-          this.enqueue({task:old.task,scope:old.scope,model:old.model,key:stableHash(['prompt-upgrade',old.job_id,PROMPT_VERSION]),sessionId:old.session_id,messageId:old.message_id,input:parse(old.input_json),priority:old.priority});
-        }
+        this.db.prepare("UPDATE agent_jobs SET status='cancelled',error_code='AGENT_AUTOMATION_DISABLED',updated_at=? WHERE status IN ('queued','waiting-model') AND lease_owner IS NULL AND session_id IS NULL AND json_extract(input_json,'$.outboxSequence') IS NOT NULL").run(stamp(this.now()));
+        this.db.prepare("UPDATE agent_jobs SET status='superseded',error_code='AGENT_PROMPT_UPDATED',updated_at=? WHERE status IN ('queued','waiting-model') AND lease_owner IS NULL AND prompt_version!=?").run(stamp(this.now()),PROMPT_VERSION);
         this.expireLeases();
+        if(this.db.prepare("SELECT 1 FROM agent_jobs WHERE (status IN ('running','validating','waiting-model') AND lease_owner IS NOT NULL) OR (opencode_id IS NOT NULL AND status IN ('incomplete','cancelled') AND coalesce(json_extract(input_json,'$.interruptAcknowledged'),json_extract(input_json,'$.cancellationAcknowledged'),0)=0) LIMIT 1").get())return null;
         const candidates = this.db
           .prepare(
             "SELECT * FROM agent_jobs WHERE (status='queued' OR (status='waiting-model' AND lease_owner IS NULL)) AND task IN (SELECT value FROM json_each(?)) AND attempts<3 AND (priority<20 OR created_at<=?) AND (session_id IS NULL OR NOT EXISTS(SELECT 1 FROM agent_jobs other WHERE other.session_id=agent_jobs.session_id AND (other.status IN ('running','validating','waiting-model') OR (other.opencode_id IS NOT NULL AND ((other.status='cancelled' AND coalesce(json_extract(other.input_json,'$.cancellationAcknowledged'),0)=0) OR (other.status='incomplete' AND coalesce(json_extract(other.input_json,'$.interruptAcknowledged'),0)=0)))))) ORDER BY priority - ((?-julianday(created_at))*24*60),created_at LIMIT 128",
@@ -707,7 +623,7 @@ export class AgentRepository {
   pendingCancellations() {
     return this.db
       .prepare(
-        "SELECT * FROM agent_jobs WHERE opencode_id IS NOT NULL AND ((status='cancelled' AND coalesce(json_extract(input_json,'$.cancellationAcknowledged'),0)=0) OR (status='incomplete' AND json_extract(input_json,'$.interruptId') IS NOT NULL AND coalesce(json_extract(input_json,'$.interruptAcknowledged'),0)=0)) LIMIT 20",
+        "SELECT * FROM agent_jobs WHERE opencode_id IS NOT NULL AND ((status='cancelled' AND coalesce(json_extract(input_json,'$.cancellationAcknowledged'),0)=0) OR (status='incomplete' AND coalesce(json_extract(input_json,'$.interruptAcknowledged'),0)=0)) LIMIT 20",
       )
       .all()
       .map((r) => this.wire(r));
@@ -745,15 +661,15 @@ export class AgentRepository {
       })
       .immediate();
   }
-  cancelAcknowledged({ jobId, fence, interruptId }) {
+  cancelAcknowledged({ jobId, fence, interruptId,resolution }) {
     const r = this.job(jobId);
     if (r.fence !== fence || parse(r.input_json).interruptId !== interruptId)
       throw agentError("AGENT_LEASE_LOST", 409);
     this.db
       .prepare(
-        "UPDATE agent_jobs SET input_json=json_set(input_json,'$.cancellationAcknowledged',json('true'),'$.interruptAcknowledged',json('true')) WHERE job_id=?",
+        "UPDATE agent_jobs SET input_json=json_set(input_json,'$.cancellationAcknowledged',json('true'),'$.interruptAcknowledged',json('true'),'$.interruptionResolution',json(?)) WHERE job_id=?",
       )
-      .run(jobId);
+      .run(json(resolution?.state==='absent'?{state:'absent',observedAt:stamp(this.now()),originalOutcome:'unknown'}:{state:'interrupt-acknowledged'}),jobId);
     return { acknowledged: true };
   }
   resume({ jobId }) {
@@ -767,11 +683,8 @@ export class AgentRepository {
       throw agentError("AGENT_RECONCILIATION_DENIED", 409);
     if(row.prompt_version!==PROMPT_VERSION){
       if(row.opencode_id&&!interruption.interruptAcknowledged)throw agentError("AGENT_RECONCILIATION_DENIED",409);
-      return this.db.transaction(()=>{
-        this.db.prepare("UPDATE agent_jobs SET status='superseded',updated_at=?,error_code='AGENT_PROMPT_UPDATED' WHERE job_id=?").run(stamp(this.now()),row.job_id);
-        const input={...interruption};for(const key of ["interruptId","interruptUntil","interruptAcknowledged","cancellationAcknowledged"])delete input[key];
-        return {...this.enqueue({task:row.task,scope:row.scope,model:row.model,key:stableHash(["prompt-upgrade",row.job_id,PROMPT_VERSION]),sessionId:row.session_id,messageId:row.message_id,input,priority:row.priority}),upgraded:true};
-      }).immediate();
+      this.db.prepare("UPDATE agent_jobs SET status='superseded',updated_at=?,error_code='AGENT_PROMPT_UPDATED' WHERE job_id=?").run(stamp(this.now()),row.job_id);
+      return {superseded:true};
     }
     this.db
       .prepare(
@@ -853,7 +766,7 @@ export class AgentRepository {
         }
       }
       this.db.prepare('UPDATE agent_jobs SET opencode_id=? WHERE job_id=?').run(input.opencodeId,r.job_id);
-      if(r.session_id)this.db.prepare('UPDATE agent_sessions SET opencode_id=? WHERE session_id=?').run(input.opencodeId,r.session_id);
+      if(r.session_id&&r.task==='contextual_chat')this.db.prepare('UPDATE agent_sessions SET opencode_id=? WHERE session_id=?').run(input.opencodeId,r.session_id);
       return {linked:true};
     }).immediate();
   }
@@ -1013,11 +926,16 @@ export class AgentRepository {
         const job = this.fenced(input);
         if (job.snapshot_id) return {existing:this.snapshotInfo(job.snapshot_id)};
         if(job.task==='situation_analysis')return prepareAnalysis(this,job,{rowSink,maxPreparationMs});
+        const chatContext=parse(job.input_json).appContext;
+        if(job.task==='contextual_chat'&&chatContext?.situationId){const prepared=prepareAnalysis(this,{...job,scope:chatContext.situationId,input_json:json({...parse(job.input_json),context:chatContext})},{rowSink,maxPreparationMs});return {...prepared,scope:job.scope};}
         const snapshotId = randomUUID(),
-          asOf = stamp(this.now()),
-          since = stamp(this.now() - 86400000),
+          requestContext = parse(job.input_json).appContext || parse(job.input_json).context,
+          selection = requestContext && !Array.isArray(requestContext) ? requestContext : null,
+          asOf = selection?.capturedAt || stamp(this.now()),
+          since = selection?.from || stamp(Date.parse(asOf) - 86400000),
           manifest = {
             complete: false,
+            ...(selection?{requestContext:selection,partial:true}:{}),
             reasonCodes: ["collected-sources-only"],
             domains: {},
             windowHours: 24,
@@ -1027,11 +945,14 @@ export class AgentRepository {
           };
         const rowsFor=table=>rowSink?{length:0,push(row){rowSink(table,row);this.length++;}}:[];
         const evidence=rowsFor('evidence'),clusters=rowsFor('clusters'),members=rowsFor('members'),seen=new Set(),groups=new Map(),digest=createHash("sha256");
+        let selectionBytes=0;
         const add=(id,domain,at,data,articleId=null,articleRevision=null,articlePayload=null)=>{
           if(performance.now()-preparationStarted>maxPreparationMs)throw agentError('AGENT_SNAPSHOT_PREPARATION_TIMEOUT',503);
           if(seen.has(id))return;
           if(data&&['technical.get','indicators.calculate'].includes(domain))data={...data,numericSemantics:{version:NUMERIC_CONTRACT_VERSION,methodVersion:data.methodVersion,seriesRevision:data.seriesRevision||null}};
-          seen.add(id);const payload=data===null?null:json(data);
+          const payload=data===null?null:json(data);
+          if(selection){const size=Buffer.byteLength(payload||articlePayload||'');if(domain!=='coverage'&&selectionBytes+size>2097152){manifest.reasonCodes.push('evidence-budget-exhausted');return;}selectionBytes+=size;}
+          seen.add(id);
           evidence.push([id,domain,at,articleId,articleRevision,payload]);
           digest.update(json([id,domain,at,payload || articlePayload]));
           manifest.domains[domain]={...(manifest.domains[domain] || {}),freeze:manifest.domains[domain]?.freeze || "materialized"};
@@ -1045,7 +966,7 @@ export class AgentRepository {
         // The NULL branch uses the same index and retains receivedAt fallback.
         const branchParams = [
           since,
-          asOf,
+          selection?.to || asOf,
           asOf,
           asOf,
           ...(filter ? [job.scope] : []),
@@ -1060,13 +981,16 @@ export class AgentRepository {
               `SELECT r.rowid,r.article_id,r.revision,r.observed_at FROM article_revisions r WHERE ${dateFilter} AND r.observed_at<=? AND NOT EXISTS(SELECT 1 FROM article_revisions n INDEXED BY article_revisions_available WHERE n.article_id=r.article_id AND n.revision>r.revision AND n.observed_at<=?) ${filter}`,
           )
           .join(" UNION ALL ");
-        const references=this.db.prepare(`SELECT * FROM (${sql}) LIMIT 100001`).all(...params);
+        const countryFilter=selection?.countries?.length?"WHERE EXISTS(SELECT 1 FROM article_countries c WHERE c.article_id=selected.article_id AND c.country IN (SELECT value FROM json_each(?)))":"";
+        const references=this.db.prepare(`SELECT * FROM (${sql}) selected ${countryFilter} ORDER BY observed_at DESC,article_id LIMIT ${selection?101:100001}`).all(...params,...(countryFilter?[json(selection.countries)]:[]));
+        if(selection&&references.length>100){references.pop();manifest.reasonCodes.push('bounded-news-selection');}
         const count=references.length;
         if(count>100000)throw agentError("AGENT_SCOPE_TOO_LARGE",413);
         manifest.domains.news={count,freeze:"immutable-revisions"};
         for(const r of physicalPages(this.db,"article_revisions",references)){
           const id=`news:${r.article_id}:${r.revision}`;
           add(id,"news",r.observed_at,null,r.article_id,r.revision,r.payload_json);
+          if(!seen.has(id))continue;
           const article=permittedArticle(parse(r.payload_json),asOf),
             key=String(article.title || id).normalize("NFKD").replace(/\p{M}+/gu,"").toLowerCase().replace(/[^\p{L}\p{N}]+/gu," ").trim(),
             clusterId=`cluster:${stableHash(key)}`;
@@ -1077,10 +1001,11 @@ export class AgentRepository {
         }
         for (const row of this.db
           .prepare(
-            "SELECT * FROM awareness_events WHERE observed_at<=? AND observed_at>=? ORDER BY observed_at",
+            `SELECT * FROM awareness_events WHERE observed_at<=? AND observed_at>=? ORDER BY observed_at DESC ${selection?"LIMIT 101":""}`,
           )
           .iterate(asOf, since)) {
           const e = parse(row.payload_json);
+          if(selection&&evidence.length>=201){manifest.reasonCodes.push('bounded-awareness-selection');break;}
           if (admitted(row.source_id))
             add(
               `event:${row.event_id}:${row.revision}`,
@@ -1139,13 +1064,14 @@ export class AgentRepository {
             ...(captured ? {} : { reason: "not-calculated" }),
           };
         }
+        if(selection)manifest.reasonCodes.push('bounded-domain-selection; not-complete-corpus');
         const alertReferences=new Map();let retainedAlertReferences=0;
         const sourceRevision=this.db.prepare('SELECT * FROM article_revisions WHERE article_id=? AND revision=? AND observed_at<=?');
-        for (const row of this.db
-          .prepare(
-            "SELECT * FROM geopolitical_alerts WHERE updated_at<=? ORDER BY updated_at DESC LIMIT 500",
-          )
-          .iterate(asOf)) {
+        const alertRows=selection?.alertId
+          ? this.db.prepare('SELECT * FROM geopolitical_alert_revisions WHERE alert_id=? AND revision=?').all(selection.alertId,selection.alertRevision)
+          : this.db.prepare(`SELECT * FROM geopolitical_alerts WHERE updated_at<=? ORDER BY updated_at DESC LIMIT ${selection?100:500}`).all(asOf);
+        if(selection?.alertId&&!alertRows.length)throw agentError('AGENT_CONTEXT_UNAVAILABLE',409);
+        for (const row of alertRows) {
           const alert=parse(row.payload_json),references=[];
           for(const id of Array.isArray(alert.evidenceIds)?alert.evidenceIds:[]){
             if(typeof id!=='string')continue;
@@ -1173,14 +1099,14 @@ export class AgentRepository {
         manifest.domains['news-reference']={count:retainedAlertReferences,freeze:'immutable-revisions',meaning:'exact sources of frozen alerts; historical context outside the current news selection'};
         manifest.domains['geopolitical-alert']={...manifest.domains['geopolitical-alert'],sourceReferences:{requested:alertReferences.size,resolved:[...alertReferences.values()].filter(r=>r.available).length,unavailable:[...alertReferences.values()].filter(r=>!r.available).length}};
         const market = this.runtime.load("market");
-        if (market)
+        if (market && !selection)
           add(
             `market:${stableHash(market)}`,
             "market",
             asOf,
             publicProjection(market, 0, Number.MAX_SAFE_INTEGER),
           );
-        add(
+        if(!selection)add(
           `pipelines:${snapshotId}`,
           "pipeline-health",
           asOf,
@@ -1192,7 +1118,7 @@ export class AgentRepository {
               ...publicProjection(parse(r.state_json)),
             })),
         );
-        for (const row of this.db
+        if(!selection)for (const row of this.db
           .prepare(
             "SELECT entity_id,payload_json FROM research_rows WHERE collection='companyFacts' LIMIT 100",
           )
@@ -1249,6 +1175,7 @@ export class AgentRepository {
           freeze: "materialized",
           semanticGrouping: false,
         };
+        manifest.reasonCodes=[...new Set(manifest.reasonCodes)];
         manifest.preparationMs=performance.now()-preparationStarted;
         manifest.evidenceCount = evidence.length;
         manifest.sha256 = digest.digest("hex");
@@ -1483,7 +1410,7 @@ export class AgentRepository {
       snapshot = this.snapshotInfo(job.snapshot_id);
     if (!["shadow", "visible"].includes(input.mode))
       throw agentError("AGENT_INVALID_MODE");
-    if(job.task==='situation_analysis'&&input.mode!=='shadow')throw agentError('AGENT_INVALID_MODE');
+    if((job.task==='situation_analysis'||parse(job.input_json).origin==='user')&&input.mode!=='shadow')throw agentError('AGENT_INVALID_MODE');
     const proposal = assertPublication(input.proposal, {
       job: { task: job.task, scope: job.scope,promptVersion:job.prompt_version },
       snapshot,
@@ -1509,9 +1436,9 @@ export class AgentRepository {
           validUntil = stamp(this.now() + 86400000);
         const newer = this.db
           .prepare(
-            "SELECT 1 FROM agent_publications p JOIN agent_snapshots s USING(snapshot_id) WHERE p.task=? AND p.scope=? AND s.as_of>?",
+            "SELECT 1 FROM agent_publications p JOIN agent_snapshots s USING(snapshot_id) JOIN agent_jobs j ON j.job_id=p.job_id WHERE p.task=? AND p.scope=? AND s.as_of>? AND j.session_id IS ?",
           )
-          .get(job.task, job.scope, snapshot.asOf);
+          .get(job.task, job.scope, snapshot.asOf,job.session_id);
         if (newer) {
           this.db
             .prepare(
@@ -1527,7 +1454,7 @@ export class AgentRepository {
         }
         let forecastId = null;
         if (
-          job.task === "instrument_outlook" &&
+          job.task === "instrument_outlook" && !job.session_id &&
           ["up", "down", "flat"].includes(proposal.direction)
         ) {
           const technical = this.db
@@ -1594,7 +1521,7 @@ export class AgentRepository {
             json(payload),
           );
         if(job.task==='situation_analysis')commitAnalysisDependencies(this,publicationId,job.snapshot_id,proposal);
-        if(job.task!=='situation_analysis')this.db.prepare("INSERT INTO agent_memory VALUES(?,?,?,?)").run(
+        if(job.task!=='situation_analysis'&&!job.session_id)this.db.prepare("INSERT INTO agent_memory VALUES(?,?,?,?)").run(
           job.scope,
           publicationId,
           at,
@@ -1654,6 +1581,7 @@ export class AgentRepository {
             job.job_id,
             job.fence,
           );
+        if(job.session_id)this.db.prepare('INSERT INTO agent_messages VALUES(?,?,?,?,?,?)').run(randomUUID(),job.session_id,'assistant',at,json({text:proposal.summary,publicationId,jobId:job.job_id,snapshotId:job.snapshot_id,evidenceIds:proposal.evidenceIds,task:job.task,mode:input.mode}),`result:${job.job_id}`);
         this.recordRecovery(job,{...input,status:"completed"});
         return { publicationId, status: "completed" };
       })
@@ -1848,7 +1776,9 @@ export class AgentRepository {
       if (!r.session_id) throw agentError("AGENT_RUN_NOT_FOUND", 404);
       this.owned(r.session_id, deviceId);
     }
-    return this.wire(r);
+    const result=this.wire(r);
+    if(!internal){const publication=this.db.prepare('SELECT payload_json FROM agent_publications WHERE job_id=?').get(jobId);if(publication){result.publication=parse(publication.payload_json);result.publication.currentness=this.publicationCurrentness(r.snapshot_id,result.publication.proposal);}}
+    return result;
   }
   cancel(input) {
     return this.db

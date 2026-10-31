@@ -199,6 +199,7 @@ export const AGENT_PRIVATE_ROUTES = Object.freeze([
  "POST /api/agent/v1/access/device", "GET /api/agent/v1/access",
  "GET /api/agent/v1/chat/sessions", "POST /api/agent/v1/chat/sessions",
  "GET /api/agent/v1/chat/sessions/:id/messages", "POST /api/agent/v1/chat/sessions/:id/messages",
+ "POST /api/agent/v1/chat/sessions/:id/requests",
  "GET /api/agent/v1/chat/sessions/:id/events", "GET /api/agent/v1/runs/:id", "POST /api/agent/v1/runs/:id/cancel",
  "GET /api/alerts/v1/geopolitical", "PATCH /api/alerts/v1/geopolitical/:id/state",
  "GET /api/admin/agent", "POST /api/admin/agent/pause", "POST /api/admin/agent/devices/:id/revoke",

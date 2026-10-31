@@ -3,7 +3,7 @@ import Ajv from "ajv";
 import { AppError } from "../../utils/error.js";
 import { numericFactProblem } from './evidencePaths.js';
 import {numericNarrativeProblem} from './numericSemantics.js';
-export const PROMPT_VERSION = "ogid-analyst-v1.9";
+export const PROMPT_VERSION = "ogid-analyst-v1.11";
 export const PUBLICATION_CONTRACT_VERSION = 'typed-numeric-facts-v2';
 export const TASKS = [
   "situation_analysis",
@@ -183,7 +183,7 @@ export function publicationSchemaForJob(job) {
     required: [...publicationSchema.required, ...(job.task === 'instrument_outlook' ? ['instrumentId'] : [])],
     properties: {
       ...publicationSchema.properties,
-      ...(['ogid-analyst-v1.7','ogid-analyst-v1.8',PROMPT_VERSION].includes(job.promptVersion)?{technicalFacts:{...publicationSchema.properties.technicalFacts,items:{...publicationSchema.properties.technicalFacts.items,required:['evidenceId','path','value','unit']}}}:{}),
+      ...(['ogid-analyst-v1.7','ogid-analyst-v1.8','ogid-analyst-v1.9','ogid-analyst-v1.10',PROMPT_VERSION].includes(job.promptVersion)?{technicalFacts:{...publicationSchema.properties.technicalFacts,items:{...publicationSchema.properties.technicalFacts.items,required:['evidenceId','path','value','unit']}}}:{}),
       task: { const: job.task },
       ...(job.task === 'instrument_outlook' ? {instrumentId: job.scope ? {const:job.scope} : {type:'string',minLength:1}} : {}),
       ...(job.task !== 'geopolitical_alert_assessment' ? {alertAssessments:{...publicationSchema.properties.alertAssessments,maxItems:0}} : {}),
@@ -206,7 +206,7 @@ export function validatePublicationForJob(value, job) {
     validatePublicationForJob.errors=[{instancePath:'/task',keyword:'enum',params:{}}];
     return false;
   }
-  const key=`${job.task}:${['ogid-analyst-v1.7','ogid-analyst-v1.8',PROMPT_VERSION].includes(job.promptVersion)?'typed-v2':'legacy'}`;
+  const key=`${job.task}:${['ogid-analyst-v1.7','ogid-analyst-v1.8','ogid-analyst-v1.9','ogid-analyst-v1.10',PROMPT_VERSION].includes(job.promptVersion)?'typed-v2':'legacy'}`;
   if (!taskValidators.has(key)) taskValidators.set(key, ajv.compile(publicationSchemaForJob({task:job.task,promptVersion:job.promptVersion})));
   const validator=taskValidators.get(key);
   let valid=validator(value);
@@ -341,7 +341,7 @@ export function assertPublication(
   }
   for (const fact of value.technicalFacts) {
     if (!items.has(fact.evidenceId)) continue;
-    const problem=numericFactProblem(fact,items.get(fact.evidenceId).data,{requireUnit:['ogid-analyst-v1.7','ogid-analyst-v1.8',PROMPT_VERSION].includes(job.promptVersion)});
+    const problem=numericFactProblem(fact,items.get(fact.evidenceId).data,{requireUnit:['ogid-analyst-v1.7','ogid-analyst-v1.8','ogid-analyst-v1.9','ogid-analyst-v1.10',PROMPT_VERSION].includes(job.promptVersion)});
     if(problem)addProblem(problem);
   }
   if(problems.length) {
