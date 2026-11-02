@@ -6,7 +6,7 @@ import {numericNarrativeProblem} from './numericSemantics.js';
 import {narrativeFactsSchema, narrativeProblem, NARRATIVE_INSTRUCTIONS, NARRATIVE_PROMPT_VERSION, NARRATIVE_CONTRACT_VERSION, usesNarrativeFacts} from './narrativeFacts.js';
 export const PROMPT_VERSION = NARRATIVE_PROMPT_VERSION;
 export const PUBLICATION_CONTRACT_VERSION = NARRATIVE_CONTRACT_VERSION;
-const typedNumericJob = job => ['ogid-analyst-v1.7','ogid-analyst-v1.8','ogid-analyst-v1.9','ogid-analyst-v1.10','ogid-analyst-v1.11','ogid-analyst-v1.12','ogid-analyst-v1.13',PROMPT_VERSION].includes(job.promptVersion);
+const typedNumericJob = job => ['ogid-analyst-v1.7','ogid-analyst-v1.8','ogid-analyst-v1.9','ogid-analyst-v1.10','ogid-analyst-v1.11','ogid-analyst-v1.12','ogid-analyst-v1.13','ogid-analyst-v1.14',PROMPT_VERSION].includes(job.promptVersion);
 export const TASKS = [
   "situation_analysis",
   "global_intelligence_brief",

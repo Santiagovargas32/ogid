@@ -1,8 +1,8 @@
 import { numericDescriptor } from './numericSemantics.js';
 
-export const NARRATIVE_PROMPT_VERSION = 'ogid-analyst-v1.14';
+export const NARRATIVE_PROMPT_VERSION = 'ogid-analyst-v1.15';
 export const NARRATIVE_CONTRACT_VERSION = 'typed-narrative-facts-v3';
-export const usesNarrativeFacts = job => ['ogid-analyst-v1.12','ogid-analyst-v1.13',NARRATIVE_PROMPT_VERSION].includes(job.promptVersion);
+export const usesNarrativeFacts = job => ['ogid-analyst-v1.12','ogid-analyst-v1.13','ogid-analyst-v1.14',NARRATIVE_PROMPT_VERSION].includes(job.promptVersion);
 const boundedText = { type: 'string', minLength: 1, maxLength: 256 };
 export const narrativeFactsSchema = {
   type: 'array', maxItems: 100,
@@ -11,8 +11,8 @@ export const narrativeFactsSchema = {
     required: ['kind', 'field', 'literal', 'evidenceId', 'path'],
     properties: {
       kind: { enum: ['technical', 'reported-quantity', 'date', 'edition', 'coverage'] },
-      field: { ...boundedText, pattern: '^/' }, literal: boundedText,
-      evidenceId: boundedText, path: boundedText,
+      field: { ...boundedText, pattern: '^/', description:'JSON pointer del texto de TU respuesta, por ejemplo /summary. Nunca /title ni una ruta del snapshot.' }, literal: {...boundedText,description:'Sólo el literal numérico presente en ese texto; para date, timestamp exacto. Nunca el título completo de una fuente.'},
+      evidenceId: boundedText, path: {...boundedText,description:'Ruta del valor dentro de data, por ejemplo title o observed.close; nunca data ni una ruta de TU respuesta.'},
       quote: { type: 'string', minLength: 1, maxLength: 2000 },
     },
   },
@@ -63,7 +63,12 @@ export function narrativeProblem(value, items, { snapshot = {}, job = {} } = {})
   const fail = (reason, fact = {}) => ({ code: 'AGENT_UNVERIFIED_NUMBER', reason,
     ...Object.fromEntries(['field', 'kind', 'evidenceId', 'path'].filter(k => typeof fact[k] === 'string').map(k => [k, fact[k].slice(0, 256)])) });
   const spans = new Map([...fields.keys()].map(key => [key, []]));
-  for (const fact of facts) {
+  const problems=[],seen=new Set();let truncated=false;
+  const addProblem=problem=>{
+    const key=JSON.stringify(problem);if(seen.has(key))return;
+    if(problems.length<16){problems.push(problem);seen.add(key);}else truncated=true;
+  };
+  const validateReference = fact => {
     const field = fields.get(fact.field), item = items.get(fact.evidenceId);
     if (!field || !field.text.includes(fact.literal) || !numericTokens(fact.literal).length) return fail('invalid-narrative-reference', fact);
     if (!item || !field.refs.includes(fact.evidenceId)) return fail('field-evidence-required', fact);
@@ -90,7 +95,7 @@ export function narrativeProblem(value, items, { snapshot = {}, job = {} } = {})
         matched = true;spans.get(fact.field).push([token.index,token.index+token[0].length]);
       }
       if (!matched) return fail('metric-or-unit-mismatch', fact);
-      continue;
+      return null;
     } else if (fact.kind === 'coverage') {
       const descriptor = numericDescriptor(item.data, fact.path);
       if (!contextField(fact.field) || typeof raw !== 'number' || !Number.isFinite(raw) || fact.literal !== String(raw) ||
@@ -109,17 +114,19 @@ export function narrativeProblem(value, items, { snapshot = {}, job = {} } = {})
       if (!numericTokens(fact.quote).some(t => t[0] === fact.literal) && fact.kind !== 'date') return fail('exact-source-token-required', fact);
       for (let at = field.text.indexOf(attributed); at !== -1; at = field.text.indexOf(attributed, at + attributed.length))
         spans.get(fact.field).push([at, at + attributed.length]);
-      continue;
+      return null;
     }
     for (const match of numericTokens(field.text).filter(token => token[0] === fact.literal))
       spans.get(fact.field).push([match.index, match.index + match[0].length]);
-  }
+    return null;
+  };
+  for(const fact of facts){const problem=validateReference(fact);if(problem)addProblem(problem);}
   const opaque = [...items.keys(), snapshot.snapshotId, ...(snapshot.coverage?.selectedInstrumentIds || [])]
     .filter(id => typeof id === 'string' && id.length >= 8 && /\D/.test(id));
   for (const [field, row] of fields) {
     const ranges = spans.get(field);
     for (const cite of row.text.matchAll(/\[evidence:([^\]\s]+)\]/g)) {
-      if (!items.has(cite[1]) || !row.refs.includes(cite[1])) return { code: 'AGENT_UNKNOWN_EVIDENCE', field, evidenceId: cite[1].slice(0, 256), reason: 'invalid-narrative-citation' };
+      if (!items.has(cite[1]) || !row.refs.includes(cite[1])) addProblem({ code: 'AGENT_UNKNOWN_EVIDENCE', field, evidenceId: cite[1].slice(0, 256), reason: 'invalid-narrative-citation' });
       ranges.push([cite.index, cite.index + cite[0].length]);
     }
     for (const id of opaque) for (const match of row.text.matchAll(new RegExp(`(?<![\\p{L}\\d._:-])${escape(id)}(?![\\p{L}\\d_:-]|\\.[\\p{L}\\d_:-])`, 'gu')))
@@ -133,10 +140,10 @@ export function narrativeProblem(value, items, { snapshot = {}, job = {} } = {})
         const item=items.get(f.evidenceId),d=item&&numericDescriptor(item.data,f.path);
         return row.refs.includes(f.evidenceId)&&['technical.get','indicators.calculate'].includes(item?.domain)&&d.eligible&&d.value===f.value&&d.unit===f.unit;
       }).slice(0,4).map(({evidenceId,path,value,unit})=>({evidenceId,path,value,unit}));
-      return { ...fail('unverified-numeric-narrative', { field }), providedValue: number,technicalOptions };
+      addProblem({ ...fail('unverified-numeric-narrative', { field }), providedValue: number,technicalOptions });
     }
   }
-  return null;
+  return problems.length?{...problems[0],problems,truncated}:null;
 }
 
 export function narrativeCoverageExample(snapshot){

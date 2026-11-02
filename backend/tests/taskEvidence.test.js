@@ -58,5 +58,5 @@ test('contextual chat receives no publication contract or JSON example', async()
 
 test('previous typed prompt versions retain their required narrative references',()=>{
   const value=publicationExample({task:'global_intelligence_brief'},'coverage:cut');delete value.narrativeFacts;
-  for(const promptVersion of ['ogid-analyst-v1.12','ogid-analyst-v1.13',PROMPT_VERSION])assert.equal(validatePublicationForJob(value,{task:value.task,promptVersion}),false);
+  for(const promptVersion of ['ogid-analyst-v1.12','ogid-analyst-v1.13','ogid-analyst-v1.14',PROMPT_VERSION])assert.equal(validatePublicationForJob(value,{task:value.task,promptVersion}),false);
 });

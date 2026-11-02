@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {assertPublication, publicationExample, PROMPT_VERSION, validatePublicationForJob,safeValidationDetails} from '../services/agent/contracts.js';
-import {narrativeCoverageExample} from '../services/agent/narrativeFacts.js';
+import {narrativeCoverageExample,narrativeProblem} from '../services/agent/narrativeFacts.js';
 import {assertAnalysis} from '../services/situations/analysisSchema.js';
 
 const asOf = '2026-10-31T12:56:13.017Z';
@@ -116,4 +116,27 @@ test('a structural repair reuses the frozen index and does not depend on another
   if(method==='snapshot')return snapshot;if(method==='evidence'){reads++;if(reads>1)throw Object.assign(Error('pressure'),{code:'AGENT_RESOURCE_DEFERRED',statusCode:503});return {items:[{evidenceId:'coverage:fixture',domain:'coverage',publicationEligibility:{eligible:true}}],hasMore:false};}if(method==='memory')return {items:[]};if(method==='runControl')return {status:'running'};if(method==='publish'){published++;assert.deepEqual(args.proposal.narrativeFacts,[]);}return {};
  },opencode:{session:async()=>({id:'session'}),messages:async()=>({data:[]}),cancel:async()=>{},prompt:async()=>{prompts++;},progress:async()=>({text:JSON.stringify(prompts===1?initial:p),idle:true,outcome:'succeeded',finish:'stop',messageId:'answer',usage:[],tools:[{name:'ogid_agent_evidence',status:'completed',applicationOk:true,contentRead:true,operationId:'agent.evidence',snapshotId:snapshot.snapshotId,returnedSnapshotId:snapshot.snapshotId}]})}});
  await worker.execute({jobId:'cached-repair',task:p.task,scope:'global',promptVersion:PROMPT_VERSION,fence:1,model:'llamacpp/fixture',createdAt:asOf});assert.equal(prompts,2);assert.equal(reads,1);assert.equal(published,1);
+});
+
+test('the single repair receives invalid references and every uncovered numeric field together',()=>{
+ const {p,items}=fixture();p.summary='On 2 Nov 2026 the snapshot contains 100 items and a source reports 450.';
+ p.limitations=['Only 100 items; partial coverage.'];
+ p.narrativeFacts=[{kind:'reported-quantity',field:'/title',literal:'Source headline',evidenceId:'coverage:fixture',path:'data'}];
+ const issue=narrativeProblem(p,items,{snapshot,job:{task:p.task,promptVersion:PROMPT_VERSION}});
+ assert.equal(issue.code,'AGENT_UNVERIFIED_NUMBER');assert.equal(issue.reason,'invalid-narrative-reference');
+ assert.deepEqual(issue.problems.filter(x=>x.field==='/summary').map(x=>x.providedValue),[2,2026,100,450]);
+ assert.ok(issue.problems.some(x=>x.field==='/limitations/0'&&x.providedValue===100));assert.equal(issue.truncated,false);
+ const safe=safeValidationDetails(issue);assert.equal(safe.problems.length,6);
+ // Deleting invalid references leaves the uncovered figures invalid.
+ p.narrativeFacts=[];assert.equal(narrativeProblem(p,items,{snapshot}).code,'AGENT_UNVERIFIED_NUMBER');
+ p.summary='Según las fuentes consultadas, persiste incertidumbre.';p.limitations=['Cobertura parcial.'];
+ assert.equal(narrativeProblem(p,items,{snapshot}),null);
+});
+
+test('numeric diagnostics remain bounded and keep invalid references from masking citation errors',()=>{
+ const {p,items}=fixture();p.summary=Array.from({length:40},(_,i)=>String(i+1000)).join(' ');
+ const issue=narrativeProblem(p,items,{snapshot});assert.equal(issue.problems.length,16);assert.equal(issue.truncated,true);
+ p.narrativeFacts=[{kind:'reported-quantity',field:'/title',literal:'Source headline',evidenceId:'coverage:fixture',path:'data'}];
+ p.summary='Unknown [evidence:foreign:12345]';assert.ok(narrativeProblem(p,items,{snapshot}).problems.some(x=>x.code==='AGENT_UNKNOWN_EVIDENCE'));
+ p.narrativeFacts=[];assert.equal(narrativeProblem(p,items,{snapshot}).code,'AGENT_UNKNOWN_EVIDENCE');
 });
