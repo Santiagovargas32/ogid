@@ -431,7 +431,7 @@ const proposal = (ids) => ({
   contradictions: [],
   invalidation: [],
   limitations: ["Cobertura parcial"],
-  technicalFacts: [],
+  technicalFacts: [], narrativeFacts: [],
   intradayScenarios: [],
 });
 test("agent migration preserves old facts; snapshot keeps original revisions and recoverable long text", () => {

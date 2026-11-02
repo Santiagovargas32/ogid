@@ -97,6 +97,7 @@ try {
       invalidation: [],
       limitations: ["Datos simulados para validar interfaz"],
       technicalFacts: [],
+      narrativeFacts: [],
     },
   });
   const assets = new Map();

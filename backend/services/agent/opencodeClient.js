@@ -47,6 +47,8 @@ export class OpenCodeClient {
     return this.eventsTask;
   }
   async request(path, { method = "GET", body, signal } = {}) {
+    const messagePage = method === 'GET' && /^\/api\/session\/[^/]+\/message\?/.test(path);
+    if(messagePage)this.messageHttpReads=(this.messageHttpReads||0)+1;
     signal = AbortSignal.any([
       ...(signal ? [signal] : []),
       AbortSignal.timeout(30000),
@@ -80,6 +82,7 @@ export class OpenCodeClient {
         const { value, done } = await reader.read();
         if (done) break;
         bytes += value.byteLength;
+        if(messagePage)this.messageResponseBytes=(this.messageResponseBytes||0)+value.byteLength;
         if (bytes > 2097152) throw agentError("OPENCODE_RESPONSE_TOO_LARGE", 502);
         parts.push(value);
       }

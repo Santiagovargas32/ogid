@@ -56,7 +56,7 @@ test('source diagnostics distinguish response JSON, contract, transport, HTTP an
 test('known quality and intraday validation failures share one repair and remain terminal when repeated',async()=>{
  for(const code of ['AGENT_STALE_EVIDENCE','AGENT_INVALIDATION_REQUIRED','AGENT_INTRADAY_DATA_REQUIRED'])for(const repeated of [false,true]){
   let publications=0,repairs=0,terminal;
-  const proposal={schemaVersion:'ogid-agent-publication-v1',task:'global_intelligence_brief',summary:'Coverage',direction:'unavailable',sentiment:'unavailable',stability:'unavailable',horizonHours:24,probability:null,confidenceKind:'qualitative-uncalibrated',evidenceIds:['coverage:fixture'],contradictions:[],invalidation:[],limitations:['No fresh data'],technicalFacts:[]};
+  const proposal={schemaVersion:'ogid-agent-publication-v1',task:'global_intelligence_brief',summary:'Coverage',direction:'unavailable',sentiment:'unavailable',stability:'unavailable',horizonHours:24,probability:null,confidenceKind:'qualitative-uncalibrated',evidenceIds:['coverage:fixture'],contradictions:[],invalidation:[],limitations:['No fresh data'],technicalFacts:[],narrativeFacts:[]};
   const worker=new IntelligenceWorker({model:'llamacpp/fixture',policy:{heartbeatMs:100000},call:async(method,input)=>{
    if(method==='snapshot')return {snapshotId:'snap-fixture'};
    if(method==='memory')return {items:[]};
@@ -91,6 +91,6 @@ test('an RSS host opening its circuit does not block a different publisher',asyn
  }finally{providerRuntime.fetchImpl=original;providerRuntime.failureThreshold=threshold;providerRuntime.reset();}
 });
 test('stale evidence has its own error and exact offending ID without weakening rejection',()=>{
- const at=new Date().toISOString();const proposal={schemaVersion:'ogid-agent-publication-v1',task:'global_intelligence_brief',summary:'Coverage',direction:'unavailable',sentiment:'unavailable',stability:'unavailable',horizonHours:24,probability:null,confidenceKind:'qualitative-uncalibrated',evidenceIds:['technical-stale'],contradictions:[],invalidation:[],limitations:['No fresh data'],technicalFacts:[]};
+ const at=new Date().toISOString();const proposal={schemaVersion:'ogid-agent-publication-v1',task:'global_intelligence_brief',summary:'Coverage',direction:'unavailable',sentiment:'unavailable',stability:'unavailable',horizonHours:24,probability:null,confidenceKind:'qualitative-uncalibrated',evidenceIds:['technical-stale'],contradictions:[],invalidation:[],limitations:['No fresh data'],technicalFacts:[],narrativeFacts:[]};
  assert.throws(()=>assertPublication(proposal,{job:{task:proposal.task},snapshot:{asOf:at},lookup:()=>({availableAt:at,quality:{stale:true,synthetic:false},data:{}})}),e=>e.code==='AGENT_STALE_EVIDENCE'&&e.details.evidenceId==='technical-stale');
 });
