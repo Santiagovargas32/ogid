@@ -7,6 +7,7 @@ import { stableHash } from "../utils/stableHash.js";
 import { AGENT_POLICY } from "../services/agent/config.js";
 import { numericPaths, NUMERIC_CONTRACT_VERSION } from '../services/agent/evidencePaths.js';
 import { summarizeProposals } from '../services/agent/proposalMetrics.js';
+import {projectAgentRunMetadata} from '../services/agent/validationMetadata.js';
 import {NEWS_FRESHNESS_POLICY} from '../services/news/newsFreshness.js';
 import { recoveryAfter } from '../services/agent/recovery.js';
 import { OPERATIONS_HASH } from '../contracts/ogidOperations.js';
@@ -856,7 +857,7 @@ export class AgentRepository {
             ["running", "validating", "waiting-model"].includes(input.status)
               ? null
               : stamp(this.now()),
-            json(publicProjection({...input.metadata,errorCode:input.errorCode || null})),
+            json(projectAgentRunMetadata({...input.metadata,errorCode:input.errorCode || null})),
             input.jobId,
             input.fence,
           );
@@ -1577,7 +1578,7 @@ export class AgentRepository {
           )
           .run(
             at,
-            json(publicProjection(input.metadata || {})),
+            json(projectAgentRunMetadata(input.metadata || {})),
             job.job_id,
             job.fence,
           );

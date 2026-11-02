@@ -78,6 +78,19 @@ test("numeric repair details survive internal HTTP without reflecting unrelated 
  const client=createAgentInternalClient({baseUrl:'http://127.0.0.1:3000',token:'fixture',fetchImpl:async()=>Response.json({error:{code:'AGENT_UNVERIFIED_NUMBER',details:{evidenceId:'technical-fixture',path:'observed.close',expectedValue:123.456789,reason:'exact-value-required',apiKey:'PRIVATE'}}},{status:400})});
  await assert.rejects(client('publish'),e=>e.details.expectedValue===123.456789 && !JSON.stringify(e.details).includes('PRIVATE'));
 });
+test('internal controlled pressure preserves its cause without an inline read retry or mutation replay',async()=>{
+ let calls=0;
+ const client=createAgentInternalClient({baseUrl:'http://127.0.0.1:3000',token:'fixture',fetchImpl:async()=>{calls++;return Response.json({error:{code:'STORAGE_RESOURCE_PRESSURE',details:{notExecuted:true}}},{status:503});}});
+ for(const method of ['evidence','publish'])await assert.rejects(client(method),e=>e.code==='AGENT_RESOURCE_DEFERRED'&&e.causeCode==='STORAGE_RESOURCE_PRESSURE'&&e.notExecuted===true);
+ assert.equal(calls,2);
+});
+test('persisted validation diagnostics preserve publication pointers without exposing filesystem paths',()=>{
+ const f=fixture();try{
+  const auth=job(f);f.repo.state({...auth,status:'failed',errorCode:'AGENT_UNVERIFIED_NUMBER',metadata:{validationAttempts:[{attempt:'initial',code:'AGENT_UNVERIFIED_NUMBER',details:{field:'/summary',path:'/home/private/file',reason:'unverified-numeric-narrative',providedValue:100,apiKey:'PRIVATE'}}]}});
+  const metadata=JSON.parse(f.db.prepare('SELECT metadata_json FROM agent_runs WHERE job_id=? AND fence=?').get(auth.jobId,auth.fence).metadata_json),details=metadata.validationAttempts[0].details;
+  assert.equal(details.field,'/summary');assert.equal(details.path,null);assert.equal(details.providedValue,100);assert.equal(JSON.stringify(metadata).includes('PRIVATE'),false);assert.equal(JSON.stringify(metadata).includes('/home/private'),false);
+ }finally{f.close();}
+});
 
 test("unknown citations identify the missing snapshot ID through the internal client without accepting it",async()=>{
  const at=new Date().toISOString(),id='news:missing:1';

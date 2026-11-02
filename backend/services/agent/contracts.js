@@ -6,7 +6,7 @@ import {numericNarrativeProblem} from './numericSemantics.js';
 import {narrativeFactsSchema, narrativeProblem, NARRATIVE_INSTRUCTIONS, NARRATIVE_PROMPT_VERSION, NARRATIVE_CONTRACT_VERSION, usesNarrativeFacts} from './narrativeFacts.js';
 export const PROMPT_VERSION = NARRATIVE_PROMPT_VERSION;
 export const PUBLICATION_CONTRACT_VERSION = NARRATIVE_CONTRACT_VERSION;
-const typedNumericJob = job => ['ogid-analyst-v1.7','ogid-analyst-v1.8','ogid-analyst-v1.9','ogid-analyst-v1.10','ogid-analyst-v1.11',PROMPT_VERSION].includes(job.promptVersion);
+const typedNumericJob = job => ['ogid-analyst-v1.7','ogid-analyst-v1.8','ogid-analyst-v1.9','ogid-analyst-v1.10','ogid-analyst-v1.11','ogid-analyst-v1.12',PROMPT_VERSION].includes(job.promptVersion);
 export const TASKS = [
   "situation_analysis",
   "global_intelligence_brief",
@@ -284,11 +284,12 @@ export function agentError(code, status = 400, details = null) {
 export function safeValidationDetails(raw) {
   if (!raw || typeof raw!=='object') return null;
   const clean={};
-  for(const key of ['code','evidenceId','path','reason','foundType','suggestedPath','field','kind'])
+  for(const key of ['code','evidenceId','path','reason','foundType','suggestedPath','field','kind','unit'])
     if(typeof raw[key]==='string')clean[key]=raw[key].slice(0,256);
-  for(const key of ['expectedValue','providedValue'])
+  for(const key of ['expectedValue','providedValue','value'])
     if(raw[key]===null || (typeof raw[key]==='number' && Number.isFinite(raw[key])))clean[key]=raw[key];
   if(Array.isArray(raw.problems))clean.problems=raw.problems.slice(0,16).map(problem=>safeValidationDetails({...problem,problems:undefined}));
+  if(Array.isArray(raw.technicalOptions))clean.technicalOptions=raw.technicalOptions.slice(0,4).filter(row=>row&&typeof row==='object').map(({evidenceId,path,value,unit})=>safeValidationDetails({evidenceId,path,value,unit}));
   if(typeof raw.truncated==='boolean')clean.truncated=raw.truncated;
   return Object.keys(clean).length ? clean : null;
 }

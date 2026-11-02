@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {assertPublication, publicationExample, PROMPT_VERSION, validatePublicationForJob} from '../services/agent/contracts.js';
+import {assertPublication, publicationExample, PROMPT_VERSION, validatePublicationForJob,safeValidationDetails} from '../services/agent/contracts.js';
+import {narrativeCoverageExample} from '../services/agent/narrativeFacts.js';
 import {assertAnalysis} from '../services/situations/analysisSchema.js';
 
 const asOf = '2026-10-31T12:56:13.017Z';
@@ -46,6 +47,11 @@ test('snapshot coverage counts stay separate from the historical source-status a
  p.limitations=['Se seleccionaron 100 artículos.'];p.narrativeFacts=[{kind:'coverage',field:'/limitations/0',literal:'100',evidenceId:'coverage:fixture',path:'$snapshot.coverage.domains.news.count'}];check(p);
  p.narrativeFacts[0].path='domains.news.count';assert.throws(()=>check(p),{code:'AGENT_UNVERIFIED_NUMBER'});
 });
+test('coverage guidance binds the output field to the frozen manifest and numeric errors offer exact facts',()=>{
+ const {p,items,check}=fixture();snapshot.coverage.domains={news:{count:100}};const coverageId='coverage:'+snapshot.snapshotId;items.set(coverageId,items.get('coverage:fixture'));p.evidenceIds.push(coverageId);Object.assign(p,narrativeCoverageExample(snapshot));check(p);
+ p.summary='Precio 123.01 USD.';p.evidenceIds.push('technical:fixture');p.technicalFacts=[{evidenceId:'technical:fixture',path:'observed.close',value:123,unit:'USD'}];
+ assert.throws(()=>check(p),error=>{const details=safeValidationDetails(error.details);assert.equal(details.field,'/summary');assert.deepEqual(details.technicalOptions,[p.technicalFacts[0]]);return error.code==='AGENT_UNVERIFIED_NUMBER';});
+});
 test('technical prose keeps exact values, units and eligibility, including multiple metrics',()=>{
   const {p,items,check}=fixture();p.evidenceIds.push('technical:fixture');p.summary='Precio 123; RSI 50.';
   p.technicalFacts=[{evidenceId:'technical:fixture',path:'observed.close',value:123,unit:'USD'},{evidenceId:'technical:fixture',path:'indicators.rsi.value',value:50,unit:'index-points'}];
@@ -78,6 +84,7 @@ test('future, synthetic and stale sources cannot become attributed facts; dates 
 test('new generation requires both arrays while historical v1.11 stays structurally compatible',()=>{
   const {p}=fixture(),job={task:p.task,promptVersion:PROMPT_VERSION};assert.equal(validatePublicationForJob(p,job),true);
   delete p.narrativeFacts;assert.equal(validatePublicationForJob(p,job),false);assert.equal(validatePublicationForJob(p,{...job,promptVersion:'ogid-analyst-v1.11'}),true);
+  assert.equal(validatePublicationForJob(p,{...job,promptVersion:'ogid-analyst-v1.12'}),false);
   delete p.technicalFacts;assert.equal(validatePublicationForJob(p,job),false);
 });
 test('situation analysis uses the shared validator and preserves attributed-report modality',()=>{
@@ -101,4 +108,12 @@ test('missing arrays in initial and repair candidates consume one repair and pub
  },opencode:{session:async()=>({id:'session'}),messages:async()=>({data:[]}),cancel:async()=>{},prompt:async(_id,{text})=>{prompts++;assert.ok(text.includes('technicalFacts'));assert.ok(text.includes('narrativeFacts'));},progress:async()=>({text:JSON.stringify(prompts===1?initial:repaired),idle:true,outcome:'succeeded',finish:'stop',messageId:'answer',usage:[],tools:[{name:'ogid_agent_evidence',status:'completed',applicationOk:true,contentRead:true,operationId:'agent.evidence',snapshotId:snapshot.snapshotId,returnedSnapshotId:snapshot.snapshotId}]})}});
  await worker.execute({jobId:'required-arrays',task:p.task,scope:'global',promptVersion:PROMPT_VERSION,fence:1,model:'llamacpp/fixture',createdAt:asOf});
  assert.equal(prompts,2);assert.equal(published,0);assert.equal(terminal,'failed');
+});
+test('a structural repair reuses the frozen index and does not depend on another heavy catalog read',async()=>{
+ const {IntelligenceWorker}=await import('../services/agent/worker.js');const {p}=fixture();let prompts=0,reads=0,published=0;
+ const initial=structuredClone(p);delete initial.technicalFacts;
+ const worker=new IntelligenceWorker({model:'llamacpp/fixture',call:async(method,args)=>{
+  if(method==='snapshot')return snapshot;if(method==='evidence'){reads++;if(reads>1)throw Object.assign(Error('pressure'),{code:'AGENT_RESOURCE_DEFERRED',statusCode:503});return {items:[{evidenceId:'coverage:fixture',domain:'coverage',publicationEligibility:{eligible:true}}],hasMore:false};}if(method==='memory')return {items:[]};if(method==='runControl')return {status:'running'};if(method==='publish'){published++;assert.deepEqual(args.proposal.narrativeFacts,[]);}return {};
+ },opencode:{session:async()=>({id:'session'}),messages:async()=>({data:[]}),cancel:async()=>{},prompt:async()=>{prompts++;},progress:async()=>({text:JSON.stringify(prompts===1?initial:p),idle:true,outcome:'succeeded',finish:'stop',messageId:'answer',usage:[],tools:[{name:'ogid_agent_evidence',status:'completed',applicationOk:true,contentRead:true,operationId:'agent.evidence',snapshotId:snapshot.snapshotId,returnedSnapshotId:snapshot.snapshotId}]})}});
+ await worker.execute({jobId:'cached-repair',task:p.task,scope:'global',promptVersion:PROMPT_VERSION,fence:1,model:'llamacpp/fixture',createdAt:asOf});assert.equal(prompts,2);assert.equal(reads,1);assert.equal(published,1);
 });

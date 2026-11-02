@@ -34,6 +34,12 @@ export function createAgentInternalClient({
         });
         const value = await r.json();
         if (!r.ok) {
+          if(r.status===503&&value.error?.code==='STORAGE_RESOURCE_PRESSURE'){
+            const deferred=agentError('AGENT_RESOURCE_DEFERRED',503);
+            deferred.causeCode='STORAGE_RESOURCE_PRESSURE';
+            deferred.notExecuted=value.error?.details?.notExecuted===true;
+            throw deferred;
+          }
           const code = /^(AGENT|FORECAST|OPENCODE)_[A-Z0-9_]+$/.test(value.error?.code || "")
             ? value.error.code : `AGENT_INTERNAL_HTTP_${r.status}`;
           const raw=value.error?.details;

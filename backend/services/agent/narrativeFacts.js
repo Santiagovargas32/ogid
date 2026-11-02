@@ -1,8 +1,8 @@
 import { numericDescriptor } from './numericSemantics.js';
 
-export const NARRATIVE_PROMPT_VERSION = 'ogid-analyst-v1.12';
+export const NARRATIVE_PROMPT_VERSION = 'ogid-analyst-v1.13';
 export const NARRATIVE_CONTRACT_VERSION = 'typed-narrative-facts-v3';
-export const usesNarrativeFacts = job => job.promptVersion === NARRATIVE_PROMPT_VERSION;
+export const usesNarrativeFacts = job => ['ogid-analyst-v1.12',NARRATIVE_PROMPT_VERSION].includes(job.promptVersion);
 const boundedText = { type: 'string', minLength: 1, maxLength: 256 };
 export const narrativeFactsSchema = {
   type: 'array', maxItems: 100,
@@ -129,10 +129,20 @@ export function narrativeProblem(value, items, { snapshot = {}, job = {} } = {})
       const suffix = row.text.slice(token.index + token[0].length).match(/^\s*(horas?|hours?|h\b|minutos?|minutes?|min\b)/i)?.[1];
       const number = Number(token[0].replace(',', '.'));
       if (suffix && Number.isFinite(row.horizon) && (/^min/i.test(suffix) ? number / 60 : number) === row.horizon) continue;
-      return { ...fail('unverified-numeric-narrative', { field }), providedValue: number };
+      const technicalOptions=(value.technicalFacts||[]).filter(f=>{
+        const item=items.get(f.evidenceId),d=item&&numericDescriptor(item.data,f.path);
+        return row.refs.includes(f.evidenceId)&&['technical.get','indicators.calculate'].includes(item?.domain)&&d.eligible&&d.value===f.value&&d.unit===f.unit;
+      }).slice(0,4).map(({evidenceId,path,value,unit})=>({evidenceId,path,value,unit}));
+      return { ...fail('unverified-numeric-narrative', { field }), providedValue: number,technicalOptions };
     }
   }
   return null;
+}
+
+export function narrativeCoverageExample(snapshot){
+  const count=snapshot.coverage?.domains?.news?.count;
+  if(!Number.isSafeInteger(count)||count<0)return null;
+  return {limitations:[`El corte seleccionado contiene ${count} noticias; este conteo no es una señal financiera.`],narrativeFacts:[{kind:'coverage',field:'/limitations/0',literal:String(count),evidenceId:`coverage:${snapshot.snapshotId}`,path:'$snapshot.coverage.domains.news.count'}]};
 }
 
 export const NARRATIVE_INSTRUCTIONS = `Contrato typed-narrative-facts-v3. Incluye SIEMPRE technicalFacts y narrativeFacts, también cuando sean []. Si no necesitas cifras, evita cifras en la prosa. Cada cifra narrativa necesita un narrativeFact {kind,field,literal,evidenceId,path}; field es un JSON pointer exacto como /summary o /drivers/0/description y path es relativo a data. kind=technical enlaza un technicalFact elegible con valor y unidad exactos: literal=String(value), sin redondeos ni porcentajes; el indicador nombrado debe coincidir con la ruta. kind=coverage sólo en /limitations/N o /missingEvidence/N, con el valor exacto de coverage o metodología técnica; para conteos del manifiesto usa el evidenceId de coverage y path=$snapshot.coverage.domains.news.count o la ruta exacta del manifiesto. No confundas la lista de estados de fuentes con esos conteos. Para cantidades relatadas o ediciones usa kind=reported-quantity o edition y quote copiado literalmente de title/excerpt/description/summary/text; escribe exactamente Según la fuente [evidence:ID]: «FRAGMENTO» en ese campo y copia la cifra en literal. Ese relato no es un hecho confirmado ni una observación financiera. kind=date exige un timestamp exacto del campo publishedAt/knownAt/occurredAt/receivedAt y el mismo formato atribuido; nunca deduzcas occurredAt. Las citas deben pertenecer a las referencias del campo. IDs y horizontes estructurados no son mediciones. No uses cobertura, requisitos o citas textuales para habilitar una dirección financiera. probability=null.`;
