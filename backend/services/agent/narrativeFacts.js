@@ -1,8 +1,8 @@
 import { numericDescriptor } from './numericSemantics.js';
 
-export const NARRATIVE_PROMPT_VERSION = 'ogid-analyst-v1.13';
+export const NARRATIVE_PROMPT_VERSION = 'ogid-analyst-v1.14';
 export const NARRATIVE_CONTRACT_VERSION = 'typed-narrative-facts-v3';
-export const usesNarrativeFacts = job => ['ogid-analyst-v1.12',NARRATIVE_PROMPT_VERSION].includes(job.promptVersion);
+export const usesNarrativeFacts = job => ['ogid-analyst-v1.12','ogid-analyst-v1.13',NARRATIVE_PROMPT_VERSION].includes(job.promptVersion);
 const boundedText = { type: 'string', minLength: 1, maxLength: 256 };
 export const narrativeFactsSchema = {
   type: 'array', maxItems: 100,
