@@ -11,17 +11,21 @@ const controls = new Set(['heartbeat','cancel','interruptClaim','cancelAcknowled
 // Indexed, bounded authorization checks are prerequisites for cancellation
 // and SSE recovery. They need the same reserved lane as lease/run control.
 const controlReads = new Set(['runControl','deviceAuth','sessionAccess']);
-// Conversation pages have bounded metadata/body pagination. Creating a session
-// or recording an explicit request is a small journal commit, not inference.
-const conversationReads = new Set(['sessions','messages']);
+// Panel metadata has bounded pagination and does not hydrate a news corpus.
+// Creating a session or recording a request is a journal commit, not inference.
+const boundedAgentReads = new Set(['sessions','messages','alerts','workerHealth','analysisSnapshotAccess']);
+// Frozen pages and individual results retain normal-pressure admission, but
+// do not wait for an unrelated CPU calculation's global heavy reservation.
+const payloadAgentReads = new Set(['run','evidence','evidenceChunk','clusters','analysisDetail','analysisSections']);
 const conversationJournal = new Set(['sessionCreate','requestAgent']);
 export function storageOperationContract(operation,input={}) {
   const acquisition=['news.collect','news.supplemental','rss.fetch'].includes(operation) || operation==='domain.call' &&
     (input.service==='rss' && input.method==='refresh' || ['sources','history'].includes(input.service) && input.method==='run');
   const controlRead=['agent.call','agent.read'].includes(operation)&&controlReads.has(input.method);
-  const conversationRead=['agent.call','agent.read'].includes(operation)&&conversationReads.has(input.method);
+  const boundedAgentRead=['agent.call','agent.read'].includes(operation)&&boundedAgentReads.has(input.method);
+  const payloadAgentRead=['agent.call','agent.read'].includes(operation)&&payloadAgentReads.has(input.method);
   const journal=operation==='agent.call'&&conversationJournal.has(input.method);
-  const pureRead=controlRead||conversationRead||['market.persist.pending','market.persist.status','market.project.pending','market.project.status','agent.read','scenarios.prepare','runtime.load','storage.status'].includes(operation) ||
+  const pureRead=controlRead||boundedAgentRead||payloadAgentRead||['market.persist.pending','market.persist.status','market.project.pending','market.project.status','agent.read','scenarios.prepare','runtime.load','storage.status'].includes(operation) ||
     operation==='domain.call' && Boolean(queries[input.service]?.includes(input.method));
   let role='writer';
   if(pureRead)role=operation==='scenarios.prepare'?'analysis':'queries';
@@ -36,8 +40,8 @@ export function storageOperationContract(operation,input={}) {
     journal||operation==='agent.call'&&input.method==='alertSync'?'commit':
     ['snapshot.recover','domain.indexPage','storage.checkpoint','storage.verify','storage.import'].includes(operation) || operation==='domain.call' && input.service==='news' && input.method==='enrichEditorialPage'?'maintenance':
     acquisition?'acquisition':['market.persist.admit','market.persist.page','market.project.fail','market.project.reconcile','analysis.persist','runtime.save','pipeline.record'].includes(operation)?'commit':pureRead?'read':'calculation';
-  const cheapRead=conversationRead||['storage.status','runtime.load','market.persist.status','market.persist.pending','market.project.status','market.project.pending'].includes(operation)||operation==='agent.read'&&input.method==='status'||operation==='domain.call'&&(input.service==='situations'&&input.method==='status'||input.service==='news'&&input.method==='sourceAssessments');
+  const cheapRead=boundedAgentRead||['storage.status','runtime.load','market.persist.status','market.persist.pending','market.project.status','market.project.pending'].includes(operation)||operation==='agent.read'&&input.method==='status'||operation==='domain.call'&&(input.service==='situations'&&['list','status'].includes(input.method)||input.service==='news'&&input.method==='sourceAssessments');
   const resourceClass=workClass==='control'?'control':operation==='market.persist.admit'?'acquisition':journal||operation==='market.persist.page'||operation==='agent.call'&&input.method==='alertSync'?'journal':
-    workClass==='commit'?'commit':cheapRead?'read':workClass==='maintenance'?'maintenance':acquisition?'acquisition':'heavy';
+    workClass==='commit'?'commit':cheapRead?'read':payloadAgentRead?'payload':workClass==='maintenance'?'maintenance':acquisition?'acquisition':'heavy';
   return {role,pureRead,workClass,resourceClass,effects:pureRead?'read-only':acquisition?'acquisition-and-commit':'may-commit',acquisition};
 }

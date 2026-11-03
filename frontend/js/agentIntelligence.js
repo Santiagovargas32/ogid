@@ -97,9 +97,9 @@ export function mountAgentIntelligence({getWatchlist=()=>null,getContext=()=>({v
       `Contexto adjunto: ${ids.join(", ") || "global"} · Horizonte evaluable: 24 h`;
     setPanel(true);
     updateContext();
-    void loadSelections().catch(showError);
     void initialize().then(async()=>{
       try{const d=await request('/api/agent/v1/access');csrf=d.csrf;await loadSessions();}catch{/* Enrollment remains explicit. */}
+      await loadSelections();
     }).catch(showError);
     void loadModels().catch(showError);
     input.focus({preventScroll:true});

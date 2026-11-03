@@ -32,6 +32,14 @@ test('history byte boundaries preserve complete large messages and both cursor d
  for(let pages=0;pages<10;pages++){const page=f.repo.messages({...f.auth,limit:100,latest:true,before});backward.unshift(...page.items.map(m=>m.text));if(!page.hasMore)break;assert.ok(page.olderCursor>0&&(!before||page.olderCursor<before));before=page.olderCursor;}
  assert.deepEqual(backward,values);assert.throws(()=>f.repo.messages({...f.auth,deviceId:'foreign'}));
  }finally{f.close();}});
+test('legacy alert pages bound payloads without truncating a large item or skipping cursor rows',()=>{const f=fixture();try{
+ const values=['a'.repeat(180000),'b'.repeat(180000),'c'.repeat(300000),'Última alerta 🌍'];
+ const at='2026-01-01T00:00:00.000Z',insert=f.db.prepare('INSERT INTO geopolitical_alerts VALUES(?,?,?,?,?)');
+ for(const[index,title]of values.entries())insert.run('legacy-'+index,1,'fixture',at,JSON.stringify({alertId:'legacy-'+index,revision:1,title}));
+ const found=[];let cursor='';
+ for(let i=0;i<10;i++){const page=f.repo.legacyAlerts({deviceId:f.auth.deviceId,limit:100,cursor});assert.ok(page.items.length>=1);if(i===0)assert.equal(page.items.length,1);found.push(...page.items.map(a=>a.title));if(!page.hasMore)break;assert.ok(page.nextCursor&&page.nextCursor!==cursor);cursor=page.nextCursor;}
+ assert.deepEqual(found,values);
+ }finally{f.close();}});
 test('context is validated, frozen at send and bounded snapshots disclose partial coverage',()=>{const f=fixture();try{
  assert.throws(()=>f.repo.requestAgent({...f.auth,key:'x',family:'brief',context:{dom:'secret'}}),{code:'AGENT_INVALID_CONTEXT'});
  const result=f.repo.requestAgent({...f.auth,key:'x',family:'brief',context:{countries:['ES']}});

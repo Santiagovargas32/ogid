@@ -1721,13 +1721,15 @@ export class AgentRepository {
         "json_extract(a.payload_json,'$.severity') IN ('critical','high','elevated')",
       );
     args.push(pageLimit(limit) + 1);
-    const rows = this.db
-        .prepare(
+    const rows=[],statement=this.db.prepare(
           `SELECT a.*,s.read_revision,s.archived FROM geopolitical_alerts a LEFT JOIN geopolitical_alert_state s ON s.alert_id=a.alert_id AND s.device_id=? WHERE ${where.join(" AND ")} ORDER BY a.updated_at DESC,a.alert_id ASC LIMIT ?`,
-        )
-        .all(...args),
-      hasMore = rows.length > pageLimit(limit);
-    if (hasMore) rows.pop();
+        );
+    let hasMore=false,bytes=0;
+    for(const row of statement.iterate(...args)){
+      const size=Buffer.byteLength(row.payload_json)+512;
+      if(rows.length>=pageLimit(limit)||rows.length&&bytes+size>HISTORY_PAGE_BYTES){hasMore=true;break;}
+      rows.push(row);bytes+=size;
+    }
     return {
       items: rows.map((r) => ({
         ...parse(r.payload_json),

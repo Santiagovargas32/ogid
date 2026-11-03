@@ -46,11 +46,15 @@ test('conversation pages and small admissions do not wait for analytical heavy w
   await runtime.start();const call=runtime.app.locals.agentCall,device=await call('deviceCreate'),other=await call('deviceCreate');
   const config=runtime.app.locals.agentConfig;config.mode='shadow';config.taskModes.global_intelligence_brief='shadow';config.manifest.models.push({alias:'fixture',state:'available',context:8192});
   const session=await call('sessionCreate',{deviceId:device.deviceId,model:'llamacpp/fixture'});
+  const seeded=await call('send',{sessionId:session.sessionId,deviceId:device.deviceId,key:'frozen-fixture',text:'Explicit frozen fixture; no model execution'});
+  const auth={...await call('claim',{owner:'fixture'}),owner:'fixture'};assert.equal(auth.jobId,seeded.jobId);const frozen=await call('snapshot',auth);await call('cancel',{...auth,internal:true});
   gate.acquire('held-calculation');
   const base='http://127.0.0.1:'+runtime.server.address().port;
   const request=(path,{method='GET',body,who=device,csrf=who.csrf}={})=>fetch(base+path,{method,headers:{Cookie:'ogid_device='+who.token,'x-ogid-csrf':csrf,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(2000)});
   const list=await request('/api/agent/v1/chat/sessions?limit=20');assert.equal(list.status,200);assert.equal((await list.json()).data.items[0].sessionId,session.sessionId);
   const catalogue=await request('/api/news/source-assessments?limit=20&maxBytes=65536');assert.equal(catalogue.status,200);assert.ok((await catalogue.json()).data.items.length<=20);
+  for(const path of ['/api/agent/v1/capabilities','/api/situations?limit=20','/api/alerts/v1/geopolitical?limit=20']){const response=await request(path);assert.equal(response.status,200);await response.body.cancel();}
+  for(const path of ['/api/agent/v1/runs/'+seeded.jobId,'/api/agent/v1/evidence?snapshotId='+frozen.snapshotId,'/api/agent/v1/evidence/chunk?snapshotId='+frozen.snapshotId+'&evidenceId='+encodeURIComponent('coverage:'+frozen.snapshotId)+'&offset=0&format=utf8','/api/agent/v1/clusters?snapshotId='+frozen.snapshotId]){const response=await request(path);assert.equal(response.status,200);await response.body.cancel();}
   const created=await request('/api/agent/v1/chat/sessions',{method:'POST',body:{model:'llamacpp/fixture',title:'explicit session'}});assert.equal(created.status,201);await created.body.cancel();
   const path='/api/agent/v1/chat/sessions/'+session.sessionId;
   const admitted=await request(path+'/requests',{method:'POST',body:{family:'brief',key:'bounded',context:{view:'dashboard'}}});assert.equal(admitted.status,202);const job=(await admitted.json()).data;
