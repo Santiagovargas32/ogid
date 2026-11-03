@@ -218,6 +218,11 @@ export function mountAgentIntelligence({getWatchlist=()=>null,getContext=()=>({v
     if (!sessionId || drawer.hidden || document.hidden) return;
     const eventSession = sessionId;
     events = new EventSource(`/api/agent/v1/chat/sessions/${sessionId}/events`);
+    const connection = events;
+    events.onopen = () => {
+      if (events === connection && eventSession === sessionId && status.textContent === "Reconectando; se conservará el historial")
+        status.textContent = "Conexión restablecida · privado · shadow";
+    };
     events.addEventListener("update", async (e) => {
       if (eventSession !== sessionId) return;
       const v = JSON.parse(e.data);
@@ -249,7 +254,8 @@ export function mountAgentIntelligence({getWatchlist=()=>null,getContext=()=>({v
         "Generando…";
     });
     events.onerror = () => {
-      status.textContent = "Reconectando; se conservará el historial";
+      if (events === connection && eventSession === sessionId)
+        status.textContent = "Reconectando; se conservará el historial";
     };
   }
   function showError(e) {

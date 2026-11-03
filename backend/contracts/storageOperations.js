@@ -8,10 +8,13 @@ const queries = {
 };
 const analysis = new Set(['market','technical','indicators','conditions','advanced','map','coupling','portfolio']);
 const controls = new Set(['heartbeat','cancel','interruptClaim','cancelAcknowledged','progress','state','publish','link','expireLeases','control']);
+// Indexed, bounded authorization checks are prerequisites for cancellation
+// and SSE recovery. They need the same reserved lane as lease/run control.
+const controlReads = new Set(['runControl','deviceAuth','sessionAccess']);
 export function storageOperationContract(operation,input={}) {
   const acquisition=['news.collect','news.supplemental','rss.fetch'].includes(operation) || operation==='domain.call' &&
     (input.service==='rss' && input.method==='refresh' || ['sources','history'].includes(input.service) && input.method==='run');
-  const controlRead=['agent.call','agent.read'].includes(operation)&&input.method==='runControl';
+  const controlRead=['agent.call','agent.read'].includes(operation)&&controlReads.has(input.method);
   const pureRead=controlRead||['market.persist.pending','market.persist.status','market.project.pending','market.project.status','agent.read','scenarios.prepare','runtime.load','storage.status'].includes(operation) ||
     operation==='domain.call' && Boolean(queries[input.service]?.includes(input.method));
   let role='writer';
