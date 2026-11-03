@@ -69,8 +69,9 @@ export class SqlNewsPipeline {
       const snapshot=await rss.refresh(feeds?{feedIds:rss.registerFeeds(feeds)}:{});
       checkOperation();
       committed=true;
-      this.runtime.save("rss",this.runtime.services.rss.lastSnapshot);
-      this.runtime.persistedRssSnapshot=this.runtime.services.rss.lastSnapshot;
+      const persistedSnapshot=this.runtime.services.rss.lastSnapshot;
+      await this.runtime.saveRssSnapshot(persistedSnapshot);
+      this.runtime.persistedRssSnapshot=persistedSnapshot;
       this.diagnostics={...this.diagnostics};
       if(snapshot.meta.acquisition?.lastAttemptAt)this.diagnostics.lastAttemptAt=new Date(snapshot.meta.acquisition.lastAttemptAt).toISOString();
       this.observeAcquisition(snapshot.meta.acquisition);

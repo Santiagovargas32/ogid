@@ -27,7 +27,7 @@ const settled=manager=>Promise.all([...manager.advancedCoordinator.tasks.values(
 test('RSS checkpoints batch small polled-feed states within the existing page row bounds',async()=>{
  const f=sqlFixture(),runtime=new BusinessRuntime(f.db,()=>{}),state=new SqlRssCanonicalState(runtime),commits=[];
  const transaction=f.db.transaction.bind(f.db);let depth=0;
- f.db.transaction=work=>{const tx=transaction(work);return {immediate:(...args)=>{const outer=depth++===0;try{return tx.immediate(...args);}finally{depth--;if(outer)commits.push(true);}}};};
+ f.db.transaction=work=>{const tx=transaction(work);return {deferred:(...args)=>tx.deferred(...args),immediate:(...args)=>{const outer=depth++===0;try{return tx.immediate(...args);}finally{depth--;if(outer)commits.push(true);}}};};
  try{
   const pipeline={states:new Map(Array.from({length:23},(_,n)=>['feed-'+n,{etag:'version-'+n,articles:[]} ])),corpus:[],metrics:{cycles:1}};
   await state.save(pipeline,[...pipeline.states.keys()]);
@@ -35,7 +35,8 @@ test('RSS checkpoints batch small polled-feed states within the existing page ro
   assert.equal(Object.keys(state.load().states).length,23);assert.equal(runtime.load('rss-canonical-v2').metrics.cycles,1);
   const largeIds=Array.from({length:3},(_,n)=>'large-'+n);
   for(const id of largeIds)pipeline.states.set(id,{etag:id,articles:[{title:'x'.repeat(80*1024)}]});
-  await state.save(pipeline,largeIds);assert.equal(commits.length,6,'80 KiB feed payloads must not share a page above the 128 KiB byte bound');
+  await state.save(pipeline,largeIds);assert.equal(commits.length,5,'identical 80 KiB articles share one immutable body commit, then publish their small descriptors together');
+  for(const id of largeIds)assert.deepEqual(state.load().states[id],pipeline.states.get(id));
  }finally{f.close();}
 });
 

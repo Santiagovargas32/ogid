@@ -34,13 +34,14 @@ import { ingestNewsBatches } from "./newsIngestion.js";
 import { publicProjection } from "../utils/researchProjection.js";
 import { AgentRepository } from "./agentRepository.js";
 import { SqlRssCanonicalState } from "./rssCanonicalState.js";
+import { SqlRssArticles } from "./rssArticles.js";
 import { checkOperation, committedOperationItems,yieldOperationResources } from "../services/shared/operationContext.js";
 import {SituationStore} from './situations.js';
 import {MarketProjectionRepository} from './marketProjections.js';
 
 const METHODS={market:["analyze"],awareness:["parseSource","getSnapshot","reconcile","setSourceStale"],store:["view","getRow"],news:["ingest","enrichEditorialPage","sourceAssessments","sourceAssessment","sourceCoverage","sourceDossiers","sourceDossier","sourceDossierDrafts","sourceDossierDraft","comparisons","comparison","comparisonClaim","comparisonChanges","importSourceAssessments","proposeSourceDossier","reviewSourceDossier","reviewComparison","recordContext","search","getItem","getHistory","coverage","getProjection","getFeed","getLiveFeed"],events:["ingest","search","replayAwareness"],alerts:["acknowledge","delta","getChange","acknowledgeChanges","recoverCheckpoint"],sources:["status","run","holdings","stop"],history:["create","get","run","coverage","coverageState","coverageStates","ensureCatchup","repairPlan","cancel"],imports:["datasets","datasetsPage","import"],technical:["get"],indicators:["calculate"],coupling:["calculate"],scenarios:["refresh","list","remove"],forecasts:["evaluate","record"],portfolio:["getContext"],rss:["getSnapshot","refresh"],conditions:["getSnapshot"],map:["getDashboardMapAssets","getLayerBundle","getConfig"],advanced:["getSnapshot"],signals:["recordSnapshot","recordMeasurement","getAnomalies"],candles:["query","append","upsert","latest","has","hasCandle","hydrate","coverageSummary"]};
 export class BusinessRuntime {
-  constructor(db,rpc,emitStage=()=>{}){Object.assign(this,{db,rpc,emitStage});this.stageStates=new Map();this.stageTimes=new Map();this.services=null;this.rssCursor=0;}
+  constructor(db,rpc,emitStage=()=>{}){Object.assign(this,{db,rpc,emitStage});this.rssArticles=new SqlRssArticles(this);this.stageStates=new Map();this.stageTimes=new Map();this.services=null;this.rssCursor=0;}
   progress(id,status,details={}) {
     const now=new Date().toISOString(),previous=this.stageStates.get(id) || {};
     if(status==="running")this.stageTimes.set(id,performance.now());
@@ -63,11 +64,13 @@ export class BusinessRuntime {
     if(state.state!=='ready')state=eventIndexPage(this.db,{...input,budgetMs});
     else{
       this.maintenancePending ||= {cleanup:true,candles:true,research:true};
+      this.maintenancePending.rss=this.rssArticles.needsPrune;
       const phases=Object.keys(this.maintenancePending),available=phases.filter(p=>this.maintenancePending[p]);
       phase=available.includes(this.maintenanceNext)?this.maintenanceNext:available[0]||'idle';
       if(phase==='cleanup')this.maintenancePending.cleanup=cleanEventIndex(this.db);
       if(phase==='candles'){const page=this.services?.candles.validatePage({budgetMs});details.candleValidation=page;this.maintenancePending.candles=Boolean(page?.hasMore);}
       if(phase==='research'){const page=this.services?.store.validateProjectionPage({budgetMs});details.researchProjection=page;this.maintenancePending.research=Boolean(page?.hasMore);}
+      if(phase==='rss'){const page=this.rssArticles.prune({budgetMs});details.rssCache=page;this.maintenancePending.rss=page.hasMore;}
       this.maintenanceNext=phases[(phases.indexOf(phase)+1)%phases.length];
     }
     this.registryDiagnostics={...this.registryDiagnostics,...state,...details,cleanupPending:state.state!=='ready'||!this.maintenancePending||Object.values(this.maintenancePending).some(Boolean),maintenancePhase:phase,maintenanceBudgetMs:budgetMs,durationMs:performance.now()-started};
@@ -169,6 +172,7 @@ export class BusinessRuntime {
   save(kind,payload){
     const at=new Date().toISOString();
     return this.db.transaction(()=>{
+      this.rssArticles.recordReferences(kind,payload);
       if(kind === "pipeline-stage"){
         this.db.prepare("INSERT INTO pipeline_stage_state VALUES(?,?,?,?) ON CONFLICT(stage_id) DO UPDATE SET status=excluded.status,updated_at=excluded.updated_at,state_json=excluded.state_json").run(payload.id,payload.stage.status,at,JSON.stringify(payload.stage));
       } else if(kind === "awareness"){
@@ -209,7 +213,18 @@ export class BusinessRuntime {
     })).deferred();
     if(kind === "awareness")return loadAwarenessProjection(this.db);
     if(kind === "ai")return {records:this.db.prepare("SELECT payload_json FROM ai_enrichments ORDER BY observed_at DESC LIMIT 1000").all().reverse().map(r=>JSON.parse(r.payload_json))};
-    const row=this.db.prepare("SELECT payload_json FROM runtime_snapshots WHERE kind=?").get(kind);return row?JSON.parse(row.payload_json):null;
+    const read=()=>{
+      const row=this.db.prepare("SELECT payload_json FROM runtime_snapshots WHERE kind=?").get(kind),value=row?JSON.parse(row.payload_json):null;
+      if(kind==='rss'&&value?.items&&!Array.isArray(value.items))value.items=this.rssArticles.load(value.items);
+      return value;
+    };
+    return kind==='rss'?this.db.transaction(read).deferred():read();
+  }
+  async saveRssSnapshot(snapshot){
+    const captured=this.rssArticles.capture(snapshot.items),frozen=structuredClone({...snapshot,items:null});
+    const descriptor=await this.rssArticles.stage(captured);
+    await yieldOperationResources();checkOperation();
+    frozen.items=descriptor;return this.save('rss',frozen);
   }
   async analyzeMarket(input = {}) {
     if (!input.newsFromStorage) return calculateMarketProjection(input);
@@ -339,7 +354,7 @@ export class BusinessRuntime {
         }
         result.newsCoverage=this.resultCoverage.get(key);
       }
-      if(service==="rss" && target.lastSnapshot && target.lastSnapshot!==this.persistedRssSnapshot){this.save("rss",target.lastSnapshot);this.persistedRssSnapshot=target.lastSnapshot;this.updateRssDiagnostics(target.lastSnapshot);}
+      if(service==="rss" && target.lastSnapshot && target.lastSnapshot!==this.persistedRssSnapshot){const snapshot=target.lastSnapshot;await this.saveRssSnapshot(snapshot);this.persistedRssSnapshot=snapshot;this.updateRssDiagnostics(snapshot);}
       if(["market","indicators","technical","conditions","coupling","forecasts","advanced"].includes(service)){
         if(service==='advanced') {
           result.inputsAsOf=captured.asOf;
@@ -434,7 +449,7 @@ export class BusinessRuntime {
       }
       const snapshot=await this.rssAcquisitionContext.run(options,()=>rss.refresh({feedIds,timeoutMs:input.timeoutMs,maxFeedsPerCycle:this.newsCorpus?.config.rssFeedsPerCycle || 18}));
       checkOperation();
-      if(!snapshot.meta.stored && snapshot!==this.persistedRssSnapshot){this.save("rss",snapshot);this.persistedRssSnapshot=snapshot;}
+      if(!snapshot.meta.stored && snapshot!==this.persistedRssSnapshot){await this.saveRssSnapshot(snapshot);this.persistedRssSnapshot=snapshot;}
       const feedStatus=snapshot.meta.feedStatus || [];
       this.updateRssDiagnostics(snapshot);
       const catalogStatus=this.rssDiagnostics.catalogStatus;

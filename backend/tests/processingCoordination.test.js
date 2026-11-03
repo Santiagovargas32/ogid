@@ -31,7 +31,7 @@ for (const mode of ['canonical', 'legacy', 'shadow']) test(`${mode}: concurrent 
 test('supplemental RSS failures cannot refresh an old nonempty corpus', async () => {
   const saved=new Map(),old='2020-01-01T00:00:00.000Z';
   const snapshot={generatedAt:new Date().toISOString(),items:[{id:'old'}],meta:{totalItems:1,queriedFeedCount:1,acquisition:{attempted:1,successfulChecks:0,contentChanges:0},feedStatus:[{status:'error'}]}};
-  const runtime={load:()=>({lastSuccessfulAt:old,lastSuccessfulCheckAt:old,lastContentChangeAt:old}),save:(key,value)=>saved.set(key,structuredClone(value)),services:{rss:{refresh:async()=>snapshot,lastSnapshot:snapshot}},rssGeneratedCursor:0};
+  const runtime={load:()=>({lastSuccessfulAt:old,lastSuccessfulCheckAt:old,lastContentChangeAt:old}),save:(key,value)=>saved.set(key,structuredClone(value)),saveRssSnapshot:async value=>saved.set('rss',structuredClone(value)),services:{rss:{refresh:async()=>snapshot,lastSnapshot:snapshot}},rssGeneratedCursor:0};
   const pipeline=new SqlNewsPipeline(runtime,{}, {},{rssAggregateIntervalMs:30000});
   await pipeline.collectSupplemental();
   assert.equal(pipeline.diagnostics.lastSuccessfulAt,old);
