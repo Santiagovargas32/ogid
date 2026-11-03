@@ -50,6 +50,7 @@ test('conversation pages and small admissions do not wait for analytical heavy w
   const base='http://127.0.0.1:'+runtime.server.address().port;
   const request=(path,{method='GET',body,who=device,csrf=who.csrf}={})=>fetch(base+path,{method,headers:{Cookie:'ogid_device='+who.token,'x-ogid-csrf':csrf,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(2000)});
   const list=await request('/api/agent/v1/chat/sessions?limit=20');assert.equal(list.status,200);assert.equal((await list.json()).data.items[0].sessionId,session.sessionId);
+  const catalogue=await request('/api/news/source-assessments?limit=20&maxBytes=65536');assert.equal(catalogue.status,200);assert.ok((await catalogue.json()).data.items.length<=20);
   const created=await request('/api/agent/v1/chat/sessions',{method:'POST',body:{model:'llamacpp/fixture',title:'explicit session'}});assert.equal(created.status,201);await created.body.cancel();
   const path='/api/agent/v1/chat/sessions/'+session.sessionId;
   const admitted=await request(path+'/requests',{method:'POST',body:{family:'brief',key:'bounded',context:{view:'dashboard'}}});assert.equal(admitted.status,202);const job=(await admitted.json()).data;
