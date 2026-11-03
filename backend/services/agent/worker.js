@@ -461,6 +461,10 @@ export class IntelligenceWorker {
     ) {
       this.controlPlane = await this.opencode.verify(this.controller.signal);
       this.lastVerified = now;
+      // A verified transport is observable before any SQLite-dependent work.
+      // Otherwise the parent can terminate a live worker whose first tick is
+      // waiting for admission, just as that tick finally claims a job.
+      await this.reportHealth();
     }
     if (
       !this.lastReconciled ||
@@ -522,8 +526,18 @@ export class IntelligenceWorker {
       if(job.task!=="contextual_chat")this.backgroundTasks.add(task);
     }
   }
+  async reportHealth() {
+    try { await this.onHealth({state:this.lastErrorCode?'degraded':this.controlPlane?.ready?'connected':'degraded',
+      controlPlaneReady:this.controlPlane?.ready===true,errorCode:this.lastErrorCode||null,active:this.tasks.size,
+      storageReport:this.storageReport||{state:'pending'},
+      telemetry:{controlPlane:this.controlPlane,mcpIdentity:this.mcpIdentity,mcpContractMismatch:this.mcpContractMismatch===true,mcpRejections:this.mcpRejections||0,lastMcpFailure:this.lastMcpFailure,generations:[...this.activeGenerations.values()],recovery:this.recovery,lastFailure:this.lastGenerationFailure,lastSuccess:this.lastGenerationSuccess},
+      contract:{version:OPERATIONS_VERSION,hash:OPERATIONS_HASH,mcpHash:this.mcpContractHash||null}}); }
+    catch { /* Parent may disconnect during an orderly stop. */ }
+  }
   async run() {
     void this.opencode.startEvents?.(this.controller.signal);
+    const healthTimer=setInterval(()=>void this.reportHealth(),this.policy.heartbeatMs);healthTimer.unref();
+    try {
     while (!this.controller.signal.aborted) {
       try {
         await this.tick();
@@ -542,10 +556,9 @@ export class IntelligenceWorker {
           verifiedAt: this.lastVerified
             ? new Date(this.lastVerified).toISOString()
             : null,
-        }).then(value => { reported = true;this.recovery=value?.recovery||null; }).catch(() => {});
-        try { await this.onHealth({ state: reported && !this.lastErrorCode ? 'connected' : 'degraded',
-          errorCode: this.lastErrorCode || (reported ? null : 'AGENT_WORKER_REPORT_UNAVAILABLE'), active: this.tasks.size, telemetry:{controlPlane:this.controlPlane,mcpIdentity:this.mcpIdentity,mcpContractMismatch:this.mcpContractMismatch===true,mcpRejections:this.mcpRejections||0,lastMcpFailure:this.lastMcpFailure,generations:[...this.activeGenerations.values()],recovery:this.recovery,lastFailure:this.lastGenerationFailure,lastSuccess:this.lastGenerationSuccess}, contract:{version:OPERATIONS_VERSION,hash:OPERATIONS_HASH,mcpHash:this.mcpContractHash||null} }); }
-        catch { /* Parent may have disconnected while the worker is stopping. */ }
+        }).then(value => { reported = true;this.recovery=value?.recovery||null; }).catch(error => {this.storageReport={state:'deferred',errorCode:failureCode(error,'AGENT_WORKER_REPORT_UNAVAILABLE')};});
+        if(reported)this.storageReport={state:'reported',reportedAt:new Date().toISOString()};
+        await this.reportHealth();
       }
       try {
         await wait(this.policy.pollMs, undefined, {
@@ -555,6 +568,7 @@ export class IntelligenceWorker {
         break;
       }
     }
+    } finally { clearInterval(healthTimer); }
     await Promise.allSettled([...this.tasks]);
   }
   stop() {

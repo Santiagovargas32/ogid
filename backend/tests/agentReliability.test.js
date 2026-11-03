@@ -104,6 +104,31 @@ test('managed worker stays starting until a healthy control-plane report and dia
   rt.components.worker.workerHealth.reportedAt=new Date(Date.now()-100000).toISOString();
   assert.equal(rt.status().components.worker.errorCode,'AGENT_WORKER_HEARTBEAT_STALE');
 });
+test('worker reports verified liveness while its first storage tick is blocked',async()=>{
+ let enter,release;const entered=new Promise(r=>{enter=r;}),blocked=new Promise(r=>{release=r;});const health=[];let reports=0;
+ const worker=new IntelligenceWorker({model:'llamacpp/fixture',policy:{heartbeatMs:10},onHealth:h=>health.push(h),
+  opencode:{verify:async()=>({ready:true,mcp:{state:'connected'}})},call:async(method,_args,{signal}={})=>{
+   signal?.throwIfAborted();if(method==='reconcileCandidates'){enter();return blocked;}if(method==='workerReport'){reports++;return {};}return method==='pendingCancellations'?[]:null;
+  }});
+ const running=worker.run();
+ try{await entered;assert.equal(health[0].controlPlaneReady,true);assert.equal(health[0].state,'connected');assert.equal(health[0].storageReport.state,'pending');
+  await wait(35);assert.ok(health.length>=2,'IPC heartbeat must not wait for SQLite');assert.equal(reports,0);
+ }finally{worker.stop();release([]);await running;}
+});
+test('managed startup accepts a verified worker with resource-deferred business readiness',async t=>{
+ const directory=mkdtempSync(join(tmpdir(),'ogid-managed-pressure-ready-'));
+ const config=prepareManagedAgentConfig(loadAgentConfig({}, {mode:'shadow',backgroundModel:'llamacpp/fixture',manifest:{schemaVersion:'ogid-model-catalog-v1',models:[model]},managed:{worker:true,directory}}));
+ const child=new EventEmitter();Object.assign(child,{pid:123456788,exitCode:null,signalCode:null,stdout:new PassThrough(),stderr:new PassThrough()});
+ const rt=new ManagedAgentRuntime({config,spawnImpl:()=>child});rt.baseUrl='http://127.0.0.1:1';
+ rt.signal=()=>{if(child.exitCode===null){child.exitCode=0;child.emit('exit',0,null);}};
+ t.after(async()=>{await rt.stop();rmSync(directory,{recursive:true,force:true});});
+ const launching=rt.launchComponent('worker');await wait(20);
+ child.emit('message',{type:'agent-worker-health',state:'degraded',controlPlaneReady:true,errorCode:'AGENT_RESOURCE_DEFERRED',storageReport:{state:'deferred',errorCode:'AGENT_RESOURCE_DEFERRED',privateText:'PRIVATE'},telemetry:{controlPlane:{ready:true,mcp:{state:'connected'}}}});
+ await launching;assert.equal(rt.status().components.worker.state,'degraded');assert.equal(rt.status().components.worker.pid,child.pid);assert.equal(rt.timers.size,0);
+ assert.equal(rt.status().components.worker.workerHealth.storageReport.errorCode,'AGENT_RESOURCE_DEFERRED');
+ assert.equal(rt.status().services.mcp.state,'unverified');
+ assert.equal(JSON.stringify(rt.status()).includes('PRIVATE'),false);
+});
 
 test('chat reads use the query reader, observe committed revocation, and claims pause when that reader fails', async t => {
   const directory=mkdtempSync(join(tmpdir(),'ogid-agent-read-lane-'));

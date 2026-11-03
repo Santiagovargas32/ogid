@@ -41,7 +41,8 @@ export class ManagedAgentRuntime {
     if(worker.state==='running' && Date.now()-Date.parse(worker.workerHealth?.reportedAt)>90000)
       Object.assign(worker,{state:'degraded',errorCode:'AGENT_WORKER_HEARTBEAT_STALE'});
     const w=this.workerTelemetry||{},identity=w.mcpIdentity;
-    const connected=components.worker.state==='running'&&w.controlPlane?.mcp?.state==='connected';
+    const freshWorker=Date.now()-Date.parse(worker.workerHealth?.reportedAt)<=90000;
+    const connected=freshWorker&&['running','degraded'].includes(worker.state)&&(worker.workerHealth?.controlPlaneReady||worker.state==='running')&&w.controlPlane?.mcp?.state==='connected';
     const services={mcp:{state:w.mcpContractMismatch||identity&&identity.hash!==OPERATIONS_HASH?'degraded':connected?(identity?'ready':'unverified'):'unknown',
       expectedContract:{version:OPERATIONS_VERSION,hash:OPERATIONS_HASH},identity:identity||null,permittedTools:[...Object.keys(AGENT_EVIDENCE_TOOLS),'ogid_get_capabilities','ogid_health'],rejections:w.mcpRejections||0,lastFailure:w.lastMcpFailure||null,checkedAt:w.controlPlane?.checkedAt||null,profile:'agent-evidence'},
       llamacpp:this.brokerTelemetry?.upstream?{...this.brokerTelemetry.upstream,...(Date.now()-Date.parse(this.brokerTelemetry.upstream.observedAt)>90000?{state:'unknown'}:{})}:{state:'unknown',observedAt:null}};
@@ -128,7 +129,7 @@ export class ManagedAgentRuntime {
       if(name==='broker'&&message?.type==='agent-broker-health'){this.brokerTelemetry=runtimeTelemetry(message.telemetry);return;}
       if(this.children.get(name)!==child || name!=='worker' || message?.type!=='agent-worker-health' || !['connected','degraded'].includes(message.state))return;
       this.workerTelemetry=runtimeTelemetry(message.telemetry||{});
-      state.workerHealth={state:message.state,reportedAt:new Date().toISOString(),contract:message.contract&&/^[a-f0-9]{64}$/.test(message.contract.hash||'')?{version:String(message.contract.version||'unknown').slice(0,32),hash:message.contract.hash,mcpHash:/^[a-f0-9]{64}$/.test(message.contract.mcpHash||'')?message.contract.mcpHash:null}:null};
+      state.workerHealth={state:message.state,controlPlaneReady:message.controlPlaneReady===true,storageReport:runtimeTelemetry(message.storageReport)||null,reportedAt:new Date().toISOString(),contract:message.contract&&/^[a-f0-9]{64}$/.test(message.contract.hash||'')?{version:String(message.contract.version||'unknown').slice(0,32),hash:message.contract.hash,mcpHash:/^[a-f0-9]{64}$/.test(message.contract.mcpHash||'')?message.contract.mcpHash:null}:null};
       if(state.state!=='starting')state.state=message.state==='connected'?'running':'degraded';
       state.errorCode=message.state==='connected'?null:/^AGENT_[A-Z0-9_]{1,64}$/.test(message.errorCode || '')?message.errorCode:'AGENT_WORKER_UNAVAILABLE';
     });
@@ -143,7 +144,8 @@ export class ManagedAgentRuntime {
     });
     try{await this.waitReady(name,child);}catch(error){if(this.children.get(name)!==child)return;throw error;}
     if(this.stopping || this.children.get(name)!==child)return;
-    state.state="running";state.errorCode=null;
+    state.state=name==='worker'&&state.workerHealth?.state==='degraded'?'degraded':'running';
+    if(state.state==='running')state.errorCode=null;
     this.logger.info("agent_component_started",{component:name,pid:child.pid});
   }
   async waitReady(name,child){
@@ -151,7 +153,8 @@ export class ManagedAgentRuntime {
     while(Date.now()<deadline && !this.stopping && child.exitCode===null && this.children.get(name)===child){
       try{
         if(name==='worker'){
-          if(this.components.worker.workerHealth?.state!=='connected')throw Error();
+          const health=this.components.worker.workerHealth;
+          if(health?.controlPlaneReady!==true&&health?.state!=='connected')throw Error();
         }else if(name==="broker"){
           const r=await fetch(c.brokerUrl+"/health",{headers:{Authorization:`Bearer ${c.brokerToken}`},signal:AbortSignal.timeout(2000)});await r.body?.cancel();if(!r.ok)throw Error();
         }else await new OpenCodeClient({baseUrl:c.opencodeUrl,password:c.opencodePassword}).verify(this.controller.signal);
