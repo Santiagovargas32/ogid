@@ -49,6 +49,7 @@ const pageLimit = (v) => Math.max(1, Math.min(100, Number(v) || 20));
 // pages, not evidence limits: cursors and hashed chunks retain the entire item.
 const TOOL_PAGE_BYTES = 24 * 1024;
 const INLINE_EVIDENCE_BYTES = 12 * 1024;
+const HISTORY_PAGE_BYTES = 256 * 1024;
 const safeId = (v) =>
   typeof v === "string" && /^[A-Za-z0-9._:-]{1,160}$/.test(v);
 const admitted = (id) =>
@@ -321,19 +322,26 @@ export class AgentRepository {
     this.owned(sessionId, deviceId);
     const backwards = latest || Number(before) > 0,
       n = Number(before) || Number.MAX_SAFE_INTEGER;
-    const rows = this.db
+    const references = this.db
       .prepare(
         backwards
-          ? "SELECT rowid AS seq,* FROM agent_messages WHERE session_id=? AND rowid<? ORDER BY rowid DESC LIMIT ?"
-          : "SELECT rowid AS seq,* FROM agent_messages WHERE session_id=? AND rowid>? ORDER BY rowid LIMIT ?",
+          ? "SELECT rowid AS seq,length(CAST(payload_json AS BLOB)) AS bytes FROM agent_messages WHERE session_id=? AND rowid<? ORDER BY rowid DESC LIMIT ?"
+          : "SELECT rowid AS seq,length(CAST(payload_json AS BLOB)) AS bytes FROM agent_messages WHERE session_id=? AND rowid>? ORDER BY rowid LIMIT ?",
       )
       .all(
         sessionId,
         backwards ? n : Number(cursor) || 0,
         pageLimit(limit) + 1,
       );
-    const hasMore = rows.length > pageLimit(limit);
-    if (hasMore) rows.pop();
+    // Inspect only row metadata before fetching bodies. Return one complete
+    // large message when necessary; never truncate text or advance past it.
+    // Existing cursors handle both row and byte boundaries in either direction.
+    const rows=[],read=this.db.prepare('SELECT * FROM agent_messages WHERE rowid=?');let bytes=0;
+    for(const ref of references){
+      if(rows.length>=pageLimit(limit)||rows.length&&bytes+ref.bytes+512>HISTORY_PAGE_BYTES)break;
+      rows.push({seq:ref.seq,...read.get(ref.seq)});bytes+=ref.bytes+512;
+    }
+    const hasMore=rows.length<references.length;
     if (backwards) rows.reverse();
     return {
       items: rows.map((r) => ({

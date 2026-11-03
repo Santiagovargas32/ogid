@@ -1027,6 +1027,11 @@ export function createAppServer(overrides = {}) {
       if (stopTask) return stopTask;
       stopTask = (async () => {
       startupAbort.abort(Object.assign(Error('Startup stopped'),{code:'STORAGE_NOT_READY'}));
+      // Streaming responses must end before server.close() can drain HTTP.
+      // Mark closing first so an authorization already in flight cannot open
+      // a new stream after these owned connections have been released.
+      app.locals.agentSseClosing=true;
+      for(const end of app.locals.agentSseConnections||[])end();
       const failures=[],unconfirmedPersistence=[];
       const drain=async (work,phase='cleanup')=>{
         try{await work();}

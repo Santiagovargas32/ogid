@@ -10,18 +10,18 @@ const failure=code=>Object.assign(Error(code),{code,statusCode:503});
 export class WalCheckpoint {
   constructor(options,{commitBuffer=null,pressureBuffer=new SharedArrayBuffer(4),workerFactory=data=>new Worker(new URL('./walCheckpointWorker.js',import.meta.url),{workerData:data,execArgv:[]})}={}){
     this.options=options;this.commitBuffer=commitBuffer;this.confirmedGeneration=0;this.confirmedBytes=0;this.pressure=new Int32Array(pressureBuffer);this.workerFactory=workerFactory;
-    this.state='new';this.walBytes=0;this.confirmedWalBytes=0;this.pageSize=4096;this.completed=0;this.failures=0;this.nextEligibleAt=0;
+    this.state='new';this.walBytes=0;this.confirmedWalBytes=0;this.pageSize=4096;this.completed=0;this.probes=0;this.failures=0;this.nextEligibleAt=0;
   }
   status(){return {state:this.state,mode:'PASSIVE',connection:this.connection||null,walBytes:this.walBytes,backpressure:Atomics.load(this.pressure,0)===1,
     softLimitBytes:this.options.checkpointSoftBytes,hardLimitBytes:this.options.checkpointHardBytes,limitScope:'uncheckpointed-pages-and-growth',completed:this.completed,failures:this.failures,
     commits:readCommits(this.commitBuffer),confirmedGeneration:this.confirmedGeneration,dirtySince:this.dirtySince?new Date(this.dirtySince).toISOString():null,
     active:this.pending?{startedAt:new Date(this.pending.startedAt).toISOString(),elapsedMs:Date.now()-this.pending.startedAt}:null,
-    lastResult:this.lastResult||null,lastError:this.lastError||null,nextEligibleAt:this.nextEligibleAt?new Date(this.nextEligibleAt).toISOString():null};}
+    lastResult:this.lastResult||null,lastProbe:this.lastProbe||null,probes:this.probes,lastError:this.lastError||null,nextEligibleAt:this.nextEligibleAt?new Date(this.nextEligibleAt).toISOString():null};}
   setPressure(value){
     const changed=Atomics.exchange(this.pressure,0,value?1:0)!==(value?1:0);
     if(changed)log.warn('storage_wal_pressure',{paused:value,walBytes:this.walBytes,hardLimitBytes:this.options.checkpointHardBytes});
   }
-  behindLimit(){return (this.lastResult?.pendingBytes||0)>=this.options.checkpointHardBytes || this.walBytes-this.confirmedWalBytes>=this.options.checkpointHardBytes;}
+  behindLimit(){return ((this.lastProbe||this.lastResult)?.pendingBytes||0)>=this.options.checkpointHardBytes || this.walBytes-this.confirmedWalBytes>=this.options.checkpointHardBytes;}
   async start(){
     if(this.startTask)return this.startTask;
     this.state='starting';
@@ -29,7 +29,7 @@ export class WalCheckpoint {
       this.readyResolve=resolve;this.readyReject=reject;
       this.startTimer=setTimeout(()=>this.fail('STORAGE_CHECKPOINT_START_TIMEOUT'),this.options.startupTimeoutMs);
       try{
-        const worker=this.worker=this.workerFactory({databasePath:this.options.databasePath,writerToken:this.options.writerToken});
+        const worker=this.worker=this.workerFactory({databasePath:this.options.databasePath,writerToken:this.options.writerToken,checkpointSoftBytes:this.options.checkpointSoftBytes});
         worker.on('message',message=>{if(this.worker===worker)this.handleMessage(message);});
         worker.on('error',()=>{if(this.worker===worker)this.fail('STORAGE_CHECKPOINT_WORKER_FAILED');});
         worker.on('exit',()=>{if(this.worker===worker && !['closed','failed'].includes(this.state))this.fail('STORAGE_CHECKPOINT_WORKER_EXITED');});
@@ -49,25 +49,32 @@ export class WalCheckpoint {
     }
     clearTimeout(this.scheduleTimer);
     const commits=readCommits(this.commitBuffer),dirty=commits?commits.generation>this.confirmedGeneration:this.walBytes>this.confirmedWalBytes;
+    if(commits&&commits.generation!==this.observedGeneration){this.observedGeneration=commits.generation;this.lastCommitObservedAt=Date.now();}
     if(dirty&&!this.dirtySince)this.dirtySince=commits?.at||Date.now();
     if(!dirty)this.dirtySince=null;
     // A PASSIVE checkpoint does not shrink the file. A fully copied, retained
     // WAL is not debt; pause only until the next checkpoint confirms progress.
     if(this.behindLimit() && (this.pending || this.state==='failed' || this.lastResult?.pendingFrames>0))this.setPressure(true);
-    const debt=(this.lastResult?.pendingFrames||0)>0;
-    const due=debt || dirty && ((commits?commits.bytes-this.confirmedBytes:this.walBytes-this.confirmedWalBytes)>=this.options.checkpointSoftBytes || Date.now()-this.dirtySince>=5000);
-    if(this.state==='ready'&&!this.pending&&Date.now()>=this.nextEligibleAt&&due)this.request().catch(()=>{});
+    const debt=((this.lastProbe||this.lastResult)?.pendingFrames||0)>0;
+    const due=debt || dirty && (commits || this.walBytes-this.confirmedWalBytes>=this.options.checkpointSoftBytes || Date.now()-this.dirtySince>=5000);
+    // Probe active trickles instead of syncing tiny checkpoints every five
+    // seconds. Copy at the existing byte limit, or after five seconds quiet.
+    if(this.state==='ready'&&!this.pending&&Date.now()>=this.nextEligibleAt&&due)this.request({conditional:Boolean(commits),quiet:Date.now()-(this.lastCommitObservedAt||0)>=5000}).catch(()=>{});
     else if(this.state==='ready'&&(dirty||debt)){this.scheduleTimer=setTimeout(()=>this.observe(this.walBytes),Math.max(25,Math.max(this.nextEligibleAt-Date.now(),debt?1000:Math.min(1000,5000-(Date.now()-this.dirtySince)))));this.scheduleTimer.unref();}
   }
-  request(){
-    if(this.pending)return this.pending.task;
+  request({conditional=false,quiet=false}={}){
+    if(this.pending){
+      const pending=this.pending;
+      if(!conditional&&pending.conditional)return pending.forceTask||=(pending.task.then(result=>pending.skipped?this.request():result));
+      return pending.task;
+    }
     if(this.state!=='ready')return Promise.reject(failure('STORAGE_CHECKPOINT_UNAVAILABLE'));
     const id=randomUUID();let resolve,reject;
     const task=new Promise((yes,no)=>{resolve=yes;reject=no;});
-    this.pending={id,task,resolve,reject,startedAt:Date.now(),walBytes:this.walBytes,commits:readCommits(this.commitBuffer)};
+    this.pending={id,task,resolve,reject,conditional,startedAt:Date.now(),walBytes:this.walBytes,commits:readCommits(this.commitBuffer)};
     this.pending.timer=setTimeout(()=>this.fail('STORAGE_CHECKPOINT_TIMEOUT'),this.options.checkpointTimeoutMs);
     if(this.behindLimit())this.setPressure(true);
-    try{this.worker.postMessage({type:'checkpoint',id});}catch{this.fail('STORAGE_CHECKPOINT_WORKER_FAILED');}
+    try{this.worker.postMessage({type:'checkpoint',id,conditional,quiet});}catch{this.fail('STORAGE_CHECKPOINT_WORKER_FAILED');}
     return task;
   }
   handleMessage(message){
@@ -83,12 +90,15 @@ export class WalCheckpoint {
     }else{
       const row=message.result[0];
       const pendingFrames=Math.max(0,row.log-row.checkpointed),pendingBytes=pendingFrames*this.pageSize;
-      this.lastResult={...row,pendingFrames,pendingBytes,durationMs:message.durationMs,completedAt:new Date().toISOString()};
+      const result={...row,pendingFrames,pendingBytes,durationMs:message.durationMs,completedAt:new Date().toISOString()};
+      pending.skipped=message.skipped===true;
+      if(pending.skipped){this.lastProbe=result;this.probes++;}
+      else {this.lastResult=result;this.lastProbe=null;this.completed++;}
       if(!row.busy&&pendingFrames===0){this.confirmedGeneration=pending.commits?.generation||0;this.confirmedBytes=pending.commits?.bytes||0;acknowledgeCommits(this.commitBuffer,this.confirmedGeneration);this.dirtySince=null;}
-      this.completed++;this.nextEligibleAt=Date.now()+RUNTIME_POLICY.storage.maintenanceIntervalMs;
+      this.nextEligibleAt=Date.now()+RUNTIME_POLICY.storage.maintenanceIntervalMs;
       if(!row.busy && row.log>=0){this.confirmedWalBytes=Math.max(0,pending.walBytes-pendingBytes);this.setPressure(pendingBytes>=this.options.checkpointHardBytes);}
       else if(this.behindLimit())this.setPressure(true);
-      if(message.durationMs>=1000 || this.lastResult.pendingFrames>0)log.warn('storage_wal_checkpoint',this.lastResult);
+      if(!pending.skipped&&(message.durationMs>=1000 || pendingFrames>0))log.warn('storage_wal_checkpoint',this.lastResult);
       pending.resolve(message.result);this.observe(this.walBytes);
     }
   }

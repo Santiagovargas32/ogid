@@ -287,6 +287,7 @@ router.post(
 );
 router.get("/agent/v1/chat/sessions/:id/events", device, async (req, res) => {
   await call(req, "sessionAccess", ownedArgs(req));
+  if(req.app.locals.agentSseClosing)throw agentError('AGENT_SHUTTING_DOWN',503);
   if(req.destroyed || res.destroyed)return;
   res.set({
     "Content-Type": "text/event-stream",
@@ -299,12 +300,14 @@ router.get("/agent/v1/chat/sessions/:id/events", device, async (req, res) => {
     previousEvent = "";
   let timer;
   const metrics = req.app.locals.agentSse ||= {active:0,opened:0,closed:0};
+  const connections=req.app.locals.agentSseConnections ||= new Set();
   metrics.active++;metrics.opened++;
   const cleanup = () => {
     if(closed)return;
-    closed=true; clearInterval(timer);metrics.active--;metrics.closed++;
+    closed=true; clearInterval(timer);metrics.active--;metrics.closed++;connections.delete(end);
   };
   const end = () => { cleanup();res.end(); };
+  connections.add(end);
   const send = (value) => {
     if (closed) return;
     const bytes = Buffer.byteLength(JSON.stringify(value));

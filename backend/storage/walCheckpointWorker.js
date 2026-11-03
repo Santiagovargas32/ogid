@@ -23,6 +23,15 @@ try{
     const start=performance.now();
     try{
       verifyOwner();
+      if(message.conditional){
+        // Observe the real WAL debt without copying pages or syncing the DB.
+        // Logical no-op writes and a retained WAL file are not checkpoint debt.
+        const observed=database.pragma('wal_checkpoint(NOOP)'),row=observed[0];
+        const pendingBytes=Math.max(0,row.log-row.checkpointed)*database.pragma('page_size',{simple:true});
+        if(!row.busy&&row.log>=0&&(pendingBytes===0||!message.quiet&&pendingBytes<workerData.checkpointSoftBytes)){
+          parentPort.postMessage({id:message.id,result:observed,skipped:true,durationMs:performance.now()-start});return;
+        }
+      }
       const result=database.pragma('wal_checkpoint(PASSIVE)');
       parentPort.postMessage({id:message.id,result,durationMs:performance.now()-start});
     }catch(reason){parentPort.postMessage({id:message.id,error:{code:reason.code||'STORAGE_CHECKPOINT_FAILED'},durationMs:performance.now()-start});}

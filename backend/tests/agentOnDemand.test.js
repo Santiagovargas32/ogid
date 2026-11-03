@@ -20,6 +20,18 @@ test('explicit requests are owned, idempotent and serialized across workers',()=
  f.repo.cancel({...active,owner:'one',internal:true});assert.equal(f.repo.claim({owner:'two'}).jobId,second.jobId);
  assert.equal(f.repo.messages(f.auth).items.length,2);
  }finally{f.close();}});
+test('history byte boundaries preserve complete large messages and both cursor directions',()=>{const f=fixture();try{
+ const values=['a'.repeat(180000),'b'.repeat(180000),'\\\"\n'.repeat(100000),'Último mensaje con Unicode 🌍'];
+ const insert=f.db.prepare('INSERT INTO agent_messages VALUES(?,?,?,?,?,?)');
+ for(const[index,text]of values.entries())insert.run('history-'+index,f.auth.sessionId,'user',new Date().toISOString(),JSON.stringify({text}),'history-'+index);
+ const first=f.repo.messages({...f.auth,limit:100});assert.equal(first.items.length,1);assert.equal(first.hasMore,true);assert.equal(first.items[0].text,values[0]);
+ const forward=[];let cursor=0;
+ for(let pages=0;pages<10;pages++){const page=f.repo.messages({...f.auth,limit:100,cursor});forward.push(...page.items.map(m=>m.text));if(!page.hasMore)break;assert.ok(page.nextCursor>cursor);cursor=page.nextCursor;}
+ assert.deepEqual(forward,values);
+ const backward=[];let before=0;
+ for(let pages=0;pages<10;pages++){const page=f.repo.messages({...f.auth,limit:100,latest:true,before});backward.unshift(...page.items.map(m=>m.text));if(!page.hasMore)break;assert.ok(page.olderCursor>0&&(!before||page.olderCursor<before));before=page.olderCursor;}
+ assert.deepEqual(backward,values);assert.throws(()=>f.repo.messages({...f.auth,deviceId:'foreign'}));
+ }finally{f.close();}});
 test('context is validated, frozen at send and bounded snapshots disclose partial coverage',()=>{const f=fixture();try{
  assert.throws(()=>f.repo.requestAgent({...f.auth,key:'x',family:'brief',context:{dom:'secret'}}),{code:'AGENT_INVALID_CONTEXT'});
  const result=f.repo.requestAgent({...f.auth,key:'x',family:'brief',context:{countries:['ES']}});

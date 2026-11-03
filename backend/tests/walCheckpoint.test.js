@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,rmSync,statSync} from 'node:fs';
+import {mkdtempSync,rmSync,statSync,readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {Worker} from 'node:worker_threads';
-import {once} from 'node:events';
+import {once,EventEmitter} from 'node:events';
 import {setTimeout as wait} from 'node:timers/promises';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
+import {createCommitBuffer,CommitActivity} from '../storage/commitActivity.js';
 import Database from 'better-sqlite3';
 import {WalCheckpoint} from '../storage/walCheckpoint.js';
 import {StorageManager} from '../storage/StorageManager.js';
@@ -26,6 +27,49 @@ function fixture(){
   return {directory,databasePath,writerToken,db,options:{...storageConfig({enabled:true,databasePath}),writerToken},close(){db.close();rmSync(directory,{recursive:true,force:true});}};
 }
 const record=()=>{const at=new Date().toISOString();return {runId:randomUUID(),pipelineId:'storage',startedAt:at,completedAt:at,status:'healthy',counts:{processed:1}};};
+
+test('automatic checkpoint probes coalesce an active trickle using actual WAL debt and flush after quiescence',async t=>{
+ const f=fixture(),buffer=createCommitBuffer(),activity=new CommitActivity(buffer),checkpoint=new WalCheckpoint({...f.options,checkpointSoftBytes:256*1024},{commitBuffer:buffer});
+ const digest=()=>createHash('sha256').update(readFileSync(f.databasePath)).digest('hex');
+ try{
+  t.mock.timers.enable({apis:['Date'],now:1000000});
+  await checkpoint.start();await checkpoint.request();const before=digest(),completed=checkpoint.status().completed;
+  const put=f.db.prepare('INSERT INTO runtime_meta VALUES(?,?)');
+  for(let i=0;i<8;i++){
+   t.mock.timers.tick(1001);put.run('trickle-'+i,JSON.stringify('x'.repeat(1024)));activity.committed(1024);
+   checkpoint.observe(statSync(f.databasePath+'-wal').size);assert.ok(checkpoint.pending);await checkpoint.pending.task;
+  }
+  assert.equal(checkpoint.status().completed,completed);assert.ok(checkpoint.status().probes>=8);
+  assert.ok(checkpoint.status().lastProbe.pendingBytes>0);assert.ok(checkpoint.status().lastProbe.pendingBytes<checkpoint.options.checkpointSoftBytes);
+  assert.equal(digest(),before);assert.equal(f.db.pragma('synchronous',{simple:true}),2);
+  const reader=new Database(f.databasePath,{readonly:true});try{assert.equal(reader.prepare("SELECT count(*) n FROM runtime_meta WHERE key LIKE 'trickle-%'").get().n,8);}finally{reader.close();}
+  t.mock.timers.tick(5001);checkpoint.observe(statSync(f.databasePath+'-wal').size);assert.ok(checkpoint.pending);await checkpoint.pending.task;
+  assert.equal(checkpoint.status().completed,completed+1);assert.equal(checkpoint.status().lastResult.pendingFrames,0);assert.notEqual(digest(),before);
+ }finally{await checkpoint.close();f.close();}
+});
+
+test('conditional checkpoint copies at the unchanged soft byte limit and retains FULL durability',async()=>{
+ const f=fixture(),checkpoint=new WalCheckpoint({...f.options,checkpointSoftBytes:65536});
+ try{
+  await checkpoint.start();await checkpoint.request();const completed=checkpoint.status().completed;
+  f.db.prepare('INSERT INTO runtime_meta VALUES(?,?)').run('large-debt',JSON.stringify('x'.repeat(131072)));
+  await checkpoint.request({conditional:true});assert.equal(checkpoint.status().completed,completed+1);assert.equal(checkpoint.status().lastResult.pendingFrames,0);
+  assert.equal(checkpoint.options.checkpointSoftBytes,65536);assert.equal(checkpoint.options.checkpointHardBytes,f.options.checkpointHardBytes);assert.equal(f.db.pragma('synchronous',{simple:true}),2);
+ }finally{await checkpoint.close();f.close();}
+});
+
+test('an explicit checkpoint during a pending NOOP probe performs the requested PASSIVE copy',async()=>{
+ let worker;const sent=[];const checkpoint=new WalCheckpoint(storageConfig({enabled:true}),{workerFactory:()=>{
+  worker=new EventEmitter();worker.terminate=async()=>{};
+  worker.postMessage=message=>{sent.push(message);if(!message.conditional)setImmediate(()=>worker.emit('message',{id:message.id,result:[{busy:0,log:2,checkpointed:2}],durationMs:1}));};
+  queueMicrotask(()=>worker.emit('message',{type:'ready',queryOnly:true,synchronous:2,pageSize:4096}));return worker;
+ }});
+ try{
+  await checkpoint.start();const probe=checkpoint.request({conditional:true}),forced=checkpoint.request();assert.equal(checkpoint.request(),forced);
+  worker.emit('message',{id:sent[0].id,result:[{busy:0,log:2,checkpointed:0}],skipped:true,durationMs:1});
+  await probe;assert.equal((await forced)[0].checkpointed,2);assert.deepEqual(sent.map(m=>m.conditional),[true,false]);assert.equal(checkpoint.status().probes,1);assert.equal(checkpoint.status().completed,1);
+ }finally{await checkpoint.close();}
+});
 
 test('native wait diagnostics read only the known local thread, bound output and express unavailable stacks',()=>{
   for(const value of [null,0,-1,'../../1',NaN])assert.equal(readNativeWait(value),null);
