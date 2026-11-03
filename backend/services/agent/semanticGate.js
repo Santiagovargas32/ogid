@@ -1,9 +1,21 @@
 import {stableHash} from '../../utils/stableHash.js';
-export const SEMANTIC_POLICY=Object.freeze({version:'ogid-semantic-gate-v2',casesPerFamily:8,minSupport:0.95,minUtility:3,minUseful:6});
+import {narrativeFields} from './narrativeFacts.js';
+export const SEMANTIC_POLICY=Object.freeze({version:'ogid-semantic-gate-v3',reviewVersion:'ogid-semantic-review-v3',casesPerFamily:8,minSupport:0.95,minUtility:3,minUseful:6});
 const families=['brief','outlook','assessment','situation_analysis'];
 const hash=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
 export const artifactHash=({contentHash,...artifact})=>stableHash(artifact);
 const taskFor=c=>({brief:'global_intelligence_brief',outlook:c.variant==='instrument'?'instrument_outlook':'market_outlook_global',assessment:'geopolitical_alert_assessment',situation_analysis:'situation_analysis'})[c.family];
+export const claimInventory=proposal=>[...narrativeFields(proposal||{})].map(([field,row])=>({field,text:row.text,evidenceIds:row.refs}));
+export const claimInventoryHash=proposal=>stableHash(claimInventory(proposal));
+const explanation=value=>typeof value==='string'&&value.trim().length>=8&&value.length<=4000;
+function quotedValue(evidence,quote,a){
+ if(!quote||typeof quote.path!=='string'||!Array.isArray(evidence))return undefined;
+ const item=evidence.find(e=>e.evidenceId===quote.evidenceId);
+ const coverage=quote.path.startsWith('$snapshot.coverage.');
+ const path=coverage?quote.path.slice('$snapshot.coverage.'.length):quote.path;
+ if(!item||coverage&&item.domain!=='coverage'||!path||path.length>256)return undefined;
+ return path.split('.').reduce((v,k)=>v&&typeof v==='object'&&Object.hasOwn(v,k)&&!['__proto__','prototype','constructor'].includes(k)?v[k]:undefined,coverage?a.snapshot?.coverage:item.data);
+}
 
 export function artifactProblems(a,c,candidateHash){
  if(!a)return ['execution-artifact-required'];
@@ -20,8 +32,10 @@ export function artifactProblems(a,c,candidateHash){
  return errors;
 }
 function reviewProblems(r,a,scenario){
- if(!r||typeof r.reviewer!=='string'||!r.reviewer.trim()||!Number.isFinite(Date.parse(r.reviewedAt)))return ['human-review-required'];
+ if(!r||typeof r.reviewer!=='string'||!r.reviewer.trim()||!Number.isFinite(Date.parse(r.reviewedAt)))return ['agent-review-required'];
  const errors=[];
+ if(r.version!==SEMANTIC_POLICY.reviewVersion||r.rubricVersion!==SEMANTIC_POLICY.version||r.reviewerType!=='agent'||!explanation(r.reviewerModel)||typeof r.reviewerRunId!=='string'||!/^[A-Za-z0-9._:-]{8,160}$/.test(r.reviewerRunId))errors.push('versioned-agent-review-required');
+ if(!explanation(r.utilityRationale)||!explanation(r.scenarioRationale))errors.push('review-rationale-required');
  for(const key of ['jobId','snapshotId','model','promptVersion'])if(r[key]!==a?.run?.[key])errors.push('review-execution-mismatch');
  if(r.evidenceReviewHash!==a?.contentHash||Date.parse(r.reviewedAt)<Date.parse(a?.collectedAt))errors.push('review-artifact-mismatch');
  if(r.criticalErrors!==0)errors.push('critical-error');
@@ -31,14 +45,26 @@ function reviewProblems(r,a,scenario){
  if(scenario==='abstention'&&r.correctAbstention!==true)errors.push('abstention-failed');
  if(!Array.isArray(r.claims)||!r.claims.length)return [...errors,'claim-review-required'];
  const proposal=a?.run?.publication?.proposal,ids=new Set((a?.evidence||[]).map(e=>e.evidenceId));
+ const inventory=claimInventory(proposal),ranges=new Map(inventory.map(row=>[row.field,[]]));
+ if(r.claimInventoryHash!==claimInventoryHash(proposal))errors.push('claim-inventory-mismatch');
  const claimKeys=new Set();
  for(const claim of r.claims){
+  if(!claim||typeof claim!=='object'){errors.push('invalid-claim-review');continue;}
   const key=JSON.stringify([claim.field,claim.text]);if(claimKeys.has(key))errors.push('duplicate-claim');claimKeys.add(key);
   const keys=typeof claim.field==='string'&&claim.field.startsWith('/')?claim.field.slice(1).split('/'):[];
   const prose=keys.reduce((v,k)=>v&&typeof v==='object'&&Object.hasOwn(v,k)&&!['__proto__','prototype','constructor'].includes(k)?v[k]:undefined,proposal);
   if(typeof claim.text!=='string'||!claim.text.trim()||typeof prose!=='string'||!prose.includes(claim.text)||typeof claim.verifiable!=='boolean'||typeof claim.supported!=='boolean'||!Array.isArray(claim.evidenceIds)||claim.evidenceIds.some(id=>!ids.has(id))||claim.verifiable&&claim.supported&&!claim.evidenceIds.length)errors.push('invalid-claim-review');
+  if(!Number.isSafeInteger(claim.start)||!Number.isSafeInteger(claim.end)||claim.start<0||claim.end<=claim.start||typeof prose!=='string'||claim.end>prose.length||prose.slice(claim.start,claim.end)!==claim.text||!ranges.has(claim.field))errors.push('invalid-claim-span');
+  else ranges.get(claim.field).push([claim.start,claim.end]);
+  if(!explanation(claim.rationale))errors.push('claim-rationale-required');
+  if(!Array.isArray(claim.evidenceQuotes)||claim.evidenceQuotes.length>32)errors.push('invalid-evidence-quotes');
+  else{
+   if(claim.verifiable&&claim.supported&&!claim.evidenceQuotes.length)errors.push('supported-claim-quote-required');
+   for(const quote of claim.evidenceQuotes){const raw=quotedValue(a?.evidence,quote,a);if(!quote||!Array.isArray(claim.evidenceIds)||!claim.evidenceIds.includes(quote.evidenceId)||typeof quote.quote!=='string'||!quote.quote.trim()||quote.quote.length>2000||!['string','number','boolean'].includes(typeof raw)||!String(raw).includes(quote.quote))errors.push('unbound-evidence-quote');}
+  }
  }
- const claims=r.claims.filter(c=>c.verifiable===true),supported=claims.filter(c=>c.supported===true);
+ for(const row of inventory){let end=0;for(const [start,stop]of ranges.get(row.field).sort((a,b)=>a[0]-b[0])){if(start<end)errors.push('overlapping-claims');if(row.text.slice(end,start).trim())errors.push('unreviewed-prose');end=Math.max(end,stop);}if(row.text.slice(end).trim())errors.push('unreviewed-prose');}
+ const claims=r.claims.filter(c=>c?.verifiable===true),supported=claims.filter(c=>c.supported===true);
  if(r.verifiableClaims!==undefined&&r.verifiableClaims!==claims.length||r.supportedClaims!==undefined&&r.supportedClaims!==supported.length)errors.push('invented-claim-count');
  return [...new Set(errors)];
 }
@@ -51,6 +77,7 @@ export function semanticGate(cases,reviews,bundle={}){
  if(new Set(executions.map(a=>a.run?.jobId)).size!==executions.length)global.push('reused-execution');
  if(new Set(executions.map(a=>a.run?.model)).size!==1||new Set(executions.map(a=>a.run?.promptVersion)).size!==1)global.push('mixed-generation-versions');
  if(!hash(bundle.modelManifestHash)||executions.some(a=>a.modelManifestHash!==bundle.modelManifestHash))global.push('model-manifest-mismatch');
+ if(!hash(bundle.runtimeProfileHash)||executions.some(a=>a.runtimeProfileHash!==bundle.runtimeProfileHash))global.push('runtime-profile-mismatch');
  const results=families.map(family=>{
   const selected=cases.filter(c=>c.family===family),errors=[...global];let useful=0,supported=0,total=0;
   if(selected.length!==8)errors.push('eight-unique-cases-required');
@@ -58,7 +85,7 @@ export function semanticGate(cases,reviews,bundle={}){
   if(family==='outlook'&&['global','instrument'].some(v=>selected.filter(c=>c.variant===v).length!==4))errors.push('outlook-variants-required');
   for(const c of selected){
    const matches=artifacts.filter(a=>a.caseId===c.id),matching=reviews.filter(r=>r.caseId===c.id),a=matches[0],r=matching[0];
-   const problems=[...(matches.length!==1?['unique-artifact-required']:artifactProblems(a,c,bundle.candidateHash)),...(matching.length!==1?['human-review-required']:reviewProblems(r,a,c.scenario))];
+   const problems=[...(matches.length!==1?['unique-artifact-required']:artifactProblems(a,c,bundle.candidateHash)),...(matching.length!==1?['agent-review-required']:reviewProblems(r,a,c.scenario))];
    errors.push(...problems.map(e=>`${c.id}:${e}`));
    if(problems.length)continue;
    useful+=Number(r.utility>=SEMANTIC_POLICY.minUtility);const claims=r.claims.filter(x=>x.verifiable);total+=claims.length;supported+=claims.filter(x=>x.supported).length;

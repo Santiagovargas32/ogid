@@ -4,6 +4,7 @@ import { BASELINE_COUNTRIES } from "../../../backend/utils/countryCatalog.js";
 import { AWARENESS_SOURCES, AWARENESS_SOURCE_CATALOG_VERSION } from "../../../backend/services/awareness/awarenessCatalog.js";
 import { VERSION, ADAPTER_BUILD } from "./config.js";
 import { ReadError } from "./client.js";
+import {resourcePressureDetails} from '../../../backend/utils/resourcePressureDetails.js';
 import { authorizeInstruments, extendedToolDefinitions } from "./operations.js";
 import { publicStorageStatus } from "../../../backend/utils/researchProjection.js";
 
@@ -197,6 +198,7 @@ export async function executeTool(tool, input, config) {
     const payload = { ok: false, queriedAt: new Date().toISOString(), identity, error: {
       code: error instanceof ReadError ? error.code : error instanceof z.ZodError ? "INVALID_ARGUMENTS" : "ADAPTER_ERROR",
       message: error instanceof ReadError ? error.message : error instanceof z.ZodError ? "Argumentos inválidos o no permitidos." : "No se pudo completar la lectura segura.",
+      ...(error instanceof ReadError&&error.code==='STORAGE_RESOURCE_PRESSURE'?{details:resourcePressureDetails(error.details)}:{}),
       ...(error instanceof z.ZodError?{details:{stage:error.validationStage||"tool-envelope",issues:error.issues.slice(0,16).map(i=>({path:i.path.map(x=>String(x).slice(0,64)),code:i.code,...(typeof i.expected==="string"?{expected:i.expected}:{})}))}}:{})
     } };
     return { isError: true, structuredContent: payload, content: [{ type: "text", text: JSON.stringify(payload) }] };

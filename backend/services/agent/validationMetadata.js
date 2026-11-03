@@ -1,3 +1,4 @@
+import {resourcePressureDetails} from '../../utils/resourcePressureDetails.js';
 import {publicProjection} from '../../utils/researchProjection.js';
 import {safeValidationDetails} from './contracts.js';
 
@@ -12,6 +13,8 @@ function details(raw){
 }
 export function projectAgentRunMetadata(value){
  const projected=publicProjection(value);
+ if(value?.resourcePressure)projected.resourcePressure=resourcePressureDetails(value.resourcePressure);
+ if(value?.lastToolFailure?.resourcePressure&&projected.lastToolFailure)projected.lastToolFailure.resourcePressure=resourcePressureDetails(value.lastToolFailure.resourcePressure);
  if(Array.isArray(value?.validationAttempts))projected.validationAttempts=value.validationAttempts.slice(0,2).filter(row=>row&&typeof row==='object').map(row=>({...publicProjection(row),details:details(row.details)}));
  return projected;
 }

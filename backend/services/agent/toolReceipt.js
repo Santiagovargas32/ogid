@@ -1,3 +1,4 @@
+import {resourcePressureDetails} from '../../utils/resourcePressureDetails.js';
 // Decode transport envelopes only; never infer success from a tool's name.
 export function toolReceipt(value,depth=0){
   if(depth>6||value==null)return null;
@@ -16,7 +17,7 @@ export function toolReceipt(value,depth=0){
   }
   if(typeof value!=='object')return null;
   const identity=value.identity&&/^[a-f0-9]{64}$/.test(value.identity.hash||'')?{returnedContractHash:value.identity.hash,componentIdentity:{version:value.identity.version,hash:value.identity.hash,adapterVersion:value.identity.adapterVersion,pid:value.identity.pid,startedAt:value.identity.startedAt,profile:value.identity.profile}}:{};
-  if(value.ok===false||value.isError===true&&value.error)return {...identity,applicationOk:false,applicationCode:/^[A-Z_]{2,80}$/.test(value.error?.code||'')?value.error.code:'MCP_TOOL_FAILED',validation:value.error?.details?{stage:String(value.error.details.stage||'unknown').slice(0,64),issues:(Array.isArray(value.error.details.issues)?value.error.details.issues:[]).slice(0,16).map(i=>({path:(Array.isArray(i.path)?i.path:[]).slice(0,16).map(p=>String(p).slice(0,64)),code:String(i.code||'unknown').slice(0,64),expected:typeof i.expected==='string'?i.expected.slice(0,64):null}))}:null};
+  if(value.ok===false||value.isError===true&&value.error)return {...identity,applicationOk:false,applicationCode:/^[A-Z_]{2,80}$/.test(value.error?.code||'')?value.error.code:'MCP_TOOL_FAILED',...(value.error?.code==='STORAGE_RESOURCE_PRESSURE'?{resourcePressure:resourcePressureDetails(value.error.details)}:{}),validation:value.error?.details?{stage:String(value.error.details.stage||'unknown').slice(0,64),issues:(Array.isArray(value.error.details.issues)?value.error.details.issues:[]).slice(0,16).map(i=>({path:(Array.isArray(i.path)?i.path:[]).slice(0,16).map(p=>String(p).slice(0,64)),code:String(i.code||'unknown').slice(0,64),expected:typeof i.expected==='string'?i.expected.slice(0,64):null}))}:null};
   if(value.ok===true&&value.origin==='OGID'&&!value.readReceipt&&identity.returnedContractHash)return {...identity,applicationOk:true,contentRead:false};
   if(value.ok===true&&value.origin==='OGID'&&value.readReceipt){
     const receipt=value.readReceipt,hash=receipt.contractHash;

@@ -1,3 +1,4 @@
+import {resourcePressureDetails} from '../../utils/resourcePressureDetails.js';
 import {ANALYSIS_SYSTEM,ANALYSIS_INSTRUCTIONS} from '../situations/analysisSchema.js';
 import {OPERATIONS_HASH,OPERATIONS_VERSION} from '../../contracts/ogidOperations.js';
 import {generationFor} from './generation.js';
@@ -188,10 +189,10 @@ export class IntelligenceWorker {
       const rememberToolFailures = tools => {
         for (const tool of tools) {
           if(tool.status==='error'||tool.applicationCode){
-            liveProgress.lastToolFailure={operationId:tool.operationId||null,code:tool.applicationCode||'MCP_TOOL_FAILED',validation:tool.validation||null,callId:tool.callId||null};
+            liveProgress.lastToolFailure={operationId:tool.operationId||null,code:tool.applicationCode||'MCP_TOOL_FAILED',validation:tool.validation||null,callId:tool.callId||null,...(tool.applicationCode==='STORAGE_RESOURCE_PRESSURE'?{resourcePressure:resourcePressureDetails(tool.resourcePressure)}:{})};
             if(!reportedFailures.has(tool.callId)&&reportedFailures.size<16){reportedFailures.add(tool.callId);this.mcpRejections=(this.mcpRejections||0)+1;this.lastMcpFailure={...liveProgress.lastToolFailure,jobId:job.jobId,fence:job.fence,at:new Date().toISOString()};log.warn('agent_tool_application_failed',{jobId:job.jobId,fence:job.fence,generation:generation.key,snapshotId:generation.snapshotId,...liveProgress.lastToolFailure});}
           }
-          if(tool.applicationCode==='STORAGE_RESOURCE_PRESSURE')throw agentError('AGENT_RESOURCE_DEFERRED',503);
+          if(tool.applicationCode==='STORAGE_RESOURCE_PRESSURE'){const error=agentError('AGENT_RESOURCE_DEFERRED',503,resourcePressureDetails(tool.resourcePressure));error.causeCode='STORAGE_RESOURCE_PRESSURE';throw error;}
         }
       };
       const checkToolProgress = (tools) => {
@@ -403,7 +404,8 @@ export class IntelligenceWorker {
       this.lastGenerationSuccess={jobId:job.jobId,fence:job.fence,at:new Date().toISOString()};
     } catch (e) {
       if(e.details?.terminalError)liveProgress.terminalError=e.details.terminalError;
-      this.lastGenerationFailure={jobId:job.jobId,fence:job.fence,snapshotId:generation?.snapshotId,at:new Date().toISOString(),code:failureCode(e,'AGENT_EXECUTION_UNCERTAIN'),causeCode:liveProgress.terminalError?.causeCode||(liveProgress.lastToolFailure?.code==='INVALID_ARGUMENTS'?'MCP_INVALID_ARGUMENTS':null)};
+      if(e.causeCode==='STORAGE_RESOURCE_PRESSURE')liveProgress.resourcePressure=resourcePressureDetails(e.details);
+      this.lastGenerationFailure={jobId:job.jobId,fence:job.fence,snapshotId:generation?.snapshotId,at:new Date().toISOString(),code:failureCode(e,'AGENT_EXECUTION_UNCERTAIN'),causeCode:e.causeCode||liveProgress.terminalError?.causeCode||(liveProgress.lastToolFailure?.code==='INVALID_ARGUMENTS'?'MCP_INVALID_ARGUMENTS':liveProgress.lastToolFailure?.code==='STORAGE_RESOURCE_PRESSURE'?'STORAGE_RESOURCE_PRESSURE':null)};
       log.warn('agent_generation_failed',{jobId:job.jobId,fence:job.fence,generation:generation?.key||null,snapshotId:generation?.snapshotId||null,phase:liveProgress.phase,code:failureCode(e,'AGENT_EXECUTION_UNCERTAIN'),causeCode:this.lastGenerationFailure.causeCode});
       const cleanupSignal = AbortSignal.timeout(10000);
       const cleanup = (method, args) => this.call(method, args, { signal: cleanupSignal });

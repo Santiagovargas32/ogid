@@ -7,5 +7,5 @@ const cases=JSON.parse(readFileSync(new URL('../evaluations/agent-semantic-cases
 const manifest=JSON.parse(readFileSync(join(directory,'manifest.json')));
 const artifacts=cases.map(c=>join(directory,c.id+'-artifact.json')).filter(existsSync).map(p=>JSON.parse(readFileSync(p)));
 const attackFile=join(directory,'adversarial.json'),adversarial=existsSync(attackFile)?JSON.parse(readFileSync(attackFile)):[];
-const report=semanticGate(cases,JSON.parse(readFileSync(reviewFile)).reviews||[],{candidateHash:manifest.candidateHash,modelManifestHash:manifest.modelManifestHash,artifacts,adversarial});
+const report=semanticGate(cases,JSON.parse(readFileSync(reviewFile)).reviews||[],{candidateHash:manifest.candidateHash,modelManifestHash:manifest.modelManifestHash,runtimeProfileHash:manifest.runtimeProfileHash,artifacts,adversarial});
 process.stdout.write(JSON.stringify(report,null,2)+'\n');process.exitCode=report.passed?0:1;

@@ -1,3 +1,4 @@
+import {resourcePressureDetails} from '../utils/resourcePressureDetails.js';
 import {requestAgent,captureContext,validateContext} from './agentRequests.js';
 import {requestAnalysis,prepareAnalysis,commitAnalysisDependencies,analysisCurrentness,readAnalyses} from './situationAnalyses.js';
 import {SituationStore} from './situations.js';
@@ -116,7 +117,7 @@ export class AgentRepository {
   }
   recordRecovery(job,input) {
     const m=input.metadata||{};
-    const causeCode=m.terminalError?.causeCode || (m.lastToolFailure?.code==='INVALID_ARGUMENTS'?'MCP_INVALID_ARGUMENTS':null);
+    const causeCode=m.terminalError?.causeCode || (m.lastToolFailure?.code==='INVALID_ARGUMENTS'?'MCP_INVALID_ARGUMENTS':m.lastToolFailure?.code==='STORAGE_RESOURCE_PRESSURE'?'STORAGE_RESOURCE_PRESSURE':m.errorCode==='AGENT_RESOURCE_DEFERRED'?'STORAGE_RESOURCE_PRESSURE':null);
     this.saveRecovery(job.model,recoveryAfter(this.recovery(job.model),{status:input.status,causeCode,jobId:job.job_id,fence:input.fence,now:this.now(),random:this.random}));
   }
   call(method, input = {}) {
@@ -726,9 +727,10 @@ export class AgentRepository {
         for(const key of ['elapsedMs','firstProgressMs','toolsCompleted','evidenceReads','outputCharacters'])if(Number.isFinite(p[key])&&p[key]>=0)clean[key]=p[key];
         if(['snapshot','inference','validating','repair'].includes(p.phase))clean.phase=p.phase;
         if(typeof p.lastProgressAt==='string' && Number.isFinite(Date.parse(p.lastProgressAt)))clean.lastProgressAt=p.lastProgressAt;
+        if(p.resourcePressure)clean.resourcePressure=resourcePressureDetails(p.resourcePressure);
         if(p.lastToolFailure){
           const f=p.lastToolFailure;
-          if(/^[A-Z_]{2,80}$/.test(f.code||''))clean.lastToolFailure={code:f.code,operationId:/^[a-zA-Z0-9.]{1,128}$/.test(f.operationId||'')?f.operationId:null,callId:safeId(f.callId)?f.callId:null,validation:f.validation?{stage:String(f.validation.stage||'unknown').slice(0,64),issues:(Array.isArray(f.validation.issues)?f.validation.issues:[]).slice(0,16).map(i=>({path:(Array.isArray(i.path)?i.path:[]).slice(0,16).map(p=>String(p).slice(0,64)),code:String(i.code||'unknown').slice(0,64),expected:typeof i.expected==='string'?i.expected.slice(0,64):null}))}:null};
+          if(/^[A-Z_]{2,80}$/.test(f.code||''))clean.lastToolFailure={code:f.code,operationId:/^[a-zA-Z0-9.]{1,128}$/.test(f.operationId||'')?f.operationId:null,callId:safeId(f.callId)?f.callId:null,...(f.code==='STORAGE_RESOURCE_PRESSURE'?{resourcePressure:resourcePressureDetails(f.resourcePressure)}:{}),validation:f.validation?{stage:String(f.validation.stage||'unknown').slice(0,64),issues:(Array.isArray(f.validation.issues)?f.validation.issues:[]).slice(0,16).map(i=>({path:(Array.isArray(i.path)?i.path:[]).slice(0,16).map(p=>String(p).slice(0,64)),code:String(i.code||'unknown').slice(0,64),expected:typeof i.expected==='string'?i.expected.slice(0,64):null}))}:null};
         }
         if(typeof p.mcpContractHash==='string'&&/^[a-f0-9]{64}$/.test(p.mcpContractHash))clean.mcpContractHash=p.mcpContractHash;
         this.db.prepare("UPDATE agent_runs SET metadata_json=json_patch(metadata_json,?) WHERE job_id=? AND fence=?").run(json(clean),input.jobId,input.fence);

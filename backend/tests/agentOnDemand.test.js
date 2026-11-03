@@ -117,6 +117,7 @@ test('resource pressure during evidence reads defers the run without consuming i
  const worker=new IntelligenceWorker({model:'llamacpp/fixture',call:async(method,args)=>f.repo.call(method,args),opencode:{session:async id=>({id}),messages:async()=>({data:[]}),prompt:async()=>{prompts++;},cancel:async()=>({}),progress:async()=>({text:'',tools:[{name:'ogid_agent_evidence',callId:'pressure',status:'completed',applicationCode:'STORAGE_RESOURCE_PRESSURE',applicationOk:false}],idle:false})}});worker.owner='owner';await worker.execute(job);
  const preserved=f.repo.job(job.jobId),metadata=JSON.parse(f.db.prepare('SELECT metadata_json FROM agent_runs WHERE job_id=?').get(job.jobId).metadata_json);
  assert.equal(prompts,1);assert.equal(preserved.status,'incomplete');assert.equal(preserved.error_code,'AGENT_RESOURCE_DEFERRED');assert.equal(metadata.validation.repairAttempted,false);assert.equal(f.db.prepare('SELECT count(*) n FROM agent_publications').get().n,0);
+ assert.equal(worker.lastGenerationFailure.causeCode,'STORAGE_RESOURCE_PRESSURE');
  }finally{f.close();}});
 
 test('MCP preserves the typed host-pressure cause across its existing bounded read retry',async()=>{

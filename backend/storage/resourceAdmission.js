@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { Worker } from 'node:worker_threads';
 import { RUNTIME_POLICY } from '../config/runtimePolicy.js';
+import {resourcePressureDetails} from '../utils/resourcePressureDetails.js';
 
 const states=['unknown','normal','degraded','recovering'];
 const reasons=[null,'low-memory','memory-pressure','io-pressure','critical-pressure','sample-unavailable'];
@@ -51,7 +52,7 @@ export class PressurePolicy {
 }
 
 export const pressureAllows=(status,kind)=>kind==='control'||kind==='commit'||kind==='read'||status.state==='normal'||kind==='journal'&&status.state!=='unknown'&&!status.critical;
-export function pressureError(status){return Object.assign(Error('Work deferred until host resources recover'),{code:'STORAGE_RESOURCE_PRESSURE',statusCode:503,retryAfterMs:1000,notExecuted:true,details:{state:status.state,critical:status.critical,reason:status.reason}});}
+export function pressureError(status){return Object.assign(Error('Work deferred until host resources recover'),{code:'STORAGE_RESOURCE_PRESSURE',statusCode:503,retryAfterMs:1000,notExecuted:true,details:resourcePressureDetails({...status,notExecuted:true,retryAfterMs:1000})});}
 
 // One sampler and one heavy reservation are shared by all storage lanes.
 // The sampler writes its buffer without depending on HTTP or a SQLite thread.

@@ -115,5 +115,7 @@ test('bounded analyst control remains readable under critical pressure while ful
   assert.equal(JSON.stringify(state).includes('PRIVATE'),false);
   await assert.rejects(manager.request('agent.call',{method:'run',args:{jobId:job.jobId,internal:true}}),{code:'STORAGE_RESOURCE_PRESSURE'});
   await assert.rejects(manager.request('agent.call',{method:'evidence',args:{snapshotId:'not-loaded'}}),{code:'STORAGE_RESOURCE_PRESSURE'});
+  await assert.rejects(manager.request('agent.call',{method:'claim',args:{owner:'resource-fixture'}}),e=>e.code==='STORAGE_RESOURCE_PRESSURE'&&e.notExecuted&&e.details.ioFull===60);
+  assert.deepEqual(await manager.request('agent.call',{method:'runControl',args:{jobId:job.jobId}}),state,'pressure must not claim the job or consume a fence');
  }finally{await manager.close();await pressure.close();rmSync(directory,{recursive:true,force:true});}
 });

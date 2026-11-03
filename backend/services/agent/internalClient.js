@@ -1,6 +1,7 @@
 import { localUrl } from "./config.js";
 import { agentError, safeValidationDetails } from "./contracts.js";
 import { setTimeout as wait } from "node:timers/promises";
+import {resourcePressureDetails} from '../../utils/resourcePressureDetails.js';
 
 // Reads and a fenced lease renewal can be repeated after a lost response.
 // Admission, publication, state changes and inference remain single-attempt.
@@ -38,6 +39,7 @@ export function createAgentInternalClient({
             const deferred=agentError('AGENT_RESOURCE_DEFERRED',503);
             deferred.causeCode='STORAGE_RESOURCE_PRESSURE';
             deferred.notExecuted=value.error?.details?.notExecuted===true;
+            deferred.details=resourcePressureDetails(value.error?.details);
             throw deferred;
           }
           const code = /^(AGENT|FORECAST|OPENCODE)_[A-Z0-9_]+$/.test(value.error?.code || "")

@@ -1,7 +1,7 @@
 import {stableHash} from '../../utils/stableHash.js';
 import {AGENT_POLICY} from './config.js';
 import {narrativeFields} from './narrativeFacts.js';
-import {artifactHash} from './semanticGate.js';
+import {artifactHash,claimInventoryHash,SEMANTIC_POLICY} from './semanticGate.js';
 
 export function validateCampaign(campaign,rubric){
  if(!/^[A-Za-z0-9._:-]{1,64}$/.test(campaign.runId)||!campaign.sessionId||!Array.isArray(campaign.cases)||campaign.cases.length!==32)throw Error('Campaign requires runId, owned sessionId and 32 real cases');
@@ -12,21 +12,22 @@ export function validateCampaign(campaign,rubric){
  }
 }
 export function reviewTemplate(artifact){
- return {caseId:artifact.caseId,jobId:artifact.run.jobId,snapshotId:artifact.run.snapshotId,model:artifact.run.model,promptVersion:artifact.run.promptVersion,evidenceReviewHash:artifact.contentHash,reviewer:'',reviewedAt:null,scenarioConfirmed:null,allClaimsReviewed:false,criticalErrors:null,utility:null,correctAbstention:null,
-  claims:[...narrativeFields(artifact.run.publication?.proposal||{}).entries()].map(([field,row])=>({field,text:row.text,evidenceIds:row.refs,verifiable:null,supported:null}))};
+ return {version:SEMANTIC_POLICY.reviewVersion,rubricVersion:SEMANTIC_POLICY.version,caseId:artifact.caseId,jobId:artifact.run.jobId,snapshotId:artifact.run.snapshotId,model:artifact.run.model,promptVersion:artifact.run.promptVersion,evidenceReviewHash:artifact.contentHash,claimInventoryHash:claimInventoryHash(artifact.run.publication?.proposal),reviewerType:'agent',reviewer:'',reviewerModel:'',reviewerRunId:'',reviewedAt:null,scenarioConfirmed:null,scenarioRationale:'',allClaimsReviewed:false,criticalErrors:null,utility:null,utilityRationale:'',correctAbstention:null,
+  claims:[...narrativeFields(artifact.run.publication?.proposal||{}).entries()].filter(([,row])=>row.text.trim()).map(([field,row])=>({field,start:0,end:row.text.length,text:row.text,evidenceIds:row.refs,evidenceQuotes:[],rationale:'',verifiable:null,supported:null}))};
 }
 // Files and HTTP are injected so recovery is tested without inference. An
 // admission is durable before polling. A lost ACK reuses the exact same key.
-export async function collectSemanticBatch({campaign,rubric,family,candidateHash,modelManifestHash,read,save,request,exportCase,pause,now=Date.now}){
+export async function collectSemanticBatch({campaign,rubric,family,candidateHash,modelManifestHash,runtimeProfileHash,read,save,request,exportCase,pause,now=Date.now}){
  validateCampaign(campaign,rubric);
  const selected=campaign.cases.filter(c=>c.family===family);if(selected.length!==8)throw Error('Select one family of eight');
- const manifest={version:'ogid-semantic-campaign-v2',candidateHash,modelManifestHash,campaignHash:stableHash(campaign),rubricHash:stableHash(rubric)},old=read('manifest.json');
+ if(!/^[a-f0-9]{64}$/.test(runtimeProfileHash||''))throw Error('A frozen runtime profile is required');
+ const manifest={version:'ogid-semantic-campaign-v3',candidateHash,modelManifestHash,runtimeProfileHash,campaignHash:stableHash(campaign),rubricHash:stableHash(rubric)},old=read('manifest.json');
  if(old&&stableHash(old)!==stableHash(manifest))throw Error('Campaign or candidate changed; preserve this directory and use a new runId');
  save('manifest.json',manifest);save('campaign.json',campaign);save('rubric.json',rubric);
  const results=read('results.json')||[];
  for(const c of selected){
   const existing=read(c.id+'-artifact.json');
-  if(existing){if(existing.candidateHash!==candidateHash||existing.contentHash!==artifactHash(existing)||existing.caseId!==c.id||existing.run.sessionId!==campaign.sessionId||existing.run.status==='incomplete')throw Error('Reconcile existing artifact before continuing');continue;}
+  if(existing){if(existing.candidateHash!==candidateHash||existing.runtimeProfileHash!==runtimeProfileHash||existing.contentHash!==artifactHash(existing)||existing.caseId!==c.id||existing.run.sessionId!==campaign.sessionId||existing.run.status==='incomplete')throw Error('Reconcile existing artifact before continuing');continue;}
   let admission=read(c.id+'-admission.json');
   if(!admission){admission=await request(`/api/agent/v1/chat/sessions/${encodeURIComponent(campaign.sessionId)}/requests`,{family:c.family,scope:c.scope,context:c.context,key:`eval:${campaign.runId}:${c.id}`});save(c.id+'-admission.json',admission);}
   let run;const started=now();

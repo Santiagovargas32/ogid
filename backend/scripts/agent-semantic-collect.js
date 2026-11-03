@@ -30,12 +30,14 @@ const opencode=new OpenCodeClient({baseUrl:campaign.opencodeUrl||env.OGID_OPENCO
 const modelFile=resolve(new URL('../',import.meta.url).pathname,env.AGENT_MODEL_MANIFEST||'data/agent-runtime/models.json');
 const modelHash=()=>createHash('sha256').update(readFileSync(modelFile)).digest('hex');
 const modelManifestHash=modelHash(),source=semanticCandidate();
+const profile=()=>createHash('sha256').update(readFileSync(new URL('../.env',import.meta.url))).update(readFileSync(campaign.llamaPresetPath||'/etc/llama-server/models.ini')).digest('hex');
+const runtimeProfileHash=profile();
 const previous=read('source.json');if(previous&&previous.candidateHash!==source.candidateHash)throw Error('Candidate changed; preserve the original campaign directory');
 if(!previous)save('source.json',source);
-const results=await collectSemanticBatch({campaign,rubric,family,candidateHash:source.candidateHash,modelManifestHash,read,save,request,pause:wait,exportCase:async(selected,run)=>{
- if(semanticCandidate().candidateHash!==source.candidateHash||modelHash()!==modelManifestHash)throw Error('Candidate changed during collection');
- const artifact=await archiveSemanticCase({selected,run,candidateHash:source.candidateHash,modelManifestHash,databasePath:campaign.databasePath||env.STORAGE_DB_PATH,request,opencode});
- if(semanticCandidate().candidateHash!==source.candidateHash||modelHash()!==modelManifestHash)throw Error('Candidate changed during collection');
+const results=await collectSemanticBatch({campaign,rubric,family,candidateHash:source.candidateHash,modelManifestHash,runtimeProfileHash,read,save,request,pause:wait,exportCase:async(selected,run)=>{
+ if(semanticCandidate().candidateHash!==source.candidateHash||modelHash()!==modelManifestHash||profile()!==runtimeProfileHash)throw Error('Candidate changed during collection');
+ const artifact=await archiveSemanticCase({selected,run,candidateHash:source.candidateHash,modelManifestHash,runtimeProfileHash,databasePath:campaign.databasePath||env.STORAGE_DB_PATH,request,opencode});
+ if(semanticCandidate().candidateHash!==source.candidateHash||modelHash()!==modelManifestHash||profile()!==runtimeProfileHash)throw Error('Candidate changed during collection');
  return artifact;
 }});
 for(const result of results)process.stdout.write(JSON.stringify(result)+'\n');

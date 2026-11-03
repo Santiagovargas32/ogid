@@ -21,7 +21,7 @@ export function semanticCandidate(root=fileURLToPath(new URL('../../../',import.
 
 // Read only by primary-key identity, then close promptly. This is an exporter,
 // never a second business writer or a way to resume historical inference.
-export async function archiveSemanticCase({selected,run,candidateHash,modelManifestHash,databasePath,request,opencode}){
+export async function archiveSemanticCase({selected,run,candidateHash,modelManifestHash,runtimeProfileHash,databasePath,request,opencode}){
  const db=new Database(databasePath,{readonly:true,fileMustExist:true,timeout:1000});let rows;
  try{
   db.pragma('query_only=ON');
@@ -64,6 +64,6 @@ export async function archiveSemanticCase({selected,run,candidateHash,modelManif
   if(!page.nextCursor||seen.has(page.nextCursor))throw Error('Repeated evidence cursor');seen.add(page.nextCursor);cursor=page.nextCursor;
  }while(true);
  if([...wanted].some(id=>!evidence.some(e=>e.evidenceId===id)))throw Error('Consulted evidence is absent from the frozen snapshot');
- const artifact={version:'ogid-semantic-artifact-v2',caseId:selected.id,family:selected.family,variant:selected.variant||null,scenario:selected.scenario,selectionRationale:selected.evidenceSelectionRationale,candidateHash,modelManifestHash,collectedAt:new Date().toISOString(),run,snapshot,evidence,attempts};
+ const artifact={version:'ogid-semantic-artifact-v2',caseId:selected.id,family:selected.family,variant:selected.variant||null,scenario:selected.scenario,selectionRationale:selected.evidenceSelectionRationale,candidateHash,modelManifestHash,...(runtimeProfileHash?{runtimeProfileHash}:{}),collectedAt:new Date().toISOString(),run,snapshot,evidence,attempts};
  return {...artifact,contentHash:artifactHash(artifact)};
 }
