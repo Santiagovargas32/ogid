@@ -15,6 +15,9 @@ import {createStorageBackup} from '../storage/backup.js';
 import {buildAdvancedCorpus,buildFrequentTerms} from '../services/intel/advancedIntelligenceService.js';
 import {publicProjection} from '../utils/researchProjection.js';
 import {SqlRssCanonicalState} from '../storage/rssCanonicalState.js';
+import {ingestNewsBatches} from '../storage/newsIngestion.js';
+import {operationContext} from '../services/shared/operationContext.js';
+import {waitForAcquisitionResources} from '../storage/resourceAdmission.js';
 const config=dir=>({rootDir:dir,news:{analyzeLimit:3000,displayLimit:40},rss:{rssFeeds:[]}});
 const sqlFixture=()=>{const dir=mkdtempSync(join(tmpdir(),'ogid-durable-')),db=new Database(join(dir,'db.sqlite'));db.pragma('journal_mode=WAL');db.pragma('foreign_keys=ON');migrate(db);return {dir,db,close(){db.close();rmSync(dir,{recursive:true,force:true});}};};
 async function fixture(){const dir=mkdtempSync(join(tmpdir(),'ogid-jobs-')),manager=new StorageManager({enabled:true,businessEnabled:true,databasePath:join(dir,'db.sqlite')});await manager.start();await manager.request('domain.configure',config(dir));return {dir,manager,async close(){await this.manager.close();rmSync(dir,{recursive:true,force:true});}};}
@@ -93,6 +96,20 @@ test('RSS body and validator roll back together, empty bodies remain empty and m
   f.db.prepare('DELETE FROM runtime_snapshots WHERE kind=?').run('rss-canonical-feed-articles:feed');
   assert.throws(()=>new SqlRssCanonicalState(runtime).load(),{code:'STORAGE_RSS_CHECKPOINT_INCOMPLETE'});
  }finally{runtime.close();f.close();}
+});
+
+test('running ingestion yields after a committed page without holding SQLite, then resumes every item once',async()=>{
+ const f=sqlFixture(),archive=new SqlNewsArchive(f.db),runtime=new BusinessRuntime(f.db,()=>{}),controller=new AbortController();
+ let release,arrived;const waiting=new Promise(r=>{arrived=r;}),gate=new Promise(r=>{release=r;});
+ const status={state:'normal',availableBytes:4*1024**3,memoryFull:0,ioFull:0},commits=[];
+ try{
+  const rows=Array.from({length:30},(_,n)=>({id:`paced-${n}`,title:`Russia report ${n}`,url:`https://fixture.invalid/paced/${n}`,provider:'rss'}));
+  const work=operationContext.run({signal:controller.signal,waitForResources:()=>waitForAcquisitionResources({},controller.signal,{read:()=>status,wait:async()=>{arrived();await gate;}}),committed:n=>{commits.push(n);if(commits.length===1)status.ioFull=8;}},()=>ingestNewsBatches(archive,rows));
+  await waiting;
+  assert.equal(f.db.inTransaction,false);assert.equal(commits.length,1);assert.equal(archive.coverage().totalStored,10);
+  runtime.save('control-during-pressure',{committed:true});assert.deepEqual(runtime.load('control-during-pressure'),{committed:true});
+  status.ioFull=0;release();assert.equal(await work,30);assert.equal(archive.coverage().totalStored,30);assert.deepEqual(commits,[10,10,10]);
+ }finally{controller.abort();release?.();archive.close();runtime.close();f.close();}
 });
 
 test('SQL ingestion preserves history without counting the archive for legacy retention',t=>{

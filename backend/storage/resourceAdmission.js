@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import { Worker } from 'node:worker_threads';
 import { RUNTIME_POLICY } from '../config/runtimePolicy.js';
 import {resourcePressureDetails} from '../utils/resourcePressureDetails.js';
+import {setTimeout as pause} from 'node:timers/promises';
 
 const states=['unknown','normal','degraded','recovering'];
 const reasons=[null,'low-memory','memory-pressure','io-pressure','critical-pressure','sample-unavailable'];
@@ -53,6 +54,22 @@ export class PressurePolicy {
 
 export const pressureAllows=(status,kind)=>kind==='control'||kind==='commit'||kind==='read'||status.state==='normal'||kind==='journal'&&status.state!=='unknown'&&!status.critical;
 export function pressureError(status){return Object.assign(Error('Work deferred until host resources recover'),{code:'STORAGE_RESOURCE_PRESSURE',statusCode:503,retryAfterMs:1000,notExecuted:true,details:resourcePressureDetails({...status,notExecuted:true,retryAfterMs:1000})});}
+
+// Long acquisitions yield only between committed pages. Admission at dispatch
+// cannot stop a running producer from creating more I/O than the host drains.
+// Use the existing recovery values proactively, without weakening admission or
+// holding a SQLite transaction while waiting. The workflow watchdog still owns
+// the deadline and cancellation reason.
+export async function waitForAcquisitionResources(buffer,signal,{policy=RUNTIME_POLICY.storage.resourcePressure,read=readPressure,wait=pause}={}){
+  if(!buffer)return;
+  for(;;){
+    signal?.throwIfAborted();
+    const s=read(buffer);
+    if(s.state==='normal'&&s.availableBytes>=policy.resumeAvailableBytes&&s.memoryFull<policy.resumeMemoryFull&&s.ioFull<policy.resumeIoFull)return;
+    try{await wait(policy.sampleIntervalMs,undefined,{signal});}
+    catch(error){signal?.throwIfAborted();throw error;}
+  }
+}
 
 // One sampler and one heavy reservation are shared by all storage lanes.
 // The sampler writes its buffer without depending on HTTP or a SQLite thread.

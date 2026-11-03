@@ -26,7 +26,7 @@ import {assertStorageVolume} from './volumeGuard.js';
 import {storageExecutionContext,walWriteGuard} from './walPressure.js';
 import {nativeThreadId} from './nativeWait.js';
 import {MarketProjectionRepository} from './marketProjections.js';
-import {readPressure,pressureAllows,pressureError} from './resourceAdmission.js';
+import {readPressure,pressureAllows,pressureError,waitForAcquisitionResources} from './resourceAdmission.js';
 const nativeId=nativeThreadId();
 let database, migrations, version, runtime;
 let diagnostics,lastDiagnosticsCompletedAt=0,lastCompletedCommand,lastFailedCommand;
@@ -232,7 +232,7 @@ try {
         }).immediate();
       } else if(isAcquisitionWorkflow(message.operation,message.input)){
         const controller=new AbortController();workflows.set(message.id,controller);let completed=0;
-        result=await operationContext.run({signal:controller.signal,committed:count=>{
+        result=await operationContext.run({signal:controller.signal,waitForResources:()=>waitForAcquisitionResources(workerData.resourcePressureBuffer,controller.signal),committed:count=>{
           completed+=count;parentPort.postMessage({type:"command-progress",id:message.id,completed,at:Date.now()});
         }},async()=>{const value=await execute(message.operation,message.input,message.requestId,message.id);checkOperation();return value;});
       } else { result = await execute(message.operation,message.input,message.requestId,message.id); }

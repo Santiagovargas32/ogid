@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PressurePolicy, ResourceAdmission } from '../storage/resourceAdmission.js';
+import { PressurePolicy, ResourceAdmission,waitForAcquisitionResources } from '../storage/resourceAdmission.js';
+import {RUNTIME_POLICY} from '../config/runtimePolicy.js';
 
 const GiB=1024**3;
 const healthy={availableBytes:4*GiB,memoryFull:0,ioFull:0};
@@ -55,4 +56,16 @@ test('PSI can pause work even with sufficient free memory',()=>{
   for(let n=0;n<3;n++)policy.observe({...healthy,ioFull:25},100000+n*1000);
   assert.equal(policy.snapshot.state,'degraded');
   assert.equal(policy.snapshot.reason,'io-pressure');
+});
+
+test('acquisitions yield proactively and require a fresh normal sample at existing recovery values',async()=>{
+ const samples=[{...healthy,state:'normal',ioFull:8},{...healthy,state:'unknown'},{...healthy,state:'recovering'},{...healthy,state:'normal'}],intervals=[];
+ await waitForAcquisitionResources({},undefined,{read:()=>samples.shift(),wait:async ms=>{intervals.push(ms);}});
+ assert.deepEqual(intervals,Array(3).fill(RUNTIME_POLICY.storage.resourcePressure.sampleIntervalMs));assert.equal(samples.length,0);
+});
+
+test('resource waits preserve workflow cancellation and bypass disabled sampling',async()=>{
+ const controller=new AbortController(),reason=Object.assign(Error('watchdog stopped acquisition'),{code:'STORAGE_WORKFLOW_STALLED'});
+ await assert.rejects(waitForAcquisitionResources({},controller.signal,{read:()=>({...healthy,state:'degraded'}),wait:async()=>{controller.abort(reason);throw Error('timer aborted');}}),error=>error===reason);
+ await waitForAcquisitionResources(null,undefined,{read:()=>assert.fail('disabled sampler must not be read')});
 });

@@ -102,7 +102,7 @@ export function mountAgentIntelligence({getWatchlist=()=>null,getContext=()=>({v
       try{const d=await request('/api/agent/v1/access');csrf=d.csrf;await loadSessions();}catch{/* Enrollment remains explicit. */}
     }).catch(showError);
     void loadModels().catch(showError);
-    input.focus();
+    input.focus({preventScroll:true});
   }
   const scopeSelect=node('select');scopeSelect.setAttribute('aria-label','Instrumento para outlook');scopeSelect.append(new Option('Watchlist observada','global'));
   const situationSelect=node('select');situationSelect.setAttribute('aria-label','Situación');situationSelect.append(new Option('Seleccionar situación',''));

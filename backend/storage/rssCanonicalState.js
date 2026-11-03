@@ -1,4 +1,5 @@
 import {RUNTIME_POLICY} from '../config/runtimePolicy.js';
+import {yieldOperationResources} from '../services/shared/operationContext.js';
 
 // Keep legacy checkpoints as recovery bases. Poll metadata changes on every
 // check; article bodies and the retained corpus change independently. Store
@@ -36,6 +37,7 @@ export class SqlRssCanonicalState {
     // Retain the existing summary key and metrics for operational readers.
     entries.push([['rss-canonical-corpus:v3',pipeline.corpus],['rss-canonical-v2',{version:3,legacy:this.legacy,corpusExternal:true,metrics:pipeline.metrics}]]);
     for(let offset=0;offset<entries.length;){
+      await yieldOperationResources();
       const started=performance.now();let bytes=0,rows=0;
       // One FULL commit per bounded page, rather than per polled feed. Nested
       // runtime saves remain savepoints on the same business writer.

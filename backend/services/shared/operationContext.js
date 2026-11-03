@@ -13,6 +13,9 @@ export function shareOperation(task) {
   return task;
 }
 export function checkOperation() { operationContext.getStore()?.signal.throwIfAborted(); }
+export async function yieldOperationResources(){
+  checkOperation();await operationContext.getStore()?.waitForResources?.();checkOperation();
+}
 export function committedOperationItems(count) {
   const context=operationContext.getStore();
   const visited=new Set();

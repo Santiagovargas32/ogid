@@ -34,7 +34,7 @@ import { ingestNewsBatches } from "./newsIngestion.js";
 import { publicProjection } from "../utils/researchProjection.js";
 import { AgentRepository } from "./agentRepository.js";
 import { SqlRssCanonicalState } from "./rssCanonicalState.js";
-import { checkOperation, committedOperationItems } from "../services/shared/operationContext.js";
+import { checkOperation, committedOperationItems,yieldOperationResources } from "../services/shared/operationContext.js";
 import {SituationStore} from './situations.js';
 import {MarketProjectionRepository} from './marketProjections.js';
 
@@ -127,6 +127,7 @@ export class BusinessRuntime {
         // Keep gated acquisitions private and durable until their original lane
         // becomes visible. ETags never acknowledge facts held only in a preview.
         for(let offset=0;offset<articles.length;offset+=10){
+          await yieldOperationResources();
           checkOperation();
           this.db.transaction(()=>{for(const article of articles.slice(offset,offset+10)){
             const key=`rss-held:${article.provenance.feedId}:${stableHash([article.url,article.title,article.description,article.content,article.publishedAt,article.updatedAt])}`;

@@ -1,9 +1,10 @@
 // Yield between committed SQLite batches so acquisition cannot starve leases.
-import { checkOperation, committedOperationItems } from "../services/shared/operationContext.js";
+import { checkOperation, committedOperationItems,yieldOperationResources } from "../services/shared/operationContext.js";
 import {RUNTIME_POLICY} from '../config/runtimePolicy.js';
 export async function ingestNewsBatches(archive,articles,options,onCommitted=()=>{}) {
   let accepted=0;
   for(let offset=0;offset<articles.length;){
+    await yieldOperationResources();
     checkOperation();
     const start=offset;let bytes=0;
     while(offset<articles.length && offset-start<RUNTIME_POLICY.storage.commitBatchRows){
