@@ -97,3 +97,35 @@ test('canonical acquisition archives every parsed item before the configured pre
  const archived=[];const pipeline=new RssCanonicalPipeline({catalog:buildCanonicalRssCatalog({primaryFeeds:[feed('all')]}),maxItemsPerFeed:3,maxCorpusItems:2,fetchImpl:async()=>response(body),onCollected:async rows=>archived.push(...rows)});
  const result=await pipeline.runCycle();assert.equal(archived.length,205);assert.ok(result.items.length<=2);assert.equal(result.meta.feedStatus[0].acquiredCount,205);assert.equal(result.meta.feedStatus[0].previewTruncated,true);
 });
+
+test('identical HTTP 200 acquisitions refresh poll health without reingesting committed items beyond the preview cap',async()=>{
+ let now=1000;const archived=[];
+ const body='<rss><channel>'+Array.from({length:205},(_,i)=>`<item><title>Russia ${i}</title><link>https://fixture.invalid/${i}</link></item>`).join('')+'</channel></rss>';
+ const pipeline=new RssCanonicalPipeline({catalog:buildCanonicalRssCatalog({primaryFeeds:[feed('repeat')]}),now:()=>now,maxItemsPerFeed:3,maxCorpusItems:2,
+  fetchImpl:async()=>response(body),onCollected:async rows=>archived.push(rows)});
+ await pipeline.runCycle();const original=structuredClone(pipeline.state('repeat').articles),receipt=pipeline.state('repeat').committedAcquisitionHash;
+ now+=20000;const result=await pipeline.runCycle();const state=pipeline.state('repeat');
+ assert.equal(archived.length,1);assert.equal(archived[0].length,205);assert.deepEqual(state.articles,original);assert.equal(state.committedAcquisitionHash,receipt);
+ assert.equal(state.lastSuccessAt,now);assert.equal(state.lastCommittedAt,now);assert.equal(state.outcome,'unchanged');assert.equal(state.acquiredCount,205);
+ assert.equal(result.meta.acquisition.successfulChecks,1);assert.equal(result.meta.acquisition.contentChanges,0);assert.equal(state.lastContentChangeAt,1000);
+});
+
+test('acquisition receipts survive restart and a changed image or preview policy forces complete ingestion',async()=>{
+ let now=1000,body=xml('Russia story');const archived=[],catalog=buildCanonicalRssCatalog({primaryFeeds:[feed('receipt')]}),file=join(mkdtempSync(join(tmpdir(),'rss-receipt-')),'state.json');
+ const options={catalog,now:()=>now,persistencePath:file,fetchImpl:async()=>response(body),onCollected:async rows=>archived.push(rows)};
+ const first=new RssCanonicalPipeline(options);await first.runCycle();await first.flush();
+ now+=20000;const next=new RssCanonicalPipeline(options);await next.runCycle();assert.equal(archived.length,1);
+ now+=20000;body=body.replace('</item>','<enclosure url="https://fixture.invalid/changed.jpg" type="image/jpeg" /></item>');
+ await next.runCycle();assert.equal(archived.length,2);assert.equal(archived[1][0].leadImageUrl,'https://fixture.invalid/changed.jpg');
+ now+=20000;next.maxItemsPerFeed=1;await next.runCycle();assert.equal(archived.length,3);
+});
+
+test('failed archival or checkpoint persistence never acknowledges an acquisition fingerprint',async()=>{
+ for(const failure of ['archive','checkpoint']){
+  let now=1000,fail=true,calls=0;const pipeline=new RssCanonicalPipeline({catalog:buildCanonicalRssCatalog({primaryFeeds:[feed(failure)]}),now:()=>now,
+   fetchImpl:async()=>response(xml('Russia unchanged'),200,{ETag:'"receipt"'}),onCollected:async()=>{calls++;if(fail&&failure==='archive')throw Error('archive failed');}});
+  pipeline.persist=async()=>{if(fail&&failure==='checkpoint')throw Error('checkpoint failed');};
+  await assert.rejects(pipeline.runCycle());assert.equal(pipeline.state(failure).committedAcquisitionHash,undefined);assert.equal(pipeline.state(failure).etag,null);
+  now+=20000;fail=false;await pipeline.runCycle();assert.equal(calls,2);assert.match(pipeline.state(failure).committedAcquisitionHash,/^[a-f0-9]{64}$/);
+ }
+});

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,rmSync,cpSync,mkdirSync,readdirSync} from 'node:fs';
+import {mkdtempSync,rmSync,cpSync,mkdirSync,readdirSync,statSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createHash} from 'node:crypto';
@@ -52,6 +52,46 @@ test('RSS checkpoints update only polled feeds, preserve legacy recovery and do 
   f.db.exec("CREATE TRIGGER fail_feed_save BEFORE INSERT ON runtime_snapshots WHEN NEW.kind='rss-canonical-feed:feed-2' BEGIN SELECT RAISE(ABORT,'Simulated feed commit failure'); END");
   pipeline.metrics={cycles:12};await assert.rejects(state.save(pipeline,['feed-1','feed-2']),{code:'SQLITE_CONSTRAINT_TRIGGER'});
   assert.deepEqual(runtime.load('rss-canonical-v2'),checkpoint);assert.deepEqual(runtime.load('rss-canonical'),legacy);
+ }finally{runtime.close();f.close();}
+});
+
+test('RSS health recovery retains exact articles and corpus with at least 80% fewer WAL bytes',async t=>{
+ const f=sqlFixture(),runtime=new BusinessRuntime(f.db,()=>{}),state=new SqlRssCanonicalState(runtime);
+ try{
+  f.db.pragma('synchronous=FULL');f.db.pragma('wal_autocheckpoint=0');
+  const articles=Array.from({length:64},(_,n)=>({id:`source-${n}`,title:`Retained item ${n}`,content:'permitted '.repeat(256)}));
+  const pipeline={states:new Map([['large-feed',{etag:'stable',lastAttemptAt:1,lastCommittedAt:1,healthStatus:'degraded',articles}]]),corpus:articles,metrics:{cycles:1}};
+  const legacySave=()=>f.db.transaction(()=>{
+   runtime.save('rss-canonical-feed:large-feed',pipeline.states.get('large-feed'));
+   runtime.save('rss-canonical-v2',{version:2,legacy:false,corpus:pipeline.corpus,metrics:pipeline.metrics});
+  }).immediate();
+  legacySave();f.db.pragma('wal_checkpoint(TRUNCATE)');
+  pipeline.states.get('large-feed').lastAttemptAt=2;pipeline.states.get('large-feed').healthStatus='healthy';pipeline.metrics.cycles=2;legacySave();
+  const beforeBytes=statSync(f.db.name+'-wal').size;
+  state.load();await state.save(pipeline,['large-feed']);f.db.pragma('wal_checkpoint(TRUNCATE)');
+  pipeline.states.get('large-feed').lastAttemptAt=3;pipeline.states.get('large-feed').lastCommittedAt=3;pipeline.states.get('large-feed').healthStatus='degraded';pipeline.metrics.cycles=3;
+  await state.save(pipeline,['large-feed']);
+  const afterBytes=statSync(f.db.name+'-wal').size,reduction=1-afterBytes/beforeBytes;
+  t.diagnostic(JSON.stringify({fixture:true,synchronous:f.db.pragma('synchronous',{simple:true}),beforeBytes,afterBytes,reduction}));
+  assert.ok(reduction>=0.8);assert.equal(f.db.pragma('synchronous',{simple:true}),2);
+  const restored=new SqlRssCanonicalState(runtime).load();
+  assert.deepEqual(restored.states['large-feed'],pipeline.states.get('large-feed'));assert.deepEqual(restored.corpus,articles);assert.deepEqual(restored.metrics,{cycles:3});
+ }finally{runtime.close();f.close();}
+});
+
+test('RSS body and validator roll back together, empty bodies remain empty and missing bodies fail closed',async()=>{
+ const f=sqlFixture(),runtime=new BusinessRuntime(f.db,()=>{}),state=new SqlRssCanonicalState(runtime);
+ try{
+  const pipeline={states:new Map([['feed',{etag:'old',articles:[{id:'original'}]}]]),corpus:[{id:'retained'}],metrics:{cycles:1}};
+  await state.save(pipeline,['feed']);
+  f.db.exec("CREATE TRIGGER fail_validator BEFORE INSERT ON runtime_snapshots WHEN NEW.kind='rss-canonical-feed:feed' BEGIN SELECT RAISE(ABORT,'Validator failure'); END");
+  pipeline.states.set('feed',{etag:'new',articles:[{id:'changed'}]});pipeline.metrics.cycles=2;
+  await assert.rejects(state.save(pipeline,['feed']),{code:'SQLITE_CONSTRAINT_TRIGGER'});
+  let restored=new SqlRssCanonicalState(runtime).load();assert.deepEqual(restored.states.feed,{etag:'old',articles:[{id:'original'}]});assert.equal(restored.metrics.cycles,1);
+  f.db.exec('DROP TRIGGER fail_validator');pipeline.states.set('feed',{etag:'empty',articles:[]});pipeline.corpus=[];await state.save(pipeline,['feed']);
+  restored=new SqlRssCanonicalState(runtime).load();assert.deepEqual(restored.states.feed,{etag:'empty',articles:[]});assert.deepEqual(restored.corpus,[]);
+  f.db.prepare('DELETE FROM runtime_snapshots WHERE kind=?').run('rss-canonical-feed-articles:feed');
+  assert.throws(()=>new SqlRssCanonicalState(runtime).load(),{code:'STORAGE_RSS_CHECKPOINT_INCOMPLETE'});
  }finally{runtime.close();f.close();}
 });
 

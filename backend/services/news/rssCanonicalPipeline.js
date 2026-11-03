@@ -10,6 +10,7 @@ import {articleIdentity} from './articleIdentity.js';
 import {performance} from 'node:perf_hooks';
 import {shareOperation,operationContext,checkOperation} from '../shared/operationContext.js';
 import {stableHash} from '../../utils/stableHash.js';
+import {NEWS_CLASSIFICATION_VERSION} from './newsClassification.js';
 function initialState(){return {etag:null,lastModified:null,lastAttemptAt:null,lastSuccessAt:null,nextEligibleAt:null,cooldownUntil:null,consecutiveErrors:0,healthStatus:'unknown',articles:[],status:'unqueried'};}
 export class RssCanonicalPipeline {
   constructor({catalog,fetchImpl,now=Date.now,random=Math.random,persistencePath=null,globalConcurrency=4,hostConcurrency=1,maxFeedsPerCycle=18,cycleDeadlineMs=25_000,timeoutMs=8_000,maxCorpusItems=900,maxResponseBytes=2_000_000,maxItemsPerFeed=200,onCollected=null}={}){
@@ -55,7 +56,12 @@ export class RssCanonicalPipeline {
       const archiveStarted=performance.now();
       if(incoming.length)await this.onCollected?.(incoming);
       this.metrics.lastArchiveMs=performance.now()-archiveStarted;
-      for(const result of results)if(['ok','empty','not-modified'].includes(result.status))this.state(result.feedId).lastCommittedAt=this.now();
+      for(const result of results)if(['ok','empty','not-modified'].includes(result.status)){
+        const state=this.state(result.feedId);state.lastCommittedAt=this.now();
+        // This receipt acknowledges every parsed item, including items beyond
+        // the preview cap. Never persist it before onCollected has committed.
+        if(result.acquisitionHash && this.onCollected)state.committedAcquisitionHash=result.acquisitionHash;
+      }
       const dedupeStarted=performance.now();
       const merged=deduplicateRssArticles([...this.corpus,...results.flatMap(r=>r.articles||[])],{maxItems:this.maxCorpusItems});
       this.metrics.lastDedupeMs=performance.now()-dedupeStarted;
@@ -103,6 +109,20 @@ export class RssCanonicalPipeline {
       // The response byte budget bounds acquisition; per-feed item limits only bound the retained preview.
       const parsed=parseFeedArticles(xml,feed.label,feed,Number.MAX_SAFE_INTEGER);
       this.metrics.lastParseMs+=performance.now()-parseStarted;
+      const acquisitionHash=stableHash(['rss-acquisition-v1',NEWS_CLASSIFICATION_VERSION,this.maxItemsPerFeed,
+        feed.feedId,feed.sourceId,feed.type,feed.queryProvider,feed.canonicalUrl,parsed]);
+      signal.throwIfAborted();
+      if(this.now()>=Math.min(deadline,now+timeoutMs))throw new DOMException('RSS parse budget exceeded','TimeoutError');
+      if(this.onCollected && state.lastCommittedAt>0 && state.committedAcquisitionHash===acquisitionHash){
+        // A byte-equivalent parsed acquisition is the same committed content,
+        // even when the upstream omits validators and returns HTTP 200. Refresh
+        // poll health without replacing original item acquisition timestamps.
+        state.etag=response.headers.get('etag')||null;state.lastModified=response.headers.get('last-modified')||null;
+        state.lastSuccessAt=this.now();state.consecutiveErrors=0;state.healthStatus='healthy';state.cooldownUntil=null;state.error=null;
+        state.outcome='unchanged';state.status=parsed.length?'ok':'empty';state.acquiredCount=parsed.length;state.previewTruncated=parsed.length>state.articles.length;
+        const articles=state.articles.map(a=>({...a,dataMode:'observed',provenance:{...a.provenance,stale:false}}));
+        return {feedId:feed.feedId,status:state.status,articles,acquiredArticles:[],acquisitionHash};
+      }
       const classifyStarted=performance.now();
       const contentHash=stableHash(parsed.map(a=>[a.url,a.title,a.description,a.content,a.publishedAt,a.updatedAt]));
       const articles=parsed.map(a=>classifyRssArticle({...a,id:articleIdentity(a),receivedAt:fetchedAt,provenance:{...a.provenance,feedId:feed.feedId,sourceId:feed.sourceId,sourceType:feed.type,queryProvider:feed.queryProvider,canonicalUrl:feed.canonicalUrl,fetchedAt,pipeline:'canonical-rss',stale:false}}));
@@ -113,7 +133,7 @@ export class RssCanonicalPipeline {
       state.outcome=!parsed.length?'empty':state.contentHash===contentHash?'unchanged':'changed';
       state.contentHash=contentHash;
       state.etag=response.headers.get('etag')||null;state.lastModified=response.headers.get('last-modified')||null;state.lastSuccessAt=this.now();state.consecutiveErrors=0;state.healthStatus='healthy';state.cooldownUntil=null;state.error=null;state.articles=articles.slice(0,this.maxItemsPerFeed);state.acquiredCount=articles.length;state.previewTruncated=articles.length>state.articles.length;state.status=articles.length?'ok':'empty';
-      return {feedId:feed.feedId,status:state.status,articles:state.articles,acquiredArticles:articles};
+      return {feedId:feed.feedId,status:state.status,articles:state.articles,acquiredArticles:articles,acquisitionHash};
     }catch(error){
       state.outcome=/malformed/.test(error.message)?'contract-error':/circuit/.test(error.message)?'circuit-open':'transport-error';
       state.consecutiveErrors++;state.healthStatus=state.consecutiveErrors>=3?'unhealthy':'degraded';state.error=error.message;
