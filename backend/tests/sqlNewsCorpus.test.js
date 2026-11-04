@@ -12,9 +12,43 @@ import { migrate } from "../storage/migrate.js";
 import { createAppServer } from "../server.js";
 import { createBusinessAdapters } from "../storage/businessAdapters.js";
 import { BusinessRuntime } from "../storage/businessRuntime.js";
+import {restoreArticleObservation} from '../storage/articleObservations.js';
 
 const at="2026-10-09T18:00:00.000Z";
 const article=(id, extra={})=>({id:`source-${id}`,title:`Russia military conflict update number ${id}`,url:`https://example.org/news/${id}`,provider:"rss",sourceName:"Fixture source",publishedAt:at,usagePolicy:"standard-link-out",...extra});
+
+test('clock-only rediscovery preserves base and immutable revision bytes while current readers receive every latest clock',()=>{
+ const dir=mkdtempSync(join(tmpdir(),'ogid-observations-')),db=new Database(join(dir,'db.sqlite'));db.pragma('journal_mode=WAL');db.pragma('synchronous=FULL');migrate(db);let now=Date.parse(at);const archive=new SqlNewsArchive(db,{now:()=>now});
+ const input=()=>article('clock',{sourceId:'feed-clock',firstSeenAt:new Date(now).toISOString(),provenance:{sourceId:'feed-clock',fetchedAt:new Date(now).toISOString()}});
+ try{
+  archive.ingest([input()]);const id=archive.getItem('source-clock').article.id,base=db.prepare('SELECT payload_json,last_seen_at FROM articles WHERE article_id=?').get(id),revision=db.prepare('SELECT payload_json FROM article_revisions WHERE article_id=?').get(id);
+  for(let n=0;n<8;n++){now+=60000;archive.ingest([input()]);const value=archive.getRecord(id);assert.equal(value.archiveLastSeenAt,new Date(now).toISOString());assert.equal(value.provenance.fetchedAt,new Date(now).toISOString());assert.equal(value.provenances[0].fetchedAt,new Date(now).toISOString());assert.equal(value.revision,1);}
+  assert.deepEqual(db.prepare('SELECT payload_json,last_seen_at FROM articles WHERE article_id=?').get(id),base);assert.deepEqual(db.prepare('SELECT payload_json FROM article_revisions WHERE article_id=?').get(id),revision);assert.equal(db.prepare('SELECT count(*) n FROM article_observations').get().n,1);
+  assert.deepEqual([...archive.values()][0],archive.getRecord(id));assert.deepEqual(archive.getItem('source-clock').article,archive.getRecord(id));assert.equal(db.pragma('synchronous',{simple:true}),2);
+ }finally{archive.close();db.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+test('observation snapshots remain pinned across updates, reject corruption and roll back failed publications',()=>{
+ const dir=mkdtempSync(join(tmpdir(),'ogid-observation-cut-')),db=new Database(join(dir,'db.sqlite'));db.pragma('journal_mode=WAL');migrate(db);let now=Date.parse(at);const archive=new SqlNewsArchive(db,{now:()=>now});let reader;
+ try{
+  archive.ingest([article('cut')]);const id=archive.getItem('source-cut').article.id;now+=60000;archive.ingest([article('cut')]);const first=archive.getRecord(id);
+  reader=new Database(db.name,{readonly:true});reader.pragma('query_only=ON');reader.exec('BEGIN');const base=reader.prepare('SELECT payload_json FROM articles WHERE article_id=?').get(id).payload_json;reader.prepare('SELECT * FROM article_observations WHERE article_id=?').get(id);
+  now+=60000;archive.ingest([article('cut')]);assert.deepEqual(restoreArticleObservation(base,reader.prepare('SELECT * FROM article_observations WHERE article_id=?').get(id)),first);reader.exec('ROLLBACK');reader.close();reader=null;
+  const complete=archive.getRecord(id);db.exec("CREATE TRIGGER fail_observation BEFORE INSERT ON article_observations BEGIN SELECT RAISE(ABORT,'Observation failure'); END");now+=60000;assert.throws(()=>archive.ingest([article('cut')]),{code:'SQLITE_CONSTRAINT_TRIGGER'});assert.deepEqual(archive.getRecord(id),complete);db.exec('DROP TRIGGER fail_observation');
+  const saved=db.prepare('SELECT * FROM article_observations WHERE article_id=?').get(id);db.prepare('UPDATE article_observations SET record_sha256=? WHERE article_id=?').run('0'.repeat(64),id);assert.throws(()=>archive.getRecord(id),{code:'STORAGE_NEWS_OBSERVATION_INCOMPLETE'});db.prepare('UPDATE article_observations SET record_sha256=? WHERE article_id=?').run(saved.record_sha256,id);
+  const altered=JSON.parse(saved.clocks_json);altered[0].path=['__proto__','polluted'];db.prepare('UPDATE article_observations SET clocks_json=? WHERE article_id=?').run(JSON.stringify(altered),id);assert.throws(()=>archive.getRecord(id),{code:'STORAGE_NEWS_OBSERVATION_INCOMPLETE'});assert.equal({}.polluted,undefined);
+ }finally{reader?.close();archive.close();db.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+test('non-clock metadata and semantic corrections retain the complete-row path and clear obsolete observation overlays',()=>{
+ const dir=mkdtempSync(join(tmpdir(),'ogid-observation-change-')),db=new Database(join(dir,'db.sqlite'));db.pragma('journal_mode=WAL');migrate(db);let now=Date.parse(at);const archive=new SqlNewsArchive(db,{now:()=>now});
+ try{
+  archive.ingest([article('change')]);now+=60000;archive.ingest([article('change')]);const id=archive.getItem('source-change').article.id,version=archive.getRecord(id).revision;assert.equal(db.prepare('SELECT count(*) n FROM article_observations').get().n,1);
+  now+=60000;archive.ingest([article('change',{leadImageUrl:'https://example.org/permitted.jpg'})]);assert.equal(archive.getRecord(id).leadImageUrl,'https://example.org/permitted.jpg');assert.equal(archive.getRecord(id).revision,version);assert.equal(db.prepare('SELECT count(*) n FROM article_observations').get().n,1);
+  now+=60000;archive.ingest([article('change',{leadImageUrl:'https://example.org/permitted.jpg'})]);assert.equal(db.prepare('SELECT count(*) n FROM article_observations').get().n,1);
+  now+=60000;archive.ingest([article('change',{title:'Russia publishes a corrected conflict report'})]);assert.equal(archive.getRecord(id).revision,version+1);assert.equal(db.prepare('SELECT count(*) n FROM article_observations').get().n,1);assert.equal(db.prepare('SELECT count(*) n FROM article_revisions').get().n,2);assert.equal(db.prepare('SELECT article_revision FROM article_observations WHERE article_id=?').get(id).article_revision,version+1);
+ }finally{archive.close();db.close();rmSync(dir,{recursive:true,force:true});}
+});
 
 test('rediscovery through known feeds preserves the primary discovery source without producing revisions',()=>{
  const dir=mkdtempSync(join(tmpdir(),'ogid-rediscovery-')),db=new Database(join(dir,'fixture.sqlite'));db.pragma('journal_mode=WAL');migrate(db);
@@ -65,7 +99,7 @@ test("projection rereads only changed row versions across new transactions and m
   const changed=await corpus.read({now});assert.equal(bodyReads,1);assert.ok(changed.signalCorpus.some(a=>a.title==='Russia updated military conflict report'));
   const revision=archive.getItem('source-0').article.revision;
   now+=60000;archive.ingest([article(0,{title:'Russia updated military conflict report'})]);assert.equal(archive.getItem('source-0').article.revision,revision);
-  bodyReads=0;await corpus.read({now});assert.equal(bodyReads,1);
+  bodyReads=0;await corpus.read({now});assert.equal(bodyReads,0);
   const uncached=new SqlNewsCorpus(archive,{watchlistCountries:['RU'],payloadCacheBytes:0}),baseline=await uncached.read({now});
   const actual=await corpus.read({now});assert.deepEqual(actual.riskResult,baseline.riskResult);assert.deepEqual(actual.news,baseline.news);assert.equal(cached.meta.scannedCount,320);
   uncached.close();

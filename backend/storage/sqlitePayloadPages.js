@@ -4,7 +4,7 @@ export class PayloadCache {
   constructor(maxBytes=64*1024*1024){if(!Number.isSafeInteger(maxBytes) || maxBytes<0)throw Error('Invalid news payload cache budget');this.maxBytes=maxBytes;this.rows=new Map();this.bytes=0;this.hits=0;this.misses=0;this.evictions=0;}
   key(table,row){
     if(row.revision===undefined || (table==='articles' && row.last_seen_at===undefined))return null;
-    return JSON.stringify([table,row.rowid,row.revision,row.last_seen_at ?? row.fetched_at ?? null]);
+    return JSON.stringify([table,row.rowid,row.revision,row.payload_version ?? row.last_seen_at ?? row.fetched_at ?? null]);
   }
   get(key){
     const item=key && this.rows.get(key);if(!item){this.misses++;return undefined;}

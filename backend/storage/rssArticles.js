@@ -1,4 +1,6 @@
 import {createHash} from 'node:crypto';
+import {splitObservationClocks as splitClocks,restoreObservationClocks} from './observationClocks.js';
+const restoreClocks=(body,clocks)=>{try{return restoreObservationClocks(body,clocks);}catch{throw incomplete();}};
 import {RUNTIME_POLICY} from '../config/runtimePolicy.js';
 import {checkOperation,committedOperationItems,yieldOperationResources} from '../services/shared/operationContext.js';
 
@@ -9,30 +11,6 @@ const prefixFor=value=>value?.version===version?prefix:value?.version===legacyVe
 const countKey=key=>key.replace('rss-article:','rss-article-refs:');
 const sha=value=>createHash('sha256').update(value).digest('hex');
 const incomplete=()=>Object.assign(Error('Incomplete durable RSS articles'),{code:'STORAGE_RSS_CHECKPOINT_INCOMPLETE'});
-const topClocks=new Set(['fetchedAt','receivedAt','firstSeenAt','lastSeenAt','archiveLastSeenAt']);
-const provenanceClocks=new Set(['fetchedAt','observedAt','checkedAt']);
-const clockPath=path=>Array.isArray(path)&&(path.length===1&&topClocks.has(path[0])||path.length===2&&path[0]==='provenance'&&provenanceClocks.has(path[1])||path.length===3&&path[0]==='provenances'&&Number.isSafeInteger(path[1])&&path[1]>=0&&provenanceClocks.has(path[2]));
-const clockValue=value=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}T/.test(value)&&Number.isFinite(Date.parse(value));
-function splitClocks(payload){
-  const body=JSON.parse(payload),clocks=[];
-  const take=(object,keys,path=[])=>{if(!object||typeof object!=='object'||Array.isArray(object))return;for(const key of keys)if(Object.hasOwn(object,key)&&clockValue(object[key])){clocks.push({path:[...path,key],value:object[key]});object[key]=null;}};
-  take(body,topClocks);
-  if(body&&typeof body==='object'&&!Array.isArray(body)){
-    take(body.provenance,provenanceClocks,['provenance']);
-    if(Array.isArray(body.provenances))body.provenances.forEach((value,index)=>take(value,provenanceClocks,['provenances',index]));
-  }
-  return {payload:JSON.stringify(body),clocks};
-}
-function restoreClocks(body,clocks){
-  if(!Array.isArray(clocks))throw incomplete();
-  for(const entry of clocks){
-    if(!entry||!clockPath(entry.path)||!clockValue(entry.value))throw incomplete();
-    let target=body;for(const key of entry.path.slice(0,-1)){if(!target||typeof target!=='object'||!Object.hasOwn(target,key))throw incomplete();target=target[key];}
-    const key=entry.path.at(-1);if(!target||typeof target!=='object'||!Object.hasOwn(target,key)||target[key]!==null)throw incomplete();target[key]=entry.value;
-  }
-  return body;
-}
-
 // Immutable article bodies are shared by feed, corpus and public descriptors.
 // Stage bounded FULL commits first; publishing the descriptor remains atomic.
 // A failed/cancelled stage leaves the previous checkpoint readable. Unreferenced

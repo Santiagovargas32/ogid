@@ -19,6 +19,7 @@ import {SourceDossiers} from './sourceDossiers.js';
 import {SourceAssessments} from '../services/news/sourceAssessments.js';
 import {sourceCoverage,saveEditorialFacet} from './sourceCoverage.js';
 import {NewsComparisons} from './newsComparisons.js';
+import {articleObservation,restoreArticleObservation} from './articleObservations.js';
 const hash=x=>createHash("sha256").update(JSON.stringify(x)).digest("hex");
 export const EDITORIAL_BACKFILL_KEY=`news.editorial-backfill:${PUBLISHER_METHOD}:${NEWS_CLASSIFICATION_VERSION}:comparisons-v1`;
 const wireSize=data=>{const p={ok:true,queriedAt:new Date().toISOString(),origin:"OGID",data,warnings:data.warnings,truncated:false};return Buffer.byteLength(JSON.stringify({structuredContent:p,content:[{type:"text",text:JSON.stringify(p)}]}));};
@@ -37,16 +38,27 @@ export class SqlNewsArchive extends NewsArchive {
   }
   hydrate() {}
   close(){this.reader?.close();}
-  getRecord(id){const row=this.db.prepare("SELECT payload_json FROM articles WHERE article_id=?").get(id);return row?JSON.parse(row.payload_json):undefined;}
-  *values(){for(const row of this.db.prepare("SELECT payload_json FROM articles").iterate())yield JSON.parse(row.payload_json);}
-  save(article){
+  getRecord(id){return this.db.transaction(()=>{const row=this.db.prepare("SELECT payload_json FROM articles WHERE article_id=?").get(id);return row?restoreArticleObservation(row.payload_json,this.db.prepare('SELECT * FROM article_observations WHERE article_id=?').get(id)):undefined;}).deferred();}
+  *values(){for(const row of this.db.prepare("SELECT article_id,payload_json FROM articles").iterate())yield restoreArticleObservation(row.payload_json,this.db.prepare('SELECT * FROM article_observations WHERE article_id=?').get(row.article_id));}
+  saveObservation(id,observation){
+    if(!observation){this.db.prepare('DELETE FROM article_observations WHERE article_id=?').run(id);return;}
+    this.db.prepare(`INSERT INTO article_observations VALUES(?,?,?,?,?,?) ON CONFLICT(article_id) DO UPDATE SET article_revision=excluded.article_revision,last_seen_at=excluded.last_seen_at,base_sha256=excluded.base_sha256,clocks_json=excluded.clocks_json,record_sha256=excluded.record_sha256 WHERE article_revision!=excluded.article_revision OR record_sha256!=excluded.record_sha256 OR base_sha256!=excluded.base_sha256`).run(observation.article_id,observation.article_revision,observation.last_seen_at,observation.base_sha256,observation.clocks_json,observation.record_sha256);
+  }
+  save(article){return this.db.transaction(()=>this.saveArticleRow(article)).immediate();}
+  saveArticleRow(article){
     const previous=this.db.prepare("SELECT revision,payload_json FROM articles WHERE article_id=?").get(article.id);
     if(previous?.revision===article.revision){
-      this.db.prepare("UPDATE articles SET last_seen_at=?,payload_json=? WHERE article_id=? AND (last_seen_at IS NOT ? OR payload_json!=?)").run(article.archiveLastSeenAt,JSON.stringify(article),article.id,article.archiveLastSeenAt,JSON.stringify(article));
+      const observation=articleObservation(previous.payload_json,article);
+      if(observation)this.saveObservation(article.id,observation);
+      else{
+        this.db.prepare("UPDATE articles SET last_seen_at=?,payload_json=? WHERE article_id=? AND (last_seen_at IS NOT ? OR payload_json!=?)").run(article.archiveLastSeenAt,JSON.stringify(article),article.id,article.archiveLastSeenAt,JSON.stringify(article));
+        this.saveObservation(article.id,articleObservation(JSON.stringify(article),article));
+      }
       for(const alias of article.originalIds || [])this.db.prepare("INSERT OR IGNORE INTO article_aliases VALUES(?,?)").run(alias,article.id);this.saveSources(article);saveEditorialFacet(this.db,article);this.comparisonStore.index(article);return;
     }
     const policy=typeof article.usagePolicy==="string"?article.usagePolicy:article.usagePolicy?.contentPolicy || "headline-only-link-out";
     this.db.prepare("INSERT INTO articles VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(article_id) DO UPDATE SET title=excluded.title,excerpt=excluded.excerpt,canonical_url=excluded.canonical_url,published_at=excluded.published_at,last_seen_at=excluded.last_seen_at,revision=excluded.revision,usage_policy=excluded.usage_policy,payload_json=excluded.payload_json").run(article.id,article.title,article.excerpt || null,article.url || null,article.publishedAt || null,article.receivedAt,article.archiveLastSeenAt,article.revision || 1,policy,JSON.stringify(article));
+    this.saveObservation(article.id,articleObservation(JSON.stringify(article),article));
     for(const alias of article.originalIds || [])this.db.prepare("INSERT OR IGNORE INTO article_aliases VALUES(?,?)").run(alias,article.id);
     if(previous?.revision===article.revision)return;
     this.db.prepare("INSERT OR IGNORE INTO article_revisions VALUES(?,?,?,?)").run(article.id,article.revision || 1,article.metadataUpdatedAt || article.archiveLastSeenAt,JSON.stringify(article));
@@ -133,7 +145,7 @@ export class SqlNewsArchive extends NewsArchive {
       for(const row of rows){
         if(bytes && bytes+row.bytes>131072)break;
         if(row.bytes>131072)throw new AppError('Enriquecimiento diferido: un registro excede el presupuesto de página.',413,'NEWS_METADATA_ROW_TOO_LARGE');
-        const previous=JSON.parse(this.db.prepare('SELECT payload_json FROM articles WHERE rowid=?').get(row.rowid).payload_json),classified=classifyRssArticle(previous);
+        const base=JSON.parse(this.db.prepare('SELECT payload_json FROM articles WHERE rowid=?').get(row.rowid).payload_json),previous=this.getRecord(base.id),classified=classifyRssArticle(previous);
         const metadata={...editorialProjection(resolveEditorialIdentity(previous)),publisher:classified.publisher,
           classification:classificationProjection(classified.classification),threatLevel:classified.threatLevel,topicTags:classified.topicTags,
           countryMentions:[...new Set([...(previous.countryMentions||[]),...classified.countryMentions])].sort()};

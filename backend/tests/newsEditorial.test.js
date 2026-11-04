@@ -75,7 +75,7 @@ test('historical enrichment commits its cursor atomically, resumes after reopeni
   try{
     for(let n=0;n<3;n++)archive.ingest([{title:`Missile strike in Ukraine ${n}`,url:`https://reuters.com/${n}`,provider:'rss',publishedAt:'2026-10-26T09:00:00Z'}]);
     // Simulate historical rows lacking editorial metadata without changing their immutable revisions.
-    db.exec("UPDATE articles SET payload_json=json_remove(payload_json,'$.publisherId','$.publisherResolution','$.classification')");
+    db.exec("DELETE FROM article_observations; UPDATE articles SET payload_json=json_remove(payload_json,'$.publisherId','$.publisherResolution','$.classification')");
     const frozen=db.prepare('SELECT * FROM article_revisions ORDER BY article_id,revision').all();
     const save=archive.save.bind(archive);archive.save=()=>{throw Error('injected rollback');};
     assert.throws(()=>archive.enrichEditorialPage({limit:1}),/injected rollback/);

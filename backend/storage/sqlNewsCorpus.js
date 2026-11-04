@@ -13,6 +13,7 @@ import { CountryRiskAccumulator, classifyTrend } from "../services/riskEngineSer
 import { filterNewsBySources } from "../utils/filters.js";
 import Database from "better-sqlite3";
 import { readMeta } from "./sqlRepositories.js";
+import {restoreArticleObservation} from './articleObservations.js';
 
 const HOUR = 3600000;
 const positive = (value, fallback, max = 10000) => Math.min(max, Math.max(1, Number(value) || fallback));
@@ -107,11 +108,12 @@ export class SqlNewsCorpus {
       const captureStarted=performance.now();
       // SQLite sorts only covering-index metadata, and can spill it to disk.
       // Stream payloads globally by rowid; do not hydrate all references in JS.
-      const references=reader.prepare(`SELECT rowid,revision,last_seen_at,
+      const references=reader.prepare(`SELECT rowid,revision,last_seen_at,article_id,
         row_number() OVER (ORDER BY published_at DESC,article_id DESC)-1 AS semantic_order
         FROM articles INDEXED BY articles_projection_window WHERE published_at>=? AND published_at<=? ORDER BY rowid`).iterate(from,asOf);
-      const locations=[];
-      for(const row of physicalPages(reader,'articles',references,this.payloadCache)){
+      const locations=[],observation=reader.prepare('SELECT * FROM article_observations WHERE article_id=?');
+      function* observedReferences(){for(const ref of references){const current=observation.get(ref.article_id)||null;yield {...ref,observation:current,payload_version:current?.base_sha256};}}
+      for(const row of physicalPages(reader,'articles',observedReferences(),this.payloadCache)){
         locations[row.semantic_order]=frozen.add(row);
         if(performance.now()-captureStarted>30000)throw Object.assign(Error('News capture deadline'),{code:'STORAGE_CAPTURE_TIMEOUT'});
         if(frozen.count%128===0)await new Promise(resolve=>setImmediate(resolve));
@@ -124,7 +126,7 @@ export class SqlNewsCorpus {
       for (const location of locations) {
         const row=frozen.get(location);
         scanned++;
-        const stored = JSON.parse(row.payload_json);
+        const stored = restoreArticleObservation(row.payload_json,row.observation);
         if (!stored.title?.trim() || !stored.url || stored.synthetic || ["synthetic","fallback","seeded"].includes(stored.dataMode) || stored.provenance?.synthetic) continue;
         const sourcesAllowed = this.config.sourceAllowlist || [], domainsAllowed = this.config.domainAllowlist || [];
         if (sourcesAllowed.length && !sourcesAllowed.some(source => (stored.sourceName || stored.publisher || "").toLowerCase().includes(source.toLowerCase()))) continue;
@@ -242,13 +244,14 @@ export class SqlNewsCorpus {
       reader.exec("BEGIN");const revision=readMeta(reader,"news.meta",{}).revision;
       if(reader.prepare("SELECT count(*) AS n FROM articles").get().n<=offset)return {news:[],meta:{revision,collection:"archive-permitted-metadata",hasMore:false}};
       const captureStarted=performance.now();
-      for(const row of reader.prepare("SELECT payload_json FROM articles ORDER BY article_id").iterate()){
-        frozen.add(row);
+      const observation=reader.prepare('SELECT * FROM article_observations WHERE article_id=?');
+      for(const row of reader.prepare("SELECT article_id,payload_json FROM articles ORDER BY article_id").iterate()){
+        frozen.add({...row,observation:observation.get(row.article_id)||null});
         if(performance.now()-captureStarted>30000)throw Object.assign(Error('Archive capture deadline'),{code:'STORAGE_CAPTURE_TIMEOUT'});
       }
       reader.exec('COMMIT');
       for(const row of frozen.rows()){
-        const raw=JSON.parse(row.payload_json);scanned++;
+        const raw=restoreArticleObservation(row.payload_json,row.observation);scanned++;
         if(cutoff!==null&&(Date.parse(raw.publishedAt || raw.archiveFirstSeenAt || raw.receivedAt)||0)<cutoff)continue;
         const article={...classifyRssArticle(raw),...publicationDate(raw.publishedAt),identity:articleIdentity(raw),firstSeenAt:raw.archiveFirstSeenAt || raw.receivedAt,severityOrigin:"rss-classifier-rules"};
         if(countries.length&&!article.countryMentions.some(c=>countries.includes(c)))continue;
