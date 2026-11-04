@@ -1,8 +1,9 @@
 import { numericDescriptor } from './numericSemantics.js';
+import { publisherByAlias } from '../news/publisherIdentity.js';
 
-export const NARRATIVE_PROMPT_VERSION = 'ogid-analyst-v1.15';
-export const NARRATIVE_CONTRACT_VERSION = 'typed-narrative-facts-v3';
-export const usesNarrativeFacts = job => ['ogid-analyst-v1.12','ogid-analyst-v1.13','ogid-analyst-v1.14',NARRATIVE_PROMPT_VERSION].includes(job.promptVersion);
+export const NARRATIVE_PROMPT_VERSION = 'ogid-analyst-v1.16';
+export const NARRATIVE_CONTRACT_VERSION = 'typed-narrative-facts-v4';
+export const usesNarrativeFacts = job => ['ogid-analyst-v1.12','ogid-analyst-v1.13','ogid-analyst-v1.14','ogid-analyst-v1.15',NARRATIVE_PROMPT_VERSION].includes(job.promptVersion);
 const boundedText = { type: 'string', minLength: 1, maxLength: 256 };
 export const narrativeFactsSchema = {
   type: 'array', maxItems: 100,
@@ -25,6 +26,24 @@ const escape = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const sourceDomains = new Set(['news', 'news-reference', 'geopolitical-alert', 'situation-source']);
 const sourcePaths = new Set(['title', 'excerpt', 'description', 'summary', 'text']);
 const datePaths = new Set(['publishedAt', 'knownAt', 'occurredAt', 'receivedAt']);
+// A registry publisher's name is an identity, not a reported magnitude. Only
+// names bound to this field's frozen source references qualify; arbitrary
+// source strings and numbers following the name remain subject to grounding.
+function publisherSpans(row, items) {
+  const spans=[];
+  for (const id of row.refs) {
+    const item=items.get(id);
+    if (!item || !sourceDomains.has(item.domain)) continue;
+    const data=item.data || {}, publisher=publisherByAlias(data.publisher || data.publisherResolution?.candidateName || data.sourceName);
+    if (!publisher) continue;
+    for (const name of [publisher.name,...publisher.aliases].filter(name=>/\d/u.test(name))) {
+      const pattern=name.split(/\s+/u).map(escape).join('\\s+');
+      for (const match of row.text.matchAll(new RegExp(`(?<![\\p{L}\\p{N}])${pattern}(?![\\p{L}\\p{N}])`,'giu')))
+        spans.push([match.index,match.index+match[0].length]);
+    }
+  }
+  return spans;
+}
 const contextField = field => /^\/(limitations|missingEvidence)\/\d+$/.test(field);
 const metricLabels = /fuerza relativa|relative strength|\bRSI\b|\bSMA(?:20|50|200)?\b|\bEMA\b|\bMACD\b|\bATR\b|precio|price|soporte|support|resistencia|resistance|volatilidad|volatility/giu;
 function metricPath(label) {
@@ -62,6 +81,17 @@ export function narrativeProblem(value, items, { snapshot = {}, job = {} } = {})
   const fields = narrativeFields(value), facts = value.narrativeFacts || [];
   const fail = (reason, fact = {}) => ({ code: 'AGENT_UNVERIFIED_NUMBER', reason,
     ...Object.fromEntries(['field', 'kind', 'evidenceId', 'path'].filter(k => typeof fact[k] === 'string').map(k => [k, fact[k].slice(0, 256)])) });
+  const sourceFailure = (reason, fact, raw) => {
+    const problem=fail(reason,fact),at=raw.indexOf(fact.literal);
+    if(at<0 || !numericTokens(fact.literal).length)return problem;
+    const exact=fact.quote && raw.includes(fact.quote) && fact.quote.includes(fact.literal);
+    const quote=exact && fact.quote.length<=512 ? fact.quote : raw.slice(Math.max(0,at-120),at+fact.literal.length+120);
+    if(fact.kind!=='date' && !numericTokens(quote).some(token=>token[0]===fact.literal))return problem;
+    // Diagnostic data from this exact frozen field, never an automatic edit or
+    // a substitute for a tool read. The one repair still has to satisfy every
+    // reference, modality, temporal and publication check.
+    return {...problem,attributionExample:{field:fact.field,text:`Según la fuente [evidence:${fact.evidenceId}]: «${quote}»`,fact:{kind:fact.kind,field:fact.field,literal:fact.literal,evidenceId:fact.evidenceId,path:fact.path,quote}}};
+  };
   const spans = new Map([...fields.keys()].map(key => [key, []]));
   const problems=[],seen=new Set();let truncated=false;
   const addProblem=problem=>{
@@ -106,11 +136,11 @@ export function narrativeProblem(value, items, { snapshot = {}, job = {} } = {})
       if (fact.kind === 'date') {
         if (!datePaths.has(fact.path) || fact.literal !== raw || !Number.isFinite(Date.parse(raw)) || Date.parse(raw) > Date.parse(snapshot.asOf)) return fail('exact-source-date-required', fact);
       } else if (!sourcePaths.has(fact.path)) return fail('source-text-path-required', fact);
-      if (!fact.quote || !raw.includes(fact.quote) || !fact.quote.includes(fact.literal)) return fail('exact-source-quote-required', fact);
+      if (!fact.quote || !raw.includes(fact.quote) || !fact.quote.includes(fact.literal)) return sourceFailure('exact-source-quote-required', fact, raw);
       // A declared kind alone cannot turn an unqualified statement into an
       // attributed report. The literal wrapper is shared with the prompt/UI.
       const attributed = `Según la fuente [evidence:${fact.evidenceId}]: «${fact.quote}»`;
-      if (!field.text.includes(attributed) || field.kind && field.kind !== 'attributed-report') return fail('explicit-source-attribution-required', fact);
+      if (!field.text.includes(attributed) || field.kind && field.kind !== 'attributed-report') return sourceFailure('explicit-source-attribution-required', fact, raw);
       if (!numericTokens(fact.quote).some(t => t[0] === fact.literal) && fact.kind !== 'date') return fail('exact-source-token-required', fact);
       for (let at = field.text.indexOf(attributed); at !== -1; at = field.text.indexOf(attributed, at + attributed.length))
         spans.get(fact.field).push([at, at + attributed.length]);
@@ -125,6 +155,7 @@ export function narrativeProblem(value, items, { snapshot = {}, job = {} } = {})
     .filter(id => typeof id === 'string' && id.length >= 8 && /\D/.test(id));
   for (const [field, row] of fields) {
     const ranges = spans.get(field);
+    ranges.push(...publisherSpans(row,items));
     for (const cite of row.text.matchAll(/\[evidence:([^\]\s]+)\]/g)) {
       if (!items.has(cite[1]) || !row.refs.includes(cite[1])) addProblem({ code: 'AGENT_UNKNOWN_EVIDENCE', field, evidenceId: cite[1].slice(0, 256), reason: 'invalid-narrative-citation' });
       ranges.push([cite.index, cite.index + cite[0].length]);
@@ -152,4 +183,4 @@ export function narrativeCoverageExample(snapshot){
   return {limitations:[`El corte seleccionado contiene ${count} noticias; este conteo no es una señal financiera.`],narrativeFacts:[{kind:'coverage',field:'/limitations/0',literal:String(count),evidenceId:`coverage:${snapshot.snapshotId}`,path:'$snapshot.coverage.domains.news.count'}]};
 }
 
-export const NARRATIVE_INSTRUCTIONS = `Contrato typed-narrative-facts-v3. Incluye SIEMPRE technicalFacts y narrativeFacts, también cuando sean []. Si no necesitas cifras, evita cifras en la prosa. Cada cifra narrativa necesita un narrativeFact {kind,field,literal,evidenceId,path}; field es un JSON pointer exacto como /summary o /drivers/0/description y path es relativo a data. kind=technical enlaza un technicalFact elegible con valor y unidad exactos: literal=String(value), sin redondeos ni porcentajes; el indicador nombrado debe coincidir con la ruta. kind=coverage sólo en /limitations/N o /missingEvidence/N, con el valor exacto de coverage o metodología técnica; para conteos del manifiesto usa el evidenceId de coverage y path=$snapshot.coverage.domains.news.count o la ruta exacta del manifiesto. No confundas la lista de estados de fuentes con esos conteos. Para cantidades relatadas o ediciones usa kind=reported-quantity o edition y quote copiado literalmente de title/excerpt/description/summary/text; escribe exactamente Según la fuente [evidence:ID]: «FRAGMENTO» en ese campo y copia la cifra en literal. Ese relato no es un hecho confirmado ni una observación financiera. kind=date exige un timestamp exacto del campo publishedAt/knownAt/occurredAt/receivedAt y el mismo formato atribuido; nunca deduzcas occurredAt. Las citas deben pertenecer a las referencias del campo. IDs y horizontes estructurados no son mediciones. No uses cobertura, requisitos o citas textuales para habilitar una dirección financiera. probability=null.`;
+export const NARRATIVE_INSTRUCTIONS = `Contrato ${NARRATIVE_CONTRACT_VERSION}. Redacta la síntesis y explicaciones en español. Incluye SIEMPRE technicalFacts y narrativeFacts, también cuando sean []. Si no necesitas cifras, evita cifras en la prosa. Cada cifra narrativa necesita un narrativeFact {kind,field,literal,evidenceId,path}; field es un JSON pointer exacto como /summary o /drivers/0/description y path es relativo a data. kind=technical enlaza un technicalFact elegible con valor y unidad exactos: literal=String(value), sin redondeos ni porcentajes; el indicador nombrado debe coincidir con la ruta. kind=coverage sólo en /limitations/N o /missingEvidence/N, con el valor exacto de coverage o metodología técnica; para conteos del manifiesto usa el evidenceId de coverage y path=$snapshot.coverage.domains.news.count o la ruta exacta del manifiesto. No confundas la lista de estados de fuentes con esos conteos. Para cantidades relatadas o ediciones usa kind=reported-quantity o edition y quote copiado literalmente de title/excerpt/description/summary/text; escribe exactamente Según la fuente [evidence:ID]: «FRAGMENTO» en ese campo y copia la cifra en literal. Copia el fragmento con sus espacios y puntuación originales, sin traducirlo ni cambiar comillas. La atribución requiere literalmente ese formato; una cita al final de una paráfrasis no lo reemplaza. El texto de quote debe ser el mismo fragmento que aparece entre «» en la prosa. No anotes timestamps ausentes de la prosa ni cantidades de cobertura en summary. Ese relato no es un hecho confirmado ni una observación financiera. kind=date exige un timestamp exacto del campo publishedAt/knownAt/occurredAt/receivedAt y el mismo formato atribuido; nunca deduzcas occurredAt. Las citas deben pertenecer a las referencias del campo. IDs y horizontes estructurados no son mediciones. No uses cobertura, requisitos o citas textuales para habilitar una dirección financiera. probability=null.`;

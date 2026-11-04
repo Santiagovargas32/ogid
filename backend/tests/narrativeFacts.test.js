@@ -140,3 +140,39 @@ test('numeric diagnostics remain bounded and keep invalid references from maskin
  p.summary='Unknown [evidence:foreign:12345]';assert.ok(narrativeProblem(p,items,{snapshot}).problems.some(x=>x.code==='AGENT_UNKNOWN_EVIDENCE'));
  p.narrativeFacts=[];assert.equal(narrativeProblem(p,items,{snapshot}).code,'AGENT_UNKNOWN_EVIDENCE');
 });
+
+test('numeric publisher names require a field-bound frozen registry identity and do not exempt measurements',()=>{
+ const {p,items,check}=fixture(),id='news:publisher';
+ items.set(id,item('news',{title:'A source report - France 24',publisherResolution:{candidateName:'France 24'}}));p.evidenceIds.push(id);
+ for(const name of ['France 24','France\u202f24','FRANCE\u00a024']){p.summary=`${name} relata un suceso [evidence:${id}]`;check(p);}
+ p.summary=`France 24 reports a price of 999999 USD [evidence:${id}]`;assert.throws(()=>check(p),e=>e.details.problems.some(x=>x.providedValue===999999));
+ p.summary='Precio 24 USD';assert.throws(()=>check(p),{code:'AGENT_UNVERIFIED_NUMBER'});
+ p.summary='France 240';assert.throws(()=>check(p),{code:'AGENT_UNVERIFIED_NUMBER'});
+ p.summary='France 24';items.get(id).data.publisherResolution.candidateName='Unregistered 24';assert.throws(()=>check(p),{code:'AGENT_UNVERIFIED_NUMBER'});
+ items.get(id).data.publisherResolution.candidateName='France 24';p.evidenceIds=p.evidenceIds.filter(x=>x!==id);assert.throws(()=>check(p),{code:'AGENT_UNVERIFIED_NUMBER'});
+});
+
+test('reported-number diagnostics provide an exact frozen attribution without accepting the invalid prose',()=>{
+ const {p,check}=fixture(),id='alert:fixture:1';p.evidenceIds.push(id);p.summary=`A source reports 113 ports [evidence:${id}]`;
+ p.narrativeFacts=[sourceFact('reported-quantity','/summary','113',id,'"Workers strike at 113 ports"')];let details;
+ assert.throws(()=>check(p),e=>{details=safeValidationDetails(e.details);return e.code==='AGENT_UNVERIFIED_NUMBER';});
+ const example=details.attributionExample;assert.equal(example.text,`Según la fuente [evidence:${id}]: «Workers strike at 113 ports»`);
+ assert.equal(example.fact.quote,'Workers strike at 113 ports');assert.equal(example.field,'/summary');
+ // A model must actually emit both the correct text and its exact reference.
+ p.narrativeFacts=[example.fact];assert.throws(()=>check(p),{code:'AGENT_UNVERIFIED_NUMBER'});
+ p.summary=example.text;check(p);p.summary+=' Price 999';assert.throws(()=>check(p),{code:'AGENT_UNVERIFIED_NUMBER'});
+});
+
+test('attribution diagnostics are bounded data and never fabricate an unavailable numeric literal',()=>{
+ const {p,items}=fixture(),id='alert:fixture:1';p.evidenceIds.push(id);p.summary='Report 113';p.narrativeFacts=[sourceFact('reported-quantity','/summary','113',id,'changed quote')];
+ items.get(id).data.title='x '.repeat(1000)+'113'+' y'.repeat(1000);
+ let issue=narrativeProblem(p,items,{snapshot});assert.ok(issue.attributionExample.fact.quote.length<=512);assert.ok(items.get(id).data.title.includes(issue.attributionExample.fact.quote));
+ const safe=safeValidationDetails({...issue,secret:'PRIVATE',attributionExample:{...issue.attributionExample,secret:'PRIVATE',fact:{...issue.attributionExample.fact,secret:'PRIVATE'}}});assert.ok(!JSON.stringify(safe).includes('PRIVATE'));
+ issue.attributionExample.fact.quote='x'.repeat(513);assert.equal(safeValidationDetails(issue).attributionExample,undefined);
+ p.summary='Report 999';p.narrativeFacts[0].literal='999';assert.equal(narrativeProblem(p,items,{snapshot}).attributionExample,undefined);
+});
+
+test('v1.15 retains required narrative references after the prompt revision',()=>{
+ const {p}=fixture(),job={task:p.task,promptVersion:'ogid-analyst-v1.15'};
+ assert.equal(validatePublicationForJob(p,job),true);delete p.narrativeFacts;assert.equal(validatePublicationForJob(p,job),false);
+});
