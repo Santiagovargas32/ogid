@@ -2,10 +2,36 @@ import {createHash} from 'node:crypto';
 import {RUNTIME_POLICY} from '../config/runtimePolicy.js';
 import {checkOperation,committedOperationItems,yieldOperationResources} from '../services/shared/operationContext.js';
 
-const version='ogid-rss-articles-v1',prefix='rss-article:v4:';
-const refPrefix='rss-article-refs:v4:';
+const version='ogid-rss-articles-v2',prefix='rss-article:v5:';
+const legacyVersion='ogid-rss-articles-v1',legacyPrefix='rss-article:v4:';
+const bodyGlob='rss-article:v[45]:*';
+const prefixFor=value=>value?.version===version?prefix:value?.version===legacyVersion?legacyPrefix:null;
+const countKey=key=>key.replace('rss-article:','rss-article-refs:');
 const sha=value=>createHash('sha256').update(value).digest('hex');
 const incomplete=()=>Object.assign(Error('Incomplete durable RSS articles'),{code:'STORAGE_RSS_CHECKPOINT_INCOMPLETE'});
+const topClocks=new Set(['fetchedAt','receivedAt','firstSeenAt','lastSeenAt','archiveLastSeenAt']);
+const provenanceClocks=new Set(['fetchedAt','observedAt','checkedAt']);
+const clockPath=path=>Array.isArray(path)&&(path.length===1&&topClocks.has(path[0])||path.length===2&&path[0]==='provenance'&&provenanceClocks.has(path[1])||path.length===3&&path[0]==='provenances'&&Number.isSafeInteger(path[1])&&path[1]>=0&&provenanceClocks.has(path[2]));
+const clockValue=value=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}T/.test(value)&&Number.isFinite(Date.parse(value));
+function splitClocks(payload){
+  const body=JSON.parse(payload),clocks=[];
+  const take=(object,keys,path=[])=>{if(!object||typeof object!=='object'||Array.isArray(object))return;for(const key of keys)if(Object.hasOwn(object,key)&&clockValue(object[key])){clocks.push({path:[...path,key],value:object[key]});object[key]=null;}};
+  take(body,topClocks);
+  if(body&&typeof body==='object'&&!Array.isArray(body)){
+    take(body.provenance,provenanceClocks,['provenance']);
+    if(Array.isArray(body.provenances))body.provenances.forEach((value,index)=>take(value,provenanceClocks,['provenances',index]));
+  }
+  return {payload:JSON.stringify(body),clocks};
+}
+function restoreClocks(body,clocks){
+  if(!Array.isArray(clocks))throw incomplete();
+  for(const entry of clocks){
+    if(!entry||!clockPath(entry.path)||!clockValue(entry.value))throw incomplete();
+    let target=body;for(const key of entry.path.slice(0,-1)){if(!target||typeof target!=='object'||!Object.hasOwn(target,key))throw incomplete();target=target[key];}
+    const key=entry.path.at(-1);if(!target||typeof target!=='object'||!Object.hasOwn(target,key)||target[key]!==null)throw incomplete();target[key]=entry.value;
+  }
+  return body;
+}
 
 // Immutable article bodies are shared by feed, corpus and public descriptors.
 // Stage bounded FULL commits first; publishing the descriptor remains atomic.
@@ -14,7 +40,7 @@ const incomplete=()=>Object.assign(Error('Incomplete durable RSS articles'),{cod
 // acquisition or a second business writer.
 export class SqlRssArticles {
   constructor(runtime){
-    this.runtime=runtime;this.epoch=runtime.db.prepare('SELECT 1 FROM runtime_snapshots WHERE kind GLOB ? LIMIT 1').get(prefix+'*')?1:0;
+    this.runtime=runtime;this.epoch=runtime.db.prepare('SELECT 1 FROM runtime_snapshots WHERE kind GLOB ? LIMIT 1').get(bodyGlob)?1:0;
     this.prunedEpoch=0;this.cursor=null;
   }
   get needsPrune(){return this.cursor!==null||this.epoch!==this.prunedEpoch;}
@@ -25,29 +51,29 @@ export class SqlRssArticles {
     const descriptor=value=>kind==='rss'?value?.items:value;
     const previous=descriptor(old),next=descriptor(payload);
     const refs=value=>{
-      if(value?.version!==version)return new Set();
+      const selected=prefixFor(value);if(!selected)return new Set();
       if(!Array.isArray(value.refs)||!value.refs.every(key=>typeof key==='string'&&/^[a-f0-9]{64}$/.test(key)))throw incomplete();
-      return new Set(value.refs);
+      return new Set(value.refs.map(key=>selected+key));
     };
     const before=refs(previous),after=refs(next);
     const read=db.prepare('SELECT value_json FROM runtime_meta WHERE key=?'),write=db.prepare('INSERT INTO runtime_meta VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json');
     const exists=db.prepare('SELECT 1 FROM runtime_snapshots WHERE kind=?');
     for(const key of new Set([...before,...after])){
       if(before.has(key)===after.has(key))continue;
-      const record=read.get(refPrefix+key),count=record?JSON.parse(record.value_json):0,delta=after.has(key)?1:-1;
-      if(!Number.isSafeInteger(count)||count<0||count+delta<0||!exists.get(prefix+key))throw incomplete();
-      write.run(refPrefix+key,JSON.stringify(count+delta));this.epoch++;
+      const record=read.get(countKey(key)),count=record?JSON.parse(record.value_json):0,delta=after.has(key)?1:-1;
+      if(!Number.isSafeInteger(count)||count<0||count+delta<0||!exists.get(key))throw incomplete();
+      write.run(countKey(key),JSON.stringify(count+delta));this.epoch++;
     }
   }
   capture(articles){
     if(!Array.isArray(articles))throw incomplete();
-    const bodies=new Map(),refs=[],digest=createHash('sha256');digest.update('[');
+    const bodies=new Map(),refs=[],clocks=[],digest=createHash('sha256');digest.update('[');
     for(const article of articles){
-      const payload=JSON.stringify(article)??'null',key=sha(payload);
-      if(refs.length)digest.update(',');digest.update(payload);refs.push(key);bodies.set(key,payload);
+      const original=JSON.stringify(article)??'null',split=splitClocks(original),key=sha(split.payload);
+      if(refs.length)digest.update(',');digest.update(original);refs.push(key);clocks.push(split.clocks);bodies.set(key,split.payload);
     }
     digest.update(']');
-    return {descriptor:{version,refs,sha256:digest.digest('hex')},bodies};
+    return {descriptor:{version,refs,clocks,sha256:digest.digest('hex')},bodies};
   }
   async stage(captured){
     const db=this.runtime.db,entries=[...captured.bodies],missing=[];
@@ -81,12 +107,12 @@ export class SqlRssArticles {
   prune({limit=RUNTIME_POLICY.storage.readPageRows,budgetMs=RUNTIME_POLICY.storage.maintenancePageMs}={}){
     if(!this.needsPrune)return {hasMore:false,processed:0,removed:0};
     if(this.cursor===null){this.cursor='';this.passEpoch=this.epoch;}
-    const db=this.runtime.db,rows=db.prepare('SELECT kind,length(CAST(payload_json AS BLOB)) bytes FROM runtime_snapshots WHERE kind GLOB ? AND kind>? ORDER BY kind LIMIT ?').all(prefix+'*',this.cursor,limit);
+    const db=this.runtime.db,rows=db.prepare('SELECT kind,length(CAST(payload_json AS BLOB)) bytes FROM runtime_snapshots WHERE kind GLOB ? AND kind>? ORDER BY kind LIMIT ?').all(bodyGlob,this.cursor,limit);
     const read=db.prepare('SELECT value_json FROM runtime_meta WHERE key=?'),removeBody=db.prepare('DELETE FROM runtime_snapshots WHERE kind=?'),removeCount=db.prepare('DELETE FROM runtime_meta WHERE key=?');
     let processed=0,removed=0,bytes=0,cursor=this.cursor;const started=performance.now();
     db.transaction(()=>{
       for(const {kind,bytes:size}of rows){
-        const key=refPrefix+kind.slice(prefix.length),row=read.get(key),count=row?JSON.parse(row.value_json):0;
+        const key=countKey(kind),row=read.get(key),count=row?JSON.parse(row.value_json):0;
         if(!Number.isSafeInteger(count)||count<0)throw incomplete();
         if(count===0){
           if(removed&&(removed>=RUNTIME_POLICY.storage.commitBatchRows||bytes+size>RUNTIME_POLICY.storage.commitBatchBytes))break;
@@ -101,12 +127,14 @@ export class SqlRssArticles {
   }
   load(value){
     if(Array.isArray(value))return value;
-    if(value?.version!==version||!Array.isArray(value.refs)||!value.refs.every(key=>typeof key==='string'&&/^[a-f0-9]{64}$/.test(key))||!/^[a-f0-9]{64}$/.test(value.sha256||''))throw incomplete();
+    const selected=prefixFor(value);
+    if(!selected||!Array.isArray(value.refs)||!value.refs.every(key=>typeof key==='string'&&/^[a-f0-9]{64}$/.test(key))||!/^[a-f0-9]{64}$/.test(value.sha256||'')||value.version===version&&(!Array.isArray(value.clocks)||value.clocks.length!==value.refs.length))throw incomplete();
     const read=this.runtime.db.prepare('SELECT payload_json FROM runtime_snapshots WHERE kind=?'),seen=new Map(),articles=[],digest=createHash('sha256');digest.update('[');
     for(const key of value.refs){
       let payload=seen.get(key);
-      if(payload===undefined){payload=read.get(prefix+key)?.payload_json;if(typeof payload!=='string'||sha(payload)!==key)throw incomplete();seen.set(key,payload);}
-      if(articles.length)digest.update(',');digest.update(payload);articles.push(JSON.parse(payload));
+      if(payload===undefined){payload=read.get(selected+key)?.payload_json;if(typeof payload!=='string'||sha(payload)!==key)throw incomplete();seen.set(key,payload);}
+      const body=value.version===version?restoreClocks(JSON.parse(payload),value.clocks[articles.length]):JSON.parse(payload);
+      if(articles.length)digest.update(',');digest.update(JSON.stringify(body));articles.push(body);
     }
     digest.update(']');if(digest.digest('hex')!==value.sha256)throw incomplete();return articles;
   }
