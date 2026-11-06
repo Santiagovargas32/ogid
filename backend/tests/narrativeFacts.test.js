@@ -172,7 +172,11 @@ test('attribution diagnostics are bounded data and never fabricate an unavailabl
  p.summary='Report 999';p.narrativeFacts[0].literal='999';assert.equal(narrativeProblem(p,items,{snapshot}).attributionExample,undefined);
 });
 
-test('v1.15 retains required narrative references after the prompt revision',()=>{
- const {p}=fixture(),job={task:p.task,promptVersion:'ogid-analyst-v1.15'};
- assert.equal(validatePublicationForJob(p,job),true);delete p.narrativeFacts;assert.equal(validatePublicationForJob(p,job),false);
+test('historical and current prompts retain narrative grounding after the prompt revision',()=>{
+ for(const version of ['ogid-analyst-v1.15','ogid-analyst-v1.16',PROMPT_VERSION]){
+  const {p,items}=fixture(),job={task:p.task,promptVersion:version};
+  assert.equal(validatePublicationForJob(p,job),true);
+  p.summary='RSI 999';assert.throws(()=>assertPublication(p,{job,snapshot,lookup:id=>items.get(id),now:Date.parse(asOf)}),{code:'AGENT_UNVERIFIED_NUMBER'});
+  delete p.narrativeFacts;assert.equal(validatePublicationForJob(p,job),false);
+ }
 });
