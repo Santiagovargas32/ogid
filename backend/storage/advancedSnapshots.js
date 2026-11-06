@@ -33,7 +33,13 @@ export class AdvancedSnapshots {
   }
   renew({jobId,owner,fence}) {
     const changed=this.db.prepare("UPDATE analysis_jobs SET lease_until=? WHERE job_id=? AND owner=? AND fence=? AND status='running' AND lease_until>?").run(this.now()+90000,jobId,owner,fence,this.now());
-    if(!changed.changes)throw new AppError('Lease perdido.',409,'ANALYSIS_LEASE_LOST');return {renewed:true};
+    if(changed.changes)return {renewed:true};
+    // A heartbeat can already be queued when the result is published. That
+    // same fenced owner is finished; acknowledge closure without extending
+    // its lease or hiding an expired running lease or a different owner.
+    const job=this.db.prepare('SELECT status,owner,fence,analysis_id FROM analysis_jobs WHERE job_id=?').get(jobId);
+    if(job?.status==='complete'&&job.owner===owner&&job.fence===fence&&job.analysis_id)return {renewed:false,closed:true,status:'complete'};
+    throw new AppError('Lease perdido.',409,'ANALYSIS_LEASE_LOST');
   }
   assertOwner(job,{owner,fence}){if(job.owner!==owner||job.fence!==fence||job.lease_until<=this.now())throw new AppError('Lease perdido.',409,'ANALYSIS_LEASE_LOST');}
   recover() {

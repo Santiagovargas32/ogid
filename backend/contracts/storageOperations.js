@@ -37,8 +37,9 @@ export function storageOperationContract(operation,input={}) {
   const workClass=controlRead?'control':['snapshot.renew','snapshot.fail'].includes(operation)||domainControl?'control':operation==='agent.call' && controls.has(input.method)?'control':
     // Journal pages are bounded business commits. Waiting for every acquisition
     // workflow to end would starve them while RSS releases the writer for I/O.
-    journal||operation==='agent.call'&&input.method==='alertSync'?'commit':
-    ['snapshot.recover','domain.indexPage','storage.checkpoint','storage.verify','storage.import'].includes(operation) || operation==='domain.call' && input.service==='news' && input.method==='enrichEditorialPage'?'maintenance':
+    // Expired snapshot recovery likewise updates at most 64 indexed jobs.
+    journal||operation==='snapshot.recover'||operation==='agent.call'&&input.method==='alertSync'?'commit':
+    ['domain.indexPage','storage.checkpoint','storage.verify','storage.import'].includes(operation) || operation==='domain.call' && input.service==='news' && input.method==='enrichEditorialPage'?'maintenance':
     acquisition?'acquisition':['market.persist.admit','market.persist.page','market.project.fail','market.project.reconcile','analysis.persist','runtime.save','pipeline.record'].includes(operation)?'commit':pureRead?'read':'calculation';
   const cheapRead=boundedAgentRead||['storage.status','runtime.load','market.persist.status','market.persist.pending','market.project.status','market.project.pending'].includes(operation)||operation==='agent.read'&&input.method==='status'||operation==='domain.call'&&(input.service==='situations'&&['list','status'].includes(input.method)||input.service==='news'&&input.method==='sourceAssessments');
   const resourceClass=workClass==='control'?'control':operation==='market.persist.admit'?'acquisition':journal||operation==='market.persist.page'||operation==='agent.call'&&input.method==='alertSync'?'journal':

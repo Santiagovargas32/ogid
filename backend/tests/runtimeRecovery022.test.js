@@ -159,3 +159,26 @@ test('Advanced status is pure and old owner/fence cannot publish after recovery'
     const third=snapshots.claim({jobId:first.jobId,owner:'third'});assert.equal(third.fence,second.fence+1);assert.equal(snapshots.recoverExpired(),0);
   }finally{db.close();}
 });
+
+test('a queued advanced heartbeat acknowledges its own persisted result without reviving a lease',()=>{
+  const db=new Database(':memory:');migrate(db);db.pragma('foreign_keys=ON');let now=Date.now();
+  const runtime={db,recordAnalysis(kind,_input,result){
+    const id='analysis-published-heartbeat';
+    db.prepare('INSERT INTO analysis_runs VALUES(?,?,?,?,?,?,?,?)').run(id,kind,result.methodology.version,result.generatedAt,result.inputsAsOf,'fixture-input','{}',JSON.stringify(result));return id;
+  }};
+  const snapshots=new AdvancedSnapshots(runtime,{now:()=>now});
+  try{
+    const prepared=snapshots.prepare({}),job=snapshots.claim({jobId:prepared.dispatchJobId,owner:'actual-owner'});
+    const version=db.prepare('SELECT method_version FROM analysis_jobs WHERE job_id=?').get(job.jobId).method_version;
+    const result={methodology:{version},inputsAsOf:job.asOf,generatedAt:job.asOf};
+    snapshots.publish({...job,result});
+    const before=db.prepare('SELECT total_changes() n').get().n,lease=db.prepare('SELECT lease_until FROM analysis_jobs WHERE job_id=?').get(job.jobId).lease_until;
+    now+=90001;
+    assert.deepEqual(snapshots.renew(job),{renewed:false,closed:true,status:'complete'});
+    assert.equal(db.prepare('SELECT total_changes() n').get().n,before);
+    assert.equal(db.prepare('SELECT lease_until FROM analysis_jobs WHERE job_id=?').get(job.jobId).lease_until,lease);
+    assert.equal(db.prepare('SELECT count(*) n FROM analysis_runs').get().n,1);
+    assert.throws(()=>snapshots.renew({...job,owner:'other-owner'}),{code:'ANALYSIS_LEASE_LOST'});
+    assert.throws(()=>snapshots.renew({...job,fence:job.fence+1}),{code:'ANALYSIS_LEASE_LOST'});
+  }finally{db.close();}
+});

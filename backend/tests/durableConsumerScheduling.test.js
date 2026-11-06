@@ -26,3 +26,18 @@ test('durable revisions progress while RSS acquisition is waiting, without admit
   f.finish(f.sent[2],{renewed:true});await heartbeat;
   f.finish(f.sent[0]);await rss;
 });
+
+test('bounded expired-snapshot recovery progresses between commits while RSS acquisition remains active',async t=>{
+  const f=fixture(t),rss=f.manager.localRequest('domain.call',{service:'rss',method:'refresh',args:[]});rss.catch(()=>{});
+  const write=f.manager.localRequest('runtime.save',{kind:'fixture',payload:{}});write.catch(()=>{});
+  const recovery=f.manager.localRequest('snapshot.recover');recovery.catch(()=>{});
+  assert.equal(f.sent.length,2,'recovery must wait for the existing SQL unit');
+  const heartbeat=f.manager.localRequest('snapshot.renew',{jobId:'fixture-job',owner:'owner',fence:1});heartbeat.catch(()=>{});
+  assert.equal(f.sent.length,3,'lease control remains available');
+  f.finish(f.sent[1],{persisted:true});await write;
+  assert.equal(f.sent.length,4,'bounded recovery must not wait for the RSS workflow to finish');
+  assert.equal(JSON.parse(f.sent[3].encoded).operation,'snapshot.recover');
+  f.finish(f.sent[3],{recovered:1});assert.equal((await recovery).recovered,1);
+  f.finish(f.sent[2],{renewed:true});await heartbeat;
+  f.finish(f.sent[0]);await rss;
+});
