@@ -224,7 +224,27 @@ export class SqlNewsArchive extends NewsArchive {
       const order=filters.from || filters.to ? column : `coalesce(${column},json_extract(r.payload_json,'$.receivedAt'))`;
       const windowIndex=({publishedAt:'article_revisions_window',receivedAt:'article_revisions_received_window',updatedAt:'article_revisions_updated_window',archiveChangedAt:'article_revisions_changed_window'})[field];
       const indexed=filters.from || filters.to?` INDEXED BY ${windowIndex}`:'';
-      const query=`SELECT r.rowid AS rowid FROM article_revisions r${indexed} WHERE ${predicates.join(' AND ')} ORDER BY ${order} DESC,r.article_id ASC`;
+      let query;
+      if(filters.countries?.length&&!indexed){
+        // These facets and the revision watermark are read in the SAME WAL
+        // transaction. Resolve each candidate's latest immutable reference
+        // before sorting/decoding JSON. An empty country must not walk the
+        // entire revision archive and pin the WAL while rejecting every body.
+        query=`WITH country_articles AS MATERIALIZED (
+          SELECT DISTINCT article_id FROM article_countries WHERE country IN (SELECT value FROM json_each(?))
+        ), selected_revisions AS MATERIALIZED (
+          SELECT (SELECT rowid FROM article_revisions WHERE article_id=c.article_id AND rowid<=? ORDER BY revision DESC LIMIT 1) AS rowid
+          FROM country_articles c
+        ) SELECT r.rowid AS rowid FROM selected_revisions s CROSS JOIN article_revisions r ON r.rowid=s.rowid
+          ORDER BY ${order} DESC,r.article_id ASC`;
+        args.splice(0,args.length,JSON.stringify(filters.countries),snapshot.upper);
+      }else{
+        // A date window keeps its covering expression index. Apply the country
+        // relation before physical payload reads, without driving a narrow
+        // window from all of a large country's historical article IDs.
+        if(filters.countries?.length){predicates.push('r.article_id IN (SELECT article_id FROM article_countries WHERE country IN (SELECT value FROM json_each(?)))');args.push(JSON.stringify(filters.countries));}
+        query=`SELECT r.rowid AS rowid FROM article_revisions r${indexed} WHERE ${predicates.join(' AND ')} ORDER BY ${order} DESC,r.article_id ASC`;
+      }
       let matched=cursor?offset:0,full=false;
       // Later pages resolve the frozen references directly instead of scanning
       // and sorting the entire revision corpus again for every cursor.
