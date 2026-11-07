@@ -1,3 +1,4 @@
+import {generatedBrief} from './fixtures/generatedBrief.js';
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -217,7 +218,7 @@ test("worker stops completed duplicate tool calls while allowing pagination and 
             messageId: "answer",
             finish: "stop",
             outcome: "succeeded",
-            text: done ? JSON.stringify(proposal([item.evidenceId])) : "",
+            text: done ? JSON.stringify(generatedBrief(proposal([item.evidenceId]),j)) : "",
             tools: [
               {
                 callId: kind === "pending" ? "same-call" : `call-${polls}`,
@@ -382,7 +383,7 @@ test('source corrections mark existing analyst publications for review without c
   archive.ingest([{title:'Missile strike in Kyiv',url:'https://reuters.com/revised-source',provider:'rss',publishedAt:new Date(f.clock()-1000).toISOString()}]);
   f.advance(1000);
   const article=archive.search({}).articles[0],auth=job(f),snapshot=f.repo.snapshot(auth),item=f.repo.evidence({snapshotId:snapshot.snapshotId,domain:'news'}).items.find(x=>x.data.id===article.id);
-  assert.ok(item);f.repo.publish({...auth,proposal:proposal([item.evidenceId]),mode:'shadow'});
+  assert.ok(item);f.repo.publish({...auth,proposal:{...proposal([item.evidenceId]),summary:`Según la fuente [evidence:${item.evidenceId}]: «${item.data.title}»`,drivers:[{domain:'geopolitical',kind:'verification-plan',description:'¿Cuál es el alcance del relato?',mechanism:'Si se confirma el relato citado, podrían cambiar las condiciones de seguridad.',confirmation:'Comprobar el relato y su alcance con una fuente identificada.',invalidation:'Una corrección que desmienta el relato.',evidenceIds:[item.evidenceId]}],narrativeFacts:[{kind:'reported-claim',field:'/summary',literal:item.data.title,evidenceId:item.evidenceId,path:'title',quote:item.data.title}]},mode:'shadow'});
   const before=f.repo.publications({includeShadow:true}).items[0];assert.equal(before.sourceCurrentness.current,true);
   const frozen=f.db.prepare('SELECT payload_json FROM agent_publications').get().payload_json;
   archive.ingest([{title:'No missile strike in Kyiv',url:'https://reuters.com/revised-source',provider:'rss',publishedAt:new Date(f.clock()-1000).toISOString()}]);
@@ -433,7 +434,7 @@ test("frozen alerts retain their exact historical sources without admitting miss
 const proposal = (ids) => ({
   schemaVersion: "ogid-agent-publication-v1",
   task: "global_intelligence_brief",
-  summary: "Observación atribuida, cobertura parcial.",
+  summary: "La evidencia consultada no permite una síntesis comprobable.",
   direction: "unavailable",
   sentiment: "unavailable",
   stability: "unavailable",
@@ -1071,7 +1072,7 @@ test("worker reconciles admitted IDs, repairs at most once and publishes no trun
               kind === "invalid" ||
               (kind === "repair" && !id.startsWith("msg_repair_"))
                 ? "invalid-json"
-                : JSON.stringify(p),
+                : JSON.stringify(generatedBrief(p,j)),
             tools: [
               {
                 name: "ogid_read_ogid_query",

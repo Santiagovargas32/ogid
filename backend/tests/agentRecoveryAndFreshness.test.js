@@ -105,7 +105,7 @@ test('durable circuit survives a repository restart, admits one probe and resets
   const probe=repo.claim({owner:'worker'});assert.equal(probe.jobId,pending.jobId);assert.equal(repo.claim({owner:'second-worker'}),null);
   const auth={jobId:probe.jobId,fence:probe.fence,owner:'worker'},snapshot=repo.snapshot(auth),id=repo.evidence({snapshotId:snapshot.snapshotId,domain:'coverage',limit:1}).items[0].evidenceId;
   assert.deepEqual(snapshot.coverage.newsFreshnessPolicy,NEWS_FRESHNESS_POLICY);
-  repo.publish({...auth,mode:'shadow',proposal:{schemaVersion:'ogid-agent-publication-v1',task:'global_intelligence_brief',summary:'Coverage is insufficient.',direction:'unavailable',sentiment:'unavailable',stability:'unavailable',horizonHours:24,probability:null,confidenceKind:'qualitative-uncalibrated',evidenceIds:[id],contradictions:[],invalidation:[],limitations:['Partial coverage'],technicalFacts:[],narrativeFacts:[]}});
+  repo.publish({...auth,mode:'shadow',proposal:{schemaVersion:'ogid-agent-publication-v1',task:'global_intelligence_brief',summary:'La evidencia consultada no permite una síntesis comprobable.',direction:'unavailable',sentiment:'unavailable',stability:'unavailable',horizonHours:24,probability:null,confidenceKind:'qualitative-uncalibrated',evidenceIds:[id],contradictions:[],invalidation:[],limitations:['Partial coverage'],technicalFacts:[],narrativeFacts:[]}});
   assert.equal(repo.recovery('llamacpp/fixture').consecutiveFailures,0);assert.equal(repo.recovery('llamacpp/fixture').contractHash,OPERATIONS_HASH);
   const s=repo.status({since});assert.equal(s.current.failed,3);assert.equal(s.current.publications,1);assert.ok(repo.claim({owner:'worker'}));
  }finally{close();rmSync(root,{recursive:true,force:true});}

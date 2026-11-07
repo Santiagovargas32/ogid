@@ -183,7 +183,7 @@ export class StorageManager extends EventEmitter {
     if(this.analysisManager && operation==='market.project.calculate')return this.analysisManager.request(operation,input,{requestId,timeoutMs,queueTimeoutMs});
     if(this.analysisManager && operation==="agent.call" && input.method==="snapshot")return this.analysisManager.request("agent.snapshot",input.args,{requestId,timeoutMs:storageCommandTimeout(this.options,"agent.snapshot"),queueTimeoutMs});
     if(this.queryManager && operation==="agent.call" && AGENT_READER_METHODS.has(input.method))return this.queryManager.coalescedRead("agent.read",input,{requestId,timeoutMs:storageCommandTimeout(this.options,"agent.read"),queueTimeoutMs});
-    if(this.queryManager && storageOperationContract(operation,input).pureRead && storageOperationContract(operation,input).role==='queries')return this.queryManager.coalescedRead(operation,input,{requestId,timeoutMs,queueTimeoutMs,signal});
+    if(this.queryManager && storageOperationContract(operation,input).role==='queries')return this.queryManager.coalescedRead(operation,input,{requestId,timeoutMs,queueTimeoutMs,signal});
     if (this.advancedCoordinator && operation === "domain.call" && input.service === "advanced" && input.method === "getSnapshot") return this.advancedCoordinator.get(input);
     if(this.analysisManager && operation === "domain.call" && input.service === "scenarios" && input.method === "refresh") {
       // Prepare historical reads/calculations on the existing read-only worker.

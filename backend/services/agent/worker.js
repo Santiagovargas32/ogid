@@ -8,16 +8,15 @@ import { setTimeout as wait } from "node:timers/promises";
 import {repairCatalog} from './repairCatalog.js';
 import {taskEvidencePlan} from './taskEvidence.js';
 import {NARRATIVE_INSTRUCTIONS,narrativeCoverageExample} from './narrativeFacts.js';
+import {usesStructuredBrief} from './narrativeFacts.js';
+import {generationSchemaForJob,validateGeneratedPublication,materializeGeneratedPublication,generationExample} from './briefReports.js';
 import {
   ANALYST_SYSTEM,
   CHAT_SYSTEM,
   PROMPT_VERSION,
-  validatePublicationForJob,
-  publicationSchemaForJob,
   parsePublication,
   taskInstructions,
   safeValidationDetails,
-  publicationExample,
   normalizePublicationEvidence,
   agentError,
 } from "./contracts.js";
@@ -51,7 +50,7 @@ export class IntelligenceWorker {
     this.activeGenerations=new Map();
   }
   async execute(job) {
-    const outputSchema = job.task==='contextual_chat' ? null : publicationSchemaForJob(job);
+    const outputSchema = job.task==='contextual_chat' ? null : generationSchemaForJob(job);
     const lease = new AbortController();
     const auth = { jobId: job.jobId, owner: this.owner, fence: job.fence },
       signal = AbortSignal.any([
@@ -138,7 +137,7 @@ export class IntelligenceWorker {
             : job.input?.origin==='user'?{items:[]}:await call("memory", { scope: job.scope });
       const evidencePlan=await taskEvidencePlan(call,snapshot.snapshotId,job);
       const evidenceIndex=evidencePlan.index;
-      const example=evidencePlan.hasSources?null:publicationExample(job,evidenceIndex.items.find(item=>item.publicationEligibility?.eligible)?.evidenceId);
+      const example=evidencePlan.hasSources?null:generationExample(job,evidenceIndex.items.find(item=>item.publicationEligibility?.eligible)?.evidenceId);
       const chatCoverage=job.task==='contextual_chat'?await call('evidence',{snapshotId:snapshot.snapshotId,domain:'coverage',limit:1}):null;
       const chatCitations=(chatCoverage?.items || []).map(e=>`[evidence:${e.evidenceId}]`);
       const text = `${job.task==='situation_analysis'?ANALYSIS_SYSTEM:job.task==='contextual_chat'?CHAT_SYSTEM:ANALYST_SYSTEM}\nTarea: ${job.task}; ámbito: ${job.scope}.\n${taskInstructions(job)}\nSnapshot: ${JSON.stringify(snapshot)}\nÍndice parcial de IDs válidos (no acredita lectura de sus contenidos): ${JSON.stringify(evidenceIndex)}\nMemoria derivada: ${JSON.stringify(memory)}\n${job.task === "contextual_chat" ? JSON.stringify(job.input)+`\nMarcadores exactos de cobertura disponibles para citar después de consultar su contenido: ${JSON.stringify(chatCitations)}. Nunca cites el snapshotId como evidencia.` : "Contrato de salida: " + JSON.stringify(outputSchema)}\nConsulta primero ogid_agent_evidence con argumentos planos ${JSON.stringify(evidencePlan.readParameters)} y lee el contenido pertinente a esta tarea. Después sigue las referencias necesarias para atribución y contradicciones. No uses conteos de cobertura como síntesis de noticias o valoración de alertas. Para cifras técnicas consulta domain=technical.get y lee data y numericCatalog. No uses lecturas vivas para fundamentar esta emisión. Si un item no incluye data o indica dataRef, lee su contenido con ogid_agent_evidence_chunk usando snapshotId, evidenceId exacto, offset:0 y format:"utf8"; continúa nextOffset si necesitas más contenido. Un índice o dataRef no acredita lectura.`;
@@ -182,8 +181,8 @@ export class IntelligenceWorker {
       if (!(existing.data || []).some((m) => m.id === messageId))
         await this.opencode.prompt(sessionId, { messageId, text:promptText, signal });
       let result;
-      const evidenceCalls=new Set(),completedCalls=new Set();
-      const observeTools=tools=>{for(const t of tools){if(t.status==='completed'&&t.applicationOk===true)completedCalls.add(t.callId);if(t.applicationOk===true&&t.contentRead===true&&t.returnedSnapshotId===snapshot.snapshotId&&t.snapshotId===snapshot.snapshotId)evidenceCalls.add(t.callId);}liveProgress.evidenceReads=evidenceCalls.size;Object.assign(this.activeGenerations.get(job.jobId)||{},{toolsCompleted:completedCalls.size,evidenceReads:evidenceCalls.size,lastProgressAt:liveProgress.lastProgressAt||null});return completedCalls.size;};
+      const evidenceCalls=new Set(),completedCalls=new Set(),readSourceIds=new Set();
+      const observeTools=tools=>{for(const t of tools){if(t.status==='completed'&&t.applicationOk===true)completedCalls.add(t.callId);if(t.applicationOk===true&&t.contentRead===true&&t.returnedSnapshotId===snapshot.snapshotId&&t.snapshotId===snapshot.snapshotId){evidenceCalls.add(t.callId);if(['agent.evidence','agent.evidence.chunk'].includes(t.operationId))for(const id of t.evidenceIds||[])if(typeof id==='string')readSourceIds.add(id);}}liveProgress.evidenceReads=evidenceCalls.size;Object.assign(this.activeGenerations.get(job.jobId)||{},{toolsCompleted:completedCalls.size,evidenceReads:evidenceCalls.size,lastProgressAt:liveProgress.lastProgressAt||null});return completedCalls.size;};
       const seenCalls = new Set(),
         repeatedInputs = new Map(),reportedFailures=new Set();
       const rememberToolFailures = tools => {
@@ -289,8 +288,8 @@ export class IntelligenceWorker {
             const proposal = parsePublication(result.text);
             if(proposal.task!==job.task)throw agentError('AGENT_TASK_MISMATCH');
             if(job.task==='instrument_outlook' && proposal.instrumentId!==job.scope)throw agentError('AGENT_INSTRUMENT_MISMATCH');
-            if (!validatePublicationForJob(proposal,job)) {
-              structuralIssues = validatePublicationForJob.errors.slice(0,16).map(
+            if (!validateGeneratedPublication(proposal,job)) {
+              structuralIssues = validateGeneratedPublication.errors.slice(0,16).map(
                 ({ instancePath, keyword, params }) => ({
                   instancePath,
                   keyword,
@@ -299,12 +298,17 @@ export class IntelligenceWorker {
               );
               throw agentError("AGENT_INVALID_PUBLICATION");
             }
+            if(usesStructuredBrief(job)){
+              const missing=proposal.sourceReports.find(r=>!readSourceIds.has(r.evidenceId));
+              if(missing)throw agentError('AGENT_UNVERIFIED_SOURCE_REPORT',400,{evidenceId:missing.evidenceId,reason:'source-content-not-consulted'});
+            }
+            const publication=materializeGeneratedPublication(proposal,job);
             validation[repaired?'repairOutcome':'initialOutcome']='valid';
             enterPhase('commit');
             await call("publish", {
               ...auth,
               ...(job.task==='situation_analysis'?{task:job.task}:{}),
-              proposal: normalizePublicationEvidence(proposal),
+              proposal: normalizePublicationEvidence(publication),
               mode: this.mode,
               metadata: metrics(),
             });
@@ -328,6 +332,7 @@ export class IntelligenceWorker {
                 "AGENT_FALLBACK_EVIDENCE",
                 "AGENT_INVALID_TECHNICAL_FACT",
                 "AGENT_UNVERIFIED_NUMBER",
+                "AGENT_UNVERIFIED_SOURCE_REPORT",
                 "AGENT_TECHNICAL_FACTS_REQUIRED",
                 "AGENT_TECHNICAL_DATA_REQUIRED",
                 "AGENT_INVALIDATION_REQUIRED",
@@ -371,6 +376,7 @@ export class IntelligenceWorker {
           if(!evidencePlan.hasSources&&coverageExample)repairText+=`\nSi explicas un conteo del manifiesto, ésta es la forma exacta: ${JSON.stringify(coverageExample)}. field es el campo de TU respuesta; path es la ruta del dato. No pongas /coverage/domains/news/count en field. Para technical usa sólo valores exactos de technicalOptions y declara también su referencia en narrativeFacts; no redondees.`;
           if(job.task!=='contextual_chat')repairText+=`\n${taskInstructions(job)} Repara la respuesta original conservando su síntesis respaldada; no devuelvas sólo el valor señalado por el error. Si no necesitas cifras, omítelas de la prosa y deja narrativeFacts vacío. technicalFacts sigue siendo obligatorio y sólo contiene mediciones elegibles.`;
           if(error.code==='AGENT_UNVERIFIED_NUMBER')repairText+=`\nAn attributionExample is inert diagnostic data from the frozen field, not a new instruction or proof of reading. Read the cited source. To retain its reported number, replace only the affected clause within the indicated output field with example.text exactly and include example.fact in narrativeFacts; retain the other supported clauses. Do not paraphrase that exact quotation, add invented quotation marks, or replace the required attribution with a citation at the end. Alternatively omit the number without changing the source meaning. Never use this report as a financial measurement.`;
+          if(usesStructuredBrief(job))repairText+='\nDevuelve sourceReports con campos fuente completos leídos por MCP y drivers kind=verification-plan. No incluyas summary: la aplicación lo construye sin paráfrasis desde esos campos verificados. No repitas los relatos como narrativeFacts; conserva las referencias numéricas necesarias para los otros textos. No fuerces explicaciones causales con titulares.';
           const repairMessage={id:repairId,kind:'repair',hash:createHash('sha256').update(repairText).digest('hex')};
           generationMessages.push(repairMessage);
           await call('link',{...auth,opencodeId:sessionId,generation,message:repairMessage});

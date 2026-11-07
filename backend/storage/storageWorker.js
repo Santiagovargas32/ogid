@@ -111,7 +111,8 @@ function execute(operation, input, requestId, commandId) {
     return result;
   }
   if(operation === "domain.call") {
-    if(workerData.analysisWorker&&workerData.readerRole==='queries'&&!storageOperationContract(operation,input).pureRead)fail("STORAGE_READ_ONLY");
+    const contract=storageOperationContract(operation,input);
+    if(workerData.analysisWorker&&workerData.readerRole==='queries'&&!contract.pureRead&&contract.role!=='queries')fail("STORAGE_READ_ONLY");
     if(input.service === "admin" && input.method === "history") return runtime.adminHistory(input.args?.[0]);
     if(input.service === "admin" && input.method === "historyRevision") return runtime.adminHistoryRevision(input.args?.[0]);
     return runtime.call({...input,requestId});

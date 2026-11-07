@@ -3,10 +3,10 @@ import Ajv from "ajv";
 import { AppError } from "../../utils/error.js";
 import { numericFactProblem } from './evidencePaths.js';
 import {numericNarrativeProblem} from './numericSemantics.js';
-import {narrativeFactsSchema, narrativeProblem, NARRATIVE_INSTRUCTIONS, FACTUAL_GROUNDING_INSTRUCTIONS, NARRATIVE_PROMPT_VERSION, NARRATIVE_CONTRACT_VERSION, usesNarrativeFacts} from './narrativeFacts.js';
+import {narrativeFactsSchema, narrativeProblem, NARRATIVE_INSTRUCTIONS, FACTUAL_GROUNDING_INSTRUCTIONS, NARRATIVE_PROMPT_VERSION, NARRATIVE_CONTRACT_VERSION, usesNarrativeFacts,usesBriefCriteria,usesStructuredBrief} from './narrativeFacts.js';
 export const PROMPT_VERSION = NARRATIVE_PROMPT_VERSION;
 export const PUBLICATION_CONTRACT_VERSION = NARRATIVE_CONTRACT_VERSION;
-const typedNumericJob = job => ['ogid-analyst-v1.7','ogid-analyst-v1.8','ogid-analyst-v1.9','ogid-analyst-v1.10','ogid-analyst-v1.11','ogid-analyst-v1.12','ogid-analyst-v1.13','ogid-analyst-v1.14','ogid-analyst-v1.15','ogid-analyst-v1.16',PROMPT_VERSION].includes(job.promptVersion);
+const typedNumericJob = job => ['ogid-analyst-v1.7','ogid-analyst-v1.8','ogid-analyst-v1.9','ogid-analyst-v1.10','ogid-analyst-v1.11','ogid-analyst-v1.12','ogid-analyst-v1.13','ogid-analyst-v1.14','ogid-analyst-v1.15','ogid-analyst-v1.16','ogid-analyst-v1.17','ogid-analyst-v1.18','ogid-analyst-v1.19',PROMPT_VERSION].includes(job.promptVersion);
 export const TASKS = [
   "situation_analysis",
   "global_intelligence_brief",
@@ -83,8 +83,12 @@ export const publicationSchema = {
         required: ["domain", "description", "evidenceIds"],
         properties: {
           domain: { enum: ["geopolitical", "macro", "sector", "technical"] },
+          kind: {enum:['hypothesis','verification-plan']},
           description: text,
           evidenceIds: { type: "array", minItems: 1, items: text },
+          mechanism: {...text,maxLength:2000},
+          confirmation: {...text,maxLength:2000},
+          invalidation: {...text,maxLength:2000},
         },
       },
     },
@@ -180,6 +184,7 @@ const taskValidators = new Map();
 export function publicationSchemaForJob(job) {
   if(job.task==='situation_analysis')return {...analysisSchema,required:[...analysisSchema.required,...(usesNarrativeFacts(job)?['narrativeFacts']:[])],properties:{...analysisSchema.properties,situationId:{const:job.scope}}};
   const outlook = ['instrument_outlook','market_outlook_global'].includes(job.task);
+  const briefCriteria=usesBriefCriteria(job),structuredBrief=usesStructuredBrief(job);
   const directional = { not: { const: 'unavailable' } };
   return {
     ...publicationSchema,
@@ -190,12 +195,13 @@ export function publicationSchemaForJob(job) {
       task: { const: job.task },
       ...(job.task === 'instrument_outlook' ? {instrumentId: job.scope ? {const:job.scope} : {type:'string',minLength:1}} : {}),
       ...(job.task !== 'geopolitical_alert_assessment' ? {alertAssessments:{...publicationSchema.properties.alertAssessments,maxItems:0}} : {}),
+      ...(briefCriteria?{drivers:{...publicationSchema.properties.drivers,maxItems:4,items:{...publicationSchema.properties.drivers.items,required:['domain','description','evidenceIds','mechanism','confirmation','invalidation',...(structuredBrief?['kind']:[])],properties:{...publicationSchema.properties.drivers.items.properties,...(structuredBrief?{kind:{const:'verification-plan'}}:{description:{...text,pattern:'^Hipótesis condicional:'},mechanism:{...text,maxLength:2000,pattern:'^Si se confirma el relato citado,'}})}}}}:{}),
       intradayScenarios: {...publicationSchema.properties.intradayScenarios,items:{
         ...publicationSchema.properties.intradayScenarios.items,
         allOf:[{if:{properties:{direction:directional}},then:{properties:{invalidation:{minItems:1},evidenceIds:{minItems:1}}}}],
       }},
     },
-    allOf: [...publicationSchema.allOf, ...(outlook ? [{
+    allOf: [...publicationSchema.allOf,...(briefCriteria?[{if:{properties:{summary:{not:{const:'La evidencia consultada no permite una síntesis comprobable.'}}}},then:{required:['drivers'],properties:{drivers:{minItems:1}}}}]:[]), ...(outlook ? [{
       if:{properties:{direction:directional}},
       then:{properties:{invalidation:{minItems:1},drivers:{minItems:1},
         scenarios:{minItems:3,maxItems:3,allOf:['base','bull','bear'].map(name=>({contains:{properties:{name:{const:name}},required:['name']}}))},
@@ -209,7 +215,7 @@ export function validatePublicationForJob(value, job) {
     validatePublicationForJob.errors=[{instancePath:'/task',keyword:'enum',params:{}}];
     return false;
   }
-  const key=`${job.task}:${usesNarrativeFacts(job)?'typed-v3':typedNumericJob(job)?'typed-v2':'legacy'}`;
+  const key=`${job.task}:${usesNarrativeFacts(job)?'typed-v3':typedNumericJob(job)?'typed-v2':'legacy'}:${usesStructuredBrief(job)?'brief-selection':usesBriefCriteria(job)?'brief-criteria':'standard'}`;
   if (!taskValidators.has(key)) taskValidators.set(key, ajv.compile(publicationSchemaForJob({task:job.task,promptVersion:job.promptVersion})));
   const validator=taskValidators.get(key);
   let valid=validator(value);
@@ -230,7 +236,7 @@ export function taskInstructions(job) {
   const specific={
     instrument_outlook:'Sólo el instrumento indicado. Distingue técnica consultada caducada, indicador ausente por calentamiento y falta de datos. Explica las limitaciones concretas; no declares inexistentes todos los dominios si sólo falta técnica vigente. Incluye intradayScenarios; si no hay técnica elegible, dirección unavailable. No incluyas alertAssessments salvo [].',
     market_outlook_global:'Sólo la watchlist cubierta. Distingue técnica consultada caducada, indicador ausente por calentamiento y falta de datos. Resume los instrumentos y evidencia elegibles realmente leídos; si faltan, abstente y explica las carencias concretas en limitations y missingEvidence, sin inventar ausencia de otros dominios. No incluyas intradayScenarios ni alertAssessments salvo [].',
-    global_intelligence_brief:'Para un contexto global, consulta las continuaciones pertinentes y sintetiza varios asuntos y regiones disponibles; la primera página de una sola fuente de descubrimiento no representa todo el contexto. Declara los límites de lo consultado. El brief sintetiza los relatos consultados: qué se comunica, quién lo atribuye, qué incertidumbre o contradicción existe y qué relevancia podría tener como hipótesis. Resume contenido concreto de noticias y, si el usuario fijó una alerta, su revisión y sus fuentes. No sustituyas esa síntesis por estadísticas del snapshot ni por una abstención sobre precios. La ausencia de técnica impide una dirección financiera, pero no una síntesis geopolítica atribuida. No incluyas campos exclusivos de outlook/intradía ni alertAssessments salvo [].',
+    global_intelligence_brief:'Selecciona entre dos y cuatro relatos materiales distintos de la muestra; no uses titulares equivalentes de un mismo anuncio para llenar el brief ni los trates como corroboración. Devuelve sourceReports: [{evidenceId,path,quote}], con path=title o excerpt y quote=TODO ese campo congelado copiado literalmente, sin traducir ni añadir comillas. Usa sólo IDs cuyo contenido hayas leído realmente. No generes summary: la aplicación construye las atribuciones desde sourceReports verificados. No dupliques esas referencias en narrativeFacts; las cifras que estén sólo dentro de sourceReports no necesitan referencias manuales. Con titulares no puedes establecer motivos ni impactos causales. El análisis útil va en drivers kind=verification-plan: description es una pregunta concreta sobre el alcance o significado del relato; mechanism explica por qué esa información faltante importa para interpretarlo; confirmation identifica el documento o dato preciso que respondería; invalidation identifica qué corrección o información descartaría la interpretación inicial. Formula un plan de comprobación, no una predicción ni una explicación inventada del suceso. No añadas género, participantes, lugares, motivos o políticas que la fuente no indique. No completes sanciones genéricas con programa nuclear ni una esperanza de reunión con voluntad de ambas partes. Conserva preguntas y negaciones. Evita decir sólo confirmar la noticia o seguir vigilando. Incluye limitations concretas sobre titulares, cadena de origen o cobertura, sin conteos decorativos. Si no hay relatos elegibles usa sourceReports=[],drivers=[] y explica la carencia. probability=null y direction=unavailable si no hay base financiera. No incluyas escenarios de outlook/intradía ni alertAssessments salvo [].',
     geopolitical_alert_assessment:'Lee la revisión congelada de la alerta elegida y después sus fuentes exactas disponibles de news-reference. Valora su relevancia y límites con citas; copiar el titular no es una valoración. Distingue el relato de la fuente, la interpretación de la alerta y cualquier hipótesis de impacto. Señala si sólo hay titulares o una cadena de origen desconocida. Explica qué se afirma, atribución, respaldo, límites y contradicciones; una valoración no verifica el relato. alertAssessments cita alertId/revision y evidenceId exactos. No sustituyas la valoración por conteos de cobertura. No incluyas intradía.',
     contextual_chat:'Responde en texto con citas [evidence:ID] consultadas del snapshot; sin JSON.',
   };
@@ -239,7 +245,7 @@ export function taskInstructions(job) {
 export function publicationExample(job,evidenceId) {
   if(!evidenceId || job.task==='contextual_chat')return null;
   if(job.task==='situation_analysis')return {schemaVersion:'ogid-situation-analysis-v1',task:job.task,situationId:job.scope,summary:'La evidencia consultada no permite una síntesis comprobable.',probability:null,evidenceIds:[evidenceId],synthesis:[],timeline:[],changes:[],impacts:[],contradictions:[],limitations:['Cobertura limitada.'],missingEvidence:['Falta evidencia suficiente para la conclusión.'],technicalFacts:[],narrativeFacts:[]};
-  const value={schemaVersion:'ogid-agent-publication-v1',task:job.task,summary:'La evidencia consultada no permite una dirección comprobable.',direction:'unavailable',sentiment:'unavailable',stability:'unavailable',horizonHours:24,probability:null,confidenceKind:'qualitative-uncalibrated',evidenceIds:[evidenceId],contradictions:[],invalidation:[],limitations:['Cobertura limitada; consultar el snapshot.'],technicalFacts:[],narrativeFacts:[]};
+  const value={schemaVersion:'ogid-agent-publication-v1',task:job.task,summary:job.task==='global_intelligence_brief'?'La evidencia consultada no permite una síntesis comprobable.':'La evidencia consultada no permite una dirección comprobable.',direction:'unavailable',sentiment:'unavailable',stability:'unavailable',horizonHours:24,probability:null,confidenceKind:'qualitative-uncalibrated',evidenceIds:[evidenceId],contradictions:[],invalidation:[],limitations:['Cobertura limitada; consultar el snapshot.'],technicalFacts:[],narrativeFacts:[]};
   if(['instrument_outlook','market_outlook_global'].includes(job.task))Object.assign(value,{drivers:[],scenarios:[],alternatives:[],missingEvidence:['Falta evidencia elegible para una dirección.'],target:'absolute-return-direction; first available daily close after 24h',methods:{sentiment:'qualitative-evidence-synthesis-v1',stability:'qualitative-watchlist-v1'}});
   if(job.task==='instrument_outlook')Object.assign(value,{instrumentId:job.scope,intradayScenarios:[{horizonMinutes:60,interval:'1h',direction:'unavailable',summary:'Sin técnica intradía elegible.',evidenceIds:[],invalidation:[],evaluation:'unavailable'}]});
   return value;

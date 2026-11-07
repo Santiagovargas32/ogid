@@ -138,7 +138,15 @@ export function mountAgentIntelligence({getWatchlist=()=>null,getContext=()=>({v
     if(pendingEvaluation?.fingerprint!==fingerprint)pendingEvaluation={fingerprint,key:crypto.randomUUID()};
     const result=await request(`/api/agent/v1/chat/sessions/${sessionId}/requests`,{method:'POST',body:JSON.stringify({family,scope,context:descriptor,key:pendingEvaluation.key})});pendingEvaluation=null;runId=result.jobId;status.textContent='En cola · contexto fijado';await history();
   }
-  async function showResult(jobId){const run=await request(`/api/agent/v1/runs/${jobId}`);const p=run.publication;if(!p)return;const result=showMessage('assistant',`Shadow · ${p.evidenceAsOf} · ${p.proposal.summary}`);if(p.currentness?.current===false)result.append(node('p','Evidencia revisada: requiere nueva evaluación.'));for(const key of ['synthesis','timeline','changes','impacts','contradictions','drivers','scenarios','limitations','missingEvidence'])if(p.proposal[key]?.length){const section=node('details');section.append(node('summary',({synthesis:'Síntesis',timeline:'Cronología',changes:'Cambios',impacts:'Impactos',contradictions:'Contradicciones',drivers:'Factores',scenarios:'Escenarios',limitations:'Limitaciones',missingEvidence:'Evidencia ausente'})[key]));for(const item of p.proposal[key])section.append(node('p',typeof item==='string'?item:[item.text||item.description||item.summary,item.occurredAt||item.publishedAt].filter(Boolean).join(' · ')));result.append(section);}result.append(button('Ver fuentes',()=>void showEvidence(p).catch(showError)));}
+  function driverView(driver){
+    const view=node('div',null,'agent-driver');
+    if(driver.kind==='verification-plan')view.append(node('strong','Cuestión pendiente de comprobar'));
+    view.append(node('p',driver.description));
+    for(const [key,label]of [['mechanism','Mecanismo'],['confirmation','Qué comprobar'],['invalidation','Qué debilitaría la hipótesis']])
+      if(typeof driver[key]==='string'&&driver[key])view.append(node('p',`${driver.kind==='verification-plan'&&key==='mechanism'?'Por qué importa':label}: ${driver[key]}`));
+    return view;
+  }
+  async function showResult(jobId){const run=await request(`/api/agent/v1/runs/${jobId}`);const p=run.publication;if(!p)return;const result=showMessage('assistant',`Shadow · ${p.evidenceAsOf} · ${p.proposal.summary}`);if(p.currentness?.current===false)result.append(node('p','Evidencia revisada: requiere nueva evaluación.'));for(const key of ['synthesis','timeline','changes','impacts','contradictions','drivers','scenarios','limitations','missingEvidence'])if(p.proposal[key]?.length){const section=node('details');section.append(node('summary',({synthesis:'Síntesis',timeline:'Cronología',changes:'Cambios',impacts:'Impactos',contradictions:'Contradicciones',drivers:'Factores',scenarios:'Escenarios',limitations:'Limitaciones',missingEvidence:'Evidencia ausente'})[key]));for(const item of p.proposal[key])section.append(key==='drivers'?driverView(item):node('p',typeof item==='string'?item:[item.text||item.description||item.summary,item.occurredAt||item.publishedAt].filter(Boolean).join(' · ')));result.append(section);}result.append(button('Ver fuentes',()=>void showEvidence(p).catch(showError)));}
   function showMessage(role, text) {
     const article = node(
       "article",
@@ -406,6 +414,7 @@ export function mountAgentIntelligence({getWatchlist=()=>null,getContext=()=>({v
         ),
       );
       if(p.sourceCurrentness?.current===false)article.append(node("p","Las fuentes citadas cambiaron o su vigencia no está comprobada. Esta valoración necesita revisión; conserva su evidencia histórica."));
+      if(p.proposal.task==='global_intelligence_brief')for(const driver of p.proposal.drivers||[])article.append(driverView(driver));
       if (p.proposal.task.includes("outlook")) {
         article.append(
           node(

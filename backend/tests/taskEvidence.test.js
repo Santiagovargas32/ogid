@@ -37,7 +37,7 @@ test('brief repair requests source contents rather than coverage and keeps its s
   await worker.execute({jobId:'brief',fence:1,task:'global_intelligence_brief',scope:'global',model:'fixture',promptVersion:PROMPT_VERSION,input:{origin:'user'},createdAt:new Date().toISOString()});
   assert.equal(prompts.length,2);assert.ok(states.includes('failed'));
   for(const text of prompts){
-    assert.ok(text.includes('"domain":"news"'));assert.ok(text.includes('síntesis geopolítica atribuida'));
+    assert.ok(text.includes('"domain":"news"'));assert.ok(text.includes('sourceReports'));assert.ok(text.includes('verification-plan'));
     assert.ok(!text.includes('Ejemplo de estructura de abstención'));assert.ok(!text.includes('Ejemplo parcial de cobertura'));
     assert.ok(!text.includes('"evidenceId":"coverage:cut","offset":0'));
   }
