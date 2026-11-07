@@ -1,5 +1,6 @@
 import {CandleWriteJobs} from './candleWriteJobs.js';
 import {CommitActivity} from "./commitActivity.js";
+import {WalAcquisitionBudget} from './walAcquisitionBudget.js';
 import {storageOperationContract} from '../contracts/storageOperations.js';
 import { FrozenRows } from "./frozenRows.js";
 import { RUNTIME_POLICY } from "../config/runtimePolicy.js";
@@ -28,7 +29,7 @@ import {nativeThreadId} from './nativeWait.js';
 import {MarketProjectionRepository} from './marketProjections.js';
 import {readPressure,pressureAllows,pressureError,waitForAcquisitionResources} from './resourceAdmission.js';
 const nativeId=nativeThreadId();
-let database, migrations, version, runtime;
+let database, migrations, version, runtime,walAcquisitionBudget;
 let diagnostics,lastDiagnosticsCompletedAt=0,lastCompletedCommand,lastFailedCommand;
 const activeCommands=new Map();
 let commandEpoch=0;
@@ -36,7 +37,7 @@ const workflows=new Map();
 function telemetry(){
   if(!workerData.businessEnabled && !diagnostics){diagnostics=readDatabaseDiagnostics(database);lastDiagnosticsCompletedAt=Date.now();}
   const memory=process.memoryUsage();
-  parentPort.postMessage({type:"telemetry",worker:{threadId,walBytes:size(`${workerData.databasePath}-wal`),heartbeatAt:new Date().toISOString(),memory:{heapUsed:memory.heapUsed,heapTotal:memory.heapTotal,external:memory.external,arrayBuffers:memory.arrayBuffers},activeCommands:[...activeCommands.values()],lastCompletedCommand,lastFailedCommand,database:diagnostics,rss:runtime?.rssDiagnostics || null,eventIndex:runtime?.registryDiagnostics || null,news:{corpus:runtime?.newsCorpus?.lastDiagnostics ? {...runtime.newsCorpus.lastDiagnostics,payloadCache:runtime.newsCorpus.payloadCache.status()} : null,collection:runtime?.newsPipeline?.diagnostics || null,projection:runtime?.newsPipeline?.projectionDiagnostics || null,supplemental:runtime?.newsPipeline?.supplementalDiagnostics || null}}});
+  parentPort.postMessage({type:"telemetry",worker:{threadId,walBytes:size(`${workerData.databasePath}-wal`),walAcquisitionBudget:walAcquisitionBudget?.status()||null,heartbeatAt:new Date().toISOString(),memory:{heapUsed:memory.heapUsed,heapTotal:memory.heapTotal,external:memory.external,arrayBuffers:memory.arrayBuffers},activeCommands:[...activeCommands.values()],lastCompletedCommand,lastFailedCommand,database:diagnostics,rss:runtime?.rssDiagnostics || null,eventIndex:runtime?.registryDiagnostics || null,news:{corpus:runtime?.newsCorpus?.lastDiagnostics ? {...runtime.newsCorpus.lastDiagnostics,payloadCache:runtime.newsCorpus.payloadCache.status()} : null,collection:runtime?.newsPipeline?.diagnostics || null,projection:runtime?.newsPipeline?.projectionDiagnostics || null,supplemental:runtime?.newsPipeline?.supplementalDiagnostics || null}}});
   // Historical counts are read work, never part of the business writer's
   // heartbeat. Sample only an idle reader, and schedule from completion: a cold
   // sample taking longer than the interval must not trigger continuous rescans.
@@ -51,7 +52,7 @@ function rpc(operation,input){return new Promise((resolve,reject)=>{const comman
 const fail = code => { throw Object.assign(new Error(code), { code }); };
 function size(file) { try { return statSync(file).size; } catch (error) { if (error.code === "ENOENT") return 0; throw error; } }
 function status() {
-  return { nativeThreadId:nativeId,readOnlyConnection:database.readonly,queryOnly:database.pragma("query_only",{simple:true}) === 1,sqliteVersion: version, synchronous:database.pragma("synchronous",{simple:true}),autoCheckpoint:database.pragma("wal_autocheckpoint",{simple:true}),migrations, databaseBytes: size(workerData.databasePath), walBytes: size(`${workerData.databasePath}-wal`), businessStorage: readMeta(database,"businessStorage",workerData.businessEnabled ? "sqlite" : "legacy-json"), storagePhase: readMeta(database,"businessStorage",workerData.businessEnabled ? "sqlite" : "legacy-json") === "sqlite" ? "repositories" : "infrastructure" };
+  return { nativeThreadId:nativeId,readOnlyConnection:database.readonly,queryOnly:database.pragma("query_only",{simple:true}) === 1,sqliteVersion: version, synchronous:database.pragma("synchronous",{simple:true}),autoCheckpoint:database.pragma("wal_autocheckpoint",{simple:true}),migrations, databaseBytes: size(workerData.databasePath), walBytes: size(`${workerData.databasePath}-wal`),walAcquisitionBudget:walAcquisitionBudget?.status()||null, businessStorage: readMeta(database,"businessStorage",workerData.businessEnabled ? "sqlite" : "legacy-json"), storagePhase: readMeta(database,"businessStorage",workerData.businessEnabled ? "sqlite" : "legacy-json") === "sqlite" ? "repositories" : "infrastructure" };
 }
 function pipelineRecord(input) {
   if (!input || !/^[A-Za-z0-9._:-]{1,128}$/.test(input.runId || "") || !/^[a-z-]{1,64}$/.test(input.pipelineId || "")) fail("STORAGE_INVALID_COMMAND");
@@ -183,6 +184,7 @@ try {
   cacheStatements(database,256,{activity,beforeWrite,onSlow:(sql,durationMs)=>log.warn("storage_slow_sql",{threadId,readOnly:workerData.analysisWorker,durationMs:Math.round(durationMs),sql:sql.replace(/'(?:''|[^'])*'/g,"?").slice(0,240)})});
   if(activity)trackTransactions(database,activity,{beforeBegin:beforeWrite,onSlowCommit:durationMs=>log.warn('storage_slow_commit',{threadId,durationMs:Math.round(durationMs),synchronous:'FULL',autoCheckpoint:0})});
   runtime=new BusinessRuntime(database,rpc,(id,stage)=>parentPort.postMessage({type:"stage",id,stage}));
+  if(!workerData.analysisWorker)walAcquisitionBudget=new WalAcquisitionBudget(database,()=>rpc('storage.walDrain',{}),{softLimitBytes:workerData.checkpointSoftBytes});
   parentPort.postMessage({ type: "ready", status: status() });
   telemetry();const heartbeat=setInterval(()=>{try{telemetry();}catch(error){log.warn("storage_diagnostics_failed",{code:error.code});}},5000);heartbeat.unref();
   parentPort.on("message", async envelope => {
@@ -233,7 +235,11 @@ try {
         }).immediate();
       } else if(isAcquisitionWorkflow(message.operation,message.input)){
         const controller=new AbortController();workflows.set(message.id,controller);let completed=0;
-        result=await operationContext.run({signal:controller.signal,waitForResources:()=>waitForAcquisitionResources(workerData.resourcePressureBuffer,controller.signal),committed:count=>{
+        result=await operationContext.run({signal:controller.signal,waitForResources:async()=>{
+          await waitForAcquisitionResources(workerData.resourcePressureBuffer,controller.signal);
+          await walAcquisitionBudget.wait(controller.signal);
+          await waitForAcquisitionResources(workerData.resourcePressureBuffer,controller.signal);
+        },committed:count=>{
           completed+=count;parentPort.postMessage({type:"command-progress",id:message.id,completed,at:Date.now()});
         }},async()=>{const value=await execute(message.operation,message.input,message.requestId,message.id);checkOperation();return value;});
       } else { result = await execute(message.operation,message.input,message.requestId,message.id); }

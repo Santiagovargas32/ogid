@@ -378,7 +378,15 @@ export class StorageManager extends EventEmitter {
       return;
     }
     if (message.type === "rpc") {
-      Promise.resolve().then(() => this.rpcHandler?.(message.operation, message.input)).then(
+      Promise.resolve().then(() => {
+        // Only our writer's cooperative acquisition boundary can request this
+        // drain. It uses the existing checkpoint worker, never another writer.
+        if(message.operation==='storage.walDrain'){
+          if(this.options.analysisWorker||!this.checkpoint)throw error('STORAGE_CHECKPOINT_UNAVAILABLE');
+          return this.checkpoint.request();
+        }
+        return this.rpcHandler?.(message.operation, message.input);
+      }).then(
         result => this.worker.postMessage({ type: "rpc-result", id: message.id, result }),
         reason => this.worker.postMessage({ type: "rpc-result", id: message.id, error: { code: reason.code || "PROVIDER_FAILED", statusCode: reason.statusCode || 503, causeCode: reason.causeCode, diagnostic: reason.diagnostic } })
       ).catch(() => {}); return;
