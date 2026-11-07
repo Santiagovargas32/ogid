@@ -1,5 +1,5 @@
 {
-  "contractVersion": "1.14.0",
+  "contractVersion": "1.15.0",
   "routes": 108,
   "operations": [
     {
@@ -7142,6 +7142,4323 @@
       "quality": "preserve mode, dates, stale/synthetic and missing values",
       "projection": "public",
       "tool": "ogid_operator"
+    }
+  ],
+  "localTransports": [
+    {
+      "version": "ogid-agent-proposal-return-v3",
+      "tool": "ogid_agent_proposal",
+      "operationId": "agent.proposal.return",
+      "input": {
+        "type": "object",
+        "required": [
+          "snapshotId",
+          "proposal"
+        ],
+        "properties": {
+          "snapshotId": {
+            "type": "string"
+          },
+          "proposal": {
+            "anyOf": [
+              {
+                "type": "object",
+                "required": [
+                  "schemaVersion",
+                  "task",
+                  "direction",
+                  "sentiment",
+                  "stability",
+                  "horizonHours",
+                  "probability",
+                  "confidenceKind",
+                  "evidenceIds",
+                  "contradictions",
+                  "invalidation",
+                  "limitations",
+                  "technicalFacts",
+                  "narrativeFacts",
+                  "sourceReports"
+                ],
+                "properties": {
+                  "schemaVersion": {
+                    "const": "ogid-agent-publication-v1"
+                  },
+                  "task": {
+                    "const": "global_intelligence_brief"
+                  },
+                  "direction": {
+                    "enum": [
+                      "up",
+                      "down",
+                      "flat",
+                      "mixed",
+                      "unavailable"
+                    ]
+                  },
+                  "sentiment": {
+                    "enum": [
+                      "positive",
+                      "negative",
+                      "mixed",
+                      "neutral",
+                      "unavailable"
+                    ]
+                  },
+                  "stability": {
+                    "enum": [
+                      "stable",
+                      "unstable",
+                      "mixed",
+                      "unavailable"
+                    ]
+                  },
+                  "horizonHours": {
+                    "type": "integer",
+                    "enum": [
+                      24
+                    ]
+                  },
+                  "probability": {
+                    "type": "null"
+                  },
+                  "confidenceKind": {
+                    "const": "qualitative-uncalibrated"
+                  },
+                  "evidenceIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "contradictions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "invalidation": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "limitations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "narrativeFacts": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "field",
+                        "literal",
+                        "evidenceId",
+                        "path"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "technical",
+                            "reported-quantity",
+                            "reported-claim",
+                            "date",
+                            "edition",
+                            "coverage"
+                          ]
+                        },
+                        "field": {
+                          "type": "string",
+                          "description": "JSON pointer del texto de TU respuesta, por ejemplo /summary. Nunca /title ni una ruta del snapshot."
+                        },
+                        "literal": {
+                          "type": "string",
+                          "description": "Literal numérico presente en ese texto; para date, timestamp exacto. Para reported-claim, un fragmento literal de quote de hasta256 caracteres."
+                        },
+                        "evidenceId": {
+                          "type": "string"
+                        },
+                        "path": {
+                          "type": "string",
+                          "description": "Ruta del valor dentro de data, por ejemplo title o observed.close; nunca data ni una ruta de TU respuesta."
+                        },
+                        "quote": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "technicalFacts": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "evidenceId",
+                        "path",
+                        "value",
+                        "unit"
+                      ],
+                      "properties": {
+                        "evidenceId": {
+                          "type": "string"
+                        },
+                        "path": {
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": "number"
+                        },
+                        "unit": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "instrumentId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "scenarios": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "description"
+                      ],
+                      "properties": {
+                        "name": {
+                          "enum": [
+                            "base",
+                            "bull",
+                            "bear"
+                          ]
+                        },
+                        "description": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "drivers": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "domain",
+                        "description",
+                        "evidenceIds",
+                        "mechanism",
+                        "confirmation",
+                        "invalidation",
+                        "kind"
+                      ],
+                      "properties": {
+                        "domain": {
+                          "enum": [
+                            "geopolitical",
+                            "macro",
+                            "sector",
+                            "technical"
+                          ]
+                        },
+                        "kind": {
+                          "const": "verification-plan"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "mechanism": {
+                          "type": "string"
+                        },
+                        "confirmation": {
+                          "type": "string"
+                        },
+                        "invalidation": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "alternatives": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "missingEvidence": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "target": {
+                    "const": "absolute-return-direction; first available daily close after 24h"
+                  },
+                  "methods": {
+                    "type": "object",
+                    "required": [
+                      "sentiment",
+                      "stability"
+                    ],
+                    "properties": {
+                      "sentiment": {
+                        "const": "qualitative-evidence-synthesis-v1"
+                      },
+                      "stability": {
+                        "const": "qualitative-watchlist-v1"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "alertAssessments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "alertId",
+                        "revision",
+                        "summary",
+                        "evidenceIds"
+                      ],
+                      "properties": {
+                        "alertId": {
+                          "type": "string"
+                        },
+                        "revision": {
+                          "type": "integer"
+                        },
+                        "summary": {
+                          "type": "string"
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "intradayScenarios": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "horizonMinutes",
+                        "interval",
+                        "direction",
+                        "summary",
+                        "evidenceIds",
+                        "invalidation",
+                        "evaluation"
+                      ],
+                      "properties": {
+                        "horizonMinutes": {
+                          "enum": [
+                            15,
+                            60,
+                            240
+                          ]
+                        },
+                        "interval": {
+                          "enum": [
+                            "15min",
+                            "1h"
+                          ]
+                        },
+                        "direction": {
+                          "enum": [
+                            "up",
+                            "down",
+                            "flat",
+                            "mixed",
+                            "unavailable"
+                          ]
+                        },
+                        "summary": {
+                          "type": "string"
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "invalidation": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "evaluation": {
+                          "const": "unavailable"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "sourceReports": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "evidenceId",
+                        "path",
+                        "quote"
+                      ],
+                      "properties": {
+                        "evidenceId": {
+                          "type": "string"
+                        },
+                        "path": {
+                          "enum": [
+                            "title",
+                            "excerpt"
+                          ]
+                        },
+                        "quote": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "required": [
+                  "schemaVersion",
+                  "task",
+                  "summary",
+                  "direction",
+                  "sentiment",
+                  "stability",
+                  "horizonHours",
+                  "probability",
+                  "confidenceKind",
+                  "evidenceIds",
+                  "contradictions",
+                  "invalidation",
+                  "limitations",
+                  "technicalFacts",
+                  "narrativeFacts"
+                ],
+                "properties": {
+                  "schemaVersion": {
+                    "const": "ogid-agent-publication-v1"
+                  },
+                  "task": {
+                    "const": "market_outlook_global"
+                  },
+                  "summary": {
+                    "type": "string"
+                  },
+                  "direction": {
+                    "enum": [
+                      "up",
+                      "down",
+                      "flat",
+                      "mixed",
+                      "unavailable"
+                    ]
+                  },
+                  "sentiment": {
+                    "enum": [
+                      "positive",
+                      "negative",
+                      "mixed",
+                      "neutral",
+                      "unavailable"
+                    ]
+                  },
+                  "stability": {
+                    "enum": [
+                      "stable",
+                      "unstable",
+                      "mixed",
+                      "unavailable"
+                    ]
+                  },
+                  "horizonHours": {
+                    "type": "integer",
+                    "enum": [
+                      24
+                    ]
+                  },
+                  "probability": {
+                    "type": "null"
+                  },
+                  "confidenceKind": {
+                    "const": "qualitative-uncalibrated"
+                  },
+                  "evidenceIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "contradictions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "invalidation": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "limitations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "narrativeFacts": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "field",
+                        "literal",
+                        "evidenceId",
+                        "path"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "technical",
+                            "reported-quantity",
+                            "reported-claim",
+                            "date",
+                            "edition",
+                            "coverage"
+                          ]
+                        },
+                        "field": {
+                          "type": "string",
+                          "description": "JSON pointer del texto de TU respuesta, por ejemplo /summary. Nunca /title ni una ruta del snapshot."
+                        },
+                        "literal": {
+                          "type": "string",
+                          "description": "Literal numérico presente en ese texto; para date, timestamp exacto. Para reported-claim, un fragmento literal de quote de hasta256 caracteres."
+                        },
+                        "evidenceId": {
+                          "type": "string"
+                        },
+                        "path": {
+                          "type": "string",
+                          "description": "Ruta del valor dentro de data, por ejemplo title o observed.close; nunca data ni una ruta de TU respuesta."
+                        },
+                        "quote": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "technicalFacts": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "evidenceId",
+                        "path",
+                        "value",
+                        "unit"
+                      ],
+                      "properties": {
+                        "evidenceId": {
+                          "type": "string"
+                        },
+                        "path": {
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": "number"
+                        },
+                        "unit": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "instrumentId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "scenarios": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "description"
+                      ],
+                      "properties": {
+                        "name": {
+                          "enum": [
+                            "base",
+                            "bull",
+                            "bear"
+                          ]
+                        },
+                        "description": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "drivers": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "domain",
+                        "description",
+                        "evidenceIds"
+                      ],
+                      "properties": {
+                        "domain": {
+                          "enum": [
+                            "geopolitical",
+                            "macro",
+                            "sector",
+                            "technical"
+                          ]
+                        },
+                        "kind": {
+                          "enum": [
+                            "hypothesis",
+                            "verification-plan"
+                          ]
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "mechanism": {
+                          "type": "string"
+                        },
+                        "confirmation": {
+                          "type": "string"
+                        },
+                        "invalidation": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "alternatives": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "missingEvidence": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "target": {
+                    "const": "absolute-return-direction; first available daily close after 24h"
+                  },
+                  "methods": {
+                    "type": "object",
+                    "required": [
+                      "sentiment",
+                      "stability"
+                    ],
+                    "properties": {
+                      "sentiment": {
+                        "const": "qualitative-evidence-synthesis-v1"
+                      },
+                      "stability": {
+                        "const": "qualitative-watchlist-v1"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "alertAssessments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "alertId",
+                        "revision",
+                        "summary",
+                        "evidenceIds"
+                      ],
+                      "properties": {
+                        "alertId": {
+                          "type": "string"
+                        },
+                        "revision": {
+                          "type": "integer"
+                        },
+                        "summary": {
+                          "type": "string"
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "intradayScenarios": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "horizonMinutes",
+                        "interval",
+                        "direction",
+                        "summary",
+                        "evidenceIds",
+                        "invalidation",
+                        "evaluation"
+                      ],
+                      "properties": {
+                        "horizonMinutes": {
+                          "enum": [
+                            15,
+                            60,
+                            240
+                          ]
+                        },
+                        "interval": {
+                          "enum": [
+                            "15min",
+                            "1h"
+                          ]
+                        },
+                        "direction": {
+                          "enum": [
+                            "up",
+                            "down",
+                            "flat",
+                            "mixed",
+                            "unavailable"
+                          ]
+                        },
+                        "summary": {
+                          "type": "string"
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "invalidation": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "evaluation": {
+                          "const": "unavailable"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "required": [
+                  "schemaVersion",
+                  "task",
+                  "summary",
+                  "direction",
+                  "sentiment",
+                  "stability",
+                  "horizonHours",
+                  "probability",
+                  "confidenceKind",
+                  "evidenceIds",
+                  "contradictions",
+                  "invalidation",
+                  "limitations",
+                  "technicalFacts",
+                  "narrativeFacts",
+                  "instrumentId"
+                ],
+                "properties": {
+                  "schemaVersion": {
+                    "const": "ogid-agent-publication-v1"
+                  },
+                  "task": {
+                    "const": "instrument_outlook"
+                  },
+                  "summary": {
+                    "type": "string"
+                  },
+                  "direction": {
+                    "enum": [
+                      "up",
+                      "down",
+                      "flat",
+                      "mixed",
+                      "unavailable"
+                    ]
+                  },
+                  "sentiment": {
+                    "enum": [
+                      "positive",
+                      "negative",
+                      "mixed",
+                      "neutral",
+                      "unavailable"
+                    ]
+                  },
+                  "stability": {
+                    "enum": [
+                      "stable",
+                      "unstable",
+                      "mixed",
+                      "unavailable"
+                    ]
+                  },
+                  "horizonHours": {
+                    "type": "integer",
+                    "enum": [
+                      24
+                    ]
+                  },
+                  "probability": {
+                    "type": "null"
+                  },
+                  "confidenceKind": {
+                    "const": "qualitative-uncalibrated"
+                  },
+                  "evidenceIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "contradictions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "invalidation": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "limitations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "narrativeFacts": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "field",
+                        "literal",
+                        "evidenceId",
+                        "path"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "technical",
+                            "reported-quantity",
+                            "reported-claim",
+                            "date",
+                            "edition",
+                            "coverage"
+                          ]
+                        },
+                        "field": {
+                          "type": "string",
+                          "description": "JSON pointer del texto de TU respuesta, por ejemplo /summary. Nunca /title ni una ruta del snapshot."
+                        },
+                        "literal": {
+                          "type": "string",
+                          "description": "Literal numérico presente en ese texto; para date, timestamp exacto. Para reported-claim, un fragmento literal de quote de hasta256 caracteres."
+                        },
+                        "evidenceId": {
+                          "type": "string"
+                        },
+                        "path": {
+                          "type": "string",
+                          "description": "Ruta del valor dentro de data, por ejemplo title o observed.close; nunca data ni una ruta de TU respuesta."
+                        },
+                        "quote": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "technicalFacts": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "evidenceId",
+                        "path",
+                        "value",
+                        "unit"
+                      ],
+                      "properties": {
+                        "evidenceId": {
+                          "type": "string"
+                        },
+                        "path": {
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": "number"
+                        },
+                        "unit": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "instrumentId": {
+                    "type": "string"
+                  },
+                  "scenarios": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "description"
+                      ],
+                      "properties": {
+                        "name": {
+                          "enum": [
+                            "base",
+                            "bull",
+                            "bear"
+                          ]
+                        },
+                        "description": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "drivers": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "domain",
+                        "description",
+                        "evidenceIds"
+                      ],
+                      "properties": {
+                        "domain": {
+                          "enum": [
+                            "geopolitical",
+                            "macro",
+                            "sector",
+                            "technical"
+                          ]
+                        },
+                        "kind": {
+                          "enum": [
+                            "hypothesis",
+                            "verification-plan"
+                          ]
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "mechanism": {
+                          "type": "string"
+                        },
+                        "confirmation": {
+                          "type": "string"
+                        },
+                        "invalidation": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "alternatives": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "missingEvidence": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "target": {
+                    "const": "absolute-return-direction; first available daily close after 24h"
+                  },
+                  "methods": {
+                    "type": "object",
+                    "required": [
+                      "sentiment",
+                      "stability"
+                    ],
+                    "properties": {
+                      "sentiment": {
+                        "const": "qualitative-evidence-synthesis-v1"
+                      },
+                      "stability": {
+                        "const": "qualitative-watchlist-v1"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "alertAssessments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "alertId",
+                        "revision",
+                        "summary",
+                        "evidenceIds"
+                      ],
+                      "properties": {
+                        "alertId": {
+                          "type": "string"
+                        },
+                        "revision": {
+                          "type": "integer"
+                        },
+                        "summary": {
+                          "type": "string"
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "intradayScenarios": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "horizonMinutes",
+                        "interval",
+                        "direction",
+                        "summary",
+                        "evidenceIds",
+                        "invalidation",
+                        "evaluation"
+                      ],
+                      "properties": {
+                        "horizonMinutes": {
+                          "enum": [
+                            15,
+                            60,
+                            240
+                          ]
+                        },
+                        "interval": {
+                          "enum": [
+                            "15min",
+                            "1h"
+                          ]
+                        },
+                        "direction": {
+                          "enum": [
+                            "up",
+                            "down",
+                            "flat",
+                            "mixed",
+                            "unavailable"
+                          ]
+                        },
+                        "summary": {
+                          "type": "string"
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "invalidation": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "evaluation": {
+                          "const": "unavailable"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "required": [
+                  "schemaVersion",
+                  "task",
+                  "summary",
+                  "direction",
+                  "sentiment",
+                  "stability",
+                  "horizonHours",
+                  "probability",
+                  "confidenceKind",
+                  "evidenceIds",
+                  "contradictions",
+                  "invalidation",
+                  "limitations",
+                  "technicalFacts",
+                  "narrativeFacts"
+                ],
+                "properties": {
+                  "schemaVersion": {
+                    "const": "ogid-agent-publication-v1"
+                  },
+                  "task": {
+                    "const": "geopolitical_alert_assessment"
+                  },
+                  "summary": {
+                    "type": "string"
+                  },
+                  "direction": {
+                    "enum": [
+                      "up",
+                      "down",
+                      "flat",
+                      "mixed",
+                      "unavailable"
+                    ]
+                  },
+                  "sentiment": {
+                    "enum": [
+                      "positive",
+                      "negative",
+                      "mixed",
+                      "neutral",
+                      "unavailable"
+                    ]
+                  },
+                  "stability": {
+                    "enum": [
+                      "stable",
+                      "unstable",
+                      "mixed",
+                      "unavailable"
+                    ]
+                  },
+                  "horizonHours": {
+                    "type": "integer",
+                    "enum": [
+                      24
+                    ]
+                  },
+                  "probability": {
+                    "type": "null"
+                  },
+                  "confidenceKind": {
+                    "const": "qualitative-uncalibrated"
+                  },
+                  "evidenceIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "contradictions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "invalidation": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "limitations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "narrativeFacts": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "field",
+                        "literal",
+                        "evidenceId",
+                        "path"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "technical",
+                            "reported-quantity",
+                            "reported-claim",
+                            "date",
+                            "edition",
+                            "coverage"
+                          ]
+                        },
+                        "field": {
+                          "type": "string",
+                          "description": "JSON pointer del texto de TU respuesta, por ejemplo /summary. Nunca /title ni una ruta del snapshot."
+                        },
+                        "literal": {
+                          "type": "string",
+                          "description": "Literal numérico presente en ese texto; para date, timestamp exacto. Para reported-claim, un fragmento literal de quote de hasta256 caracteres."
+                        },
+                        "evidenceId": {
+                          "type": "string"
+                        },
+                        "path": {
+                          "type": "string",
+                          "description": "Ruta del valor dentro de data, por ejemplo title o observed.close; nunca data ni una ruta de TU respuesta."
+                        },
+                        "quote": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "technicalFacts": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "evidenceId",
+                        "path",
+                        "value",
+                        "unit"
+                      ],
+                      "properties": {
+                        "evidenceId": {
+                          "type": "string"
+                        },
+                        "path": {
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": "number"
+                        },
+                        "unit": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "instrumentId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "scenarios": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "description"
+                      ],
+                      "properties": {
+                        "name": {
+                          "enum": [
+                            "base",
+                            "bull",
+                            "bear"
+                          ]
+                        },
+                        "description": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "drivers": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "domain",
+                        "description",
+                        "evidenceIds"
+                      ],
+                      "properties": {
+                        "domain": {
+                          "enum": [
+                            "geopolitical",
+                            "macro",
+                            "sector",
+                            "technical"
+                          ]
+                        },
+                        "kind": {
+                          "enum": [
+                            "hypothesis",
+                            "verification-plan"
+                          ]
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "mechanism": {
+                          "type": "string"
+                        },
+                        "confirmation": {
+                          "type": "string"
+                        },
+                        "invalidation": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "alternatives": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "missingEvidence": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "target": {
+                    "const": "absolute-return-direction; first available daily close after 24h"
+                  },
+                  "methods": {
+                    "type": "object",
+                    "required": [
+                      "sentiment",
+                      "stability"
+                    ],
+                    "properties": {
+                      "sentiment": {
+                        "const": "qualitative-evidence-synthesis-v1"
+                      },
+                      "stability": {
+                        "const": "qualitative-watchlist-v1"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "alertAssessments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "alertId",
+                        "revision",
+                        "summary",
+                        "evidenceIds"
+                      ],
+                      "properties": {
+                        "alertId": {
+                          "type": "string"
+                        },
+                        "revision": {
+                          "type": "integer"
+                        },
+                        "summary": {
+                          "type": "string"
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "intradayScenarios": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "horizonMinutes",
+                        "interval",
+                        "direction",
+                        "summary",
+                        "evidenceIds",
+                        "invalidation",
+                        "evaluation"
+                      ],
+                      "properties": {
+                        "horizonMinutes": {
+                          "enum": [
+                            15,
+                            60,
+                            240
+                          ]
+                        },
+                        "interval": {
+                          "enum": [
+                            "15min",
+                            "1h"
+                          ]
+                        },
+                        "direction": {
+                          "enum": [
+                            "up",
+                            "down",
+                            "flat",
+                            "mixed",
+                            "unavailable"
+                          ]
+                        },
+                        "summary": {
+                          "type": "string"
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "invalidation": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "evaluation": {
+                          "const": "unavailable"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "required": [
+                  "schemaVersion",
+                  "task",
+                  "situationId",
+                  "summary",
+                  "evidenceIds",
+                  "probability",
+                  "synthesis",
+                  "timeline",
+                  "changes",
+                  "impacts",
+                  "contradictions",
+                  "limitations",
+                  "missingEvidence",
+                  "technicalFacts",
+                  "narrativeFacts"
+                ],
+                "properties": {
+                  "schemaVersion": {
+                    "const": "ogid-situation-analysis-v1"
+                  },
+                  "task": {
+                    "const": "situation_analysis"
+                  },
+                  "situationId": {
+                    "type": "string"
+                  },
+                  "summary": {
+                    "type": "string"
+                  },
+                  "evidenceIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "probability": {
+                    "type": "null"
+                  },
+                  "synthesis": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "text",
+                        "evidenceIds",
+                        "kind"
+                      ],
+                      "properties": {
+                        "text": {
+                          "type": "string"
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "description": "Exact source evidence IDs only. coverage, source-profile and baseline are context, never claim citations.",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "kind": {
+                          "enum": [
+                            "attributed-report",
+                            "observation",
+                            "hypothesis"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "timeline": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "text",
+                        "evidenceIds",
+                        "occurredAt",
+                        "publishedAt",
+                        "knownAt"
+                      ],
+                      "properties": {
+                        "text": {
+                          "type": "string"
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "description": "Exact source evidence IDs only. coverage, source-profile and baseline are context, never claim citations.",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "occurredAt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "publishedAt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "knownAt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "changes": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "text",
+                        "evidenceIds",
+                        "kind"
+                      ],
+                      "properties": {
+                        "text": {
+                          "type": "string"
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "description": "Exact source evidence IDs only. coverage, source-profile and baseline are context, never claim citations.",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "kind": {
+                          "enum": [
+                            "attributed-report",
+                            "observation",
+                            "hypothesis"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "impacts": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "text",
+                        "evidenceIds",
+                        "channel",
+                        "instrumentId",
+                        "mechanism",
+                        "confirmation",
+                        "invalidation",
+                        "kind"
+                      ],
+                      "properties": {
+                        "text": {
+                          "type": "string"
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "description": "Exact source evidence IDs only. coverage, source-profile and baseline are context, never claim citations.",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "channel": {
+                          "enum": [
+                            "energy",
+                            "transport",
+                            "sanctions",
+                            "instrument"
+                          ]
+                        },
+                        "instrumentId": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "mechanism": {
+                          "type": "string"
+                        },
+                        "confirmation": {
+                          "type": "string"
+                        },
+                        "invalidation": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "const": "hypothesis"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "contradictions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "text",
+                        "evidenceIds",
+                        "kind"
+                      ],
+                      "properties": {
+                        "text": {
+                          "type": "string"
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "description": "Exact source evidence IDs only. coverage, source-profile and baseline are context, never claim citations.",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "kind": {
+                          "enum": [
+                            "attributed-report",
+                            "observation",
+                            "hypothesis"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "limitations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "missingEvidence": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "narrativeFacts": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "field",
+                        "literal",
+                        "evidenceId",
+                        "path"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "technical",
+                            "reported-quantity",
+                            "reported-claim",
+                            "date",
+                            "edition",
+                            "coverage"
+                          ]
+                        },
+                        "field": {
+                          "type": "string",
+                          "description": "JSON pointer del texto de TU respuesta, por ejemplo /summary. Nunca /title ni una ruta del snapshot."
+                        },
+                        "literal": {
+                          "type": "string",
+                          "description": "Literal numérico presente en ese texto; para date, timestamp exacto. Para reported-claim, un fragmento literal de quote de hasta256 caracteres."
+                        },
+                        "evidenceId": {
+                          "type": "string"
+                        },
+                        "path": {
+                          "type": "string",
+                          "description": "Ruta del valor dentro de data, por ejemplo title o observed.close; nunca data ni una ruta de TU respuesta."
+                        },
+                        "quote": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "technicalFacts": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "evidenceId",
+                        "path",
+                        "value",
+                        "unit"
+                      ],
+                      "properties": {
+                        "evidenceId": {
+                          "type": "string"
+                        },
+                        "path": {
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": "number"
+                        },
+                        "unit": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "canonicalInput": {
+        "type": "object",
+        "properties": {
+          "snapshotId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "proposal": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "schemaVersion",
+                  "task",
+                  "direction",
+                  "sentiment",
+                  "stability",
+                  "horizonHours",
+                  "probability",
+                  "confidenceKind",
+                  "evidenceIds",
+                  "contradictions",
+                  "invalidation",
+                  "limitations",
+                  "technicalFacts",
+                  "narrativeFacts",
+                  "sourceReports"
+                ],
+                "properties": {
+                  "schemaVersion": {
+                    "const": "ogid-agent-publication-v1"
+                  },
+                  "task": {
+                    "const": "global_intelligence_brief"
+                  },
+                  "direction": {
+                    "enum": [
+                      "up",
+                      "down",
+                      "flat",
+                      "mixed",
+                      "unavailable"
+                    ]
+                  },
+                  "sentiment": {
+                    "enum": [
+                      "positive",
+                      "negative",
+                      "mixed",
+                      "neutral",
+                      "unavailable"
+                    ]
+                  },
+                  "stability": {
+                    "enum": [
+                      "stable",
+                      "unstable",
+                      "mixed",
+                      "unavailable"
+                    ]
+                  },
+                  "horizonHours": {
+                    "type": "integer",
+                    "enum": [
+                      24
+                    ]
+                  },
+                  "probability": {
+                    "type": "null"
+                  },
+                  "confidenceKind": {
+                    "const": "qualitative-uncalibrated"
+                  },
+                  "evidenceIds": {
+                    "type": "array",
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "contradictions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "invalidation": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "limitations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "narrativeFacts": {
+                    "type": "array",
+                    "maxItems": 100,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kind",
+                        "field",
+                        "literal",
+                        "evidenceId",
+                        "path"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "technical",
+                            "reported-quantity",
+                            "reported-claim",
+                            "date",
+                            "edition",
+                            "coverage"
+                          ]
+                        },
+                        "field": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256,
+                          "pattern": "^/",
+                          "description": "JSON pointer del texto de TU respuesta, por ejemplo /summary. Nunca /title ni una ruta del snapshot."
+                        },
+                        "literal": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256,
+                          "description": "Literal numérico presente en ese texto; para date, timestamp exacto. Para reported-claim, un fragmento literal de quote de hasta256 caracteres."
+                        },
+                        "evidenceId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256
+                        },
+                        "path": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256,
+                          "description": "Ruta del valor dentro de data, por ejemplo title o observed.close; nunca data ni una ruta de TU respuesta."
+                        },
+                        "quote": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2000
+                        }
+                      }
+                    }
+                  },
+                  "technicalFacts": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "evidenceId",
+                        "path",
+                        "value",
+                        "unit"
+                      ],
+                      "properties": {
+                        "evidenceId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "path": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "value": {
+                          "type": "number"
+                        },
+                        "unit": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  },
+                  "instrumentId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "scenarios": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "name",
+                        "description"
+                      ],
+                      "properties": {
+                        "name": {
+                          "enum": [
+                            "base",
+                            "bull",
+                            "bear"
+                          ]
+                        },
+                        "description": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  },
+                  "drivers": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "domain",
+                        "description",
+                        "evidenceIds",
+                        "mechanism",
+                        "confirmation",
+                        "invalidation",
+                        "kind"
+                      ],
+                      "properties": {
+                        "domain": {
+                          "enum": [
+                            "geopolitical",
+                            "macro",
+                            "sector",
+                            "technical"
+                          ]
+                        },
+                        "kind": {
+                          "const": "verification-plan"
+                        },
+                        "description": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "minItems": 1,
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "mechanism": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2000
+                        },
+                        "confirmation": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2000
+                        },
+                        "invalidation": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2000
+                        }
+                      }
+                    },
+                    "maxItems": 4
+                  },
+                  "alternatives": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "missingEvidence": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "target": {
+                    "const": "absolute-return-direction; first available daily close after 24h"
+                  },
+                  "methods": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "sentiment",
+                      "stability"
+                    ],
+                    "properties": {
+                      "sentiment": {
+                        "const": "qualitative-evidence-synthesis-v1"
+                      },
+                      "stability": {
+                        "const": "qualitative-watchlist-v1"
+                      }
+                    }
+                  },
+                  "alertAssessments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "alertId",
+                        "revision",
+                        "summary",
+                        "evidenceIds"
+                      ],
+                      "properties": {
+                        "alertId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "revision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "summary": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "minItems": 1,
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
+                      }
+                    },
+                    "maxItems": 0
+                  },
+                  "intradayScenarios": {
+                    "type": "array",
+                    "maxItems": 3,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "horizonMinutes",
+                        "interval",
+                        "direction",
+                        "summary",
+                        "evidenceIds",
+                        "invalidation",
+                        "evaluation"
+                      ],
+                      "properties": {
+                        "horizonMinutes": {
+                          "enum": [
+                            15,
+                            60,
+                            240
+                          ]
+                        },
+                        "interval": {
+                          "enum": [
+                            "15min",
+                            "1h"
+                          ]
+                        },
+                        "direction": {
+                          "enum": [
+                            "up",
+                            "down",
+                            "flat",
+                            "mixed",
+                            "unavailable"
+                          ]
+                        },
+                        "summary": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "invalidation": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "evaluation": {
+                          "const": "unavailable"
+                        }
+                      },
+                      "allOf": [
+                        {
+                          "if": {
+                            "properties": {
+                              "direction": {
+                                "not": {
+                                  "const": "unavailable"
+                                }
+                              }
+                            }
+                          },
+                          "then": {
+                            "properties": {
+                              "invalidation": {
+                                "minItems": 1
+                              },
+                              "evidenceIds": {
+                                "minItems": 1
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "sourceReports": {
+                    "type": "array",
+                    "maxItems": 4,
+                    "uniqueItems": true,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "evidenceId",
+                        "path",
+                        "quote"
+                      ],
+                      "properties": {
+                        "evidenceId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256
+                        },
+                        "path": {
+                          "enum": [
+                            "title",
+                            "excerpt"
+                          ]
+                        },
+                        "quote": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2000
+                        }
+                      }
+                    }
+                  }
+                },
+                "allOf": [
+                  {
+                    "if": {
+                      "properties": {
+                        "task": {
+                          "const": "instrument_outlook"
+                        }
+                      }
+                    },
+                    "then": {
+                      "required": [
+                        "intradayScenarios"
+                      ],
+                      "properties": {
+                        "intradayScenarios": {
+                          "minItems": 1
+                        }
+                      }
+                    },
+                    "else": {
+                      "properties": {
+                        "intradayScenarios": {
+                          "maxItems": 0
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "if": {
+                      "properties": {
+                        "task": {
+                          "enum": [
+                            "instrument_outlook",
+                            "market_outlook_global"
+                          ]
+                        }
+                      }
+                    },
+                    "then": {
+                      "required": [
+                        "drivers",
+                        "scenarios",
+                        "alternatives",
+                        "missingEvidence",
+                        "target",
+                        "methods"
+                      ]
+                    }
+                  },
+                  {
+                    "if": {
+                      "properties": {
+                        "sourceReports": {
+                          "minItems": 1
+                        }
+                      }
+                    },
+                    "then": {
+                      "required": [
+                        "drivers"
+                      ],
+                      "properties": {
+                        "drivers": {
+                          "minItems": 1
+                        }
+                      }
+                    },
+                    "else": {
+                      "properties": {
+                        "drivers": {
+                          "maxItems": 0
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "schemaVersion",
+                  "task",
+                  "summary",
+                  "direction",
+                  "sentiment",
+                  "stability",
+                  "horizonHours",
+                  "probability",
+                  "confidenceKind",
+                  "evidenceIds",
+                  "contradictions",
+                  "invalidation",
+                  "limitations",
+                  "technicalFacts",
+                  "narrativeFacts"
+                ],
+                "properties": {
+                  "schemaVersion": {
+                    "const": "ogid-agent-publication-v1"
+                  },
+                  "task": {
+                    "const": "market_outlook_global"
+                  },
+                  "summary": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "direction": {
+                    "enum": [
+                      "up",
+                      "down",
+                      "flat",
+                      "mixed",
+                      "unavailable"
+                    ]
+                  },
+                  "sentiment": {
+                    "enum": [
+                      "positive",
+                      "negative",
+                      "mixed",
+                      "neutral",
+                      "unavailable"
+                    ]
+                  },
+                  "stability": {
+                    "enum": [
+                      "stable",
+                      "unstable",
+                      "mixed",
+                      "unavailable"
+                    ]
+                  },
+                  "horizonHours": {
+                    "type": "integer",
+                    "enum": [
+                      24
+                    ]
+                  },
+                  "probability": {
+                    "type": "null"
+                  },
+                  "confidenceKind": {
+                    "const": "qualitative-uncalibrated"
+                  },
+                  "evidenceIds": {
+                    "type": "array",
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "contradictions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "invalidation": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "limitations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "narrativeFacts": {
+                    "type": "array",
+                    "maxItems": 100,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kind",
+                        "field",
+                        "literal",
+                        "evidenceId",
+                        "path"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "technical",
+                            "reported-quantity",
+                            "reported-claim",
+                            "date",
+                            "edition",
+                            "coverage"
+                          ]
+                        },
+                        "field": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256,
+                          "pattern": "^/",
+                          "description": "JSON pointer del texto de TU respuesta, por ejemplo /summary. Nunca /title ni una ruta del snapshot."
+                        },
+                        "literal": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256,
+                          "description": "Literal numérico presente en ese texto; para date, timestamp exacto. Para reported-claim, un fragmento literal de quote de hasta256 caracteres."
+                        },
+                        "evidenceId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256
+                        },
+                        "path": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256,
+                          "description": "Ruta del valor dentro de data, por ejemplo title o observed.close; nunca data ni una ruta de TU respuesta."
+                        },
+                        "quote": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2000
+                        }
+                      }
+                    }
+                  },
+                  "technicalFacts": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "evidenceId",
+                        "path",
+                        "value",
+                        "unit"
+                      ],
+                      "properties": {
+                        "evidenceId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "path": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "value": {
+                          "type": "number"
+                        },
+                        "unit": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  },
+                  "instrumentId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "scenarios": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "name",
+                        "description"
+                      ],
+                      "properties": {
+                        "name": {
+                          "enum": [
+                            "base",
+                            "bull",
+                            "bear"
+                          ]
+                        },
+                        "description": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  },
+                  "drivers": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "domain",
+                        "description",
+                        "evidenceIds"
+                      ],
+                      "properties": {
+                        "domain": {
+                          "enum": [
+                            "geopolitical",
+                            "macro",
+                            "sector",
+                            "technical"
+                          ]
+                        },
+                        "kind": {
+                          "enum": [
+                            "hypothesis",
+                            "verification-plan"
+                          ]
+                        },
+                        "description": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "minItems": 1,
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "mechanism": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2000
+                        },
+                        "confirmation": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2000
+                        },
+                        "invalidation": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2000
+                        }
+                      }
+                    }
+                  },
+                  "alternatives": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "missingEvidence": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "target": {
+                    "const": "absolute-return-direction; first available daily close after 24h"
+                  },
+                  "methods": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "sentiment",
+                      "stability"
+                    ],
+                    "properties": {
+                      "sentiment": {
+                        "const": "qualitative-evidence-synthesis-v1"
+                      },
+                      "stability": {
+                        "const": "qualitative-watchlist-v1"
+                      }
+                    }
+                  },
+                  "alertAssessments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "alertId",
+                        "revision",
+                        "summary",
+                        "evidenceIds"
+                      ],
+                      "properties": {
+                        "alertId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "revision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "summary": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "minItems": 1,
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
+                      }
+                    },
+                    "maxItems": 0
+                  },
+                  "intradayScenarios": {
+                    "type": "array",
+                    "maxItems": 3,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "horizonMinutes",
+                        "interval",
+                        "direction",
+                        "summary",
+                        "evidenceIds",
+                        "invalidation",
+                        "evaluation"
+                      ],
+                      "properties": {
+                        "horizonMinutes": {
+                          "enum": [
+                            15,
+                            60,
+                            240
+                          ]
+                        },
+                        "interval": {
+                          "enum": [
+                            "15min",
+                            "1h"
+                          ]
+                        },
+                        "direction": {
+                          "enum": [
+                            "up",
+                            "down",
+                            "flat",
+                            "mixed",
+                            "unavailable"
+                          ]
+                        },
+                        "summary": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "invalidation": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "evaluation": {
+                          "const": "unavailable"
+                        }
+                      },
+                      "allOf": [
+                        {
+                          "if": {
+                            "properties": {
+                              "direction": {
+                                "not": {
+                                  "const": "unavailable"
+                                }
+                              }
+                            }
+                          },
+                          "then": {
+                            "properties": {
+                              "invalidation": {
+                                "minItems": 1
+                              },
+                              "evidenceIds": {
+                                "minItems": 1
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                "allOf": [
+                  {
+                    "if": {
+                      "properties": {
+                        "task": {
+                          "const": "instrument_outlook"
+                        }
+                      }
+                    },
+                    "then": {
+                      "required": [
+                        "intradayScenarios"
+                      ],
+                      "properties": {
+                        "intradayScenarios": {
+                          "minItems": 1
+                        }
+                      }
+                    },
+                    "else": {
+                      "properties": {
+                        "intradayScenarios": {
+                          "maxItems": 0
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "if": {
+                      "properties": {
+                        "task": {
+                          "enum": [
+                            "instrument_outlook",
+                            "market_outlook_global"
+                          ]
+                        }
+                      }
+                    },
+                    "then": {
+                      "required": [
+                        "drivers",
+                        "scenarios",
+                        "alternatives",
+                        "missingEvidence",
+                        "target",
+                        "methods"
+                      ]
+                    }
+                  },
+                  {
+                    "if": {
+                      "properties": {
+                        "direction": {
+                          "not": {
+                            "const": "unavailable"
+                          }
+                        }
+                      }
+                    },
+                    "then": {
+                      "properties": {
+                        "invalidation": {
+                          "minItems": 1
+                        },
+                        "drivers": {
+                          "minItems": 1
+                        },
+                        "scenarios": {
+                          "minItems": 3,
+                          "maxItems": 3,
+                          "allOf": [
+                            {
+                              "contains": {
+                                "properties": {
+                                  "name": {
+                                    "const": "base"
+                                  }
+                                },
+                                "required": [
+                                  "name"
+                                ]
+                              }
+                            },
+                            {
+                              "contains": {
+                                "properties": {
+                                  "name": {
+                                    "const": "bull"
+                                  }
+                                },
+                                "required": [
+                                  "name"
+                                ]
+                              }
+                            },
+                            {
+                              "contains": {
+                                "properties": {
+                                  "name": {
+                                    "const": "bear"
+                                  }
+                                },
+                                "required": [
+                                  "name"
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "schemaVersion",
+                  "task",
+                  "summary",
+                  "direction",
+                  "sentiment",
+                  "stability",
+                  "horizonHours",
+                  "probability",
+                  "confidenceKind",
+                  "evidenceIds",
+                  "contradictions",
+                  "invalidation",
+                  "limitations",
+                  "technicalFacts",
+                  "narrativeFacts",
+                  "instrumentId"
+                ],
+                "properties": {
+                  "schemaVersion": {
+                    "const": "ogid-agent-publication-v1"
+                  },
+                  "task": {
+                    "const": "instrument_outlook"
+                  },
+                  "summary": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "direction": {
+                    "enum": [
+                      "up",
+                      "down",
+                      "flat",
+                      "mixed",
+                      "unavailable"
+                    ]
+                  },
+                  "sentiment": {
+                    "enum": [
+                      "positive",
+                      "negative",
+                      "mixed",
+                      "neutral",
+                      "unavailable"
+                    ]
+                  },
+                  "stability": {
+                    "enum": [
+                      "stable",
+                      "unstable",
+                      "mixed",
+                      "unavailable"
+                    ]
+                  },
+                  "horizonHours": {
+                    "type": "integer",
+                    "enum": [
+                      24
+                    ]
+                  },
+                  "probability": {
+                    "type": "null"
+                  },
+                  "confidenceKind": {
+                    "const": "qualitative-uncalibrated"
+                  },
+                  "evidenceIds": {
+                    "type": "array",
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "contradictions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "invalidation": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "limitations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "narrativeFacts": {
+                    "type": "array",
+                    "maxItems": 100,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kind",
+                        "field",
+                        "literal",
+                        "evidenceId",
+                        "path"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "technical",
+                            "reported-quantity",
+                            "reported-claim",
+                            "date",
+                            "edition",
+                            "coverage"
+                          ]
+                        },
+                        "field": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256,
+                          "pattern": "^/",
+                          "description": "JSON pointer del texto de TU respuesta, por ejemplo /summary. Nunca /title ni una ruta del snapshot."
+                        },
+                        "literal": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256,
+                          "description": "Literal numérico presente en ese texto; para date, timestamp exacto. Para reported-claim, un fragmento literal de quote de hasta256 caracteres."
+                        },
+                        "evidenceId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256
+                        },
+                        "path": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256,
+                          "description": "Ruta del valor dentro de data, por ejemplo title o observed.close; nunca data ni una ruta de TU respuesta."
+                        },
+                        "quote": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2000
+                        }
+                      }
+                    }
+                  },
+                  "technicalFacts": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "evidenceId",
+                        "path",
+                        "value",
+                        "unit"
+                      ],
+                      "properties": {
+                        "evidenceId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "path": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "value": {
+                          "type": "number"
+                        },
+                        "unit": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  },
+                  "instrumentId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "scenarios": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "name",
+                        "description"
+                      ],
+                      "properties": {
+                        "name": {
+                          "enum": [
+                            "base",
+                            "bull",
+                            "bear"
+                          ]
+                        },
+                        "description": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  },
+                  "drivers": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "domain",
+                        "description",
+                        "evidenceIds"
+                      ],
+                      "properties": {
+                        "domain": {
+                          "enum": [
+                            "geopolitical",
+                            "macro",
+                            "sector",
+                            "technical"
+                          ]
+                        },
+                        "kind": {
+                          "enum": [
+                            "hypothesis",
+                            "verification-plan"
+                          ]
+                        },
+                        "description": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "minItems": 1,
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "mechanism": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2000
+                        },
+                        "confirmation": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2000
+                        },
+                        "invalidation": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2000
+                        }
+                      }
+                    }
+                  },
+                  "alternatives": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "missingEvidence": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "target": {
+                    "const": "absolute-return-direction; first available daily close after 24h"
+                  },
+                  "methods": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "sentiment",
+                      "stability"
+                    ],
+                    "properties": {
+                      "sentiment": {
+                        "const": "qualitative-evidence-synthesis-v1"
+                      },
+                      "stability": {
+                        "const": "qualitative-watchlist-v1"
+                      }
+                    }
+                  },
+                  "alertAssessments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "alertId",
+                        "revision",
+                        "summary",
+                        "evidenceIds"
+                      ],
+                      "properties": {
+                        "alertId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "revision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "summary": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "minItems": 1,
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
+                      }
+                    },
+                    "maxItems": 0
+                  },
+                  "intradayScenarios": {
+                    "type": "array",
+                    "maxItems": 3,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "horizonMinutes",
+                        "interval",
+                        "direction",
+                        "summary",
+                        "evidenceIds",
+                        "invalidation",
+                        "evaluation"
+                      ],
+                      "properties": {
+                        "horizonMinutes": {
+                          "enum": [
+                            15,
+                            60,
+                            240
+                          ]
+                        },
+                        "interval": {
+                          "enum": [
+                            "15min",
+                            "1h"
+                          ]
+                        },
+                        "direction": {
+                          "enum": [
+                            "up",
+                            "down",
+                            "flat",
+                            "mixed",
+                            "unavailable"
+                          ]
+                        },
+                        "summary": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "invalidation": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "evaluation": {
+                          "const": "unavailable"
+                        }
+                      },
+                      "allOf": [
+                        {
+                          "if": {
+                            "properties": {
+                              "direction": {
+                                "not": {
+                                  "const": "unavailable"
+                                }
+                              }
+                            }
+                          },
+                          "then": {
+                            "properties": {
+                              "invalidation": {
+                                "minItems": 1
+                              },
+                              "evidenceIds": {
+                                "minItems": 1
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                "allOf": [
+                  {
+                    "if": {
+                      "properties": {
+                        "task": {
+                          "const": "instrument_outlook"
+                        }
+                      }
+                    },
+                    "then": {
+                      "required": [
+                        "intradayScenarios"
+                      ],
+                      "properties": {
+                        "intradayScenarios": {
+                          "minItems": 1
+                        }
+                      }
+                    },
+                    "else": {
+                      "properties": {
+                        "intradayScenarios": {
+                          "maxItems": 0
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "if": {
+                      "properties": {
+                        "task": {
+                          "enum": [
+                            "instrument_outlook",
+                            "market_outlook_global"
+                          ]
+                        }
+                      }
+                    },
+                    "then": {
+                      "required": [
+                        "drivers",
+                        "scenarios",
+                        "alternatives",
+                        "missingEvidence",
+                        "target",
+                        "methods"
+                      ]
+                    }
+                  },
+                  {
+                    "if": {
+                      "properties": {
+                        "direction": {
+                          "not": {
+                            "const": "unavailable"
+                          }
+                        }
+                      }
+                    },
+                    "then": {
+                      "properties": {
+                        "invalidation": {
+                          "minItems": 1
+                        },
+                        "drivers": {
+                          "minItems": 1
+                        },
+                        "scenarios": {
+                          "minItems": 3,
+                          "maxItems": 3,
+                          "allOf": [
+                            {
+                              "contains": {
+                                "properties": {
+                                  "name": {
+                                    "const": "base"
+                                  }
+                                },
+                                "required": [
+                                  "name"
+                                ]
+                              }
+                            },
+                            {
+                              "contains": {
+                                "properties": {
+                                  "name": {
+                                    "const": "bull"
+                                  }
+                                },
+                                "required": [
+                                  "name"
+                                ]
+                              }
+                            },
+                            {
+                              "contains": {
+                                "properties": {
+                                  "name": {
+                                    "const": "bear"
+                                  }
+                                },
+                                "required": [
+                                  "name"
+                                ]
+                              }
+                            }
+                          ]
+                        },
+                        "technicalFacts": {
+                          "minItems": 1
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "schemaVersion",
+                  "task",
+                  "summary",
+                  "direction",
+                  "sentiment",
+                  "stability",
+                  "horizonHours",
+                  "probability",
+                  "confidenceKind",
+                  "evidenceIds",
+                  "contradictions",
+                  "invalidation",
+                  "limitations",
+                  "technicalFacts",
+                  "narrativeFacts"
+                ],
+                "properties": {
+                  "schemaVersion": {
+                    "const": "ogid-agent-publication-v1"
+                  },
+                  "task": {
+                    "const": "geopolitical_alert_assessment"
+                  },
+                  "summary": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "direction": {
+                    "enum": [
+                      "up",
+                      "down",
+                      "flat",
+                      "mixed",
+                      "unavailable"
+                    ]
+                  },
+                  "sentiment": {
+                    "enum": [
+                      "positive",
+                      "negative",
+                      "mixed",
+                      "neutral",
+                      "unavailable"
+                    ]
+                  },
+                  "stability": {
+                    "enum": [
+                      "stable",
+                      "unstable",
+                      "mixed",
+                      "unavailable"
+                    ]
+                  },
+                  "horizonHours": {
+                    "type": "integer",
+                    "enum": [
+                      24
+                    ]
+                  },
+                  "probability": {
+                    "type": "null"
+                  },
+                  "confidenceKind": {
+                    "const": "qualitative-uncalibrated"
+                  },
+                  "evidenceIds": {
+                    "type": "array",
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "contradictions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "invalidation": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "limitations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "narrativeFacts": {
+                    "type": "array",
+                    "maxItems": 100,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kind",
+                        "field",
+                        "literal",
+                        "evidenceId",
+                        "path"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "technical",
+                            "reported-quantity",
+                            "reported-claim",
+                            "date",
+                            "edition",
+                            "coverage"
+                          ]
+                        },
+                        "field": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256,
+                          "pattern": "^/",
+                          "description": "JSON pointer del texto de TU respuesta, por ejemplo /summary. Nunca /title ni una ruta del snapshot."
+                        },
+                        "literal": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256,
+                          "description": "Literal numérico presente en ese texto; para date, timestamp exacto. Para reported-claim, un fragmento literal de quote de hasta256 caracteres."
+                        },
+                        "evidenceId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256
+                        },
+                        "path": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256,
+                          "description": "Ruta del valor dentro de data, por ejemplo title o observed.close; nunca data ni una ruta de TU respuesta."
+                        },
+                        "quote": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2000
+                        }
+                      }
+                    }
+                  },
+                  "technicalFacts": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "evidenceId",
+                        "path",
+                        "value",
+                        "unit"
+                      ],
+                      "properties": {
+                        "evidenceId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "path": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "value": {
+                          "type": "number"
+                        },
+                        "unit": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  },
+                  "instrumentId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "scenarios": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "name",
+                        "description"
+                      ],
+                      "properties": {
+                        "name": {
+                          "enum": [
+                            "base",
+                            "bull",
+                            "bear"
+                          ]
+                        },
+                        "description": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  },
+                  "drivers": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "domain",
+                        "description",
+                        "evidenceIds"
+                      ],
+                      "properties": {
+                        "domain": {
+                          "enum": [
+                            "geopolitical",
+                            "macro",
+                            "sector",
+                            "technical"
+                          ]
+                        },
+                        "kind": {
+                          "enum": [
+                            "hypothesis",
+                            "verification-plan"
+                          ]
+                        },
+                        "description": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "minItems": 1,
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "mechanism": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2000
+                        },
+                        "confirmation": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2000
+                        },
+                        "invalidation": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2000
+                        }
+                      }
+                    }
+                  },
+                  "alternatives": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "missingEvidence": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "target": {
+                    "const": "absolute-return-direction; first available daily close after 24h"
+                  },
+                  "methods": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "sentiment",
+                      "stability"
+                    ],
+                    "properties": {
+                      "sentiment": {
+                        "const": "qualitative-evidence-synthesis-v1"
+                      },
+                      "stability": {
+                        "const": "qualitative-watchlist-v1"
+                      }
+                    }
+                  },
+                  "alertAssessments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "alertId",
+                        "revision",
+                        "summary",
+                        "evidenceIds"
+                      ],
+                      "properties": {
+                        "alertId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "revision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "summary": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "minItems": 1,
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "intradayScenarios": {
+                    "type": "array",
+                    "maxItems": 3,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "horizonMinutes",
+                        "interval",
+                        "direction",
+                        "summary",
+                        "evidenceIds",
+                        "invalidation",
+                        "evaluation"
+                      ],
+                      "properties": {
+                        "horizonMinutes": {
+                          "enum": [
+                            15,
+                            60,
+                            240
+                          ]
+                        },
+                        "interval": {
+                          "enum": [
+                            "15min",
+                            "1h"
+                          ]
+                        },
+                        "direction": {
+                          "enum": [
+                            "up",
+                            "down",
+                            "flat",
+                            "mixed",
+                            "unavailable"
+                          ]
+                        },
+                        "summary": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "invalidation": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "evaluation": {
+                          "const": "unavailable"
+                        }
+                      },
+                      "allOf": [
+                        {
+                          "if": {
+                            "properties": {
+                              "direction": {
+                                "not": {
+                                  "const": "unavailable"
+                                }
+                              }
+                            }
+                          },
+                          "then": {
+                            "properties": {
+                              "invalidation": {
+                                "minItems": 1
+                              },
+                              "evidenceIds": {
+                                "minItems": 1
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                "allOf": [
+                  {
+                    "if": {
+                      "properties": {
+                        "task": {
+                          "const": "instrument_outlook"
+                        }
+                      }
+                    },
+                    "then": {
+                      "required": [
+                        "intradayScenarios"
+                      ],
+                      "properties": {
+                        "intradayScenarios": {
+                          "minItems": 1
+                        }
+                      }
+                    },
+                    "else": {
+                      "properties": {
+                        "intradayScenarios": {
+                          "maxItems": 0
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "if": {
+                      "properties": {
+                        "task": {
+                          "enum": [
+                            "instrument_outlook",
+                            "market_outlook_global"
+                          ]
+                        }
+                      }
+                    },
+                    "then": {
+                      "required": [
+                        "drivers",
+                        "scenarios",
+                        "alternatives",
+                        "missingEvidence",
+                        "target",
+                        "methods"
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "schemaVersion": {
+                    "const": "ogid-situation-analysis-v1"
+                  },
+                  "task": {
+                    "const": "situation_analysis"
+                  },
+                  "situationId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "summary": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  },
+                  "evidenceIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "uniqueItems": true
+                  },
+                  "probability": {
+                    "type": "null"
+                  },
+                  "synthesis": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "text": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2000
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 256,
+                            "pattern": "^(situation-source|technical):[A-Za-z0-9._:-]+$"
+                          },
+                          "maxItems": 40,
+                          "minItems": 1,
+                          "uniqueItems": true,
+                          "description": "Exact source evidence IDs only. coverage, source-profile and baseline are context, never claim citations."
+                        },
+                        "kind": {
+                          "enum": [
+                            "attributed-report",
+                            "observation",
+                            "hypothesis"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "text",
+                        "evidenceIds",
+                        "kind"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "maxItems": 40
+                  },
+                  "timeline": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "text": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2000
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 256,
+                            "pattern": "^(situation-source|technical):[A-Za-z0-9._:-]+$"
+                          },
+                          "maxItems": 40,
+                          "minItems": 1,
+                          "uniqueItems": true,
+                          "description": "Exact source evidence IDs only. coverage, source-profile and baseline are context, never claim citations."
+                        },
+                        "occurredAt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}T.*Z$"
+                        },
+                        "publishedAt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}T.*Z$"
+                        },
+                        "knownAt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}T.*Z$"
+                        }
+                      },
+                      "required": [
+                        "text",
+                        "evidenceIds",
+                        "occurredAt",
+                        "publishedAt",
+                        "knownAt"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "maxItems": 40
+                  },
+                  "changes": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "text": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2000
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 256,
+                            "pattern": "^(situation-source|technical):[A-Za-z0-9._:-]+$"
+                          },
+                          "maxItems": 40,
+                          "minItems": 1,
+                          "uniqueItems": true,
+                          "description": "Exact source evidence IDs only. coverage, source-profile and baseline are context, never claim citations."
+                        },
+                        "kind": {
+                          "enum": [
+                            "attributed-report",
+                            "observation",
+                            "hypothesis"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "text",
+                        "evidenceIds",
+                        "kind"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "maxItems": 40
+                  },
+                  "impacts": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "text": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2000
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 256,
+                            "pattern": "^(situation-source|technical):[A-Za-z0-9._:-]+$"
+                          },
+                          "maxItems": 40,
+                          "minItems": 1,
+                          "uniqueItems": true,
+                          "description": "Exact source evidence IDs only. coverage, source-profile and baseline are context, never claim citations."
+                        },
+                        "channel": {
+                          "enum": [
+                            "energy",
+                            "transport",
+                            "sanctions",
+                            "instrument"
+                          ]
+                        },
+                        "instrumentId": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "maxLength": 128
+                        },
+                        "mechanism": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2000
+                        },
+                        "confirmation": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2000
+                        },
+                        "invalidation": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2000
+                        },
+                        "kind": {
+                          "const": "hypothesis"
+                        }
+                      },
+                      "required": [
+                        "text",
+                        "evidenceIds",
+                        "channel",
+                        "instrumentId",
+                        "mechanism",
+                        "confirmation",
+                        "invalidation",
+                        "kind"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "maxItems": 40
+                  },
+                  "contradictions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "text": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2000
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 256,
+                            "pattern": "^(situation-source|technical):[A-Za-z0-9._:-]+$"
+                          },
+                          "maxItems": 40,
+                          "minItems": 1,
+                          "uniqueItems": true,
+                          "description": "Exact source evidence IDs only. coverage, source-profile and baseline are context, never claim citations."
+                        },
+                        "kind": {
+                          "enum": [
+                            "attributed-report",
+                            "observation",
+                            "hypothesis"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "text",
+                        "evidenceIds",
+                        "kind"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "maxItems": 40
+                  },
+                  "limitations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 2000
+                    },
+                    "maxItems": 40
+                  },
+                  "missingEvidence": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 2000
+                    },
+                    "maxItems": 40
+                  },
+                  "narrativeFacts": {
+                    "type": "array",
+                    "maxItems": 100,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kind",
+                        "field",
+                        "literal",
+                        "evidenceId",
+                        "path"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "technical",
+                            "reported-quantity",
+                            "reported-claim",
+                            "date",
+                            "edition",
+                            "coverage"
+                          ]
+                        },
+                        "field": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256,
+                          "pattern": "^/",
+                          "description": "JSON pointer del texto de TU respuesta, por ejemplo /summary. Nunca /title ni una ruta del snapshot."
+                        },
+                        "literal": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256,
+                          "description": "Literal numérico presente en ese texto; para date, timestamp exacto. Para reported-claim, un fragmento literal de quote de hasta256 caracteres."
+                        },
+                        "evidenceId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256
+                        },
+                        "path": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256,
+                          "description": "Ruta del valor dentro de data, por ejemplo title o observed.close; nunca data ni una ruta de TU respuesta."
+                        },
+                        "quote": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2000
+                        }
+                      }
+                    }
+                  },
+                  "technicalFacts": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "evidenceId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256
+                        },
+                        "path": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256
+                        },
+                        "value": {
+                          "type": "number"
+                        },
+                        "unit": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 100
+                        }
+                      },
+                      "required": [
+                        "evidenceId",
+                        "path",
+                        "value",
+                        "unit"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "maxItems": 40
+                  }
+                },
+                "required": [
+                  "schemaVersion",
+                  "task",
+                  "situationId",
+                  "summary",
+                  "evidenceIds",
+                  "probability",
+                  "synthesis",
+                  "timeline",
+                  "changes",
+                  "impacts",
+                  "contradictions",
+                  "limitations",
+                  "missingEvidence",
+                  "technicalFacts",
+                  "narrativeFacts"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "required": [
+          "snapshotId",
+          "proposal"
+        ],
+        "additionalProperties": false
+      },
+      "samplingProjection": "types-constants-required-v1; canonical bounds and conditions remain mandatory at dispatch",
+      "effects": "Returns untrusted candidate data locally. No HTTP, storage, providers or publication. The worker still validates evidence and the canonical contract."
     }
   ]
 }

@@ -6,7 +6,7 @@ import {numericNarrativeProblem} from './numericSemantics.js';
 import {narrativeFactsSchema, narrativeProblem, NARRATIVE_INSTRUCTIONS, FACTUAL_GROUNDING_INSTRUCTIONS, NARRATIVE_PROMPT_VERSION, NARRATIVE_CONTRACT_VERSION, usesNarrativeFacts,usesBriefCriteria,usesStructuredBrief} from './narrativeFacts.js';
 export const PROMPT_VERSION = NARRATIVE_PROMPT_VERSION;
 export const PUBLICATION_CONTRACT_VERSION = NARRATIVE_CONTRACT_VERSION;
-const typedNumericJob = job => ['ogid-analyst-v1.7','ogid-analyst-v1.8','ogid-analyst-v1.9','ogid-analyst-v1.10','ogid-analyst-v1.11','ogid-analyst-v1.12','ogid-analyst-v1.13','ogid-analyst-v1.14','ogid-analyst-v1.15','ogid-analyst-v1.16','ogid-analyst-v1.17','ogid-analyst-v1.18','ogid-analyst-v1.19',PROMPT_VERSION].includes(job.promptVersion);
+const typedNumericJob = job => ['ogid-analyst-v1.7','ogid-analyst-v1.8','ogid-analyst-v1.9','ogid-analyst-v1.10','ogid-analyst-v1.11','ogid-analyst-v1.12','ogid-analyst-v1.13','ogid-analyst-v1.14','ogid-analyst-v1.15','ogid-analyst-v1.16','ogid-analyst-v1.17','ogid-analyst-v1.18','ogid-analyst-v1.19','ogid-analyst-v1.20',PROMPT_VERSION].includes(job.promptVersion);
 export const TASKS = [
   "situation_analysis",
   "global_intelligence_brief",
@@ -240,7 +240,9 @@ export function taskInstructions(job) {
     geopolitical_alert_assessment:'Lee la revisión congelada de la alerta elegida y después sus fuentes exactas disponibles de news-reference. Valora su relevancia y límites con citas; copiar el titular no es una valoración. Distingue el relato de la fuente, la interpretación de la alerta y cualquier hipótesis de impacto. Señala si sólo hay titulares o una cadena de origen desconocida. Explica qué se afirma, atribución, respaldo, límites y contradicciones; una valoración no verifica el relato. alertAssessments cita alertId/revision y evidenceId exactos. No sustituyas la valoración por conteos de cobertura. No incluyas intradía.',
     contextual_chat:'Responde en texto con citas [evidence:ID] consultadas del snapshot; sin JSON.',
   };
-  return specific[job.task] || '';
+  const usefulBrief=job.task==='global_intelligence_brief'&&job.promptVersion==='ogid-analyst-v1.21'
+    ? ' Cada plan debe identificar información desconocida que cambiaría la interpretación. Confirmar la identidad del medio o repetir el titular no responde esa pregunta. Ejemplo metodológico, no noticia: ante una intención de cambiar aranceles, comprobar el instrumento jurídico, bienes afectados, entrada en vigor y excepciones permite distinguir intención y medida efectiva; un desmentido o condiciones diferentes debilitan la interpretación inicial. La falta de otra noticia sólo mantiene incertidumbre. Aplica el método al relato leído, sin introducir esos datos como hechos. Usa en cada plan únicamente fuentes pertinentes a su pregunta.' : '';
+  return (specific[job.task] || '')+usefulBrief;
 }
 export function publicationExample(job,evidenceId) {
   if(!evidenceId || job.task==='contextual_chat')return null;
@@ -493,4 +495,4 @@ Para evidencia grande usa ogid_agent_evidence_chunk con format="utf8" y nextOffs
 Para valorar alertas usa alertAssessments y cita su revisión congelada de dominio geopolitical-alert. Una valoración no cambia la veracidad de la alerta.
 Incluye en evidenceIds tanto las revisiones de alerta como las fuentes citadas en valoraciones, drivers, escenarios intradía y technicalFacts.
 Lee quality y publicationEligibility de cada evidencia antes de usarla. Las evidencias stale, synthetic o fallback se conservan como contexto, pero están PROHIBIDAS en evidenceIds, technicalFacts y afirmaciones publicables. No copies sus cifras. Consulta coverage y evidencia elegible; explica la falta de vigencia en limitations y missingEvidence. Si faltan datos técnicos o vigencia, direction=unavailable. probability=null, confidenceKind=qualitative-uncalibrated, horizonte=24 horas.
-Responde con el schema solicitado; para chat usa texto con al menos una cita exacta [evidence:ID] del snapshot, también al explicar que faltan datos. No escribas URLs inventadas. No muestres razonamiento privado.`;
+Cuando el contrato de entrega indique ogid_agent_proposal, consulta primero la evidencia y entrega una instancia con valores concretos mediante esa herramienta; no devuelvas el esquema ni escribas una respuesta final después. En otro caso responde con el contrato solicitado. Para chat usa texto con al menos una cita exacta [evidence:ID] del snapshot, también al explicar que faltan datos. No escribas URLs inventadas. No muestres razonamiento privado.`;

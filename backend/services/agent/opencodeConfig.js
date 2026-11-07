@@ -24,7 +24,7 @@ export function generateOpenCodeConfig({
     !Array.isArray(toolNames) ||
     !toolNames.length ||
     toolNames.some(
-      (t) => !/^ogid_read_ogid_(query|get_capabilities|health|agent_evidence|agent_evidence_chunk|agent_clusters)$/.test(t),
+      (t) => !/^ogid_read_ogid_(query|get_capabilities|health|agent_evidence|agent_evidence_chunk|agent_clusters|agent_proposal)$/.test(t),
     )
   )
     throw agentError("OPENCODE_TOOL_ALLOWLIST_REQUIRED");

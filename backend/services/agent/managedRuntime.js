@@ -12,6 +12,7 @@ import { OpenCodeClient } from "./opencodeClient.js";
 import { readyModel } from "./config.js";
 import {runtimeTelemetry} from './runtimeTelemetry.js';
 import {AGENT_EVIDENCE_TOOLS,OPERATIONS_HASH,OPERATIONS_VERSION} from '../../contracts/ogidOperations.js';
+import {AGENT_PROPOSAL_TRANSPORT} from '../../contracts/agentProposalTransport.js';
 
 const backend=fileURLToPath(new URL("../../",import.meta.url));
 const binaryHash="2df936a20cf74af5706020342164628f9a31978c50c2b0ad306b42b614fe245d";
@@ -44,7 +45,7 @@ export class ManagedAgentRuntime {
     const freshWorker=Date.now()-Date.parse(worker.workerHealth?.reportedAt)<=90000;
     const connected=freshWorker&&['running','degraded'].includes(worker.state)&&(worker.workerHealth?.controlPlaneReady||worker.state==='running')&&w.controlPlane?.mcp?.state==='connected';
     const services={mcp:{state:w.mcpContractMismatch||identity&&identity.hash!==OPERATIONS_HASH?'degraded':connected?(identity?'ready':'unverified'):'unknown',
-      expectedContract:{version:OPERATIONS_VERSION,hash:OPERATIONS_HASH},identity:identity||null,permittedTools:[...Object.keys(AGENT_EVIDENCE_TOOLS),'ogid_get_capabilities','ogid_health'],rejections:w.mcpRejections||0,lastFailure:w.lastMcpFailure||null,checkedAt:w.controlPlane?.checkedAt||null,profile:'agent-evidence'},
+      expectedContract:{version:OPERATIONS_VERSION,hash:OPERATIONS_HASH},identity:identity||null,permittedTools:[...Object.keys(AGENT_EVIDENCE_TOOLS),AGENT_PROPOSAL_TRANSPORT.tool,'ogid_get_capabilities','ogid_health'],rejections:w.mcpRejections||0,lastFailure:w.lastMcpFailure||null,checkedAt:w.controlPlane?.checkedAt||null,profile:'agent-evidence'},
       llamacpp:this.brokerTelemetry?.upstream?{...this.brokerTelemetry.upstream,...(Date.now()-Date.parse(this.brokerTelemetry.upstream.observedAt)>90000?{state:'unknown'}:{})}:{state:'unknown',observedAt:null}};
     if(components.broker)components.broker.telemetry=this.brokerTelemetry||null;
     if(components.opencode)components.opencode.telemetry={...w.controlPlane,apiState:connected?'available':'unknown',lastFailure:w.lastFailure||null,lastSuccess:w.lastSuccess||null,generations:w.generations||[]};
@@ -69,7 +70,7 @@ export class ManagedAgentRuntime {
     }
     this.manifestPath=join(directory,"models.runtime.json");save(this.manifestPath,this.config.manifest);
     this.configPath=join(directory,"opencode.json");
-    save(this.configPath,generateOpenCodeConfig({manifest:this.config.manifest,defaultModel:this.config.backgroundModel,brokerUrl:this.config.brokerUrl,mcpCommand:[process.execPath,resolve(backend,"../integrations/ogid-mcp/src/index.js")],toolNames:["ogid_read_ogid_agent_evidence","ogid_read_ogid_agent_evidence_chunk","ogid_read_ogid_agent_clusters","ogid_read_ogid_get_capabilities","ogid_read_ogid_health"]}));
+    save(this.configPath,generateOpenCodeConfig({manifest:this.config.manifest,defaultModel:this.config.backgroundModel,brokerUrl:this.config.brokerUrl,mcpCommand:[process.execPath,resolve(backend,"../integrations/ogid-mcp/src/index.js")],toolNames:["ogid_read_ogid_agent_evidence","ogid_read_ogid_agent_evidence_chunk","ogid_read_ogid_agent_clusters",`ogid_read_${AGENT_PROPOSAL_TRANSPORT.tool}`,"ogid_read_ogid_get_capabilities","ogid_read_ogid_health"]}));
     for(const name of ["broker","opencode","worker"])if(this.components[name].enabled){try{await this.launchComponent(name);}catch(error){this.failed(name,error);}}
   }
   childEnvironment(name){

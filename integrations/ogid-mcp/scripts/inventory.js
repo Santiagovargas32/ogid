@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { OGID_OPERATIONS, OPERATIONS_VERSION } from "../../../backend/contracts/ogidOperations.js";
+import { AGENT_PROPOSAL_TRANSPORT } from "../../../backend/contracts/agentProposalTransport.js";
 import {NEWS_CLASSIFICATION_VERSION,NEWS_LANGUAGES} from '../../../backend/services/news/newsClassification.js';
 import {PUBLISHER_METHOD,SOURCE_PRIORITY_METHOD} from '../../../backend/services/news/publisherIdentity.js';
 
@@ -31,7 +32,7 @@ lines.push('## Evaluaciones y cobertura de medios', '',
   'news.source-coverage usa recepción, ventana máxima 31 días y facetas acotadas del archivo anterior a la selección; informa artículos aún pendientes. Cuenta editores, grupos propietarios conocidos e identificadores de origen por separado. Desconocido sigue desconocido; varios países editoriales pueden atribuir el mismo artículo. No reconstruye metadatos históricos ni mide salud de adquisición. Catálogo, perfiles y evaluaciones se consultan por lectores readonly/query_only; importar utiliza el escritor único y recibo durable.', '');
 const output = lines.join("\n");
 const machineTarget=fileURLToPath(new URL('../API-MCP.contract.json',import.meta.url));
-const machine=JSON.stringify({contractVersion:OPERATIONS_VERSION,routes:unique.size,operations:OGID_OPERATIONS},null,2)+'\n';
+const machine=JSON.stringify({contractVersion:OPERATIONS_VERSION,routes:unique.size,operations:OGID_OPERATIONS,localTransports:[AGENT_PROPOSAL_TRANSPORT]},null,2)+'\n';
 if(process.argv.includes('--check-json')){
   if(readFileSync(machineTarget,'utf8')!==machine)throw new Error('API-MCP.contract.json difiere del contrato: ejecutar npm run inventory:json.');
   console.log(`Inventario ejecutable válido: ${unique.size} rutas, ${OGID_OPERATIONS.length} operaciones.`);

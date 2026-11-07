@@ -1,4 +1,6 @@
 import {OPERATIONS_HASH,OPERATIONS_VERSION} from '../../../backend/contracts/ogidOperations.js';
+import {AGENT_PROPOSAL_TRANSPORT} from '../../../backend/contracts/agentProposalTransport.js';
+import {fromJsonSchema} from '@modelcontextprotocol/server';
 import * as z from "zod/v4";
 import { BASELINE_COUNTRIES } from "../../../backend/utils/countryCatalog.js";
 import { AWARENESS_SOURCES, AWARENESS_SOURCE_CATALOG_VERSION } from "../../../backend/services/awareness/awarenessCatalog.js";
@@ -14,6 +16,10 @@ const limit = z.number().int().min(1).max(100).default(20);
 const list = values => z.array(z.enum(values)).min(1).max(20).optional();
 const date = z.iso.datetime({ offset: true }).optional();
 const ANNOTATIONS = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
+const canonicalProposalSchema=fromJsonSchema(AGENT_PROPOSAL_TRANSPORT.canonicalInput);
+const proposalSchema={'~standard':{...canonicalProposalSchema['~standard'],jsonSchema:{
+  input:()=>AGENT_PROPOSAL_TRANSPORT.input,output:()=>AGENT_PROPOSAL_TRANSPORT.input
+}}};
 const COVERAGE = "El filtro de países de OGID puede excluir artículos sin menciones reconocidas, incluso con ALL; este lote no es una búsqueda histórica completa.";
 
 function pick(object, keys) {
@@ -159,8 +165,14 @@ export function toolDefinitions(config, read) {
       }
     }
     , ...extendedToolDefinitions(config, read)
+    , ...(config.researchScope==='agent-evidence'?[{
+      name:AGENT_PROPOSAL_TRANSPORT.tool,operationId:AGENT_PROPOSAL_TRANSPORT.operationId,
+      description:'Devuelve al validador la propuesta JSON de brief, outlook, assessment o situation_analysis, tras consultar la evidencia. Usa el snapshotId exacto y proposal según el contrato de la tarea. Llámala una sola vez por intento. Es un retorno local de datos: no publica, no almacena y no acredita lecturas. El chat responde con texto y citas.',
+      schema:proposalSchema,
+      async run({snapshotId,proposal}){return {data:{transport:AGENT_PROPOSAL_TRANSPORT.version,snapshotId,proposal},warnings:['Propuesta sin validar; no acredita hechos, lectura de fuentes ni publicación.']};}
+    }]:[])
   ].filter(t => config.researchScope !== "agent-evidence" ||
-    ["ogid_query", "ogid_get_capabilities", "ogid_health", "ogid_agent_evidence", "ogid_agent_evidence_chunk", "ogid_agent_clusters"].includes(t.name))
+    ["ogid_query", "ogid_get_capabilities", "ogid_health", "ogid_agent_evidence", "ogid_agent_evidence_chunk", "ogid_agent_clusters",AGENT_PROPOSAL_TRANSPORT.tool].includes(t.name))
     .map(t => ({ ...t, annotations: t.annotations || ANNOTATIONS }));
 }
 
@@ -168,7 +180,13 @@ export async function executeTool(tool, input, config) {
   const identity = { version: OPERATIONS_VERSION, hash: OPERATIONS_HASH, adapterVersion: VERSION,
     pid: process.pid, startedAt: ADAPTER_BUILD.capturedAt, profile: config.researchScope || 'all' };
   try {
-    const args = tool.schema.parse(input);
+    let args;
+    if(typeof tool.schema.parse==='function')args=tool.schema.parse(input);
+    else{
+      const result=await tool.schema['~standard'].validate(input);
+      if(result.issues)throw new ReadError('INVALID_ARGUMENTS','La propuesta no cumple el contrato estructural de su familia. Devuelve valores concretos, no un esquema.');
+      args=result.value;
+    }
     const result = await tool.run(args);
     const payload = { ok: true, queriedAt: new Date().toISOString(), origin: "OGID", identity, ...result, truncated: false };
     const operationId = tool.operationId || input.operationId;

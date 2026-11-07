@@ -1,6 +1,7 @@
 // Registro compartido: contratos de transporte, permisos e inventario API→MCP.
 // Sin imports de runtime ni secretos. Los parámetros son valores tipados; nunca URLs/rutas libres.
-export const OPERATIONS_VERSION = "1.14.0";
+export const OPERATIONS_VERSION = "1.15.0";
+import {AGENT_PROPOSAL_TRANSPORT,isProposalTool} from './agentProposalTransport.js';
 import {DOSSIER_PROPOSE,DOSSIER_REVIEW} from '../services/news/sourceDossierSchema.js';
 import {SOURCE_IMPORT_PROPERTIES,SOURCE_IMPORT_REQUIRED} from '../services/news/sourceAssessmentSchema.js';
 import {COMPARISON_REVIEW_PROPERTIES,COMPARISON_REVIEW_REQUIRED} from '../services/news/comparisonSchema.js';
@@ -13,6 +14,7 @@ export const AGENT_EVIDENCE_TOOLS = Object.freeze({
 });
 export function agentToolCall(name, input = {}) {
   const args=input&&typeof input==='object'&&!Array.isArray(input)?input:{};
+  if(isProposalTool(name))return {operationId:AGENT_PROPOSAL_TRANSPORT.operationId,snapshotId:args.snapshotId};
   const tool = Object.keys(AGENT_EVIDENCE_TOOLS).find(key => typeof name==='string'&&(name === key || name.endsWith('_' + key)));
   return { operationId: tool ? AGENT_EVIDENCE_TOOLS[tool] : getOperation(args.operationId)?.id,
     snapshotId: tool ? args.snapshotId : args.parameters?.snapshotId };
@@ -151,7 +153,7 @@ export const OGID_OPERATIONS = Object.freeze([
   op("media.streams.resolve", "GET", "/api/media/streams", { ids: array(str(80), 50), resolve: choice("critical", "visible", "all") }, { ...costly, fixed: { force: true } }),
   op("media.item.resolve", "GET", "/api/media/streams/:id", { resolve: choice("visible", "all") }, { ...costly, pathParameters: schema({ id: str(80) }, ["id"]), fixed: { force: true } })
 ]);
-export const OPERATIONS_HASH=createHash("sha256").update(JSON.stringify({version:OPERATIONS_VERSION,operations:OGID_OPERATIONS,agentTools:AGENT_EVIDENCE_TOOLS})).digest("hex");
+export const OPERATIONS_HASH=createHash("sha256").update(JSON.stringify({version:OPERATIONS_VERSION,operations:OGID_OPERATIONS,agentTools:AGENT_EVIDENCE_TOOLS,agentProposal:AGENT_PROPOSAL_TRANSPORT})).digest("hex");
 export function getOperation(id) { return OGID_OPERATIONS.find(operation => operation.id === id) || null; }
 export function validIsoDate(value) {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value) || !Number.isFinite(Date.parse(value))) return false;

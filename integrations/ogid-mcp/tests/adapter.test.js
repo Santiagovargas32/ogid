@@ -4,8 +4,47 @@ import { createServer as httpServer } from "node:http";
 import { loadConfig } from "../src/config.js";
 import { createReadClient } from "../src/client.js";
 import { toolDefinitions, executeTool } from "../src/tools.js";
+import {generationExample,generationSchemaForJob} from '../../../backend/services/agent/briefReports.js';
+import {PROMPT_VERSION} from '../../../backend/services/agent/contracts.js';
+import {AGENT_PROPOSAL_TRANSPORT,proposalSamplingSchema} from '../../../backend/contracts/agentProposalTransport.js';
 
 const config = loadConfig({});
+test('agent proposal is a local exact return with no HTTP, storage or read receipt',async()=>{
+ const cfg=loadConfig({OGID_RESEARCH_SCOPE:'agent-evidence'});let calls=0;
+ const tool=toolDefinitions(cfg,async()=>{calls++;throw Error('No request permitted');}).find(t=>t.name==='ogid_agent_proposal');
+ const proposal={...generationExample({task:'global_intelligence_brief',promptVersion:PROMPT_VERSION},'coverage:fixture'),limitations:['Literal «sin cambios»']};
+ const result=await executeTool(tool,{snapshotId:'snapshot-fixture',proposal},cfg);
+ assert.equal(calls,0);assert.equal(result.isError,undefined);assert.deepEqual(result.structuredContent.data.proposal,proposal);
+ assert.equal(result.structuredContent.readReceipt,undefined);assert.equal(tool.annotations.readOnlyHint,true);
+ assert.equal(toolDefinitions(config,()=>{}).some(t=>t.name==='ogid_agent_proposal'),false);
+ for(const input of [{snapshotId:4,proposal},{snapshotId:'snapshot-fixture',proposal:[]},{snapshotId:'snapshot-fixture',proposal,publish:true}])assert.equal((await executeTool(tool,input,cfg)).isError,true);
+});
+test('oversized proposal return is rejected whole rather than truncated',async()=>{
+ const cfg={...loadConfig({OGID_RESEARCH_SCOPE:'agent-evidence'}),maxOutputBytes:1024};
+ const tool=toolDefinitions(cfg,()=>{throw Error('No HTTP');}).find(t=>t.name==='ogid_agent_proposal');
+ const proposal={...generationExample({task:'global_intelligence_brief',promptVersion:PROMPT_VERSION},'coverage:fixture'),limitations:['x'.repeat(3000)]};
+ const result=await executeTool(tool,{snapshotId:'snapshot-fixture',proposal},cfg);
+ assert.equal(result.isError,true);assert.equal(result.structuredContent.error.code,'OUTPUT_TOO_LARGE');assert.equal(result.structuredContent.data,undefined);
+});
+test('proposal tool advertises canonical typed families and refuses schema fragments without touching data',async()=>{
+ const cfg=loadConfig({OGID_RESEARCH_SCOPE:'agent-evidence'}),tool=toolDefinitions(cfg,()=>{throw Error('No HTTP');}).find(t=>t.name==='ogid_agent_proposal');
+ const wire=tool.schema['~standard'].jsonSchema.input({target:'draft-2020-12'});
+ assert.deepEqual(wire,AGENT_PROPOSAL_TRANSPORT.input);
+ for(const task of ['global_intelligence_brief','market_outlook_global','instrument_outlook','geopolitical_alert_assessment','situation_analysis']){
+  const job={task,promptVersion:PROMPT_VERSION,scope:'bound-fixture'},proposal=generationExample(job,'coverage:fixture');
+  const result=await executeTool(tool,{snapshotId:'snapshot-fixture',proposal},cfg);
+  assert.equal(result.isError,undefined,task);assert.deepEqual(result.structuredContent.data.proposal,proposal);
+  const bad=await executeTool(tool,{snapshotId:'snapshot-fixture',proposal:{...proposal,task:{$ref:'#/$defs/task'}}},cfg);
+  assert.equal(bad.structuredContent.error.code,'INVALID_ARGUMENTS');assert.equal(bad.structuredContent.data,undefined);
+  const schema=wire.properties.proposal.anyOf.find(s=>s.properties.task.const===task);
+  if(task!=='situation_analysis')assert.deepEqual(schema,proposalSamplingSchema(generationSchemaForJob({task,promptVersion:PROMPT_VERSION})));
+ }
+ const situation=generationExample({task:'situation_analysis',promptVersion:PROMPT_VERSION,scope:'bound-fixture'},'coverage:fixture');
+ const long={...situation,summary:'x'.repeat(2001)};
+ assert.equal(wire.properties.proposal.anyOf.find(s=>s.properties.task.const==='situation_analysis').properties.summary.maxLength,undefined);
+ assert.equal((await executeTool(tool,{snapshotId:'snapshot-fixture',proposal:long},cfg)).structuredContent.error.code,'INVALID_ARGUMENTS');
+ assert.equal((await executeTool(tool,{snapshotId:'x'.repeat(129),proposal:situation},cfg)).structuredContent.error.code,'INVALID_ARGUMENTS');
+});
 test('frozen evidence transport covers queue and read budgets without changing generic research limits',()=>{
  assert.equal(config.timeoutMs,30000);
  assert.equal(loadConfig({OGID_RESEARCH_SCOPE:'agent-evidence'}).timeoutMs,190000);

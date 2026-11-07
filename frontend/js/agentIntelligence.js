@@ -256,10 +256,10 @@ export function mountAgentIntelligence({getWatchlist=()=>null,getContext=()=>({v
         pending.dataset.stream = "true";
       }
       pending.querySelector("p").textContent =
-        v.text || "Consultando herramientas…";
+        v.text || "Consultando evidencia…";
       status.textContent =
-        (v.tools || []).map((t) => `${t.name}: ${t.status}`).join(" · ") ||
-        "Generando…";
+        (v.tools || []).some(t=>t.operationId==='agent.proposal.return')?"Validando propuesta…":
+        v.tools?.length?"Consultando evidencia…":"Generando respuesta…";
     });
     events.onerror = () => {
       if (events === connection && eventSession === sessionId)
@@ -703,7 +703,7 @@ export function mountAgentIntelligence({getWatchlist=()=>null,getContext=()=>({v
       status.textContent =
         capabilities.mode === "off"
           ? "Analista desactivado. Los datos deterministas continúan disponibles."
-          : "Análisis experimental · evaluación diaria disponible según cobertura";
+          : "Análisis experimental · solicítalo bajo demanda";
       await refresh();
     } catch (e) {
       showError(e);

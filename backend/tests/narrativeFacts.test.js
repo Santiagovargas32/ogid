@@ -1,4 +1,4 @@
-import {generatedBrief} from './fixtures/generatedBrief.js';
+import {generatedBrief,returnedProposal} from './fixtures/generatedBrief.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {assertPublication, publicationExample, PROMPT_VERSION, validatePublicationForJob,safeValidationDetails} from '../services/agent/contracts.js';
@@ -107,7 +107,7 @@ test('missing arrays in initial and repair candidates consume one repair and pub
  const initial=structuredClone(p);delete initial.technicalFacts;const repaired=structuredClone(p);delete repaired.narrativeFacts;
  const worker=new IntelligenceWorker({model:'llamacpp/fixture',call:async(method,args)=>{
   if(method==='snapshot')return snapshot;if(method==='evidence')return {items:[{evidenceId:'coverage:fixture',domain:'coverage',publicationEligibility:{eligible:true}}],hasMore:false};if(method==='memory')return {items:[]};if(method==='runControl')return {status:'running'};if(method==='publish')published++;if(method==='state')terminal=args.status;return {};
- },opencode:{session:async()=>({id:'session'}),messages:async()=>({data:[]}),cancel:async()=>{},prompt:async(_id,{text})=>{prompts++;assert.ok(text.includes('technicalFacts'));assert.ok(text.includes('narrativeFacts'));},progress:async()=>({text:JSON.stringify(generatedBrief(prompts===1?initial:repaired)),idle:true,outcome:'succeeded',finish:'stop',messageId:'answer',usage:[],tools:[{name:'ogid_agent_evidence',status:'completed',applicationOk:true,contentRead:true,operationId:'agent.evidence',snapshotId:snapshot.snapshotId,returnedSnapshotId:snapshot.snapshotId}]})}});
+ },opencode:{session:async()=>({id:'session'}),messages:async()=>({data:[]}),cancel:async()=>({interrupted:true}),prompt:async(_id,{text})=>{prompts++;assert.ok(text.includes('technicalFacts'));assert.ok(text.includes('narrativeFacts'));},progress:async()=>({proposalReturns:returnedProposal(generatedBrief(prompts===1?initial:repaired),snapshot.snapshotId),text:'',idle:true,outcome:'succeeded',finish:'stop',messageId:'answer',usage:[],tools:[{name:'ogid_agent_evidence',status:'completed',applicationOk:true,contentRead:true,operationId:'agent.evidence',snapshotId:snapshot.snapshotId,returnedSnapshotId:snapshot.snapshotId}]})}});
  await worker.execute({jobId:'required-arrays',task:p.task,scope:'global',promptVersion:PROMPT_VERSION,fence:1,model:'llamacpp/fixture',createdAt:asOf});
  assert.equal(prompts,2);assert.equal(published,0);assert.equal(terminal,'failed');
 });
@@ -116,7 +116,7 @@ test('a structural repair reuses the frozen index and does not depend on another
  const initial=structuredClone(p);delete initial.technicalFacts;
  const worker=new IntelligenceWorker({model:'llamacpp/fixture',call:async(method,args)=>{
   if(method==='snapshot')return snapshot;if(method==='evidence'){reads++;if(reads>1)throw Object.assign(Error('pressure'),{code:'AGENT_RESOURCE_DEFERRED',statusCode:503});return {items:[{evidenceId:'coverage:fixture',domain:'coverage',publicationEligibility:{eligible:true}}],hasMore:false};}if(method==='memory')return {items:[]};if(method==='runControl')return {status:'running'};if(method==='publish'){published++;assert.deepEqual(args.proposal.narrativeFacts,[]);}return {};
- },opencode:{session:async()=>({id:'session'}),messages:async()=>({data:[]}),cancel:async()=>{},prompt:async()=>{prompts++;},progress:async()=>({text:JSON.stringify(generatedBrief(prompts===1?initial:p)),idle:true,outcome:'succeeded',finish:'stop',messageId:'answer',usage:[],tools:[{name:'ogid_agent_evidence',status:'completed',applicationOk:true,contentRead:true,operationId:'agent.evidence',snapshotId:snapshot.snapshotId,returnedSnapshotId:snapshot.snapshotId}]})}});
+ },opencode:{session:async()=>({id:'session'}),messages:async()=>({data:[]}),cancel:async()=>({interrupted:true}),prompt:async()=>{prompts++;},progress:async()=>({proposalReturns:returnedProposal(generatedBrief(prompts===1?initial:p),snapshot.snapshotId),text:'',idle:true,outcome:'succeeded',finish:'stop',messageId:'answer',usage:[],tools:[{name:'ogid_agent_evidence',status:'completed',applicationOk:true,contentRead:true,operationId:'agent.evidence',snapshotId:snapshot.snapshotId,returnedSnapshotId:snapshot.snapshotId}]})}});
  await worker.execute({jobId:'cached-repair',task:p.task,scope:'global',promptVersion:PROMPT_VERSION,fence:1,model:'llamacpp/fixture',createdAt:asOf});assert.equal(prompts,2);assert.equal(reads,1);assert.equal(published,1);
 });
 

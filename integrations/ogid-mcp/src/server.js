@@ -16,8 +16,9 @@ export function createServer(config, read = createReadClient(config)) {
     server.registerTool(tool.name, { description: tool.description, inputSchema: tool.schema, outputSchema, annotations: tool.annotations },
       args => executeTool(tool, args, config));
   }
-  // Keep typed schemas in tools/list, but use our identical strict validator
-  // for dispatch so SDK validation failures also carry a sanitized identity.
+  // Keep typed schemas in tools/list and canonical validators for dispatch so
+  // validation failures carry a sanitized identity. Proposal decoding omits
+  // repetition bounds; its canonical dispatch validator still enforces them.
   // This uses the public low-level handler and result projector, preserving
   // negotiated MCP output behavior instead of changing SDK internals.
   const outputJson=z.toJSONSchema(outputSchema);

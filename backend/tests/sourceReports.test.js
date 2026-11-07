@@ -1,4 +1,4 @@
-import {generatedBrief} from './fixtures/generatedBrief.js';
+import {generatedBrief,returnedProposal} from './fixtures/generatedBrief.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {assertPublication,publicationExample,PROMPT_VERSION,validatePublicationForJob} from '../services/agent/contracts.js';
@@ -76,7 +76,7 @@ test('the existing single repair can correct an unsupported qualitative report w
   if(method==='snapshot')return snapshot;if(method==='evidence')return {items:[source],hasMore:false};if(method==='runControl')return {status:'running'};
   if(method==='publish'){try{check(args.proposal);}catch(e){errors.push(e.code);throw e;}published++;}
   if(method==='state')terminal=args.status;return {};
- },opencode:{session:async()=>({id:'session'}),messages:async()=>({data:[]}),cancel:async()=>{},prompt:async()=>{prompts++;},progress:async()=>({text:JSON.stringify(prompts===1?bad:generatedBrief(proposal())),idle:true,outcome:'succeeded',finish:'stop',messageId:'answer',usage:[],tools:[{name:'ogid_agent_evidence',status:'completed',applicationOk:true,contentRead:true,operationId:'agent.evidence',snapshotId:snapshot.snapshotId,returnedSnapshotId:snapshot.snapshotId,evidenceIds:[id]}]})}});
+ },opencode:{session:async()=>({id:'session'}),messages:async()=>({data:[]}),cancel:async()=>({interrupted:true}),prompt:async()=>{prompts++;},progress:async()=>({proposalReturns:returnedProposal(prompts===1?bad:generatedBrief(proposal()),snapshot.snapshotId),text:'',idle:true,outcome:'succeeded',finish:'stop',messageId:'answer',usage:[],tools:[{name:'ogid_agent_evidence',status:'completed',applicationOk:true,contentRead:true,operationId:'agent.evidence',snapshotId:snapshot.snapshotId,returnedSnapshotId:snapshot.snapshotId,evidenceIds:[id]}]})}});
  await worker.execute({...job,jobId:'source-repair',scope:'global',origin:'user',fence:1,model:'llamacpp/fixture',createdAt:asOf});
  assert.deepEqual(errors,['AGENT_UNVERIFIED_SOURCE_REPORT']);assert.equal(prompts,2);assert.equal(published,1);assert.notEqual(terminal,'failed');
 });
@@ -88,7 +88,7 @@ test('brief selections require actual content receipts and retain those receipts
   const worker=new IntelligenceWorker({model:'llamacpp/fixture',call:async(method,args)=>{
    if(method==='snapshot')return snapshot;if(method==='evidence')return {items:[source],hasMore:false};if(method==='runControl')return {status:'running'};
    if(method==='publish'){check(args.proposal);published++;}if(method==='state')terminal=args.status;return {};
-  },opencode:{session:async()=>({id:'session'}),messages:async()=>({data:[]}),cancel:async()=>{},prompt:async()=>{prompts++;},progress:async()=>({text:JSON.stringify(prompts===1?first:good),idle:true,outcome:'succeeded',finish:'stop',messageId:'answer',usage:[],tools:[{name:'ogid_agent_evidence',status:'completed',applicationOk:true,contentRead:true,operationId:'agent.evidence',snapshotId:snapshot.snapshotId,returnedSnapshotId:snapshot.snapshotId,evidenceIds:(initialRead?prompts===1:prompts===2)?[id]:[]}]})}});
+  },opencode:{session:async()=>({id:'session'}),messages:async()=>({data:[]}),cancel:async()=>({interrupted:true}),prompt:async()=>{prompts++;},progress:async()=>({proposalReturns:returnedProposal(prompts===1?first:good,snapshot.snapshotId),text:'',idle:true,outcome:'succeeded',finish:'stop',messageId:'answer',usage:[],tools:[{name:'ogid_agent_evidence',status:'completed',applicationOk:true,contentRead:true,operationId:'agent.evidence',snapshotId:snapshot.snapshotId,returnedSnapshotId:snapshot.snapshotId,evidenceIds:(initialRead?prompts===1:prompts===2)?[id]:[]}]})}});
   await worker.execute({...job,jobId:'content-receipt-'+initialRead,scope:'global',origin:'user',fence:1,model:'llamacpp/fixture',createdAt:asOf});
   assert.equal(prompts,2);assert.equal(published,1);assert.notEqual(terminal,'failed');
  }

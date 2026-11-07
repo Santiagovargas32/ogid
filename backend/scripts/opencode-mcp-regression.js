@@ -12,13 +12,17 @@ import {generateOpenCodeConfig} from '../services/agent/opencodeConfig.js';
 import {generationFor} from '../services/agent/generation.js';
 import {OpenCodeClient} from '../services/agent/opencodeClient.js';
 import {createInferenceBroker} from '../services/agent/broker.js';
+import {generationExample} from '../services/agent/briefReports.js';
+import {PROMPT_VERSION} from '../services/agent/contracts.js';
+import {AGENT_PROPOSAL_TRANSPORT} from '../contracts/agentProposalTransport.js';
 
 const binary=resolve(process.argv[2]||'data/agent-runtime/bin/opencode');
 const digest=createHash('sha256');for await(const part of createReadStream(binary))digest.update(part);
 assert.equal(digest.digest('hex'),'2df936a20cf74af5706020342164628f9a31978c50c2b0ad306b42b614fe245d');
 const root=mkdtempSync(join(tmpdir(),'ogid-opencode-mcp-'));
 const names=['home','data','state','cache','tmp','workspace','config'];for(const d of names)mkdirSync(join(root,d),{mode:0o700});
-let child,stderrBytes=0,requests=0,steps=0,last,failureMode=null,modelRequests=0;
+let child,stderrBytes=0,requests=0,steps=0,last,failureMode=null,modelRequests=0,proposalMode=false,proposalSent=false;
+const returnedCandidate={...generationExample({task:'global_intelligence_brief',promptVersion:PROMPT_VERSION},'coverage:snapshot-fixture'),limitations:['Un texto «exacto».']};
 const reasoningReplays=[];
 const calls=[],advertised=[];
 const provider=createServer(async(req,res)=>{
@@ -31,12 +35,22 @@ const provider=createServer(async(req,res)=>{
   else res.end('data: {"choices":[{"index":0,"delta":{"content":"Unfinished private fixture"},"finish_reason":null}]}\n\n');
   return;
  }
+ if(proposalMode&&proposalSent){
+  res.writeHead(200,{'content-type':'text/event-stream'});
+  res.end('event: error\ndata: {"error":{"type":"server_error","message":"The model produced output that does not match the expected peg-native format","code":500}}\n\n');return;
+ }
  const system=JSON.stringify((input.messages||[]).filter(m=>m.role==='system'||m.role==='developer').map(m=>m.content));
  advertised.push({path:req.url,tools:input.tools?.map(t=>t.function?.name||t.name)||[],stream:input.stream,titleTask:/generate.{0,50}title|title.{0,50}generat/i.test(system),analyst:/analista de inteligencia/.test(system),fixtureTask:JSON.stringify(input.messages?.at(-1)?.content).includes('deterministic fixture')});
  for(const m of input.messages||[])if(m.role==='assistant'&&m.tool_calls?.length)reasoningReplays.push(m.reasoning_content==='fixture-private-reasoning');
  const name=input.tools?.find(t=>t.function?.name.endsWith('ogid_agent_evidence_chunk'))?.function.name;
  let delta={content:'Transport regression finished.'},finish='stop';
- if(name&&steps<2){
+ if(proposalMode){
+  const definition=input.tools?.find(t=>t.function?.name.endsWith('ogid_agent_proposal'))?.function;
+  const output=definition?.name;
+  assert.ok(output,'the pinned runtime must advertise the local proposal tool');proposalSent=true;
+  assert.deepEqual(definition.parameters.properties.proposal,AGENT_PROPOSAL_TRANSPORT.input.properties.proposal,'the model must receive typed canonical proposal fields');
+  delta={tool_calls:[{index:0,id:'proposal-fixture-call',type:'function',function:{name:output,arguments:JSON.stringify({snapshotId:'snapshot-fixture',proposal:returnedCandidate})}}]};finish='tool_calls';
+ }else if(name&&steps<2){
   const parameters=steps===0?{snapshotId:'snapshot-fixture',evidenceId:'technical-fixture',offset:0,format:'utf8'}:{snapshotId:'snapshot-fixture',evidenceId:42};
   calls.push({operationId:'agent.evidence.chunk',valid:steps===0});
   delta={tool_calls:[{index:0,id:`fixture-call-${++steps}`,type:'function',function:{name,arguments:JSON.stringify(parameters)}}]};finish='tool_calls';
@@ -54,7 +68,7 @@ try{
  for(const server of [provider,backend,portServer]){server.listen(0,'127.0.0.1');await once(server,'listening');}
  const port=portServer.address().port;await new Promise(r=>portServer.close(r));
  broker=createInferenceBroker({upstream:`http://127.0.0.1:${provider.address().port}`,apiKey:'fixture-only',token:'fixture-only',manifest,contextInspector:async()=>({})});broker.listen(0,'127.0.0.1');await once(broker,'listening');
- const config=generateOpenCodeConfig({manifest,brokerUrl:`http://127.0.0.1:${broker.address().port}`,defaultModel:'llamacpp/fixture',mcpCommand:[process.execPath,resolve('../integrations/ogid-mcp/src/index.js')],toolNames:['ogid_read_ogid_agent_evidence_chunk','ogid_read_ogid_get_capabilities','ogid_read_ogid_health']});
+ const config=generateOpenCodeConfig({manifest,brokerUrl:`http://127.0.0.1:${broker.address().port}`,defaultModel:'llamacpp/fixture',mcpCommand:[process.execPath,resolve('../integrations/ogid-mcp/src/index.js')],toolNames:['ogid_read_ogid_agent_evidence_chunk','ogid_read_ogid_agent_proposal','ogid_read_ogid_get_capabilities','ogid_read_ogid_health']});
  config.providers.llamacpp.models.fixture.compatibility={reasoningField:'reasoning_content'};
  const configPath=join(root,'opencode.json');writeFileSync(configPath,JSON.stringify(config),{mode:0o600});
  const env={PATH:process.env.PATH,HOME:join(root,'home'),TMPDIR:join(root,'tmp'),XDG_CONFIG_HOME:join(root,'config'),XDG_DATA_HOME:join(root,'data'),XDG_STATE_HOME:join(root,'state'),XDG_CACHE_HOME:join(root,'cache'),OPENCODE_CONFIG:configPath,OPENCODE_PASSWORD:'fixture-private-password',OPENCODE_DISABLE_PROJECT_CONFIG:'1',OPENCODE_DISABLE_CLAUDE_CODE:'1',AGENT_BROKER_TOKEN:'fixture-only',OGID_BASE_URL:`http://127.0.0.1:${backend.address().port}`};
@@ -81,6 +95,17 @@ try{
  const read=last.tools.find(t=>t.applicationOk===true),bad=last.tools.find(t=>t.applicationCode==='INVALID_ARGUMENTS');
  if(!bad)console.error(JSON.stringify({phase:'fixture-tool-error-shape',tools:last.tools.map(t=>({name:t.name,status:t.status,applicationCode:t.applicationCode}))}));
  assert.equal(read?.contentRead,true);assert.equal(read?.returnedSnapshotId,'snapshot-fixture');assert.equal(bad?.applicationOk,false);assert.ok(bad.validation.issues.length>0);
+ // The candidate is delivered by a real local MCP call. A later free-form
+ // provider error cannot alter it; the owning worker will stop that turn.
+ proposalMode=true;
+ const pg=generationFor({jobId:'fixture-proposal',fence:1,model:'llamacpp/fixture',task:'global_intelligence_brief'},{snapshotId:'snapshot-fixture'},{proposal:true});
+ const ps=await client.create({id:pg.sessionId,model:'llamacpp/fixture',title:'Local proposal return',signal});
+ await client.prompt(ps.id,{messageId:pg.messageId,text:'Use ogid_agent_proposal with the deterministic fixture candidate.',signal});
+ let proposalResult;
+ while(!signal.aborted){proposalResult=await client.progress(ps.id,signal,pg.messageId);if(proposalResult.proposalReturns.length)break;await wait(100,undefined,{signal});}
+ assert.equal(proposalResult.proposalReturns.length,1);assert.equal(proposalResult.proposalReturns[0].valid,true);assert.deepEqual(proposalResult.proposalReturns[0].proposal,returnedCandidate);
+ assert.equal(proposalResult.tools.find(t=>t.operationId==='agent.proposal.return')?.contentRead,false);assert.equal(requests,1,'proposal return must not call the backend');
+ await client.cancel(ps.id);proposalMode=false;
  const failures=[];
  for(const mode of ['format','incomplete']){
   failureMode=mode;
@@ -93,7 +118,7 @@ try{
   await client.cancel(s.id);
   failures.push({mode,cause:terminal.terminalError.causeCode});
  }
- console.log(JSON.stringify({passed:true,openCode:'2.0.31',provider:'simulated',reasoningRoundTrip:true,typedArguments:true,brokerTransport:true,repairUsed,failures,advertised,operationalServicesAccessed:false,requests,calls,receipt:true,invalidArguments:true,contractHash:read.returnedContractHash,stderrBytes}));
+ console.log(JSON.stringify({passed:true,openCode:'2.0.31',provider:'simulated',reasoningRoundTrip:true,typedArguments:true,brokerTransport:true,localProposalReturn:true,proposalBytesUnchanged:true,proposalWrites:false,repairUsed,failures,advertised,operationalServicesAccessed:false,requests,calls,receipt:true,invalidArguments:true,contractHash:read.returnedContractHash,stderrBytes}));
 }finally{
  if(child){try{process.kill(-child.pid,'SIGTERM');}catch{}await Promise.race([once(child,'exit').catch(()=>{}),wait(3000)]);try{process.kill(-child.pid,'SIGKILL');}catch{}}
  for(const server of [broker,provider,backend,portServer].filter(Boolean)){server.closeAllConnections();if(server.listening)await new Promise(r=>server.close(r));}

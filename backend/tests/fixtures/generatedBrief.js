@@ -1,5 +1,13 @@
 import {usesStructuredBrief} from '../../services/agent/narrativeFacts.js';
 import {PROMPT_VERSION} from '../../services/agent/contracts.js';
+import {proposalReturns} from '../../services/agent/proposalTransport.js';
+import {AGENT_PROPOSAL_TRANSPORT} from '../../contracts/agentProposalTransport.js';
+import {OPERATIONS_HASH} from '../../contracts/ogidOperations.js';
+
+export function returnedProposal(proposal,snapshotId){
+ const payload={ok:true,origin:'OGID',identity:{hash:OPERATIONS_HASH,profile:'agent-evidence'},data:{transport:AGENT_PROPOSAL_TRANSPORT.version,snapshotId,proposal}};
+ return proposalReturns([{id:'fixture-return',content:[{type:'tool',id:'proposal-return',name:'ogid_read_ogid_agent_proposal',executed:false,state:{status:'completed',input:{snapshotId,proposal},content:[{type:'text',text:JSON.stringify(payload)}]}}]}]);
+}
 
 // Convert only explicitly valid canonical fixture reports to model selections.
 // Invalid model candidates must be constructed directly by their behavior test.

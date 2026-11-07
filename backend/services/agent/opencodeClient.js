@@ -2,6 +2,8 @@ import {readEvents} from './eventStream.js';
 import {toolReceipt} from './toolReceipt.js';
 import {terminalFailure,transportFailure} from './failures.js';
 import {agentToolCall} from '../../contracts/ogidOperations.js';
+import {proposalReturns} from './proposalTransport.js';
+import {AGENT_PROPOSAL_TRANSPORT} from '../../contracts/agentProposalTransport.js';
 import { agentError } from "./contracts.js";
 import { localUrl } from "./config.js";
 import { createHash } from "node:crypto";
@@ -37,7 +39,8 @@ export class OpenCodeClient {
           await readEvents(response.body,event=>{
             const encoded=JSON.stringify(event);
             // Only terminal hints bypass the periodic reconciliation budget.
-            if(['session.idle','session.error'].includes(event?.type))for(const key of this.progressCache.keys())if(encoded.includes(key.split('|')[0]))this.eventHints.add(key);
+            const proposalCompleted=encoded.includes(AGENT_PROPOSAL_TRANSPORT.tool)&&encoded.includes('"completed"');
+            if(['session.idle','session.error'].includes(event?.type)||proposalCompleted)for(const key of this.progressCache.keys())if(encoded.includes(key.split('|')[0]))this.eventHints.add(key);
           },signal);
         }catch{this.eventsConnected=false;}
         finally{this.eventsConnected=false;}
@@ -227,6 +230,7 @@ export class OpenCodeClient {
       finish: rejectedRetry?'error':latest?.finish,
       terminalError: terminalError ? rejectedRetry?retryFailure:terminalFailure(latest.error) : null,
       requiresInterruption:rejectedRetry,
+      proposalReturns:proposalReturns(assistants),
       tools: assistants.flatMap((m) =>
         (m.content || [])
           .filter((p) => p.type === "tool")

@@ -1,4 +1,4 @@
-import {generatedBrief} from './fixtures/generatedBrief.js';
+import {generatedBrief,returnedProposal} from './fixtures/generatedBrief.js';
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -207,6 +207,7 @@ test("worker stops completed duplicate tool calls while allowing pagination and 
         prompt: async () => {},
         cancel: async () => {
           interrupted = true;
+          return {interrupted:true};
         },
         progress: async () => {
           polls++;
@@ -219,6 +220,7 @@ test("worker stops completed duplicate tool calls while allowing pagination and 
             finish: "stop",
             outcome: "succeeded",
             text: done ? JSON.stringify(generatedBrief(proposal([item.evidenceId]),j)) : "",
+            proposalReturns:done?returnedProposal(generatedBrief(proposal([item.evidenceId]),j),row.snapshotId):[],
             tools: [
               {
                 callId: kind === "pending" ? "same-call" : `call-${polls}`,
@@ -248,7 +250,8 @@ test("worker stops completed duplicate tool calls while allowing pagination and 
         kind === "repeated" ? "failed" : "completed",
         kind,
       );
-      assert.equal(interrupted, kind === "repeated", kind);
+      assert.equal(interrupted,true,kind);
+      if(kind!=='repeated')assert.equal(polls,5,'proposal completion must not interrupt a pending tool');
       if (kind === "repeated") {
         assert.equal(result.errorCode, "AGENT_NO_PROGRESS");
         assert.equal(polls, 3);
@@ -1052,7 +1055,7 @@ test("worker reconciles admitted IDs, repairs at most once and publishes no trun
         messages: async () => ({
           data: [...admitted,...(kind==="reconciled"?[JSON.parse(f.db.prepare("SELECT metadata_json FROM agent_runs WHERE job_id=? AND fence=?").get(j.jobId,j.fence).metadata_json).generation.messageId]:[])].map((id) => ({ id, type: "user" })),
         }),
-        cancel: async () => {if(kind==='terminal-uncertain')throw Object.assign(Error(),{code:'OPENCODE_CONNECTION'});},
+        cancel: async () => {if(kind==='terminal-uncertain')throw Object.assign(Error(),{code:'OPENCODE_CONNECTION'});return {interrupted:true};},
         prompt: async (_, { messageId }) => {
           posted.push(messageId);
           admitted.add(messageId);
@@ -1068,6 +1071,7 @@ test("worker reconciles admitted IDs, repairs at most once and publishes no trun
             terminalError:kind.startsWith('terminal-')?{causeCode:'LLAMACPP_OUTPUT_FORMAT',phase:'model-response',httpStatus:200}:null,
             requiresInterruption:kind==='terminal-uncertain',
             outcome: "succeeded",
+            proposalReturns:kind==='reconciled'||kind==='repair'&&id.startsWith('msg_repair_')?returnedProposal(generatedBrief(p,j),row.snapshotId):[],
             text:
               kind === "invalid" ||
               (kind === "repair" && !id.startsWith("msg_repair_"))
@@ -1128,6 +1132,40 @@ test("worker reconciles admitted IDs, repairs at most once and publishes no trun
       f.close();
     }
   }
+});
+
+test('typed proposal return keeps canonical evidence checks, one repair and confirmed model closure',async()=>{
+ for(const mode of ['success','wrong-snapshot-repaired','schema-fragment-repaired','wrong-task','missing-evidence','wrong-evidence','stop-unconfirmed','direct-json-only','post-output-provider-error']){
+  const f=fixture();try{
+   const j=job(f);let prompts=0,cancellations=0;
+   const remote={session:async id=>({id}),messages:async()=>({data:[]}),prompt:async()=>{prompts++;},
+    cancel:async()=>{cancellations++;return {interrupted:mode!=='stop-unconfirmed'};},
+    progress:async(_id,_signal,messageId)=>{
+     const row=f.repo.run({jobId:j.jobId,internal:true}),item=f.repo.evidence({snapshotId:row.snapshotId}).items[0];
+     const p=generatedBrief(proposal([item.evidenceId]),j);
+     if(mode==='schema-fragment-repaired'&&!messageId?.startsWith('msg_repair_')){p.task={$ref:'#/$defs/task'};p.schemaVersion={$ref:'#/$defs/schemaVersion'};}
+     if(mode==='wrong-task')p.task='instrument_outlook';
+     if(mode==='wrong-evidence')p.evidenceIds=['news:not-frozen:1'];
+     const outputSnapshot=mode==='wrong-snapshot-repaired'&&!messageId?.startsWith('msg_repair_')?'wrong-snapshot':row.snapshotId;
+     return {idle:mode!=='stop-unconfirmed',inactive:false,messageId:'answer',finish:mode==='post-output-provider-error'?'error':'stop',outcome:'succeeded',
+      ...(mode==='post-output-provider-error'?{terminalError:{causeCode:'LLAMACPP_OUTPUT_FORMAT'},requiresInterruption:true}:{}),text:JSON.stringify(p),
+      proposalReturns:mode==='direct-json-only'?[]:returnedProposal(p,outputSnapshot),
+      tools:mode==='missing-evidence'?[]:[{name:'ogid_read_ogid_agent_evidence',status:'completed',operationId:'agent.evidence',snapshotId:row.snapshotId,applicationOk:true,contentRead:true,returnedSnapshotId:row.snapshotId,evidenceIds:[item.evidenceId]}],usage:[]};
+    }};
+   const worker=new IntelligenceWorker({call:async(m,a)=>f.repo.call(m,a),opencode:remote,model:j.model,policy:{pollMs:1,runDeadlineMs:10000}});worker.owner=j.owner;await worker.execute(j);
+   const run=f.repo.run({jobId:j.jobId,internal:true}),published=['success','wrong-snapshot-repaired','schema-fragment-repaired','post-output-provider-error'].includes(mode);
+   assert.equal(run.status,mode==='stop-unconfirmed'?'incomplete':published?'completed':'failed',mode);
+   assert.equal(f.repo.publications({includeShadow:true}).items.length,published?1:0,mode);
+   assert.equal(prompts,['wrong-snapshot-repaired','schema-fragment-repaired','missing-evidence','wrong-evidence','direct-json-only'].includes(mode)?2:1,mode);
+   const metadata=JSON.parse(f.db.prepare('SELECT metadata_json FROM agent_runs WHERE job_id=? AND fence=?').get(j.jobId,j.fence).metadata_json);
+   if(mode==='success')assert.equal(cancellations,1);
+   if(mode==='post-output-provider-error')assert.equal(metadata.proposalTransport[0].postReturnTerminalError.causeCode,'LLAMACPP_OUTPUT_FORMAT');
+   if(mode==='stop-unconfirmed')assert.ok(f.repo.pendingCancellations().some(r=>r.jobId===j.jobId),'uncertain closure must remain durable and prevent publication');
+   if(['wrong-snapshot-repaired','schema-fragment-repaired'].includes(mode))assert.equal(metadata.validation.repairAttempted,true);
+   if(mode==='schema-fragment-repaired')assert.equal(metadata.validationAttempts[0].code,'AGENT_INVALID_PUBLICATION');
+   if(mode==='wrong-task'){assert.equal(run.errorCode,'AGENT_TASK_MISMATCH');assert.equal(metadata.validation.repairAttempted,false);}
+  }finally{f.close();}
+ }
 });
 
 test("chat repairs unknown citations from frozen coverage once and never stores an invalid answer",async()=>{
