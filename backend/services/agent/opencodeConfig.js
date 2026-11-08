@@ -34,6 +34,9 @@ export function generateOpenCodeConfig({
   const selected = models.find((m) => `llamacpp/${m.alias}` === defaultModel);
   if (!selected) throw agentError("OPENCODE_MODEL_UNVERIFIED");
   const compactionContext = Math.min(...models.map((m) => m.context));
+  // Structured agents must return through the permitted local proposal tool.
+  // Required tool choice activates the GPT-OSS grammar before channel decoding.
+  const proposalRequest=toolNames.includes("ogid_read_ogid_agent_proposal")?{body:{tool_choice:"required"}}:{};
   const permissions = [
     { action: "*", resource: "*", effect: "deny" },
     ...toolNames.map((action) => ({ action, resource: "*", effect: "allow" })),
@@ -84,7 +87,7 @@ export function generateOpenCodeConfig({
         mode: "primary",
         system: ANALYST_SYSTEM,
         permissions,
-        request: { headers: { "x-ogid-work-class": "background" } },
+        request: { ...proposalRequest, headers: { "x-ogid-work-class": "background" } },
       },
       "ogid-analyst-chat": {
         description: "Mismo analista OGID en sesiones de chat",
@@ -98,7 +101,7 @@ export function generateOpenCodeConfig({
         mode: "primary",
         system: ANALYST_SYSTEM,
         permissions,
-        request: { headers: { "x-ogid-work-class": "critical" } },
+        request: { ...proposalRequest, headers: { "x-ogid-work-class": "critical" } },
       },
       build: { disabled: true },
       general: { disabled: true },

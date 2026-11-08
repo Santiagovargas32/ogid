@@ -736,6 +736,11 @@ test("OpenCode config validates actual v2 schema, restricts tools, rejects unkno
   assert.equal(config.permissions[0].effect, "deny");
   assert.equal(config.mcp.servers.ogid_read.timeout.execution, 200000);
   assert.equal(config.providers.llamacpp.models.fixture.limit.context, 8192);
+  assert.equal(config.agents['ogid-analyst'].request.body,undefined);
+  const typed=generateOpenCodeConfig({manifest,defaultModel:manifest.defaultModel,mcpCommand:['/node','/mcp.js'],toolNames:['ogid_read_ogid_agent_evidence','ogid_read_ogid_agent_proposal']});
+  assert.equal(validateOpenCodeConfig(typed),true);
+  for(const name of ['ogid-analyst','ogid-analyst-alert'])assert.deepEqual(typed.agents[name].request.body,{tool_choice:'required'});
+  assert.equal(typed.agents['ogid-analyst-chat'].request.body,undefined);
   assert.equal(
     validateOpenCodeConfig({ ...config, permission: { "*": "allow" } }),
     false,
@@ -813,6 +818,7 @@ test("broker serializes actual HTTP streaming, strips SDK caps and preserves too
         max_tokens: 1200,
         max_completion_tokens: 4096,
         tools: [tool],
+        tool_choice: "required",
         stream: true,
       }),
     });
@@ -831,6 +837,9 @@ test("broker serializes actual HTTP streaming, strips SDK caps and preserves too
     ),
   );
   assert.deepEqual(bodies[0].tools, [tool]);
+  assert.ok(bodies.every(b=>b.tool_choice==='required'));
+  const health=await fetch(base+'/health',{headers:{Authorization:'Bearer broker-fixture'}}).then(r=>r.json());
+  assert.equal(health.telemetry.lastSuccess.toolChoice,'required');
 });
 test("queue cancellation removes waiting work and fairness ages background requests", async () => {
   const q = new InferenceQueue();
@@ -1138,7 +1147,7 @@ test('typed proposal return keeps canonical evidence checks, one repair and conf
  for(const mode of ['success','wrong-snapshot-repaired','schema-fragment-repaired','mcp-rejection-repaired','mcp-rejection-twice','wrong-task','missing-evidence','wrong-evidence','stop-unconfirmed','direct-json-only','post-output-provider-error']){
   const f=fixture();try{
    const j=job(f);let prompts=0,cancellations=0;
-   const remote={session:async id=>({id}),messages:async()=>({data:[]}),prompt:async()=>{prompts++;},
+   const remote={session:async id=>({id}),messages:async()=>({data:[]}),prompt:async(_id,input)=>{prompts++;if(prompts===2){assert.doesNotMatch(input.text,/Devuelve EXCLUSIVAMENTE un objeto JSON|Devuelve un único objeto JSON|Empieza con \{/);assert.match(input.text,/ogid_agent_proposal/);}},
     cancel:async()=>{cancellations++;return {interrupted:mode!=='stop-unconfirmed'};},
     progress:async(_id,_signal,messageId)=>{
      const row=f.repo.run({jobId:j.jobId,internal:true}),item=f.repo.evidence({snapshotId:row.snapshotId}).items[0];

@@ -263,7 +263,7 @@ export function createInferenceBroker({
       observed=true;
       const user=[...(body.messages||[])].reverse().find(m=>m.role==='user');
       const userText=typeof user?.content==='string'?user.content:Array.isArray(user?.content)?user.content.filter(p=>p.type==='text').map(p=>p.text).join(''):'';
-      const command={requestId,model:body.model,route:req.url,queuedAt:new Date().toISOString(),inputMessageHash:createHash('sha256').update(userText).digest('hex')};
+      const command={requestId,model:body.model,route:req.url,toolChoice:['auto','none','required'].includes(body.tool_choice)?body.tool_choice:null,queuedAt:new Date().toISOString(),inputMessageHash:createHash('sha256').update(userText).digest('hex')};
       const model = manifest.models.find((m) => m.alias === body.model);
       if (!catalogModel(model)) throw agentError("BROKER_MODEL_UNVERIFIED", 409);
       if(req.url==='/v1/models/activate'){
