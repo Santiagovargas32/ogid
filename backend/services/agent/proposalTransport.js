@@ -1,7 +1,8 @@
 import {AGENT_PROPOSAL_TRANSPORT,isProposalTool} from '../../contracts/agentProposalTransport.js';
 import {stableHash} from '../../utils/stableHash.js';
+import {NARRATIVE_PROMPT_VERSION} from './narrativeFacts.js';
 
-export const usesProposalTransport=job=>job.task!=='contextual_chat'&&job.promptVersion==='ogid-analyst-v1.21';
+export const usesProposalTransport=job=>job.task!=='contextual_chat'&&['ogid-analyst-v1.21',NARRATIVE_PROMPT_VERSION].includes(job.promptVersion);
 const object=value=>value&&typeof value==='object'&&!Array.isArray(value);
 function envelope(value,depth=0){
   if(depth>6||value==null)return null;
@@ -16,11 +17,25 @@ function envelope(value,depth=0){
   return null;
 }
 
-// Only the named, completed local MCP call is an output channel. Source data,
-// unfinished arguments and text that resembles a return receipt are not one.
+// A named terminal local MCP call is an ingress attempt, including a structural
+// rejection. Its bound arguments must reach the worker's existing single
+// repair, rather than trapping the model in repeated rejected tool calls.
+// valid describes transport binding, never approval of the candidate content.
 export function proposalReturns(assistants){
   return assistants.flatMap(message=>(message.content||[]).flatMap((part,index)=>{
-    if(part.type!=='tool'||!isProposalTool(part.name)||part.state?.status!=='completed')return [];
+    if(part.type!=='tool'||!isProposalTool(part.name))return [];
+    if(part.state?.status==='error'){
+      const value=part.state.error?.type==='tool.execution'?envelope(part.state.error.message):null,input=part.state.input;
+      if(value?.ok!==false||value.error?.code!=='INVALID_ARGUMENTS'||value.truncated===true||
+        !/^[a-f0-9]{64}$/.test(value.identity?.hash||'')||value.identity?.profile!=='agent-evidence'||
+        !object(input)||typeof input.snapshotId!=='string'||!input.snapshotId.length||input.snapshotId.length>128||!object(input.proposal))return [];
+      try{
+        if(Buffer.byteLength(JSON.stringify(input.proposal))>2097152)return [];
+        return [{toolCallId:part.id||`${message.id}:${index}`,messageId:message.id,valid:true,rejected:true,
+          snapshotId:input.snapshotId,contractHash:value.identity.hash,proposal:input.proposal,proposalHash:stableHash(input.proposal)}];
+      }catch{return [];}
+    }
+    if(part.state?.status!=='completed')return [];
     const value=envelope(part.state.output??part.state.content),input=part.state.input;
     const valid=value?.ok===true&&value.origin==='OGID'&&value.truncated!==true&&
       value.data?.transport===AGENT_PROPOSAL_TRANSPORT.version&&

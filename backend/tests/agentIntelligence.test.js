@@ -1,4 +1,4 @@
-import {generatedBrief,returnedProposal} from './fixtures/generatedBrief.js';
+import {generatedBrief,returnedProposal,rejectedProposal} from './fixtures/generatedBrief.js';
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -1135,7 +1135,7 @@ test("worker reconciles admitted IDs, repairs at most once and publishes no trun
 });
 
 test('typed proposal return keeps canonical evidence checks, one repair and confirmed model closure',async()=>{
- for(const mode of ['success','wrong-snapshot-repaired','schema-fragment-repaired','wrong-task','missing-evidence','wrong-evidence','stop-unconfirmed','direct-json-only','post-output-provider-error']){
+ for(const mode of ['success','wrong-snapshot-repaired','schema-fragment-repaired','mcp-rejection-repaired','mcp-rejection-twice','wrong-task','missing-evidence','wrong-evidence','stop-unconfirmed','direct-json-only','post-output-provider-error']){
   const f=fixture();try{
    const j=job(f);let prompts=0,cancellations=0;
    const remote={session:async id=>({id}),messages:async()=>({data:[]}),prompt:async()=>{prompts++;},
@@ -1144,25 +1144,28 @@ test('typed proposal return keeps canonical evidence checks, one repair and conf
      const row=f.repo.run({jobId:j.jobId,internal:true}),item=f.repo.evidence({snapshotId:row.snapshotId}).items[0];
      const p=generatedBrief(proposal([item.evidenceId]),j);
      if(mode==='schema-fragment-repaired'&&!messageId?.startsWith('msg_repair_')){p.task={$ref:'#/$defs/task'};p.schemaVersion={$ref:'#/$defs/schemaVersion'};}
+     const rejected=mode==='mcp-rejection-twice'||mode==='mcp-rejection-repaired'&&!messageId?.startsWith('msg_repair_');
+     if(rejected)p.schemaVersion={$ref:'#/$defs/schemaVersion'};
      if(mode==='wrong-task')p.task='instrument_outlook';
      if(mode==='wrong-evidence')p.evidenceIds=['news:not-frozen:1'];
      const outputSnapshot=mode==='wrong-snapshot-repaired'&&!messageId?.startsWith('msg_repair_')?'wrong-snapshot':row.snapshotId;
      return {idle:mode!=='stop-unconfirmed',inactive:false,messageId:'answer',finish:mode==='post-output-provider-error'?'error':'stop',outcome:'succeeded',
       ...(mode==='post-output-provider-error'?{terminalError:{causeCode:'LLAMACPP_OUTPUT_FORMAT'},requiresInterruption:true}:{}),text:JSON.stringify(p),
-      proposalReturns:mode==='direct-json-only'?[]:returnedProposal(p,outputSnapshot),
+      proposalReturns:mode==='direct-json-only'?[]:(rejected?rejectedProposal:returnedProposal)(p,outputSnapshot),
       tools:mode==='missing-evidence'?[]:[{name:'ogid_read_ogid_agent_evidence',status:'completed',operationId:'agent.evidence',snapshotId:row.snapshotId,applicationOk:true,contentRead:true,returnedSnapshotId:row.snapshotId,evidenceIds:[item.evidenceId]}],usage:[]};
     }};
    const worker=new IntelligenceWorker({call:async(m,a)=>f.repo.call(m,a),opencode:remote,model:j.model,policy:{pollMs:1,runDeadlineMs:10000}});worker.owner=j.owner;await worker.execute(j);
-   const run=f.repo.run({jobId:j.jobId,internal:true}),published=['success','wrong-snapshot-repaired','schema-fragment-repaired','post-output-provider-error'].includes(mode);
+   const run=f.repo.run({jobId:j.jobId,internal:true}),published=['success','wrong-snapshot-repaired','schema-fragment-repaired','mcp-rejection-repaired','post-output-provider-error'].includes(mode);
    assert.equal(run.status,mode==='stop-unconfirmed'?'incomplete':published?'completed':'failed',mode);
    assert.equal(f.repo.publications({includeShadow:true}).items.length,published?1:0,mode);
-   assert.equal(prompts,['wrong-snapshot-repaired','schema-fragment-repaired','missing-evidence','wrong-evidence','direct-json-only'].includes(mode)?2:1,mode);
+   assert.equal(prompts,['wrong-snapshot-repaired','schema-fragment-repaired','mcp-rejection-repaired','mcp-rejection-twice','missing-evidence','wrong-evidence','direct-json-only'].includes(mode)?2:1,mode);
    const metadata=JSON.parse(f.db.prepare('SELECT metadata_json FROM agent_runs WHERE job_id=? AND fence=?').get(j.jobId,j.fence).metadata_json);
    if(mode==='success')assert.equal(cancellations,1);
    if(mode==='post-output-provider-error')assert.equal(metadata.proposalTransport[0].postReturnTerminalError.causeCode,'LLAMACPP_OUTPUT_FORMAT');
    if(mode==='stop-unconfirmed')assert.ok(f.repo.pendingCancellations().some(r=>r.jobId===j.jobId),'uncertain closure must remain durable and prevent publication');
    if(['wrong-snapshot-repaired','schema-fragment-repaired'].includes(mode))assert.equal(metadata.validation.repairAttempted,true);
    if(mode==='schema-fragment-repaired')assert.equal(metadata.validationAttempts[0].code,'AGENT_INVALID_PUBLICATION');
+   if(mode.startsWith('mcp-rejection')){assert.equal(metadata.validation.repairAttempted,true);assert.equal(metadata.proposalTransport[0].calls[0].rejected,true);assert.equal(metadata.validationAttempts[0].code,'AGENT_INVALID_PUBLICATION');assert.equal(cancellations,2);}
    if(mode==='wrong-task'){assert.equal(run.errorCode,'AGENT_TASK_MISMATCH');assert.equal(metadata.validation.repairAttempted,false);}
   }finally{f.close();}
  }

@@ -11,17 +11,24 @@ const report={type:'object',additionalProperties:false,required:['evidenceId','p
 export function generationSchemaForJob(job){
  const schema=publicationSchemaForJob(job);if(!usesStructuredBrief(job))return schema;
  const {summary,...properties}=schema.properties;
+ const deriveReferences=job.promptVersion==='ogid-analyst-v1.22';
  return {...schema,required:[...schema.required.filter(k=>k!=='summary'),'sourceReports'],
-  properties:{...properties,sourceReports:{type:'array',maxItems:4,uniqueItems:true,items:report}},
+  properties:{...properties,...(deriveReferences?{evidenceIds:{...properties.evidenceIds,minItems:0}}:{}),sourceReports:{type:'array',maxItems:4,uniqueItems:true,items:report}},
   allOf:[...schema.allOf.filter(rule=>!rule.if?.properties?.summary),{
    if:{properties:{sourceReports:{minItems:1}}},then:{required:['drivers'],properties:{drivers:{minItems:1}}},
-   else:{properties:{drivers:{maxItems:0}}}
+   else:{properties:{drivers:{maxItems:0},...(deriveReferences?{evidenceIds:{minItems:1}}:{})}}
   }]
  };
 }
-const validateSelection=new Ajv({allErrors:true,strict:false}).compile(generationSchemaForJob({task:'global_intelligence_brief',promptVersion:PROMPT_VERSION}));
+// The model wire contract can derive references; the final publication still
+// requires its complete nonempty reference set. Keep historical wire schemas.
+const selectionValidators=new Map(),selectionAjv=new Ajv({allErrors:true,strict:false});
 export function validateGeneratedPublication(value,job){
- const validator=usesStructuredBrief(job)?validateSelection:validatePublicationForJob;
+ let validator=validatePublicationForJob;
+ if(usesStructuredBrief(job)){
+  if(!selectionValidators.has(job.promptVersion))selectionValidators.set(job.promptVersion,selectionAjv.compile(generationSchemaForJob(job)));
+  validator=selectionValidators.get(job.promptVersion);
+ }
  const valid=validator(value,job);validateGeneratedPublication.errors=validator.errors||[];return valid;
 }
 export function materializeGeneratedPublication(value,job){

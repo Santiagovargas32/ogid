@@ -194,7 +194,7 @@ export class IntelligenceWorker {
         }
         await check();turnSettled=true;current.proposalReturned=true;
         (liveProgress.proposalTransport||=([])).push({kind,returnedAt:new Date().toISOString(),
-          calls:current.proposalReturns.slice(0,4).map(r=>({toolCallId:r.toolCallId,valid:r.valid,snapshotId:r.snapshotId,contractHash:r.contractHash,proposalHash:r.proposalHash})),
+          calls:current.proposalReturns.slice(0,4).map(r=>({toolCallId:r.toolCallId,valid:r.valid,rejected:r.rejected===true,snapshotId:r.snapshotId,contractHash:r.contractHash,proposalHash:r.proposalHash})),
           interrupted:resolution?.interrupted===true,alreadyIdle:resolution?.interrupted!==true,
           postReturnTerminalError:current.terminalError||null});
         return true;

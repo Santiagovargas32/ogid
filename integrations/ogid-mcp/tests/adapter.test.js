@@ -26,6 +26,17 @@ test('oversized proposal return is rejected whole rather than truncated',async()
  const result=await executeTool(tool,{snapshotId:'snapshot-fixture',proposal},cfg);
  assert.equal(result.isError,true);assert.equal(result.structuredContent.error.code,'OUTPUT_TOO_LARGE');assert.equal(result.structuredContent.data,undefined);
 });
+test('brief selected reports derive global references while abstention still requires a coverage reference',async()=>{
+ const cfg=loadConfig({OGID_RESEARCH_SCOPE:'agent-evidence'}),tool=toolDefinitions(cfg,()=>{throw Error('No HTTP');}).find(t=>t.name==='ogid_agent_proposal');
+ const proposal=generationExample({task:'global_intelligence_brief',promptVersion:PROMPT_VERSION},'coverage:fixture');
+ proposal.evidenceIds=[];
+ assert.equal((await executeTool(tool,{snapshotId:'snapshot-fixture',proposal},cfg)).structuredContent.error.code,'INVALID_ARGUMENTS');
+ proposal.sourceReports=[{evidenceId:'news:one:1',path:'title',quote:'Exact source title'}];
+ proposal.drivers=[{kind:'verification-plan',domain:'geopolitical',description:'What scope is announced?',mechanism:'The scope could alter the interpretation.',confirmation:'Read the published terms.',invalidation:'The terms differ from the announcement.',evidenceIds:['news:one:1']}];
+ const result=await executeTool(tool,{snapshotId:'snapshot-fixture',proposal},cfg);
+ assert.equal(result.isError,undefined);assert.deepEqual(result.structuredContent.data.proposal,proposal);
+ assert.equal(result.structuredContent.readReceipt,undefined);
+});
 test('proposal tool advertises canonical typed families and refuses schema fragments without touching data',async()=>{
  const cfg=loadConfig({OGID_RESEARCH_SCOPE:'agent-evidence'}),tool=toolDefinitions(cfg,()=>{throw Error('No HTTP');}).find(t=>t.name==='ogid_agent_proposal');
  const wire=tool.schema['~standard'].jsonSchema.input({target:'draft-2020-12'});

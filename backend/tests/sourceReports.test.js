@@ -42,6 +42,19 @@ test('dropping questions or appending unsupported actors cannot be repaired by a
  Object.assign(p,proposal());delete p.drivers[0].kind;
  assert.throws(()=>check(p),e=>e.details.reason==='brief-interpretation-must-be-labelled');
 });
+test('v1.22 derives selected source references but still requires coverage for abstention and preserves historical validation',()=>{
+ const selected={...generatedBrief(proposal()),evidenceIds:[]},legacy={...job,promptVersion:'ogid-analyst-v1.21'};
+ for(let i=0;i<2;i++){
+  assert.equal(validateGeneratedPublication(selected,job),true);
+  const rendered=materializeGeneratedPublication(selected,job);assert.deepEqual(rendered.evidenceIds,[id]);check(rendered);
+  assert.equal(validateGeneratedPublication(selected,legacy),false);
+ }
+ const absent={...generatedBrief(publicationExample(job,'coverage:fixture')),evidenceIds:[]};
+ assert.equal(validateGeneratedPublication(absent,job),false);
+ absent.evidenceIds=['coverage:fixture'];assert.equal(validateGeneratedPublication(absent,job),true);
+ const invalid=materializeGeneratedPublication({...selected,sourceReports:[{evidenceId:id,path:'title',quote:'An unsupported claim'}]},job);
+ assert.throws(()=>check(invalid),{code:'AGENT_UNVERIFIED_SOURCE_REPORT'});
+});
 
 test('source quotations remain reports and cannot turn reported prices into eligible financial observations',()=>{
  const prior=source.data.title;source.data.title='A source reports price 50';

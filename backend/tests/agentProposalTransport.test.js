@@ -37,6 +37,24 @@ test('worker boundary requires one proposal and exact snapshot/contract',()=>{
  for(const [returns,snapshot,hash,reason]of [[[],snapshotId,OPERATIONS_HASH,'proposal-tool-required'],[[...rows,...rows],snapshotId,OPERATIONS_HASH,'multiple-proposals'],[rows,'another-snapshot',OPERATIONS_HASH,'wrong-snapshot'],[rows,snapshotId,'f'.repeat(64),'wrong-contract']])
   assert.throws(()=>proposalText({proposalReturns:returns},snapshot,hash),e=>e.code==='AGENT_INVALID_PROPOSAL_RETURN'&&e.details.reason===reason);
 });
+test('a terminal structural rejection returns bound input for the existing worker repair without a read receipt',async()=>{
+ const m=message(),part=m.content[0],error={ok:false,identity:{hash:OPERATIONS_HASH,profile:'agent-evidence'},error:{code:'INVALID_ARGUMENTS'}};
+ part.state={status:'error',input:{snapshotId,proposal},error:{type:'tool.execution',message:JSON.stringify(error)}};
+ const rows=proposalReturns([m]);assert.equal(rows.length,1);assert.equal(rows[0].rejected,true);
+ assert.deepEqual(JSON.parse(proposalText({proposalReturns:rows},snapshotId,OPERATIONS_HASH)),proposal);
+ assert.notEqual(toolReceipt(JSON.stringify(error)).contentRead,true);
+ const client=new OpenCodeClient({password:'fixture'});client.session=async()=>({time:{}});client.messages=async()=>({data:[m,{id:'input',type:'user',time:{created:1}}]});
+ const progress=await client.progress('session',undefined,'input');assert.equal(progress.proposalReturns[0].rejected,true);
+ assert.notEqual(progress.tools[0].contentRead,true);assert.equal(Object.hasOwn(progress.tools[0],'proposal'),false);
+ for(const mutate of [p=>p.name='ogid_read_ogid_agent_evidence',p=>p.state.status='running',p=>p.state.error.type='provider.error',p=>p.state.error.message='Untrusted error',p=>p.state.input.snapshotId='',p=>p.state.input.snapshotId='x'.repeat(129),p=>p.state.input.proposal=[],p=>p.state.input.proposal={large:'x'.repeat(2097152)}]){
+  const bad=structuredClone(m);mutate(bad.content[0]);assert.deepEqual(proposalReturns([bad]),[]);
+ }
+ for(const mutate of [e=>e.identity.hash='invalid',e=>e.identity.profile='research',e=>e.error.code='NOT_FOUND',e=>e.truncated=true]){
+  const bad=structuredClone(m),v=structuredClone(error);mutate(v);bad.content[0].state.error.message=JSON.stringify(v);assert.deepEqual(proposalReturns([bad]),[]);
+ }
+ for(const [snapshot,hash,reason]of [['another',OPERATIONS_HASH,'wrong-snapshot'],[snapshotId,'f'.repeat(64),'wrong-contract']])assert.throws(()=>proposalText({proposalReturns:rows},snapshot,hash),e=>e.details.reason===reason);
+ assert.throws(()=>proposalText({proposalReturns:[...rows,...proposalReturns([message()])]},snapshotId,OPERATIONS_HASH),e=>e.details.reason==='multiple-proposals');
+});
 test('OpenCode exposes the typed return separately from text and ordinary evidence tools',async()=>{
  const m=message();const client=new OpenCodeClient({password:'fixture'});
  client.session=async()=>({time:{}});client.messages=async()=>({data:[m,{id:'input',type:'user',time:{created:1}}]});
@@ -44,8 +62,9 @@ test('OpenCode exposes the typed return separately from text and ordinary eviden
  assert.equal(result.tools[0].operationId,'agent.proposal.return');assert.equal(result.tools[0].contentRead,false);
  assert.equal(Object.hasOwn(result.tools[0],'proposal'),false);
 });
-test('new transport is scoped to v1.21 structured jobs and preserves v1.20 brief schemas',()=>{
+test('typed transport covers v1.21 and v1.22 structured jobs and preserves historical brief schemas',()=>{
  assert.equal(usesProposalTransport({task:'global_intelligence_brief',promptVersion:'ogid-analyst-v1.21'}),true);
+ assert.equal(usesProposalTransport({task:'global_intelligence_brief',promptVersion:'ogid-analyst-v1.22'}),true);
  for(const [task,promptVersion]of [['contextual_chat','ogid-analyst-v1.21'],['global_intelligence_brief','ogid-analyst-v1.20']])assert.equal(usesProposalTransport({task,promptVersion}),false);
  const old=generationSchemaForJob({task:'global_intelligence_brief',promptVersion:'ogid-analyst-v1.20'}),current=generationSchemaForJob({task:'global_intelligence_brief',promptVersion:'ogid-analyst-v1.21'});
  assert.deepEqual(current,old);assert.ok(old.required.includes('sourceReports'));assert.equal(old.required.includes('summary'),false);

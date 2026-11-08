@@ -9,6 +9,11 @@ export function returnedProposal(proposal,snapshotId){
  return proposalReturns([{id:'fixture-return',content:[{type:'tool',id:'proposal-return',name:'ogid_read_ogid_agent_proposal',executed:false,state:{status:'completed',input:{snapshotId,proposal},content:[{type:'text',text:JSON.stringify(payload)}]}}]}]);
 }
 
+export function rejectedProposal(proposal,snapshotId){
+ const error={ok:false,identity:{hash:OPERATIONS_HASH,profile:'agent-evidence'},error:{code:'INVALID_ARGUMENTS',message:'Input does not match the operation contract'}};
+ return proposalReturns([{id:'fixture-rejection',content:[{type:'tool',id:'proposal-rejection',name:'ogid_read_ogid_agent_proposal',state:{status:'error',input:{snapshotId,proposal},error:{type:'tool.execution',message:JSON.stringify(error)}}}]}]);
+}
+
 // Convert only explicitly valid canonical fixture reports to model selections.
 // Invalid model candidates must be constructed directly by their behavior test.
 export function generatedBrief(value,job={task:value.task,promptVersion:PROMPT_VERSION}){

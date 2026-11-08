@@ -1,5 +1,5 @@
 {
-  "contractVersion": "1.15.0",
+  "contractVersion": "1.16.0",
   "routes": 108,
   "operations": [
     {
@@ -9020,7 +9020,7 @@
                   },
                   "evidenceIds": {
                     "type": "array",
-                    "minItems": 1,
+                    "minItems": 0,
                     "uniqueItems": true,
                     "items": {
                       "type": "string",
@@ -9479,6 +9479,9 @@
                       "properties": {
                         "drivers": {
                           "maxItems": 0
+                        },
+                        "evidenceIds": {
+                          "minItems": 1
                         }
                       }
                     }
