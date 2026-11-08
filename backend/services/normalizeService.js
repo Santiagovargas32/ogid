@@ -7,6 +7,7 @@ import { analyzeSentiment } from "../utils/sentimentRules.js";
 import { extractConflictSignal } from "../utils/conflictTags.js";
 import { sanitizeArticleContent } from "./news/newsContentSanitizer.js";
 import { DATA_MODES, normalizeDataMode } from "../utils/dataMode.js";
+const editorialKeys=['transportProvider','discoverySourceId','publisherId','publisher','publisherResolution','originChainId','sourcePriority'];
 
 function toIsoDate(value, fallback) {
   const date = value ? new Date(value) : new Date(fallback);
@@ -70,7 +71,9 @@ function normalizeArticle(rawArticle, index, provider) {
     provider: rawArticle?.provider || provider,
     sourceName: rawArticle?.source?.name || rawArticle?.sourceName || "Unknown Source",
     ...normalizeSourceMetadata(rawArticle),
-    ...resolveEditorialIdentity(rawArticle),
+    // classifyRssArticle already resolved exactly these identity inputs;
+    // title/description/content do not affect editorial identity.
+    ...Object.fromEntries(editorialKeys.map(key=>[key,classified[key]])),
     // Preserve the legacy publisher label as an attributed candidate. Only
     // publisherId + resolution establish a resolved editorial identity.
     publisher: classified.publisher || rawArticle.publisher || rawArticle.source?.publisher || null,

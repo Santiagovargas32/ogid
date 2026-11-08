@@ -28,7 +28,10 @@ function host(value) {
   catch { return null; }
 }
 const byHost = value => PUBLISHERS.find(p => p.domains.some(domain => value === domain || value?.endsWith(`.${domain}`)));
-export const publisherByAlias = name => PUBLISHERS.find(p => p.aliases.includes(normalize(name))) || null;
+export function publisherByAlias(name) {
+  const normalized=normalize(name);
+  return PUBLISHERS.find(p => p.aliases.includes(normalized)) || null;
+}
 
 export function resolveEditorialIdentity(article = {}) {
   const prior=article.publisherResolution,priorPublisher=PUBLISHERS.find(p=>p.publisherId===article.publisherId);

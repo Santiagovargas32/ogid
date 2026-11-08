@@ -328,7 +328,7 @@ export const BASELINE_COUNTRIES = Object.freeze(COUNTRY_CATALOG.filter((country)
 
 const COUNTRY_ALIASES = COUNTRY_CATALOG.map((country) => ({
   iso2: country.iso2,
-  aliases: buildAliases(country).filter((alias) => !AMBIGUOUS_DETECTION_ALIASES[country.iso2]?.has(alias))
+  aliases: buildAliases(country).filter((alias) => !AMBIGUOUS_DETECTION_ALIASES[country.iso2]?.has(alias)).map(alias=>` ${alias} `)
 }));
 
 export function getCountryByIso2(iso2) {
@@ -362,7 +362,7 @@ export function detectCountryMentions(text = "") {
   const matches = new Set();
 
   for (const country of COUNTRY_ALIASES) {
-    if (country.aliases.some((alias) => normalized.includes(` ${alias} `))) {
+    if (country.aliases.some((alias) => normalized.includes(alias))) {
       matches.add(country.iso2);
     }
   }

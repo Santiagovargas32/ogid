@@ -76,7 +76,7 @@ export class SqlNewsCorpus {
       const asOf = new Date(now).toISOString(), dayStart = newsDayStart(now, this.config.dayTimeZone || "Europe/Madrid");
       const from = new Date(Math.min(now-hours*HOUR, Date.parse(dayStart))).toISOString();
       const analyzeLimit = positive(this.config.analyzeLimit, 3000), displayLimit = positive(this.config.displayLimit, 40, 200);
-      const selectionOptions = { now:new Date(now), watchlistCountries:countries, candidateWindowHours:hours, analyzeLimit, displayLimit, maxPerSource:this.config.maxPerSource || 3, maxSimilarHeadline:this.config.maxSimilarHeadline || 1, ensureCountryCoverage:true, fillAvailable:true };
+      const selectionOptions = { now:new Date(now), watchlistCountries:countries, candidateWindowHours:hours, analyzeLimit, displayLimit, maxPerSource:this.config.maxPerSource || 3, maxSimilarHeadline:this.config.maxSimilarHeadline || 1, ensureCountryCoverage:true, fillAvailable:true,memo:new WeakMap() };
       const risk = new CountryRiskAccumulator(asOf), seen = new Set(), countryLeaders = new Map();
       let geo = [], financial = [], daily = [], diverseDay = [], batch = [], scanned = 0, eligible = 0, dailyCount = 0, displayCandidateCount = 0, geoCount = 0, financialCount = 0, duplicateCount = 0, latestGeopoliticalPublishedAt = null;
       const providerCounts = {}, sources = new Set();

@@ -22,17 +22,34 @@ function buildHeadlineFingerprint(article) {
   return words.join("|");
 }
 
-function countryRelevanceScore(article, watchlistCountries = []) {
+// Reuse only article-invariant work within one immutable captured corpus.
+// Weak keys do not retain discarded rows; scored copies share their facts.
+function selectionFacts(article,memo) {
+  if(!memo)return null;
+  let facts=memo.get(article);
+  if(!facts){
+    const provider=String(article.provider || 'unknown').toLowerCase();
+    const sourceName=String(article.sourceName || 'Unknown Source').trim() || 'Unknown Source';
+    facts={identity:buildBaseDedupKey(article),fingerprint:buildHeadlineFingerprint(article),
+      diversitySource:normalizeText(article.sourceName || 'unknown'),
+      provider,sourceName,statsKey:`${provider}|${normalizeText(sourceName) || 'unknown'}`,
+      reliability:sourcePriority(article),mentions:[...new Set(article.countryMentions || [])]};
+    memo.set(article,facts);
+  }
+  return facts;
+}
+
+function countryRelevanceScore(article, watchlistCountries = [], knownMentions, knownWatchlist) {
   if (!watchlistCountries.length) {
     return 0.5;
   }
 
-  const mentions = [...new Set(article.countryMentions || [])];
+  const mentions = knownMentions || [...new Set(article.countryMentions || [])];
   if (!mentions.length) {
     return 0;
   }
 
-  const watchlist = new Set(watchlistCountries);
+  const watchlist = knownWatchlist || new Set(watchlistCountries);
   const hits = mentions.filter((iso2) => watchlist.has(iso2)).length;
   return clamp(hits / watchlistCountries.length);
 }
@@ -51,8 +68,7 @@ function recencyScore(article, nowMs, candidateWindowMs) {
   return clamp(1 - ageMs / candidateWindowMs);
 }
 
-function noveltyScore(article, seenFingerprints = new Set()) {
-  const fingerprint = buildHeadlineFingerprint(article);
+function noveltyScore(article, seenFingerprints = new Set(), fingerprint = buildHeadlineFingerprint(article)) {
   if (!fingerprint) {
     return 0.2;
   }
@@ -60,11 +76,12 @@ function noveltyScore(article, seenFingerprints = new Set()) {
 }
 
 function scoreArticle(article, context) {
-  const country = countryRelevanceScore(article, context.watchlistCountries);
+  const facts=selectionFacts(article,context.memo);
+  const country = countryRelevanceScore(article,context.watchlistCountries,facts?.mentions,context.watchlistSet);
   const conflict = conflictIntensityScore(article);
   const recency = recencyScore(article, context.nowMs, context.candidateWindowMs);
-  const reliability = sourcePriority(article);
-  const novelty = noveltyScore(article, context.seenFingerprints);
+  const reliability = facts?facts.reliability:sourcePriority(article);
+  const novelty = noveltyScore(article,context.seenFingerprints,facts?.fingerprint);
 
   const totalScore = Math.round(
     100 *
@@ -75,10 +92,12 @@ function scoreArticle(article, context) {
         novelty * 0.1)
   );
 
-  return {
+  const scored={
     ...article,
     analysisScore: totalScore
   };
+  if(facts)context.memo.set(scored,facts);
+  return scored;
 }
 
 function filterCandidateWindow(articles = [], nowMs, candidateWindowMs) {
@@ -91,11 +110,11 @@ function filterCandidateWindow(articles = [], nowMs, candidateWindowMs) {
   });
 }
 
-function dedupeBase(articles = []) {
+function dedupeBase(articles = [],memo) {
   const seen = new Set();
   const unique = [];
   for (const article of articles) {
-    const key = buildBaseDedupKey(article);
+    const key = selectionFacts(article,memo)?.identity || buildBaseDedupKey(article);
     if (!key || seen.has(key)) {
       continue;
     }
@@ -120,24 +139,27 @@ function buildRecentFingerprintSet(previousArticles = [], noveltyWindowMs, nowMs
   return set;
 }
 
-function selectWithDiversity(scored = [], { limit, maxPerSource, maxSimilarHeadline, countries = [], fillAvailable = false }) {
+function selectWithDiversity(scored = [], { limit, maxPerSource, maxSimilarHeadline, countries = [], fillAvailable = false,memo }) {
   const sourceCount = new Map();
   const headlineCount = new Map();
   const selected = [];
+  const selectedSet=new Set();
 
   const countryLeaders = countries.map(country => scored.find(article => article.countryMentions?.includes(country))).filter(Boolean);
   const ordered = [...new Set([...countryLeaders, ...scored])];
   const take = (article, sourceLimit) => {
-    if (selected.includes(article)) return;
-    const sourceKey = normalizeText(article.sourceName || "unknown");
+    if (selectedSet.has(article)) return;
+    const facts=selectionFacts(article,memo);
+    const sourceKey = facts?facts.diversitySource:normalizeText(article.sourceName || "unknown");
     const sourceHits = sourceCount.get(sourceKey) || 0;
     if (sourceHits >= sourceLimit) return;
 
-    const headlineKey = buildHeadlineFingerprint(article) || "untitled";
+    const headlineKey = (facts?facts.fingerprint:buildHeadlineFingerprint(article)) || "untitled";
     const headlineHits = headlineCount.get(headlineKey) || 0;
     if (headlineHits >= maxSimilarHeadline) return;
 
     selected.push(article);
+    selectedSet.add(article);
     sourceCount.set(sourceKey, sourceHits + 1);
     headlineCount.set(headlineKey, headlineHits + 1);
 
@@ -154,13 +176,14 @@ function selectionCap(limit, fallback = Number.MAX_SAFE_INTEGER) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-function buildSourceSelectionStats({ rawArticles = [], filteredArticles = [], selectedArticles = [] } = {}) {
+function buildSourceSelectionStats({ rawArticles = [], filteredArticles = [], selectedArticles = [],memo } = {}) {
   const stats = new Map();
 
   const ensure = (article) => {
-    const provider = String(article?.provider || "unknown").toLowerCase();
-    const sourceName = String(article?.sourceName || "Unknown Source").trim() || "Unknown Source";
-    const key = `${provider}|${normalizeText(sourceName) || "unknown"}`;
+    const facts=selectionFacts(article,memo);
+    const provider = facts?facts.provider:String(article?.provider || "unknown").toLowerCase();
+    const sourceName = facts?facts.sourceName:String(article?.sourceName || "Unknown Source").trim() || "Unknown Source";
+    const key = facts?facts.statsKey:`${provider}|${normalizeText(sourceName) || "unknown"}`;
     if (!stats.has(key)) {
       stats.set(key, {
         provider,
@@ -221,22 +244,19 @@ export function buildIntelNewsSelection({
   candidateWindowHours = 36,
   noveltyWindowHours = 12,
   maxPerSource = 3,
-  maxSimilarHeadline = 2
+  maxSimilarHeadline = 2,
+  memo
 } = {}) {
   const nowMs = new Date(now).getTime();
   const candidateWindowMs = Math.max(1, candidateWindowHours) * 60 * 60 * 1_000;
   const noveltyWindowMs = Math.max(1, noveltyWindowHours) * 60 * 60 * 1_000;
   const seenFingerprints = buildRecentFingerprintSet(previousArticles, noveltyWindowMs, nowMs);
 
-  const candidates = dedupeBase(filterCandidateWindow(articles, nowMs, candidateWindowMs));
+  const candidates = dedupeBase(filterCandidateWindow(articles, nowMs, candidateWindowMs),memo);
+  const scoringContext={watchlistCountries,watchlistSet:new Set(watchlistCountries),nowMs,candidateWindowMs,seenFingerprints,memo};
   const scored = candidates
     .map((article) =>
-      scoreArticle(article, {
-        watchlistCountries,
-        nowMs,
-        candidateWindowMs,
-        seenFingerprints
-      })
+      scoreArticle(article, scoringContext)
     )
     .sort(compareNews);
 
@@ -246,7 +266,7 @@ export function buildIntelNewsSelection({
     maxPerSource: Math.max(1, maxPerSource),
     maxSimilarHeadline: Math.max(1, maxSimilarHeadline),
     countries: ensureCountryCoverage ? watchlistCountries : [],
-    fillAvailable
+    fillAvailable,memo
   });
 
   return {
@@ -256,7 +276,7 @@ export function buildIntelNewsSelection({
       selectionBySourceName: buildSourceSelectionStats({
         rawArticles: articles,
         filteredArticles: signalCorpus,
-        selectedArticles: displaySelection
+        selectedArticles: displaySelection,memo
       }),
       latestSelectedArticleAgeMin: latestSelectedArticleAgeMin(displaySelection, nowMs),
       selectionConfig: {
