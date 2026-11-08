@@ -4,6 +4,7 @@ import { timingSafeEqual } from "node:crypto";
 import { once } from "node:events";
 import { readyModel, localUrl } from "./config.js";
 import { agentError } from "./contracts.js";
+import { isProposalTool } from "../../contracts/agentProposalTransport.js";
 import {StreamDiagnostics} from './streamDiagnostics.js';
 import {terminalFailure,transportFailure} from './failures.js';
 import {randomUUID,createHash} from 'node:crypto';
@@ -197,7 +198,7 @@ export function createInferenceBroker({
   const report=(force=false)=>{if(!force&&Date.now()-lastReport<1000)return;lastReport=Date.now();telemetry.sampledAt=new Date().toISOString();try{onTelemetry(snapshot());}catch{/* Diagnostics cannot interrupt inference. */}};
   const server = createServer(async (req, res) => {
     const abort = new AbortController();
-    const requestId=randomUUID(),started=performance.now();let observed=false,streamFailure=null;
+    const requestId=randomUUID(),started=performance.now();let observed=false,streamFailure=null,command={};
     let phaseTimer, totalTimer;
     const phase = (ms, code) => {
       if(observed&&telemetry.active?.requestId===requestId){telemetry.active={...telemetry.active,requestId,phase:code.replace(/^BROKER_|_TIMEOUT$/g,''),elapsedMs:Math.round(performance.now()-started)};report();}
@@ -263,7 +264,9 @@ export function createInferenceBroker({
       observed=true;
       const user=[...(body.messages||[])].reverse().find(m=>m.role==='user');
       const userText=typeof user?.content==='string'?user.content:Array.isArray(user?.content)?user.content.filter(p=>p.type==='text').map(p=>p.text).join(''):'';
-      const command={requestId,model:body.model,route:req.url,toolChoice:['auto','none','required'].includes(body.tool_choice)?body.tool_choice:null,queuedAt:new Date().toISOString(),inputMessageHash:createHash('sha256').update(userText).digest('hex')};
+      const workClass=['background','critical','chat'].includes(req.headers['x-ogid-work-class'])?req.headers['x-ogid-work-class']:null;
+      const requestedToolChoice=['auto','none','required'].includes(body.tool_choice)?body.tool_choice:null;
+      command={requestId,model:body.model,route:req.url,workClass,requestedToolChoice,toolChoice:requestedToolChoice,queuedAt:new Date().toISOString(),inputMessageHash:createHash('sha256').update(userText).digest('hex')};
       const model = manifest.models.find((m) => m.alias === body.model);
       if (!catalogModel(model)) throw agentError("BROKER_MODEL_UNVERIFIED", 409);
       if(req.url==='/v1/models/activate'){
@@ -273,6 +276,14 @@ export function createInferenceBroker({
         res.setHeader('Content-Type','application/json');return res.end(JSON.stringify({model:verified}));
       }
       if (req.url === "/v1/chat/completions") {
+        // OpenCode's SDK may discard request.body.tool_choice. Enforce this
+        // contract at the authenticated boundary that actually sends inference.
+        // The model cannot choose its work class through tool arguments.
+        if ((body.tools || []).some(t => isProposalTool(t.function.name))) {
+          if (!workClass) throw agentError('BROKER_TYPED_DELIVERY_CLASS_REQUIRED', 400);
+          if (workClass !== 'chat') body.tool_choice = 'required';
+        }
+        command.toolChoice=['auto','none','required'].includes(body.tool_choice)?body.tool_choice:null;
         delete body.max_tokens;
         delete body.max_completion_tokens;
         delete body.n_predict;
@@ -372,7 +383,7 @@ export function createInferenceBroker({
       });
     } catch (error) {
       const e = abort.signal.reason?.code?.startsWith?.('BROKER_') ? abort.signal.reason : error;
-      if(observed){telemetry.failed++;telemetry.lastFailure={requestId,at:new Date().toISOString(),causeCode:streamFailure?.causeCode||(/^[A-Z0-9_]{1,96}$/.test(e.code||'')?e.code:transportFailure(e,'BROKER').causeCode),phase:streamFailure?.phase||telemetry.active?.phase||'request',durationMs:Math.round(performance.now()-started)};telemetry.upstream={...telemetry.upstream,state:'degraded'};}
+      if(observed){telemetry.failed++;telemetry.lastFailure={...command,requestId,at:new Date().toISOString(),causeCode:streamFailure?.causeCode||(/^[A-Z0-9_]{1,96}$/.test(e.code||'')?e.code:transportFailure(e,'BROKER').causeCode),phase:streamFailure?.phase||telemetry.active?.phase||'request',durationMs:Math.round(performance.now()-started)};telemetry.upstream={...telemetry.upstream,state:'degraded'};}
       // Also cancel upstream on validation/backpressure failures, not just when
       // the client disconnects. Never leave an unread response owning a slot.
       abort.abort(e);

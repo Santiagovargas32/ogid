@@ -65,6 +65,20 @@ test('source quotations remain reports and cannot turn reported prices into elig
  }finally{source.data.title=prior;}
 });
 
+test('v1.23 reports missing limitations and invalid driver criteria together without changing historical wire schemas',()=>{
+ const bad=generatedBrief(proposal());bad.limitations=[];bad.drivers[0].invalidation='';
+ for(const version of [PROMPT_VERSION,'ogid-analyst-v1.22',PROMPT_VERSION]){
+  assert.equal(validateGeneratedPublication(bad,{...job,promptVersion:version}),false);
+  const issues=validateGeneratedPublication.errors;
+  assert.ok(issues.some(e=>e.instancePath==='/drivers/0/invalidation'&&e.keyword==='minLength'));
+  assert.equal(issues.some(e=>e.instancePath==='/limitations'&&e.keyword==='minItems'),version===PROMPT_VERSION);
+ }
+ bad.drivers[0].invalidation=proposal().drivers[0].invalidation;
+ assert.equal(validateGeneratedPublication(bad,job),false);
+ assert.equal(validateGeneratedPublication(bad,{...job,promptVersion:'ogid-analyst-v1.22'}),true);
+ bad.limitations=proposal().limitations;assert.equal(validateGeneratedPublication(bad,job),true);
+});
+
 test('a source report outside its field references or using stale evidence is rejected',()=>{
  const p=proposal();p.evidenceIds=['coverage:only'];
  assert.throws(()=>check(p),{code:'AGENT_UNKNOWN_EVIDENCE'});
@@ -92,6 +106,19 @@ test('the existing single repair can correct an unsupported qualitative report w
  },opencode:{session:async()=>({id:'session'}),messages:async()=>({data:[]}),cancel:async()=>({interrupted:true}),prompt:async()=>{prompts++;},progress:async()=>({proposalReturns:returnedProposal(prompts===1?bad:generatedBrief(proposal()),snapshot.snapshotId),text:'',idle:true,outcome:'succeeded',finish:'stop',messageId:'answer',usage:[],tools:[{name:'ogid_agent_evidence',status:'completed',applicationOk:true,contentRead:true,operationId:'agent.evidence',snapshotId:snapshot.snapshotId,returnedSnapshotId:snapshot.snapshotId,evidenceIds:[id]}]})}});
  await worker.execute({...job,jobId:'source-repair',scope:'global',origin:'user',fence:1,model:'llamacpp/fixture',createdAt:asOf});
  assert.deepEqual(errors,['AGENT_UNVERIFIED_SOURCE_REPORT']);assert.equal(prompts,2);assert.equal(published,1);assert.notEqual(terminal,'failed');
+});
+
+test('two unsupported source candidates consume one repair, publish nothing and finish failed after confirmed closure',async()=>{
+ const bad={...generatedBrief(proposal()),sourceReports:[{evidenceId:id,path:'title',quote:'A meeting was confirmed in an invented location'}]};
+ let prompts=0,published=0,cancelled=0,terminal;const attempts=[];
+ const worker=new IntelligenceWorker({model:'llamacpp/fixture',call:async(method,args)=>{
+  if(method==='snapshot')return snapshot;if(method==='evidence')return {items:[source],hasMore:false};if(method==='runControl')return {status:'running'};
+  if(method==='publish'){try{check(args.proposal);}catch(e){attempts.push(e.code);throw e;}published++;}
+  if(method==='state')terminal=args;return {};
+ },opencode:{session:async()=>({id:'session'}),messages:async()=>({data:[]}),cancel:async()=>{cancelled++;return {interrupted:true};},prompt:async()=>{prompts++;},progress:async()=>({proposalReturns:returnedProposal(bad,snapshot.snapshotId),text:'',idle:true,outcome:'succeeded',finish:'stop',messageId:'answer',usage:[],tools:[{name:'ogid_agent_evidence',status:'completed',applicationOk:true,contentRead:true,operationId:'agent.evidence',snapshotId:snapshot.snapshotId,returnedSnapshotId:snapshot.snapshotId,evidenceIds:[id]}]})}});
+ await worker.execute({...job,jobId:'source-twice-rejected',scope:'global',origin:'user',fence:1,model:'llamacpp/fixture',createdAt:asOf});
+ assert.deepEqual(attempts,['AGENT_UNVERIFIED_SOURCE_REPORT','AGENT_UNVERIFIED_SOURCE_REPORT']);assert.equal(prompts,2);assert.equal(cancelled,2);assert.equal(published,0);
+ assert.equal(terminal.status,'failed');assert.equal(terminal.errorCode,'AGENT_UNVERIFIED_SOURCE_REPORT');assert.equal(terminal.metadata.validation.repairAttempted,true);
 });
 
 test('brief selections require actual content receipts and retain those receipts during the same single repair',async()=>{

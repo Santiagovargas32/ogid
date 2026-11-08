@@ -67,6 +67,7 @@ test('typed tool identity and sanitized component telemetry preserve correlation
  assert.deepEqual(agentToolCall('ogid_read_ogid_query',{operationId:'agent.evidence',parameters:{snapshotId:'s'}}),{operationId:'agent.evidence',snapshotId:'s'});
  assert.equal(agentToolCall('ogid_read_ogid_agent_evidence',null).operationId,'agent.evidence');assert.equal(agentToolCall('ogid_read_ogid_query',{operationId:'PRIVATE'}).operationId,undefined);
  assert.equal(JSON.stringify(runtimeTelemetry({model:'fixture',requestId:'request',body:'PRIVATE',reasoning:'PRIVATE',lastFailure:{causeCode:'LLAMACPP_OUTPUT_FORMAT',message:'PRIVATE'}})).includes('PRIVATE'),false);
+ assert.deepEqual(runtimeTelemetry({active:{workClass:'background',requestedToolChoice:null,toolChoice:'required',body:'PRIVATE',reasoning:'PRIVATE'}}),{active:{workClass:'background',requestedToolChoice:null,toolChoice:'required'}});
  const receipt={ok:true,origin:'OGID',identity:{hash:OPERATIONS_HASH},readReceipt:{contractHash:OPERATIONS_HASH,snapshotId:'s',contentRead:true,evidenceIds:['e']}};
  assert.equal(toolReceipt(receipt).contentRead,true);
  assert.equal(toolReceipt({...receipt,readReceipt:{...receipt.readReceipt,contractHash:'0'.repeat(64)}}).applicationOk,false);

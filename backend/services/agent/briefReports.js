@@ -11,11 +11,24 @@ const report={type:'object',additionalProperties:false,required:['evidenceId','p
 export function generationSchemaForJob(job){
  const schema=publicationSchemaForJob(job);if(!usesStructuredBrief(job))return schema;
  const {summary,...properties}=schema.properties;
- const deriveReferences=job.promptVersion==='ogid-analyst-v1.22';
+ const deriveReferences=['ogid-analyst-v1.22','ogid-analyst-v1.23'].includes(job.promptVersion);
+ const guidedBrief=job.promptVersion==='ogid-analyst-v1.23';
+ const driver=properties.drivers.items;
+ const guidance={
+  domain:'Dominio del relato citado; noticias de conflictos y diplomacia pertenecen a geopolitical, no technical.',
+  description:'Pregunta concreta sobre información DESCONOCIDA que cambiaría la interpretación del relato. No repitas ni pidas sólo confirmar el titular. Redacta en español.',
+  mechanism:'Explica condicionalmente por qué la respuesta a esa pregunta cambiaría la interpretación. No afirmes efectos ni causas que el titular no acredita.',
+  confirmation:'Documento o dato preciso y su contenido observable que respondería a la pregunta; un evidenceId por sí solo no es un criterio.',
+  invalidation:'Información positiva que contradiga la interpretación inicial, como texto o alcance incompatibles. La ausencia de noticias o un desmentido sin respaldo mantienen incertidumbre, no prueban falsedad.'
+ };
+ const guidedProperties=guidedBrief?{
+  drivers:{...properties.drivers,items:{...driver,properties:{...driver.properties,...Object.fromEntries(Object.entries(guidance).map(([key,description])=>[key,{...driver.properties[key],description}]))}}},
+  limitations:{...properties.limitations,description:'Carencias concretas de los relatos seleccionados, como sólo disponer del titular o no conocer la cadena de origen. Obligatorio si hay relatos. En español y sin conteos ni etiquetas internas.'}
+ }:{};
  return {...schema,required:[...schema.required.filter(k=>k!=='summary'),'sourceReports'],
-  properties:{...properties,...(deriveReferences?{evidenceIds:{...properties.evidenceIds,minItems:0}}:{}),sourceReports:{type:'array',maxItems:4,uniqueItems:true,items:report}},
+  properties:{...properties,...guidedProperties,...(deriveReferences?{evidenceIds:{...properties.evidenceIds,minItems:0}}:{}),sourceReports:{type:'array',maxItems:4,uniqueItems:true,items:report}},
   allOf:[...schema.allOf.filter(rule=>!rule.if?.properties?.summary),{
-   if:{properties:{sourceReports:{minItems:1}}},then:{required:['drivers'],properties:{drivers:{minItems:1}}},
+   if:{properties:{sourceReports:{minItems:1}}},then:{required:['drivers'],properties:{drivers:{minItems:1},...(guidedBrief?{limitations:{minItems:1}}:{})}},
    else:{properties:{drivers:{maxItems:0},...(deriveReferences?{evidenceIds:{minItems:1}}:{})}}
   }]
  };

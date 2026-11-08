@@ -1,5 +1,5 @@
 {
-  "contractVersion": "1.16.0",
+  "contractVersion": "1.17.0",
   "routes": 108,
   "operations": [
     {
@@ -7245,6 +7245,7 @@
                   },
                   "limitations": {
                     "type": "array",
+                    "description": "Carencias concretas de los relatos seleccionados, como sólo disponer del titular o no conocer la cadena de origen. Obligatorio si hay relatos. En español y sin conteos ni etiquetas internas.",
                     "items": {
                       "type": "string"
                     }
@@ -7369,13 +7370,15 @@
                             "macro",
                             "sector",
                             "technical"
-                          ]
+                          ],
+                          "description": "Dominio del relato citado; noticias de conflictos y diplomacia pertenecen a geopolitical, no technical."
                         },
                         "kind": {
                           "const": "verification-plan"
                         },
                         "description": {
-                          "type": "string"
+                          "type": "string",
+                          "description": "Pregunta concreta sobre información DESCONOCIDA que cambiaría la interpretación del relato. No repitas ni pidas sólo confirmar el titular. Redacta en español."
                         },
                         "evidenceIds": {
                           "type": "array",
@@ -7384,13 +7387,16 @@
                           }
                         },
                         "mechanism": {
-                          "type": "string"
+                          "type": "string",
+                          "description": "Explica condicionalmente por qué la respuesta a esa pregunta cambiaría la interpretación. No afirmes efectos ni causas que el titular no acredita."
                         },
                         "confirmation": {
-                          "type": "string"
+                          "type": "string",
+                          "description": "Documento o dato preciso y su contenido observable que respondería a la pregunta; un evidenceId por sí solo no es un criterio."
                         },
                         "invalidation": {
-                          "type": "string"
+                          "type": "string",
+                          "description": "Información positiva que contradiga la interpretación inicial, como texto o alcance incompatibles. La ausencia de noticias o un desmentido sin respaldo mantienen incertidumbre, no prueban falsedad."
                         }
                       },
                       "additionalProperties": false
@@ -9046,7 +9052,8 @@
                     "items": {
                       "type": "string",
                       "minLength": 1
-                    }
+                    },
+                    "description": "Carencias concretas de los relatos seleccionados, como sólo disponer del titular o no conocer la cadena de origen. Obligatorio si hay relatos. En español y sin conteos ni etiquetas internas."
                   },
                   "narrativeFacts": {
                     "type": "array",
@@ -9185,14 +9192,16 @@
                             "macro",
                             "sector",
                             "technical"
-                          ]
+                          ],
+                          "description": "Dominio del relato citado; noticias de conflictos y diplomacia pertenecen a geopolitical, no technical."
                         },
                         "kind": {
                           "const": "verification-plan"
                         },
                         "description": {
                           "type": "string",
-                          "minLength": 1
+                          "minLength": 1,
+                          "description": "Pregunta concreta sobre información DESCONOCIDA que cambiaría la interpretación del relato. No repitas ni pidas sólo confirmar el titular. Redacta en español."
                         },
                         "evidenceIds": {
                           "type": "array",
@@ -9205,17 +9214,20 @@
                         "mechanism": {
                           "type": "string",
                           "minLength": 1,
-                          "maxLength": 2000
+                          "maxLength": 2000,
+                          "description": "Explica condicionalmente por qué la respuesta a esa pregunta cambiaría la interpretación. No afirmes efectos ni causas que el titular no acredita."
                         },
                         "confirmation": {
                           "type": "string",
                           "minLength": 1,
-                          "maxLength": 2000
+                          "maxLength": 2000,
+                          "description": "Documento o dato preciso y su contenido observable que respondería a la pregunta; un evidenceId por sí solo no es un criterio."
                         },
                         "invalidation": {
                           "type": "string",
                           "minLength": 1,
-                          "maxLength": 2000
+                          "maxLength": 2000,
+                          "description": "Información positiva que contradiga la interpretación inicial, como texto o alcance incompatibles. La ausencia de noticias o un desmentido sin respaldo mantienen incertidumbre, no prueban falsedad."
                         }
                       }
                     },
@@ -9471,6 +9483,9 @@
                       ],
                       "properties": {
                         "drivers": {
+                          "minItems": 1
+                        },
+                        "limitations": {
                           "minItems": 1
                         }
                       }

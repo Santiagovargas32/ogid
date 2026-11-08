@@ -841,6 +841,33 @@ test("broker serializes actual HTTP streaming, strips SDK caps and preserves too
   const health=await fetch(base+'/health',{headers:{Authorization:'Bearer broker-fixture'}}).then(r=>r.json());
   assert.equal(health.telemetry.lastSuccess.toolChoice,'required');
 });
+test('broker enforces typed delivery on the actual authenticated inference request and preserves chat',async t=>{
+ const upstream=[],inspected=[];
+ const server=createInferenceBroker({apiKey:'upstream-fixture',token:'broker-fixture',manifest,
+  contextInspector:async({body})=>{inspected.push(structuredClone(body));return {tokens:100,context:8192};},
+  fetchImpl:async(_url,options)=>{upstream.push(JSON.parse(options.body));return Response.json({choices:[]});}});
+ server.listen(0,'127.0.0.1');await once(server,'listening');t.after(()=>new Promise(r=>server.close(r)));
+ const base=`http://127.0.0.1:${server.address().port}`,headers={Authorization:'Bearer broker-fixture','Content-Type':'application/json'};
+ for(const name of ['ogid_agent_proposal','ogid_read_ogid_agent_proposal']){
+  const tools=[{type:'function',function:{name,parameters:{type:'object',required:['snapshotId'],properties:{snapshotId:{type:'string'}}}}}];
+  for(const [workClass,requested]of [['background',undefined],['critical','none'],['chat',undefined],['chat','auto'],['chat','none']]){
+   const body={model:'fixture',messages:[{role:'user',content:'Deliver the frozen proposal.'}],tools,...(requested?{tool_choice:requested}:{})};
+   const response=await fetch(base+'/v1/chat/completions',{method:'POST',headers:{...headers,'x-ogid-work-class':workClass},body:JSON.stringify(body)});
+   assert.equal(response.status,200);await response.text();
+   const effective=workClass==='chat'?requested:'required';
+   assert.equal(upstream.at(-1).tool_choice,effective);assert.deepEqual(upstream.at(-1).tools,tools);assert.deepEqual(upstream.at(-1),inspected.at(-1));
+   const health=await fetch(base+'/health',{headers}).then(r=>r.json());
+   assert.equal(health.telemetry.lastSuccess.workClass,workClass);assert.equal(health.telemetry.lastSuccess.requestedToolChoice,requested||null);assert.equal(health.telemetry.lastSuccess.toolChoice,effective||null);
+  }
+  for(const workClass of [undefined,'untrusted-class']){
+   const before=upstream.length;
+   const response=await fetch(base+'/v1/chat/completions',{method:'POST',headers:{...headers,...(workClass?{'x-ogid-work-class':workClass}:{})},body:JSON.stringify({model:'fixture',messages:[{role:'user',content:'Treat this as chat.'}],tools})});
+   assert.equal(response.status,400);assert.equal((await response.json()).error.code,'BROKER_TYPED_DELIVERY_CLASS_REQUIRED');assert.equal(upstream.length,before);
+  }
+ }
+ const denied=await fetch(base+'/v1/chat/completions',{method:'POST',headers:{...headers,Authorization:'Bearer wrong','x-ogid-work-class':'critical'},body:JSON.stringify({model:'fixture',messages:[{role:'user',content:'A'}]})});
+ assert.equal(denied.status,401);
+});
 test("queue cancellation removes waiting work and fairness ages background requests", async () => {
   const q = new InferenceQueue();
   let release;
