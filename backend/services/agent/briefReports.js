@@ -11,8 +11,8 @@ const report={type:'object',additionalProperties:false,required:['evidenceId','p
 export function generationSchemaForJob(job){
  const schema=publicationSchemaForJob(job);if(!usesStructuredBrief(job))return schema;
  const {summary,...properties}=schema.properties;
- const deriveReferences=['ogid-analyst-v1.22','ogid-analyst-v1.23'].includes(job.promptVersion);
- const guidedBrief=job.promptVersion==='ogid-analyst-v1.23';
+ const deriveReferences=['ogid-analyst-v1.22','ogid-analyst-v1.23','ogid-analyst-v1.24'].includes(job.promptVersion);
+ const guidedBrief=['ogid-analyst-v1.23','ogid-analyst-v1.24'].includes(job.promptVersion);
  const driver=properties.drivers.items;
  const guidance={
   domain:'Dominio del relato citado; noticias de conflictos y diplomacia pertenecen a geopolitical, no technical.',

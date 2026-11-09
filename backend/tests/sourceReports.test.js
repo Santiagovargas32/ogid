@@ -65,13 +65,13 @@ test('source quotations remain reports and cannot turn reported prices into elig
  }finally{source.data.title=prior;}
 });
 
-test('v1.23 reports missing limitations and invalid driver criteria together without changing historical wire schemas',()=>{
+test('v1.23+ reports missing limitations and invalid driver criteria together without changing historical wire schemas',()=>{
  const bad=generatedBrief(proposal());bad.limitations=[];bad.drivers[0].invalidation='';
- for(const version of [PROMPT_VERSION,'ogid-analyst-v1.22',PROMPT_VERSION]){
+ for(const version of [PROMPT_VERSION,'ogid-analyst-v1.23','ogid-analyst-v1.22',PROMPT_VERSION]){
   assert.equal(validateGeneratedPublication(bad,{...job,promptVersion:version}),false);
   const issues=validateGeneratedPublication.errors;
   assert.ok(issues.some(e=>e.instancePath==='/drivers/0/invalidation'&&e.keyword==='minLength'));
-  assert.equal(issues.some(e=>e.instancePath==='/limitations'&&e.keyword==='minItems'),version===PROMPT_VERSION);
+  assert.equal(issues.some(e=>e.instancePath==='/limitations'&&e.keyword==='minItems'),version!=='ogid-analyst-v1.22');
  }
  bad.drivers[0].invalidation=proposal().drivers[0].invalidation;
  assert.equal(validateGeneratedPublication(bad,job),false);

@@ -2,7 +2,7 @@ import {AGENT_PROPOSAL_TRANSPORT,isProposalTool} from '../../contracts/agentProp
 import {stableHash} from '../../utils/stableHash.js';
 import {NARRATIVE_PROMPT_VERSION} from './narrativeFacts.js';
 
-export const usesProposalTransport=job=>job.task!=='contextual_chat'&&['ogid-analyst-v1.21','ogid-analyst-v1.22',NARRATIVE_PROMPT_VERSION].includes(job.promptVersion);
+export const usesProposalTransport=job=>job.task!=='contextual_chat'&&['ogid-analyst-v1.21','ogid-analyst-v1.22','ogid-analyst-v1.23',NARRATIVE_PROMPT_VERSION].includes(job.promptVersion);
 const object=value=>value&&typeof value==='object'&&!Array.isArray(value);
 function envelope(value,depth=0){
   if(depth>6||value==null)return null;

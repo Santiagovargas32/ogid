@@ -1,11 +1,11 @@
 import { numericDescriptor } from './numericSemantics.js';
 import { publisherByAlias } from '../news/publisherIdentity.js';
 
-export const NARRATIVE_PROMPT_VERSION = 'ogid-analyst-v1.23';
+export const NARRATIVE_PROMPT_VERSION = 'ogid-analyst-v1.24';
 export const NARRATIVE_CONTRACT_VERSION = 'typed-narrative-facts-v5';
-export const usesNarrativeFacts = job => ['ogid-analyst-v1.12','ogid-analyst-v1.13','ogid-analyst-v1.14','ogid-analyst-v1.15','ogid-analyst-v1.16','ogid-analyst-v1.17','ogid-analyst-v1.18','ogid-analyst-v1.19','ogid-analyst-v1.20','ogid-analyst-v1.21','ogid-analyst-v1.22',NARRATIVE_PROMPT_VERSION].includes(job.promptVersion);
-export const usesBriefCriteria = job => job.task==='global_intelligence_brief'&&['ogid-analyst-v1.19','ogid-analyst-v1.20','ogid-analyst-v1.21','ogid-analyst-v1.22',NARRATIVE_PROMPT_VERSION].includes(job.promptVersion);
-export const usesStructuredBrief = job => job.task==='global_intelligence_brief'&&['ogid-analyst-v1.20','ogid-analyst-v1.21','ogid-analyst-v1.22',NARRATIVE_PROMPT_VERSION].includes(job.promptVersion);
+export const usesNarrativeFacts = job => ['ogid-analyst-v1.12','ogid-analyst-v1.13','ogid-analyst-v1.14','ogid-analyst-v1.15','ogid-analyst-v1.16','ogid-analyst-v1.17','ogid-analyst-v1.18','ogid-analyst-v1.19','ogid-analyst-v1.20','ogid-analyst-v1.21','ogid-analyst-v1.22','ogid-analyst-v1.23',NARRATIVE_PROMPT_VERSION].includes(job.promptVersion);
+export const usesBriefCriteria = job => job.task==='global_intelligence_brief'&&['ogid-analyst-v1.19','ogid-analyst-v1.20','ogid-analyst-v1.21','ogid-analyst-v1.22','ogid-analyst-v1.23',NARRATIVE_PROMPT_VERSION].includes(job.promptVersion);
+export const usesStructuredBrief = job => job.task==='global_intelligence_brief'&&['ogid-analyst-v1.20','ogid-analyst-v1.21','ogid-analyst-v1.22','ogid-analyst-v1.23',NARRATIVE_PROMPT_VERSION].includes(job.promptVersion);
 const boundedText = { type: 'string', minLength: 1, maxLength: 256 };
 export const narrativeFactsSchema = {
   type: 'array', maxItems: 100,
@@ -192,7 +192,7 @@ export function narrativeProblem(value, items, { snapshot = {}, job = {} } = {})
       addProblem({ ...fail('unverified-numeric-narrative', { field }), providedValue: number,technicalOptions });
     }
   }
-  if(['ogid-analyst-v1.18','ogid-analyst-v1.19','ogid-analyst-v1.20','ogid-analyst-v1.21','ogid-analyst-v1.22',NARRATIVE_PROMPT_VERSION].includes(job.promptVersion)&&job.task==='global_intelligence_brief'){
+  if(['ogid-analyst-v1.18','ogid-analyst-v1.19','ogid-analyst-v1.20','ogid-analyst-v1.21','ogid-analyst-v1.22','ogid-analyst-v1.23',NARRATIVE_PROMPT_VERSION].includes(job.promptVersion)&&job.task==='global_intelligence_brief'){
     const row=fields.get('/summary'),ranges=reports.get('/summary')||[];
     // This checks extraction, not the truth of a source. Source text remains
     // untrusted, and analytical usefulness still requires semantic review.

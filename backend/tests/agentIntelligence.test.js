@@ -1,3 +1,4 @@
+import {generationSchemaForJob} from '../services/agent/briefReports.js';
 import {generatedBrief,returnedProposal,rejectedProposal} from './fixtures/generatedBrief.js';
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -1188,7 +1189,7 @@ test('typed proposal return keeps canonical evidence checks, one repair and conf
  for(const mode of ['success','wrong-snapshot-repaired','schema-fragment-repaired','mcp-rejection-repaired','mcp-rejection-twice','wrong-task','missing-evidence','wrong-evidence','stop-unconfirmed','direct-json-only','post-output-provider-error']){
   const f=fixture();try{
    const j=job(f);let prompts=0,cancellations=0;
-   const remote={session:async id=>({id}),messages:async()=>({data:[]}),prompt:async(_id,input)=>{prompts++;if(prompts===2){assert.doesNotMatch(input.text,/Devuelve EXCLUSIVAMENTE un objeto JSON|Devuelve un único objeto JSON|Empieza con \{/);assert.match(input.text,/ogid_agent_proposal/);}},
+   const remote={session:async id=>({id}),messages:async()=>({data:[]}),prompt:async(_id,input)=>{prompts++;assert.ok(input.text.includes(JSON.stringify(generationSchemaForJob(j))),'initial and repair must expose the exact task schema even when the provider renders proposal as any');if(prompts===2){assert.doesNotMatch(input.text,/Devuelve EXCLUSIVAMENTE un objeto JSON|Devuelve un único objeto JSON|Empieza con \{/);assert.match(input.text,/ogid_agent_proposal/);}},
     cancel:async()=>{cancellations++;return {interrupted:mode!=='stop-unconfirmed'};},
     progress:async(_id,_signal,messageId)=>{
      const row=f.repo.run({jobId:j.jobId,internal:true}),item=f.repo.evidence({snapshotId:row.snapshotId}).items[0];
