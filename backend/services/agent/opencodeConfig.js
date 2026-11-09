@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import Ajv from "ajv";
 import { ANALYST_SYSTEM, agentError } from "./contracts.js";
 import { readyModel, localUrl } from "./config.js";
+import { OPENCODE_WORK_VARIANTS } from "./opencodeRouting.js";
 const api = JSON.parse(
   readFileSync(
     new URL("./compat/opencode-2.0.31.openapi.json", import.meta.url),
@@ -34,9 +35,6 @@ export function generateOpenCodeConfig({
   const selected = models.find((m) => `llamacpp/${m.alias}` === defaultModel);
   if (!selected) throw agentError("OPENCODE_MODEL_UNVERIFIED");
   const compactionContext = Math.min(...models.map((m) => m.context));
-  // Structured agents must return through the permitted local proposal tool.
-  // Required tool choice activates the GPT-OSS grammar before channel decoding.
-  const proposalRequest=toolNames.includes("ogid_read_ogid_agent_proposal")?{body:{tool_choice:"required"}}:{};
   const permissions = [
     { action: "*", resource: "*", effect: "deny" },
     ...toolNames.map((action) => ({ action, resource: "*", effect: "allow" })),
@@ -75,6 +73,7 @@ export function generateOpenCodeConfig({
               name: m.alias,
               ...(/^gpt-oss(?:-|$)/.test(m.alias) ? {compatibility:{reasoningField:"reasoning_content",requireReasoning:true}} : {}),
               limit: { context: m.context },
+              variants: Object.entries(OPENCODE_WORK_VARIANTS).map(([workClass,id])=>({id,headers:{"x-ogid-work-class":workClass}})),
               capabilities: { tools: true, input: ["text"], output: ["text"], ...(/^gpt-oss(?:-|$)/.test(m.alias)?{reasoning:{supported:true}}:{}) },
             },
           ]),
@@ -87,21 +86,18 @@ export function generateOpenCodeConfig({
         mode: "primary",
         system: ANALYST_SYSTEM,
         permissions,
-        request: { ...proposalRequest, headers: { "x-ogid-work-class": "background" } },
       },
       "ogid-analyst-chat": {
         description: "Mismo analista OGID en sesiones de chat",
         mode: "primary",
         system: ANALYST_SYSTEM,
         permissions,
-        request: { headers: { "x-ogid-work-class": "chat" } },
       },
       "ogid-analyst-alert": {
         description: "Mismo analista OGID para alertas prioritarias",
         mode: "primary",
         system: ANALYST_SYSTEM,
         permissions,
-        request: { ...proposalRequest, headers: { "x-ogid-work-class": "critical" } },
       },
       build: { disabled: true },
       general: { disabled: true },

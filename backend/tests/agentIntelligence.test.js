@@ -736,11 +736,15 @@ test("OpenCode config validates actual v2 schema, restricts tools, rejects unkno
   assert.equal(config.permissions[0].effect, "deny");
   assert.equal(config.mcp.servers.ogid_read.timeout.execution, 200000);
   assert.equal(config.providers.llamacpp.models.fixture.limit.context, 8192);
-  assert.equal(config.agents['ogid-analyst'].request.body,undefined);
+  assert.equal(config.agents['ogid-analyst'].request,undefined);
   const typed=generateOpenCodeConfig({manifest,defaultModel:manifest.defaultModel,mcpCommand:['/node','/mcp.js'],toolNames:['ogid_read_ogid_agent_evidence','ogid_read_ogid_agent_proposal']});
   assert.equal(validateOpenCodeConfig(typed),true);
-  for(const name of ['ogid-analyst','ogid-analyst-alert'])assert.deepEqual(typed.agents[name].request.body,{tool_choice:'required'});
-  assert.equal(typed.agents['ogid-analyst-chat'].request.body,undefined);
+  assert.deepEqual(typed.providers.llamacpp.models.fixture.variants,[
+   {id:'ogid-background',headers:{'x-ogid-work-class':'background'}},
+   {id:'ogid-chat',headers:{'x-ogid-work-class':'chat'}},
+   {id:'ogid-critical',headers:{'x-ogid-work-class':'critical'}},
+  ]);
+  for(const agent of Object.values(typed.agents))assert.equal(agent.request,undefined);
   assert.equal(
     validateOpenCodeConfig({ ...config, permission: { "*": "allow" } }),
     false,
@@ -765,6 +769,16 @@ test("OpenCode config validates actual v2 schema, restricts tools, rejects unkno
       }),
     { code: "OPENCODE_TOOL_ALLOWLIST_REQUIRED" },
   );
+});
+test('OpenCode session routing selects the pinned model variant for each work class without changing model or provider',async()=>{
+ for(const [flags,agent,variant]of [[{},'ogid-analyst','ogid-background'],[{chat:true},'ogid-analyst-chat','ogid-chat'],[{alert:true},'ogid-analyst-alert','ogid-critical'],[{chat:true,alert:true},'ogid-analyst-chat','ogid-chat']]){
+  const client=new OpenCodeClient({password:'fixture',fetchImpl:async(url,options)=>{
+   assert.equal(new URL(url).pathname,'/api/session');assert.equal(options.method,'POST');
+   const body=JSON.parse(options.body);assert.equal(body.agent,agent);assert.deepEqual(body.model,{providerID:'llamacpp',id:'fixture',variant});
+   return Response.json({data:{id:body.id}});
+  }});
+  assert.deepEqual(await client.create({id:'session-fixture',model:'llamacpp/fixture',title:'fixture',...flags}),{id:'session-fixture'});
+ }
 });
 test("broker serializes actual HTTP streaming, strips SDK caps and preserves tools and upstream usage", async (t) => {
   let active = 0,

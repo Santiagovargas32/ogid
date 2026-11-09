@@ -7,6 +7,7 @@ import {AGENT_PROPOSAL_TRANSPORT} from '../../contracts/agentProposalTransport.j
 import { agentError } from "./contracts.js";
 import { localUrl } from "./config.js";
 import { createHash } from "node:crypto";
+import { OPENCODE_WORK_VARIANTS } from "./opencodeRouting.js";
 const stableInput = (value) =>
   Array.isArray(value)
     ? value.map(stableInput)
@@ -127,7 +128,7 @@ export class OpenCodeClient {
             ? "ogid-analyst-alert"
             : "ogid-analyst",
         title,
-        model: { providerID: "llamacpp", id: model.replace(/^llamacpp\//, "") },
+        model: { providerID: "llamacpp", id: model.replace(/^llamacpp\//, ""), variant: OPENCODE_WORK_VARIANTS[chat ? 'chat' : alert ? 'critical' : 'background'] },
       },
     });
     return d.data;
