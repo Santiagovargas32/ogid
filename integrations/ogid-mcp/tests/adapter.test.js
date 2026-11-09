@@ -37,6 +37,9 @@ test('brief selected reports derive global references while abstention still req
  const result=await executeTool(tool,{snapshotId:'snapshot-fixture',proposal},cfg);
  assert.equal(result.isError,undefined);assert.deepEqual(result.structuredContent.data.proposal,proposal);
  assert.equal(result.structuredContent.readReceipt,undefined);
+ const wrong={...proposal,sourceReports:[{evidenceId:'news:one:1',path:'title',quote:'Policy rift emerges within Seoul over N. Korea sanctions - The Korea Herald',verificationFocus:'incident_evidence'}]};
+ assert.equal((await executeTool(tool,{snapshotId:'snapshot-fixture',proposal:wrong},cfg)).structuredContent.error.code,'INVALID_ARGUMENTS');
+ wrong.sourceReports[0].verificationFocus='policy_disagreement';assert.equal((await executeTool(tool,{snapshotId:'snapshot-fixture',proposal:wrong},cfg)).isError,undefined);
 });
 test('proposal tool advertises canonical typed families and refuses schema fragments without touching data',async()=>{
  const cfg=loadConfig({OGID_RESEARCH_SCOPE:'agent-evidence'}),tool=toolDefinitions(cfg,()=>{throw Error('No HTTP');}).find(t=>t.name==='ogid_agent_proposal');

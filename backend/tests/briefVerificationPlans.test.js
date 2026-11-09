@@ -56,3 +56,22 @@ test('abstention still requires the frozen coverage anchor and makes no claim th
  assert.ok(p.limitations.some(t=>t.includes('no demuestra que no existan noticias')));
  assertPublication(p,{job,snapshot,lookup:id=>({evidenceId:id,domain:'coverage',availableAt:asOf,data:{},quality:{},publicationEligibility:{eligible:true}}),now:Date.parse(asOf)});
 });
+
+test('the rejected policy and election headlines require pertinent focuses while digital allegations are not physical incidents',()=>{
+ const examples=[
+  ['Policy rift emerges within Seoul over N. Korea sanctions - The Korea Herald','policy_disagreement'],
+  ['PML-N wins by-elections in NA-77 Gujranwala and PP-203 Sahiwal - Daily Pakistan','election_result'],
+  ["Hafiz Saeed's party loses NA by-election in Pakistan - Rediff",'election_result'],
+  ["North Korea Behind $5.9 Billion Binance Heist: FBI's Eight-Year Manhunt for Park Jin-hyuk Back in Spotlight - BigGo Finance",'source_verification']
+ ];
+ for(const [quote,focus]of examples){
+  assert.equal(validate(selection([report('news:focus:1',quote,'incident_evidence')])),false);
+  const good=selection([report('news:focus:1',quote,focus)]);assert.equal(validate(good),true);
+  const p=materializeGeneratedPublication(good,job);assert.deepEqual(p.drivers[0].evidenceIds,['news:focus:1']);
+  if(focus==='election_result')assert.match(p.drivers[0].confirmation,/Actas/);
+ }
+ const physical=selection([report('news:physical:1','An airstrike hit a military site, officials say','incident_evidence')]);assert.equal(validate(physical),true);
+ const historical={...job,promptVersion:'ogid-analyst-v1.25'};
+ const old=selection([report('news:old:1',examples[0][0],'reported_event')]);
+ assert.equal(validateGeneratedPublication(old,historical),true);assert.equal(validate(old),false);
+});

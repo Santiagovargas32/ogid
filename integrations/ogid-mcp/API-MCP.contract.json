@@ -1,5 +1,5 @@
 {
-  "contractVersion": "1.18.0",
+  "contractVersion": "1.19.0",
   "routes": 108,
   "operations": [
     {
@@ -7308,16 +7308,17 @@
                         },
                         "verificationFocus": {
                           "enum": [
+                            "source_verification",
                             "policy_scope",
-                            "reported_event",
+                            "incident_evidence",
                             "delivery_status",
                             "capability_status",
                             "negotiation_process",
                             "policy_disagreement",
                             "forecast_or_opinion",
-                            "source_verification"
+                            "election_result"
                           ],
-                          "description": "policy_scope: ¿Qué sujetos y conductas abarca exactamente la medida descrita y desde cuándo sería aplicable? reported_event: ¿Qué pruebas permiten establecer por separado el lugar, el momento y la atribución del episodio relatado? delivery_status: ¿El relato describe una solicitud, un compromiso o una entrega documentada, y qué alcance tiene esa fase? capability_status: ¿Qué pruebas distinguen una capacidad anunciada de un uso operativo verificable y qué alcance permiten acreditar? negotiation_process: ¿Qué fase documentada ha alcanzado el proceso y qué participantes, agenda y compromisos están confirmados? policy_disagreement: ¿A qué decisión concreta se refiere la discrepancia relatada y qué posiciones constan en fuentes primarias? forecast_or_opinion: ¿Qué supuestos, método y horizonte sostienen la interpretación o previsión atribuida? source_verification: ¿Qué afirmación exacta respalda el documento original y qué elementos siguen sin comprobarse?"
+                          "description": "source_verification: Atribución y documento original; usa este enfoque general si no encaja otro más específico. policy_scope: Alcance y aplicación de medidas, sanciones o normas. incident_evidence: Sólo incidentes físicos: ataques, desastres o siniestros. No lo uses para cualquier noticia, discrepancias políticas, elecciones ni delitos financieros. delivery_status: Solicitudes, compromisos o entregas de material. capability_status: Distinguir capacidad anunciada, demostración y uso operativo. negotiation_process: Convocatorias, conversaciones, reuniones o acuerdos. policy_disagreement: Discrepancias o divisiones sobre una política; prevalece sobre el tema de esa política, también si trata de sanciones. forecast_or_opinion: Opiniones, escenarios y previsiones, sin tratarlos como hechos observados. election_result: Victorias, derrotas o resultados electorales; comprobar actas y estado del resultado."
                         }
                       },
                       "additionalProperties": false
@@ -8910,18 +8911,98 @@
                         },
                         "verificationFocus": {
                           "enum": [
+                            "source_verification",
                             "policy_scope",
-                            "reported_event",
+                            "incident_evidence",
                             "delivery_status",
                             "capability_status",
                             "negotiation_process",
                             "policy_disagreement",
                             "forecast_or_opinion",
-                            "source_verification"
+                            "election_result"
                           ],
-                          "description": "policy_scope: ¿Qué sujetos y conductas abarca exactamente la medida descrita y desde cuándo sería aplicable? reported_event: ¿Qué pruebas permiten establecer por separado el lugar, el momento y la atribución del episodio relatado? delivery_status: ¿El relato describe una solicitud, un compromiso o una entrega documentada, y qué alcance tiene esa fase? capability_status: ¿Qué pruebas distinguen una capacidad anunciada de un uso operativo verificable y qué alcance permiten acreditar? negotiation_process: ¿Qué fase documentada ha alcanzado el proceso y qué participantes, agenda y compromisos están confirmados? policy_disagreement: ¿A qué decisión concreta se refiere la discrepancia relatada y qué posiciones constan en fuentes primarias? forecast_or_opinion: ¿Qué supuestos, método y horizonte sostienen la interpretación o previsión atribuida? source_verification: ¿Qué afirmación exacta respalda el documento original y qué elementos siguen sin comprobarse?"
+                          "description": "source_verification: Atribución y documento original; usa este enfoque general si no encaja otro más específico. policy_scope: Alcance y aplicación de medidas, sanciones o normas. incident_evidence: Sólo incidentes físicos: ataques, desastres o siniestros. No lo uses para cualquier noticia, discrepancias políticas, elecciones ni delitos financieros. delivery_status: Solicitudes, compromisos o entregas de material. capability_status: Distinguir capacidad anunciada, demostración y uso operativo. negotiation_process: Convocatorias, conversaciones, reuniones o acuerdos. policy_disagreement: Discrepancias o divisiones sobre una política; prevalece sobre el tema de esa política, también si trata de sanciones. forecast_or_opinion: Opiniones, escenarios y previsiones, sin tratarlos como hechos observados. election_result: Victorias, derrotas o resultados electorales; comprobar actas y estado del resultado."
                         }
-                      }
+                      },
+                      "allOf": [
+                        {
+                          "if": {
+                            "properties": {
+                              "quote": {
+                                "pattern": "\\b[Pp]olicy\\s+(?:[Rr]ift|[Dd]isagreement|[Ss]plit)\\b"
+                              }
+                            }
+                          },
+                          "then": {
+                            "properties": {
+                              "verificationFocus": {
+                                "const": "policy_disagreement"
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "if": {
+                            "allOf": [
+                              {
+                                "properties": {
+                                  "quote": {
+                                    "pattern": "\\b[Bb]y[- ][Ee]lections?\\b"
+                                  }
+                                }
+                              },
+                              {
+                                "properties": {
+                                  "quote": {
+                                    "pattern": "\\b(?:[Ww]ins?|[Ll]oses?|[Rr]esults?)\\b"
+                                  }
+                                }
+                              },
+                              {
+                                "not": {
+                                  "properties": {
+                                    "quote": {
+                                      "pattern": "\\?|\\b(?:[Cc]ould|[Ee]xpected|[Ww]ill|[Mm]ay)\\b"
+                                    }
+                                  }
+                                }
+                              }
+                            ]
+                          },
+                          "then": {
+                            "properties": {
+                              "verificationFocus": {
+                                "const": "election_result"
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "if": {
+                            "properties": {
+                              "verificationFocus": {
+                                "const": "incident_evidence"
+                              }
+                            }
+                          },
+                          "then": {
+                            "properties": {
+                              "quote": {
+                                "allOf": [
+                                  {
+                                    "pattern": "\\b(?:[Aa]ttacks?|[Aa]irstrikes?|[Bb]ombing|[Ee]xplosion|[Ee]arthquake|[Ff]lood|[Ww]ildfire|[Ss]inks?|[Kk]illed|[Cc]rash)\\b"
+                                  },
+                                  {
+                                    "not": {
+                                      "pattern": "\\b(?:[Cc]yber(?:attacks?)?|[Hh]eist|[Hh]acking|[Ff]raud)\\b"
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      ]
                     }
                   }
                 },

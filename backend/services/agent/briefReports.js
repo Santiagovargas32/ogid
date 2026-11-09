@@ -1,9 +1,9 @@
 import Ajv from 'ajv';
 import {publicationSchemaForJob,validatePublicationForJob,publicationExample,agentError,PROMPT_VERSION} from './contracts.js';
 import {usesStructuredBrief} from './narrativeFacts.js';
-import {BRIEF_VERIFICATION_PLANS,renderBriefVerificationPlan} from './briefVerificationPlans.js';
+import {briefVerificationFocuses,briefVerificationFocusDescription,briefFocusCompatibility,renderBriefVerificationPlan} from './briefVerificationPlans.js';
 
-export const usesBoundBriefPlans=job=>usesStructuredBrief(job)&&job.promptVersion==='ogid-analyst-v1.25';
+export const usesBoundBriefPlans=job=>usesStructuredBrief(job)&&['ogid-analyst-v1.25','ogid-analyst-v1.26'].includes(job.promptVersion);
 
 // The model selects source fields. It never supplies the rendered factual
 // summary; the existing publication validator still checks every exact quote.
@@ -20,7 +20,8 @@ export function generationSchemaForJob(job){
   for(const key of ['technicalFacts','narrativeFacts'])properties[key]={...properties[key],maxItems:0};
   properties.evidenceIds={...properties.evidenceIds,minItems:0,maxItems:4};
   properties.sourceReports={type:'array',maxItems:4,uniqueItems:true,description:'Relatos distintos leídos realmente; evita titulares con el mismo arranque literal. Cada relato tiene su propio enfoque, sin cruzar actores.',items:{...report,
-   required:[...report.required,'verificationFocus'],properties:{...report.properties,verificationFocus:{enum:Object.keys(BRIEF_VERIFICATION_PLANS),description:Object.entries(BRIEF_VERIFICATION_PLANS).map(([key,value])=>`${key}: ${value.description}`).join(' ')}}
+   required:[...report.required,'verificationFocus'],properties:{...report.properties,verificationFocus:{enum:briefVerificationFocuses(job),description:briefVerificationFocusDescription(job)}},
+   ...(job.promptVersion==='ogid-analyst-v1.26'?{allOf:briefFocusCompatibility}:{})
   }};
   return {...schema,properties,required:[...keys,'sourceReports'],allOf:[{if:{properties:{sourceReports:{maxItems:0}}},then:{properties:{evidenceIds:{minItems:1}}}}]};
  }
