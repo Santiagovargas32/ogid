@@ -1,4 +1,4 @@
-import {generatedBrief,returnedProposal} from './fixtures/generatedBrief.js';
+import {generatedBrief as generatedHistoricalBrief,returnedProposal} from './fixtures/generatedBrief.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {assertPublication,publicationExample,PROMPT_VERSION,validatePublicationForJob} from '../services/agent/contracts.js';
@@ -10,9 +10,10 @@ const id='news:source:1',title='Will the parliament approve the defence pact wit
 const source={evidenceId:id,domain:'news',availableAt:asOf,data:{title},quality:{},publicationEligibility:{eligible:true}};
 const attributed=quote=>`Según la fuente [evidence:${id}]: «${quote}»`;
 const fact=(quote=title)=>({kind:'reported-claim',field:'/summary',literal:quote,evidenceId:id,path:'title',quote});
-const job={task:'global_intelligence_brief',promptVersion:PROMPT_VERSION};
+const job={task:'global_intelligence_brief',promptVersion:'ogid-analyst-v1.24'};
+const generatedBrief=value=>generatedHistoricalBrief(value,job);
 const proposal=()=>({...publicationExample(job,id),summary:'Resumen de relatos atribuidos:\n'+attributed(title),narrativeFacts:[fact()],drivers:[{domain:'geopolitical',kind:'verification-plan',description:'¿Qué obligaciones contempla el posible pacto?',mechanism:'Si se confirma el relato citado, nuevas obligaciones podrían modificar la cooperación entre sus firmantes.',confirmation:'Comprobar la publicación del texto y sus obligaciones efectivas.',invalidation:'Que el texto no imponga nuevas obligaciones ni modifique la cooperación.',evidenceIds:[id]}],limitations:['Sólo se dispone del titular; no acredita aprobación ni sus efectos.']});
-const check=(value,version=PROMPT_VERSION)=>assertPublication(value,{job:{...job,promptVersion:version},snapshot,lookup:key=>key===id?source:null,now:Date.parse(asOf)});
+const check=(value,version=job.promptVersion)=>assertPublication(value,{job:{...job,promptVersion:version},snapshot,lookup:key=>key===id?source:null,now:Date.parse(asOf)});
 
 test('a source-backed brief preserves the full supplied question and separates interpretation',()=>{
  const p=proposal();check(p);
@@ -67,7 +68,7 @@ test('source quotations remain reports and cannot turn reported prices into elig
 
 test('v1.23+ reports missing limitations and invalid driver criteria together without changing historical wire schemas',()=>{
  const bad=generatedBrief(proposal());bad.limitations=[];bad.drivers[0].invalidation='';
- for(const version of [PROMPT_VERSION,'ogid-analyst-v1.23','ogid-analyst-v1.22',PROMPT_VERSION]){
+ for(const version of [job.promptVersion,'ogid-analyst-v1.23','ogid-analyst-v1.22',job.promptVersion]){
   assert.equal(validateGeneratedPublication(bad,{...job,promptVersion:version}),false);
   const issues=validateGeneratedPublication.errors;
   assert.ok(issues.some(e=>e.instancePath==='/drivers/0/invalidation'&&e.keyword==='minLength'));

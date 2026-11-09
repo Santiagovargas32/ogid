@@ -1,6 +1,6 @@
 // Registro compartido: contratos de transporte, permisos e inventario API→MCP.
 // Sin imports de runtime ni secretos. Los parámetros son valores tipados; nunca URLs/rutas libres.
-export const OPERATIONS_VERSION = "1.17.0";
+export const OPERATIONS_VERSION = "1.18.0";
 import {AGENT_PROPOSAL_TRANSPORT,isProposalTool} from './agentProposalTransport.js';
 import {DOSSIER_PROPOSE,DOSSIER_REVIEW} from '../services/news/sourceDossierSchema.js';
 import {SOURCE_IMPORT_PROPERTIES,SOURCE_IMPORT_REQUIRED} from '../services/news/sourceAssessmentSchema.js';

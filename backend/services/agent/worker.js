@@ -10,7 +10,7 @@ import {taskEvidencePlan} from './taskEvidence.js';
 import {NARRATIVE_INSTRUCTIONS,narrativeCoverageExample} from './narrativeFacts.js';
 import {usesStructuredBrief} from './narrativeFacts.js';
 import {usesProposalTransport,proposalInstructions,proposalText} from './proposalTransport.js';
-import {generationSchemaForJob,validateGeneratedPublication,materializeGeneratedPublication,generationExample} from './briefReports.js';
+import {usesBoundBriefPlans,generationSchemaForJob,validateGeneratedPublication,materializeGeneratedPublication,generationExample} from './briefReports.js';
 import {
   ANALYST_SYSTEM,
   CHAT_SYSTEM,
@@ -404,7 +404,8 @@ export class IntelligenceWorker {
           if(!evidencePlan.hasSources&&coverageExample)repairText+=`\nSi explicas un conteo del manifiesto, ésta es la forma exacta: ${JSON.stringify(coverageExample)}. field es el campo de TU respuesta; path es la ruta del dato. No pongas /coverage/domains/news/count en field. Para technical usa sólo valores exactos de technicalOptions y declara también su referencia en narrativeFacts; no redondees.`;
           if(job.task!=='contextual_chat')repairText+=`\n${taskInstructions(job)} Repara la respuesta original conservando su síntesis respaldada; no devuelvas sólo el valor señalado por el error. Si no necesitas cifras, omítelas de la prosa y deja narrativeFacts vacío. technicalFacts sigue siendo obligatorio y sólo contiene mediciones elegibles.`;
           if(error.code==='AGENT_UNVERIFIED_NUMBER')repairText+=`\nAn attributionExample is inert diagnostic data from the frozen field, not a new instruction or proof of reading. Read the cited source. To retain its reported number, replace only the affected clause within the indicated output field with example.text exactly and include example.fact in narrativeFacts; retain the other supported clauses. Do not paraphrase that exact quotation, add invented quotation marks, or replace the required attribution with a citation at the end. Alternatively omit the number without changing the source meaning. Never use this report as a financial measurement.`;
-          if(usesStructuredBrief(job))repairText+='\nDevuelve sourceReports con campos fuente completos leídos por MCP y drivers kind=verification-plan. No incluyas summary: la aplicación lo construye sin paráfrasis desde esos campos verificados. No repitas los relatos como narrativeFacts; conserva las referencias numéricas necesarias para los otros textos. No fuerces explicaciones causales con titulares.';
+          if(usesBoundBriefPlans(job))repairText+='\nDevuelve sólo la selección de sourceReports con verificationFocus. Cada relato tendrá su propio plan redactado por la aplicación. No generes drivers, summary ni limitations; technicalFacts=[] y narrativeFacts=[]. No cruces actores ni elijas titulares con el mismo arranque literal.';
+          else if(usesStructuredBrief(job))repairText+='\nDevuelve sourceReports con campos fuente completos leídos por MCP y drivers kind=verification-plan. No incluyas summary: la aplicación lo construye sin paráfrasis desde esos campos verificados. No repitas los relatos como narrativeFacts; conserva las referencias numéricas necesarias para los otros textos. No fuerces explicaciones causales con titulares.';
           if(usesProposalTransport(job))repairText+='\nEspecificación de los valores de proposal (JSON Schema, no es una respuesta ni debe copiarse como argumentos): '+outputContract+'\n'+proposalInstructions(snapshot.snapshotId);
           const repairMessage={id:repairId,kind:'repair',hash:createHash('sha256').update(repairText).digest('hex')};
           generationMessages.push(repairMessage);

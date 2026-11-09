@@ -1,5 +1,5 @@
 {
-  "contractVersion": "1.17.0",
+  "contractVersion": "1.18.0",
   "routes": 108,
   "operations": [
     {
@@ -7173,9 +7173,6 @@
                   "probability",
                   "confidenceKind",
                   "evidenceIds",
-                  "contradictions",
-                  "invalidation",
-                  "limitations",
                   "technicalFacts",
                   "narrativeFacts",
                   "sourceReports"
@@ -7188,30 +7185,13 @@
                     "const": "global_intelligence_brief"
                   },
                   "direction": {
-                    "enum": [
-                      "up",
-                      "down",
-                      "flat",
-                      "mixed",
-                      "unavailable"
-                    ]
+                    "const": "unavailable"
                   },
                   "sentiment": {
-                    "enum": [
-                      "positive",
-                      "negative",
-                      "mixed",
-                      "neutral",
-                      "unavailable"
-                    ]
+                    "const": "unavailable"
                   },
                   "stability": {
-                    "enum": [
-                      "stable",
-                      "unstable",
-                      "mixed",
-                      "unavailable"
-                    ]
+                    "const": "unavailable"
                   },
                   "horizonHours": {
                     "type": "integer",
@@ -7231,23 +7211,31 @@
                       "type": "string"
                     }
                   },
-                  "contradictions": {
+                  "technicalFacts": {
                     "type": "array",
                     "items": {
-                      "type": "string"
-                    }
-                  },
-                  "invalidation": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "limitations": {
-                    "type": "array",
-                    "description": "Carencias concretas de los relatos seleccionados, como sólo disponer del titular o no conocer la cadena de origen. Obligatorio si hay relatos. En español y sin conteos ni etiquetas internas.",
-                    "items": {
-                      "type": "string"
+                      "type": "object",
+                      "required": [
+                        "evidenceId",
+                        "path",
+                        "value",
+                        "unit"
+                      ],
+                      "properties": {
+                        "evidenceId": {
+                          "type": "string"
+                        },
+                        "path": {
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": "number"
+                        },
+                        "unit": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
                     }
                   },
                   "narrativeFacts": {
@@ -7294,241 +7282,16 @@
                       "additionalProperties": false
                     }
                   },
-                  "technicalFacts": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "required": [
-                        "evidenceId",
-                        "path",
-                        "value",
-                        "unit"
-                      ],
-                      "properties": {
-                        "evidenceId": {
-                          "type": "string"
-                        },
-                        "path": {
-                          "type": "string"
-                        },
-                        "value": {
-                          "type": "number"
-                        },
-                        "unit": {
-                          "type": "string"
-                        }
-                      },
-                      "additionalProperties": false
-                    }
-                  },
-                  "instrumentId": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
-                  "scenarios": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "required": [
-                        "name",
-                        "description"
-                      ],
-                      "properties": {
-                        "name": {
-                          "enum": [
-                            "base",
-                            "bull",
-                            "bear"
-                          ]
-                        },
-                        "description": {
-                          "type": "string"
-                        }
-                      },
-                      "additionalProperties": false
-                    }
-                  },
-                  "drivers": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "required": [
-                        "domain",
-                        "description",
-                        "evidenceIds",
-                        "mechanism",
-                        "confirmation",
-                        "invalidation",
-                        "kind"
-                      ],
-                      "properties": {
-                        "domain": {
-                          "enum": [
-                            "geopolitical",
-                            "macro",
-                            "sector",
-                            "technical"
-                          ],
-                          "description": "Dominio del relato citado; noticias de conflictos y diplomacia pertenecen a geopolitical, no technical."
-                        },
-                        "kind": {
-                          "const": "verification-plan"
-                        },
-                        "description": {
-                          "type": "string",
-                          "description": "Pregunta concreta sobre información DESCONOCIDA que cambiaría la interpretación del relato. No repitas ni pidas sólo confirmar el titular. Redacta en español."
-                        },
-                        "evidenceIds": {
-                          "type": "array",
-                          "items": {
-                            "type": "string"
-                          }
-                        },
-                        "mechanism": {
-                          "type": "string",
-                          "description": "Explica condicionalmente por qué la respuesta a esa pregunta cambiaría la interpretación. No afirmes efectos ni causas que el titular no acredita."
-                        },
-                        "confirmation": {
-                          "type": "string",
-                          "description": "Documento o dato preciso y su contenido observable que respondería a la pregunta; un evidenceId por sí solo no es un criterio."
-                        },
-                        "invalidation": {
-                          "type": "string",
-                          "description": "Información positiva que contradiga la interpretación inicial, como texto o alcance incompatibles. La ausencia de noticias o un desmentido sin respaldo mantienen incertidumbre, no prueban falsedad."
-                        }
-                      },
-                      "additionalProperties": false
-                    }
-                  },
-                  "alternatives": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "missingEvidence": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "target": {
-                    "const": "absolute-return-direction; first available daily close after 24h"
-                  },
-                  "methods": {
-                    "type": "object",
-                    "required": [
-                      "sentiment",
-                      "stability"
-                    ],
-                    "properties": {
-                      "sentiment": {
-                        "const": "qualitative-evidence-synthesis-v1"
-                      },
-                      "stability": {
-                        "const": "qualitative-watchlist-v1"
-                      }
-                    },
-                    "additionalProperties": false
-                  },
-                  "alertAssessments": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "required": [
-                        "alertId",
-                        "revision",
-                        "summary",
-                        "evidenceIds"
-                      ],
-                      "properties": {
-                        "alertId": {
-                          "type": "string"
-                        },
-                        "revision": {
-                          "type": "integer"
-                        },
-                        "summary": {
-                          "type": "string"
-                        },
-                        "evidenceIds": {
-                          "type": "array",
-                          "items": {
-                            "type": "string"
-                          }
-                        }
-                      },
-                      "additionalProperties": false
-                    }
-                  },
-                  "intradayScenarios": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "required": [
-                        "horizonMinutes",
-                        "interval",
-                        "direction",
-                        "summary",
-                        "evidenceIds",
-                        "invalidation",
-                        "evaluation"
-                      ],
-                      "properties": {
-                        "horizonMinutes": {
-                          "enum": [
-                            15,
-                            60,
-                            240
-                          ]
-                        },
-                        "interval": {
-                          "enum": [
-                            "15min",
-                            "1h"
-                          ]
-                        },
-                        "direction": {
-                          "enum": [
-                            "up",
-                            "down",
-                            "flat",
-                            "mixed",
-                            "unavailable"
-                          ]
-                        },
-                        "summary": {
-                          "type": "string"
-                        },
-                        "evidenceIds": {
-                          "type": "array",
-                          "items": {
-                            "type": "string"
-                          }
-                        },
-                        "invalidation": {
-                          "type": "array",
-                          "items": {
-                            "type": "string"
-                          }
-                        },
-                        "evaluation": {
-                          "const": "unavailable"
-                        }
-                      },
-                      "additionalProperties": false
-                    }
-                  },
                   "sourceReports": {
                     "type": "array",
+                    "description": "Relatos distintos leídos realmente; evita titulares con el mismo arranque literal. Cada relato tiene su propio enfoque, sin cruzar actores.",
                     "items": {
                       "type": "object",
                       "required": [
                         "evidenceId",
                         "path",
-                        "quote"
+                        "quote",
+                        "verificationFocus"
                       ],
                       "properties": {
                         "evidenceId": {
@@ -7542,6 +7305,19 @@
                         },
                         "quote": {
                           "type": "string"
+                        },
+                        "verificationFocus": {
+                          "enum": [
+                            "policy_scope",
+                            "reported_event",
+                            "delivery_status",
+                            "capability_status",
+                            "negotiation_process",
+                            "policy_disagreement",
+                            "forecast_or_opinion",
+                            "source_verification"
+                          ],
+                          "description": "policy_scope: ¿Qué sujetos y conductas abarca exactamente la medida descrita y desde cuándo sería aplicable? reported_event: ¿Qué pruebas permiten establecer por separado el lugar, el momento y la atribución del episodio relatado? delivery_status: ¿El relato describe una solicitud, un compromiso o una entrega documentada, y qué alcance tiene esa fase? capability_status: ¿Qué pruebas distinguen una capacidad anunciada de un uso operativo verificable y qué alcance permiten acreditar? negotiation_process: ¿Qué fase documentada ha alcanzado el proceso y qué participantes, agenda y compromisos están confirmados? policy_disagreement: ¿A qué decisión concreta se refiere la discrepancia relatada y qué posiciones constan en fuentes primarias? forecast_or_opinion: ¿Qué supuestos, método y horizonte sostienen la interpretación o previsión atribuida? source_verification: ¿Qué afirmación exacta respalda el documento original y qué elementos siguen sin comprobarse?"
                         }
                       },
                       "additionalProperties": false
@@ -8972,9 +8748,6 @@
                   "probability",
                   "confidenceKind",
                   "evidenceIds",
-                  "contradictions",
-                  "invalidation",
-                  "limitations",
                   "technicalFacts",
                   "narrativeFacts",
                   "sourceReports"
@@ -8987,30 +8760,13 @@
                     "const": "global_intelligence_brief"
                   },
                   "direction": {
-                    "enum": [
-                      "up",
-                      "down",
-                      "flat",
-                      "mixed",
-                      "unavailable"
-                    ]
+                    "const": "unavailable"
                   },
                   "sentiment": {
-                    "enum": [
-                      "positive",
-                      "negative",
-                      "mixed",
-                      "neutral",
-                      "unavailable"
-                    ]
+                    "const": "unavailable"
                   },
                   "stability": {
-                    "enum": [
-                      "stable",
-                      "unstable",
-                      "mixed",
-                      "unavailable"
-                    ]
+                    "const": "unavailable"
                   },
                   "horizonHours": {
                     "type": "integer",
@@ -9031,33 +8787,43 @@
                     "items": {
                       "type": "string",
                       "minLength": 1
-                    }
-                  },
-                  "contradictions": {
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "minLength": 1
-                    }
-                  },
-                  "invalidation": {
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "minLength": 1
-                    }
-                  },
-                  "limitations": {
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "minLength": 1
                     },
-                    "description": "Carencias concretas de los relatos seleccionados, como sólo disponer del titular o no conocer la cadena de origen. Obligatorio si hay relatos. En español y sin conteos ni etiquetas internas."
+                    "maxItems": 4
+                  },
+                  "technicalFacts": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "evidenceId",
+                        "path",
+                        "value",
+                        "unit"
+                      ],
+                      "properties": {
+                        "evidenceId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "path": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "value": {
+                          "type": "number"
+                        },
+                        "unit": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    },
+                    "maxItems": 0
                   },
                   "narrativeFacts": {
                     "type": "array",
-                    "maxItems": 100,
+                    "maxItems": 0,
                     "items": {
                       "type": "object",
                       "additionalProperties": false,
@@ -9111,293 +8877,19 @@
                       }
                     }
                   },
-                  "technicalFacts": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": [
-                        "evidenceId",
-                        "path",
-                        "value",
-                        "unit"
-                      ],
-                      "properties": {
-                        "evidenceId": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "path": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "value": {
-                          "type": "number"
-                        },
-                        "unit": {
-                          "type": "string",
-                          "minLength": 1
-                        }
-                      }
-                    }
-                  },
-                  "instrumentId": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
-                  "scenarios": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": [
-                        "name",
-                        "description"
-                      ],
-                      "properties": {
-                        "name": {
-                          "enum": [
-                            "base",
-                            "bull",
-                            "bear"
-                          ]
-                        },
-                        "description": {
-                          "type": "string",
-                          "minLength": 1
-                        }
-                      }
-                    }
-                  },
-                  "drivers": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": [
-                        "domain",
-                        "description",
-                        "evidenceIds",
-                        "mechanism",
-                        "confirmation",
-                        "invalidation",
-                        "kind"
-                      ],
-                      "properties": {
-                        "domain": {
-                          "enum": [
-                            "geopolitical",
-                            "macro",
-                            "sector",
-                            "technical"
-                          ],
-                          "description": "Dominio del relato citado; noticias de conflictos y diplomacia pertenecen a geopolitical, no technical."
-                        },
-                        "kind": {
-                          "const": "verification-plan"
-                        },
-                        "description": {
-                          "type": "string",
-                          "minLength": 1,
-                          "description": "Pregunta concreta sobre información DESCONOCIDA que cambiaría la interpretación del relato. No repitas ni pidas sólo confirmar el titular. Redacta en español."
-                        },
-                        "evidenceIds": {
-                          "type": "array",
-                          "minItems": 1,
-                          "items": {
-                            "type": "string",
-                            "minLength": 1
-                          }
-                        },
-                        "mechanism": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 2000,
-                          "description": "Explica condicionalmente por qué la respuesta a esa pregunta cambiaría la interpretación. No afirmes efectos ni causas que el titular no acredita."
-                        },
-                        "confirmation": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 2000,
-                          "description": "Documento o dato preciso y su contenido observable que respondería a la pregunta; un evidenceId por sí solo no es un criterio."
-                        },
-                        "invalidation": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 2000,
-                          "description": "Información positiva que contradiga la interpretación inicial, como texto o alcance incompatibles. La ausencia de noticias o un desmentido sin respaldo mantienen incertidumbre, no prueban falsedad."
-                        }
-                      }
-                    },
-                    "maxItems": 4
-                  },
-                  "alternatives": {
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "minLength": 1
-                    }
-                  },
-                  "missingEvidence": {
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "minLength": 1
-                    }
-                  },
-                  "target": {
-                    "const": "absolute-return-direction; first available daily close after 24h"
-                  },
-                  "methods": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "required": [
-                      "sentiment",
-                      "stability"
-                    ],
-                    "properties": {
-                      "sentiment": {
-                        "const": "qualitative-evidence-synthesis-v1"
-                      },
-                      "stability": {
-                        "const": "qualitative-watchlist-v1"
-                      }
-                    }
-                  },
-                  "alertAssessments": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": [
-                        "alertId",
-                        "revision",
-                        "summary",
-                        "evidenceIds"
-                      ],
-                      "properties": {
-                        "alertId": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "revision": {
-                          "type": "integer",
-                          "minimum": 1
-                        },
-                        "summary": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "evidenceIds": {
-                          "type": "array",
-                          "minItems": 1,
-                          "items": {
-                            "type": "string",
-                            "minLength": 1
-                          }
-                        }
-                      }
-                    },
-                    "maxItems": 0
-                  },
-                  "intradayScenarios": {
-                    "type": "array",
-                    "maxItems": 3,
-                    "items": {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": [
-                        "horizonMinutes",
-                        "interval",
-                        "direction",
-                        "summary",
-                        "evidenceIds",
-                        "invalidation",
-                        "evaluation"
-                      ],
-                      "properties": {
-                        "horizonMinutes": {
-                          "enum": [
-                            15,
-                            60,
-                            240
-                          ]
-                        },
-                        "interval": {
-                          "enum": [
-                            "15min",
-                            "1h"
-                          ]
-                        },
-                        "direction": {
-                          "enum": [
-                            "up",
-                            "down",
-                            "flat",
-                            "mixed",
-                            "unavailable"
-                          ]
-                        },
-                        "summary": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "evidenceIds": {
-                          "type": "array",
-                          "items": {
-                            "type": "string",
-                            "minLength": 1
-                          }
-                        },
-                        "invalidation": {
-                          "type": "array",
-                          "items": {
-                            "type": "string",
-                            "minLength": 1
-                          }
-                        },
-                        "evaluation": {
-                          "const": "unavailable"
-                        }
-                      },
-                      "allOf": [
-                        {
-                          "if": {
-                            "properties": {
-                              "direction": {
-                                "not": {
-                                  "const": "unavailable"
-                                }
-                              }
-                            }
-                          },
-                          "then": {
-                            "properties": {
-                              "invalidation": {
-                                "minItems": 1
-                              },
-                              "evidenceIds": {
-                                "minItems": 1
-                              }
-                            }
-                          }
-                        }
-                      ]
-                    }
-                  },
                   "sourceReports": {
                     "type": "array",
                     "maxItems": 4,
                     "uniqueItems": true,
+                    "description": "Relatos distintos leídos realmente; evita titulares con el mismo arranque literal. Cada relato tiene su propio enfoque, sin cruzar actores.",
                     "items": {
                       "type": "object",
                       "additionalProperties": false,
                       "required": [
                         "evidenceId",
                         "path",
-                        "quote"
+                        "quote",
+                        "verificationFocus"
                       ],
                       "properties": {
                         "evidenceId": {
@@ -9415,6 +8907,19 @@
                           "type": "string",
                           "minLength": 1,
                           "maxLength": 2000
+                        },
+                        "verificationFocus": {
+                          "enum": [
+                            "policy_scope",
+                            "reported_event",
+                            "delivery_status",
+                            "capability_status",
+                            "negotiation_process",
+                            "policy_disagreement",
+                            "forecast_or_opinion",
+                            "source_verification"
+                          ],
+                          "description": "policy_scope: ¿Qué sujetos y conductas abarca exactamente la medida descrita y desde cuándo sería aplicable? reported_event: ¿Qué pruebas permiten establecer por separado el lugar, el momento y la atribución del episodio relatado? delivery_status: ¿El relato describe una solicitud, un compromiso o una entrega documentada, y qué alcance tiene esa fase? capability_status: ¿Qué pruebas distinguen una capacidad anunciada de un uso operativo verificable y qué alcance permiten acreditar? negotiation_process: ¿Qué fase documentada ha alcanzado el proceso y qué participantes, agenda y compromisos están confirmados? policy_disagreement: ¿A qué decisión concreta se refiere la discrepancia relatada y qué posiciones constan en fuentes primarias? forecast_or_opinion: ¿Qué supuestos, método y horizonte sostienen la interpretación o previsión atribuida? source_verification: ¿Qué afirmación exacta respalda el documento original y qué elementos siguen sin comprobarse?"
                         }
                       }
                     }
@@ -9424,77 +8929,13 @@
                   {
                     "if": {
                       "properties": {
-                        "task": {
-                          "const": "instrument_outlook"
-                        }
-                      }
-                    },
-                    "then": {
-                      "required": [
-                        "intradayScenarios"
-                      ],
-                      "properties": {
-                        "intradayScenarios": {
-                          "minItems": 1
-                        }
-                      }
-                    },
-                    "else": {
-                      "properties": {
-                        "intradayScenarios": {
-                          "maxItems": 0
-                        }
-                      }
-                    }
-                  },
-                  {
-                    "if": {
-                      "properties": {
-                        "task": {
-                          "enum": [
-                            "instrument_outlook",
-                            "market_outlook_global"
-                          ]
-                        }
-                      }
-                    },
-                    "then": {
-                      "required": [
-                        "drivers",
-                        "scenarios",
-                        "alternatives",
-                        "missingEvidence",
-                        "target",
-                        "methods"
-                      ]
-                    }
-                  },
-                  {
-                    "if": {
-                      "properties": {
                         "sourceReports": {
-                          "minItems": 1
+                          "maxItems": 0
                         }
                       }
                     },
                     "then": {
-                      "required": [
-                        "drivers"
-                      ],
                       "properties": {
-                        "drivers": {
-                          "minItems": 1
-                        },
-                        "limitations": {
-                          "minItems": 1
-                        }
-                      }
-                    },
-                    "else": {
-                      "properties": {
-                        "drivers": {
-                          "maxItems": 0
-                        },
                         "evidenceIds": {
                           "minItems": 1
                         }
