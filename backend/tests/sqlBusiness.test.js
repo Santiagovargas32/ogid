@@ -334,7 +334,7 @@ test("bounded immutable archive windows use date indexes before decoding, with s
   const prepare=archive.reader.prepare.bind(archive.reader),plans=[];
   archive.reader.prepare=sql=>{
    const statement=prepare(sql);
-   if(sql.startsWith('WITH selected AS MATERIALIZED')){const iterate=statement.iterate;statement.iterate=function(...args){plans.push(prepare('EXPLAIN QUERY PLAN '+sql).all(...args).map(r=>r.detail));return iterate.apply(this,args);};}
+   if(sql.startsWith('WITH selected AS MATERIALIZED')||sql.startsWith('/* compact-news-page */')){const iterate=statement.iterate;statement.iterate=function(...args){plans.push(prepare('EXPLAIN QUERY PLAN '+sql).all(...args).map(r=>r.detail));return iterate.apply(this,args);};}
    return statement;
   };
   for(const [field,index]of [['publishedAt','news_search_publication'],['receivedAt','news_search_reception'],['updatedAt','news_search_updated'],['archiveChangedAt','news_search_changed']]){

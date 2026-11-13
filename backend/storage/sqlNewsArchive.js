@@ -20,6 +20,7 @@ import {SourceAssessments} from '../services/news/sourceAssessments.js';
 import {sourceCoverage,saveEditorialFacet} from './sourceCoverage.js';
 import {NewsComparisons} from './newsComparisons.js';
 import {articleObservation,restoreArticleObservation} from './articleObservations.js';
+import {compactNewsFilters} from '../contracts/newsSearchRead.js';
 const hash=x=>createHash("sha256").update(JSON.stringify(x)).digest("hex");
 export const EDITORIAL_BACKFILL_KEY=`news.editorial-backfill:${PUBLISHER_METHOD}:${NEWS_CLASSIFICATION_VERSION}:comparisons-v1`;
 const wireSize=data=>{const p={ok:true,queriedAt:new Date().toISOString(),origin:"OGID",data,warnings:data.warnings,truncated:false};return Buffer.byteLength(JSON.stringify({structuredContent:p,content:[{type:"text",text:JSON.stringify(p)}]}));};
@@ -244,15 +245,35 @@ export class SqlNewsArchive extends NewsArchive {
       };
       if(!cursor){
         const references=[];
-        for(const row of physicalPages(this.reader,'news_search_projection',this.reader.prepare(query).iterate(...args))){
-          const article=JSON.parse(row.payload_json);
-          if(!match(article))continue;
-          if(references.length>=this.maxSnapshotItems)throw new AppError('El resultado excede la capacidad de revisiones; acotar la ventana.',413,'SNAPSHOT_TOO_LARGE');
-          references.push({rowid:row.revision_rowid,order:row.semantic_order});
-          if(article.synthetic||article.dataMode==='synthetic')snapshot.syntheticCount++;
-          if(article.dataMode==='stale'||article.provenance?.stale)snapshot.staleCount++;
+        if(compactNewsFilters(filters)){
+          // Every selected expression is covered. Counting/freeze must not
+          // hydrate the compact title/provenance JSON, let alone full bodies.
+          const narrow=`/* compact-news-page */ SELECT p.revision_rowid,
+            json_extract(p.payload_json,'$.countryMentions') AS countries,
+            json_extract(p.payload_json,'$.synthetic') AS synthetic,
+            json_extract(p.payload_json,'$.dataMode') AS data_mode,
+            json_extract(p.payload_json,'$.provenance.stale') AS stale
+            FROM news_search_projection p${indexed}
+            WHERE ${predicates.join(' AND ')} ORDER BY ${order} DESC,p.article_id ASC`;
+          for(const row of this.reader.prepare(narrow).iterate(...args)){
+            if(filters.countries?.length&&!JSON.parse(row.countries||'[]').some(country=>filters.countries.includes(country)))continue;
+            if(references.length>=this.maxSnapshotItems)throw new AppError('El resultado excede la capacidad de revisiones; acotar la ventana.',413,'SNAPSHOT_TOO_LARGE');
+            references.push(row.revision_rowid);
+            if(row.synthetic||row.data_mode==='synthetic')snapshot.syntheticCount++;
+            if(row.data_mode==='stale'||row.stale)snapshot.staleCount++;
+          }
+          snapshot.rows=references;
+        }else{
+          for(const row of physicalPages(this.reader,'news_search_projection',this.reader.prepare(query).iterate(...args))){
+            const article=JSON.parse(row.payload_json);
+            if(!match(article))continue;
+            if(references.length>=this.maxSnapshotItems)throw new AppError('El resultado excede la capacidad de revisiones; acotar la ventana.',413,'SNAPSHOT_TOO_LARGE');
+            references.push({rowid:row.revision_rowid,order:row.semantic_order});
+            if(article.synthetic||article.dataMode==='synthetic')snapshot.syntheticCount++;
+            if(article.dataMode==='stale'||article.provenance?.stale)snapshot.staleCount++;
+          }
+          snapshot.rows=references.sort((a,b)=>a.order-b.order).map(row=>row.rowid);
         }
-        snapshot.rows=references.sort((a,b)=>a.order-b.order).map(row=>row.rowid);
         snapshot.total=snapshot.rows.length;
       }
       const refs=snapshot.rows.slice(offset,offset+limit).map(rowid=>({rowid}));

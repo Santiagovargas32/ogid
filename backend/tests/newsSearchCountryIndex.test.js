@@ -139,3 +139,34 @@ test('full-history pages hydrate latest revisions in global row order while pres
   }
  }finally{f.close();}
 });
+
+test('035 covers country/date totals and quality without reading projection bodies and preserves the complex-path result',()=>{
+ const f=fixture(34);try{
+  f.archive.ingest(Array.from({length:40},(_,n)=>article('cover-'+n,n%3?['RU','UA']:['TW'],{
+   publishedAt:n%7?new Date(Date.parse(at)-n*3600000).toISOString():null,dataMode:n%5?'observed':'stale'
+  })));
+  const originals=f.db.prepare('SELECT rowid,* FROM article_revisions').all(),checksums=f.db.prepare('SELECT * FROM schema_migrations').all();
+  migrate(f.db);
+  assert.deepEqual(f.db.prepare('SELECT rowid,* FROM article_revisions').all(),originals);
+  assert.deepEqual(f.db.prepare('SELECT * FROM schema_migrations WHERE version<=34').all(),checksums);
+  const prepare=f.archive.reader.prepare.bind(f.archive.reader);let plans=0;
+  f.archive.reader.prepare=sql=>{
+   if(sql.startsWith('/* compact-news-page */')){
+    // Expression indexes can be reported as USING INDEX rather than COVERING.
+    // Inspect actual VM column reads: none may touch the projection table.
+    const plan=prepare('EXPLAIN '+sql).all(...(sql.match(/\?/g)||[]).map(()=>null));
+    const tableCursor=plan.find(row=>row.opcode==='OpenRead'&&row.p2===f.db.prepare("SELECT rootpage FROM sqlite_master WHERE name='news_search_projection'").get().rootpage)?.p1;
+    assert.ok(!plan.some(row=>row.opcode==='Column'&&row.p1===tableCursor),'all count/filter/sort columns must come from the compact index');plans++;
+   }
+   return prepare(sql);
+  };
+  const semantics=value=>({articles:value.articles,total:value.total,quality:value.quality,hasMore:value.hasMore,revision:value.revision});
+  for(const timeField of ['publishedAt','receivedAt','updatedAt','archiveChangedAt'])for(const bounded of [false,true]){
+   const filters={countries:['RU','UA'],timeField,...(bounded?{from:'2026-11-06T00:00:00Z',to:'2026-11-08T00:00:00Z'}:{})};
+   const simple=f.archive.search({...filters,limit:5}),complex=f.archive.search({...filters,q:'Collected report',limit:5});
+   const clean=value=>({...semantics(value),articles:value.articles.map(a=>({...a,matchReasons:a.matchReasons.filter(r=>r.kind!=='text')}))});
+   assert.deepEqual(clean(simple),clean(complex));
+  }
+  assert.equal(plans,8);
+ }finally{f.close();}
+});

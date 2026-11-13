@@ -1,5 +1,6 @@
 // Internal execution descriptors complement the public API contracts. Routing,
 // timeout semantics and worker enforcement must consume the same descriptor.
+import {boundedNewsSearch} from './newsSearchRead.js';
 const queries = {
   situations:['list','detail','revisions','changes','status'],
   admin:['history','historyRevision'], sources:['status','holdings'], history:['get','coverage','coverageState','coverageStates','repairPlan'], imports:['datasets','datasetsPage'],
@@ -39,6 +40,7 @@ export function storageOperationContract(operation,input={}) {
   const payloadAgentRead=['agent.call','agent.read'].includes(operation)&&payloadAgentReads.has(input.method);
   const journal=operation==='agent.call'&&conversationJournal.has(input.method);
   const technicalRead=operation==='domain.call'&&boundedTechnicalRead(input);
+  const newsPageRead=operation==='domain.call'&&boundedNewsSearch(input);
   const pureRead=controlRead||boundedAgentRead||payloadAgentRead||['market.persist.pending','market.persist.status','market.project.pending','market.project.status','agent.read','scenarios.prepare','runtime.load','storage.status'].includes(operation) ||
     operation==='domain.call' && Boolean(queries[input.service]?.includes(input.method));
   let role='writer';
@@ -58,6 +60,6 @@ export function storageOperationContract(operation,input={}) {
     acquisition?'acquisition':['market.persist.admit','market.persist.page','market.project.fail','market.project.reconcile','analysis.persist','runtime.save','pipeline.record'].includes(operation)?'commit':pureRead?'read':'calculation';
   const cheapRead=boundedAgentRead||['storage.status','runtime.load','market.persist.status','market.persist.pending','market.project.status','market.project.pending'].includes(operation)||operation==='agent.read'&&input.method==='status'||operation==='domain.call'&&(input.service==='situations'&&['list','status'].includes(input.method)||input.service==='news'&&input.method==='sourceAssessments');
   const resourceClass=workClass==='control'?'control':operation==='market.persist.admit'?'acquisition':journal||operation==='market.persist.page'||operation==='agent.call'&&input.method==='alertSync'?'journal':
-    workClass==='commit'?'commit':cheapRead?'read':payloadAgentRead||technicalRead?'payload':workClass==='maintenance'?'maintenance':acquisition?'acquisition':'heavy';
+    workClass==='commit'?'commit':cheapRead?'read':payloadAgentRead||technicalRead||newsPageRead?'payload':workClass==='maintenance'?'maintenance':acquisition?'acquisition':'heavy';
   return {role,pureRead,workClass,resourceClass,effects:pureRead?'read-only':acquisition?'acquisition-and-commit':'may-commit',acquisition};
 }
