@@ -762,18 +762,25 @@ export class MarketConditionsService {
   lastCloseSnapshot({windowMin,countries}){
     const calculatedAt=new Date(this.now()).toISOString(),snapshot=this.stateManager?.getSnapshot?.()||{},instruments=selectedInstrumentsFrom({marketWatchlistService:this.marketWatchlistService,snapshot});
     const rows=[],cuts=[],entries=[];let template=null;
+    const articlesAtCut=new Map(),sourceArticles=this.stateManager?.getMarketSignalCorpus?.()||[];
     for(const instrument of instruments){
       const target=lastPublicableSessionClose(instrument,calculatedAt),cut=target.expectedLatestCandleAt;
       if(!cut)continue;
       const series=this.#resolveSeries(instrument,windowMin,cut);
-      const articles=(this.stateManager?.getMarketSignalCorpus?.()||[]).filter(a=>Date.parse(a.receivedAt||a.availableAt||a.observedAt||'')<=Date.parse(cut));
-      const value=buildMarketConditionsSnapshot({windowMin,asOf:cut,countries,articles,instruments:[instrument],quotes:{},seriesByInstrument:{[instrument.instrumentId]:series},intradayCandlesEnabled:this.intradayCandlesEnabled,anchor:'last-close'});
-      entries.push({instrument,cut,series,articles});
+      let prepared=articlesAtCut.get(cut);
+      if(!prepared){
+        const articles=sourceArticles.filter(a=>Date.parse(a.receivedAt||a.availableAt||a.observedAt||'')<=Date.parse(cut));
+        prepared={articles,corpus:buildMarketConditionsCorpus({articles,windowMin,countries,asOf:cut})};
+        articlesAtCut.set(cut,prepared);
+      }
+      const {articles,corpus}=prepared;
+      const value=buildMarketConditionsSnapshot({windowMin,asOf:cut,countries,articles,corpus,instruments:[instrument],quotes:{},seriesByInstrument:{[instrument.instrumentId]:series},intradayCandlesEnabled:this.intradayCandlesEnabled,anchor:'last-close'});
+      entries.push({instrument,cut,series,articles,corpus});
       template ||= value;cuts.push(cut);
       rows.push(...value.symbols.map(row=>({...row,sessionAsOf:cut,dataAsOf:row.quality.lastCandleAt,calculatedAt,sessionType:'regular',providerDelayMs:target.delayMs,horizonMinutes:windowMin,availability:{...row.availability,sessionState:sessionPolicyResolver.resolve(instrument,calculatedAt).sessionState}})));
     }
     const comparable=cuts.length>0&&new Set(cuts).size===1;
-    const result=comparable?buildMarketConditionsSnapshot({windowMin,asOf:cuts[0],countries,articles:entries[0].articles,instruments:entries.map(e=>e.instrument),seriesByInstrument:Object.fromEntries(entries.map(e=>[e.instrument.instrumentId,e.series])),intradayCandlesEnabled:this.intradayCandlesEnabled,anchor:'last-close'}):template||buildMarketConditionsSnapshot({windowMin,asOf:calculatedAt,countries,anchor:'last-close'});
+    const result=comparable?buildMarketConditionsSnapshot({windowMin,asOf:cuts[0],countries,articles:entries[0].articles,corpus:entries[0].corpus,instruments:entries.map(e=>e.instrument),seriesByInstrument:Object.fromEntries(entries.map(e=>[e.instrument.instrumentId,e.series])),intradayCandlesEnabled:this.intradayCandlesEnabled,anchor:'last-close'}):template||buildMarketConditionsSnapshot({windowMin,asOf:calculatedAt,countries,anchor:'last-close'});
     result.symbols=comparable?result.symbols.map(row=>({...row,...Object.fromEntries(Object.entries(rows.find(r=>r.instrumentId===row.instrumentId)||{}).filter(([k])=>['sessionAsOf','dataAsOf','calculatedAt','sessionType','providerDelayMs','horizonMinutes'].includes(k))),availability:{...row.availability,sessionState:sessionPolicyResolver.resolve(entries.find(e=>e.instrument.instrumentId===row.instrumentId).instrument,calculatedAt).sessionState}})):rows;
     result.generatedAt=calculatedAt;result.calculatedAt=calculatedAt;result.anchor='last-close';result.anchorVersion=1;
     result.window={...result.window,anchor:'last-close',perInstrument:true,from:comparable?result.window.from:null,to:comparable?cuts[0]:null};

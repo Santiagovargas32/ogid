@@ -210,14 +210,24 @@ test('failed result commit never publishes; completed publication is idempotent 
  }finally{runtime.close();f.close();}
 });
 
-test('SQL analytical window exceeds 6000 articles, preserves republications, excludes unknown/future and uses asOf revisions',async()=>{
+test('SQL analytical window exceeds 6000 articles, preserves republications, excludes unknown/future and uses asOf revisions',async(t)=>{
  const f=sqlFixture();let now=Date.parse('2026-10-16T12:00:00Z');const archive=new SqlNewsArchive(f.db,{now:()=>now}),corpus=new SqlNewsCorpus(archive,{analyzeLimit:3,displayLimit:1});
  try{
   const rows=Array.from({length:6501},(_,i)=>({id:`fixture-${i}`,title:`Russia conflict report ${i}`,url:`https://fixture.invalid/${i}`,publishedAt:new Date(now-(i%2?30:2)*3600000).toISOString(),provider:'rss'}));
   for(let i=0;i<rows.length;i+=100)archive.ingest(rows.slice(i,i+100));
   archive.ingest([{...rows[0],id:'wire',url:'https://other.invalid/wire'},{...rows[0],id:'unknown',url:'https://fixture.invalid/unknown',publishedAt:null},{...rows[0],id:'future',url:'https://fixture.invalid/future',publishedAt:new Date(now+3600000).toISOString()}]);
   const asOf=new Date(now).toISOString();now+=3600000;archive.ingest([{...rows[0],title:'Russia revised report'}]);
+  const prepare=Database.prototype.prepare,hydrated=[],wrapped=new WeakSet();
+  t.mock.method(Database.prototype,'prepare',function(sql){
+    const statement=prepare.call(this,sql);
+    if(sql.startsWith('SELECT rowid,payload_json FROM article_revisions WHERE rowid IN')&&!wrapped.has(statement)){
+      wrapped.add(statement);const iterate=statement.iterate;
+      statement.iterate=function*(...args){for(const row of iterate.apply(this,args)){hydrated.push(row.rowid);yield row;}};
+    }
+    return statement;
+  });
   const result=await corpus.readAnalytical({asOf,windowHours:48});assert.equal(result.articles.length,6502);assert.equal(result.meta.analysisTruncated,false);assert.equal(result.meta.unknownPublicationCount,1);assert.equal(result.meta.futurePublicationCount,1);
+  assert.equal(hydrated.length,6502);assert.deepEqual(hydrated,[...hydrated].sort((a,b)=>a-b),'immutable analytical payloads must be captured globally by physical reference order');
   assert.ok(result.articles.some(a=>a.title==='Russia conflict report 0'));assert.ok(!result.articles.some(a=>a.title==='Russia revised report'));
   const active=buildAdvancedCorpus({signalCorpus:result.articles,windowHours:24,now:Date.parse(asOf)}),comparison=buildAdvancedCorpus({signalCorpus:result.articles,windowHours:48,now:Date.parse(asOf)});
   const terms=buildFrequentTerms(active.articles,{previousArticles:comparison.articles,windowHours:24,now:Date.parse(asOf)});

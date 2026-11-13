@@ -174,6 +174,7 @@ export class SqlNewsCorpus {
     const now=Date.parse(asOf),from=new Date(now-windowHours*HOUR).toISOString();
     if(!Number.isFinite(now))throw new Error("Invalid analytical asOf");
     const reader=new Database(this.archive.db.name,{readonly:true,timeout:1500});
+    const frozen=new FrozenRows(),locations=[];
     const rows=[],inputManifest=[];let bytes=0,eligible=0,truncated=false,revision,excluded,legacyAvailabilityCount=0;
     try {
       reader.pragma('query_only=ON');reader.exec('BEGIN');
@@ -192,14 +193,24 @@ export class SqlNewsCorpus {
       // Choose each article's last available revision, including corrections that
       // move its publication date out of the requested window. No future revision
       // is substituted for the revision known at inputsAsOf.
-      const query=reader.prepare(`SELECT r.rowid,r.observed_at,r.revision FROM article_revisions r INDEXED BY article_revisions_window
+      const query=reader.prepare(`SELECT r.rowid,r.observed_at,r.revision,
+        row_number() OVER (ORDER BY r.article_id)-1 AS semantic_order
+        FROM article_revisions r INDEXED BY article_revisions_window
         WHERE r.rowid<=? AND r.observed_at<=? AND json_extract(r.payload_json,'$.publishedAt')>=?
           AND json_extract(r.payload_json,'$.publishedAt')<=?
           AND NOT EXISTS (SELECT 1 FROM article_revisions newer INDEXED BY article_revisions_available WHERE newer.article_id=r.article_id
             AND newer.observed_at<=? AND newer.rowid<=? AND newer.revision>r.revision)
-        ORDER BY r.article_id`);
+        ORDER BY r.rowid`);
       const references=query.all(revisionWatermark,asOf,from,asOf,asOf,revisionWatermark);
       for(const row of physicalPages(reader,'article_revisions',references,this.payloadCache)) {
+        locations[row.semantic_order]=frozen.add(row);
+      }
+      reader.exec('COMMIT');
+      // Release WAL before applying the unchanged article-id byte budget.
+      // Capture bodies globally by physical row order, retaining only narrow
+      // scratch locations in memory. No additional business writer is opened.
+      for(const location of locations){
+        const row=frozen.get(location);
         const stored=JSON.parse(row.payload_json);
         if(!stored.title?.trim() || !stored.url || stored.synthetic || ['synthetic','fallback','seeded'].includes(stored.dataMode) || stored.provenance?.synthetic)continue;
         eligible++;
@@ -207,8 +218,7 @@ export class SqlNewsCorpus {
         if(bytes+size>maxBytes){truncated=true;continue;}
         bytes+=size;if(row.observed_at<rollout)legacyAvailabilityCount++;rows.push(stored);inputManifest.push([stored.id,stored.revision,stored.analysisFeatures?.methodVersion || 'permitted-metadata']);
       }
-      reader.exec('COMMIT');
-    } finally {reader.close();}
+    } finally {reader.close();frozen.close();}
     // Release the WAL snapshot before classification or asynchronous yielding.
     const articles=[];
     for(const stored of rows) {
