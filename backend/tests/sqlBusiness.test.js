@@ -334,13 +334,13 @@ test("bounded immutable archive windows use date indexes before decoding, with s
   const prepare=archive.reader.prepare.bind(archive.reader),plans=[];
   archive.reader.prepare=sql=>{
    const statement=prepare(sql);
-   if(sql.startsWith('SELECT r.rowid')){const iterate=statement.iterate;statement.iterate=function(...args){plans.push(prepare('EXPLAIN QUERY PLAN '+sql).all(...args).map(r=>r.detail));return iterate.apply(this,args);};}
+   if(sql.startsWith('WITH selected AS MATERIALIZED')){const iterate=statement.iterate;statement.iterate=function(...args){plans.push(prepare('EXPLAIN QUERY PLAN '+sql).all(...args).map(r=>r.detail));return iterate.apply(this,args);};}
    return statement;
   };
-  for(const [field,index]of [['publishedAt','article_revisions_window'],['receivedAt','article_revisions_received_window'],['updatedAt','article_revisions_updated_window'],['archiveChangedAt','article_revisions_changed_window']]){
+  for(const [field,index]of [['publishedAt','news_search_publication'],['receivedAt','news_search_reception'],['updatedAt','news_search_updated'],['archiveChangedAt','news_search_changed']]){
    const first=archive.search({timeField:field,from:'2020-01-01T00:00:00.000Z',to:'2099-01-01T00:00:00.000Z',limit:1});
    assert.equal(first.total,2);assert.equal(first.hasMore,true);
-   assert.ok(plans.at(-1).some(p=>/^SEARCH r USING (?:COVERING )?INDEX /.test(p) && p.includes(index)),JSON.stringify(plans.at(-1)));
+   assert.ok(plans.at(-1).some(p=>/^SEARCH p USING (?:COVERING )?INDEX /.test(p) && p.includes(index)),JSON.stringify(plans.at(-1)));
    const second=archive.search({cursor:first.nextCursor,limit:1});assert.equal(second.hasMore,false);assert.notEqual(second.articles[0].id,first.articles[0].id);
   }
  }finally{archive?.close();db?.close();await f.close();}

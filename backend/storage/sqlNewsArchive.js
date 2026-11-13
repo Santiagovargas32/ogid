@@ -215,69 +215,58 @@ export class SqlNewsArchive extends NewsArchive {
     this.reader.transaction(()=>{
       if(!cursor){snapshot.revision=readMeta(this.reader,"news.meta",{}).revision || 0;snapshot.upper=this.reader.prepare("SELECT coalesce(max(rowid),0) AS n FROM article_revisions").get().n;}
       const filters=snapshot.filters,field=filters.timeField || 'publishedAt';
-      const column=({publishedAt:"json_extract(r.payload_json,'$.publishedAt')",receivedAt:"json_extract(r.payload_json,'$.receivedAt')",updatedAt:"json_extract(r.payload_json,'$.updatedAt')",archiveChangedAt:"json_extract(r.payload_json,'$.archiveChangedAt')"})[field];
-      const predicates=['r.rowid<=?','NOT EXISTS (SELECT 1 FROM article_revisions newer WHERE newer.article_id=r.article_id AND newer.revision>r.revision AND newer.rowid<=?)'],args=[snapshot.upper,snapshot.upper];
+      const column=({publishedAt:'p.published_at',receivedAt:'p.received_at',updatedAt:'p.updated_at',archiveChangedAt:'p.archive_changed_at'})[field];
+      const predicates=['p.revision_rowid<=?'],args=[snapshot.upper];
       for(const [bound,op]of [['from','>='],['to','<=']])if(filters[bound]){predicates.push(`${column}${op}?`);args.push(filters[bound]);}
-      // Sort only immutable row references, keeping payloads out of SQLite's temporary sorter.
-      // A bounded date window already excludes NULL dates; its expression
-      // index can sort references without opening every historical JSON body.
-      const order=filters.from || filters.to ? column : `coalesce(${column},json_extract(r.payload_json,'$.receivedAt'))`;
-      const windowIndex=({publishedAt:'article_revisions_window',receivedAt:'article_revisions_received_window',updatedAt:'article_revisions_updated_window',archiveChangedAt:'article_revisions_changed_window'})[field];
-      const indexed=filters.from || filters.to?` INDEXED BY ${windowIndex}`:'';
-      let query;
-      if(filters.countries?.length&&!indexed){
-        // These facets and the revision watermark are read in the SAME WAL
-        // transaction. Resolve each candidate's latest immutable reference
-        // before sorting/decoding JSON. An empty country must not walk the
-        // entire revision archive and pin the WAL while rejecting every body.
-        query=`WITH country_articles AS MATERIALIZED (
-          SELECT DISTINCT article_id FROM article_countries WHERE country IN (SELECT value FROM json_each(?))
-        ), selected_revisions AS MATERIALIZED (
-          SELECT (SELECT rowid FROM article_revisions WHERE article_id=c.article_id AND rowid<=? ORDER BY revision DESC LIMIT 1) AS rowid
-          FROM country_articles c
-        ) SELECT r.rowid AS rowid FROM selected_revisions s CROSS JOIN article_revisions r ON r.rowid=s.rowid
-          ORDER BY ${order} DESC,r.article_id ASC`;
-        args.splice(0,args.length,JSON.stringify(filters.countries),snapshot.upper);
-      }else{
-        // A date window keeps its covering expression index. Apply the country
-        // relation before physical payload reads, without driving a narrow
-        // window from all of a large country's historical article IDs.
-        if(filters.countries?.length){predicates.push('r.article_id IN (SELECT article_id FROM article_countries WHERE country IN (SELECT value FROM json_each(?)))');args.push(JSON.stringify(filters.countries));}
-        query=`SELECT r.rowid AS rowid FROM article_revisions r${indexed} WHERE ${predicates.join(' AND ')} ORDER BY ${order} DESC,r.article_id ASC`;
-      }
-      let matched=cursor?offset:0,full=false;
-      // Later pages resolve the frozen references directly instead of scanning
-      // and sorting the entire revision corpus again for every cursor.
-      const rows=cursor?snapshot.rows.slice(offset,offset+limit).map(rowid=>({rowid})):physicalPages(this.reader,'article_revisions',this.reader.prepare(query).iterate(...args));
-      const payload=this.reader.prepare("SELECT payload_json FROM article_revisions WHERE rowid=?");
-      for(const row of rows){
-        const article=JSON.parse(row.payload_json || payload.get(row.rowid).payload_json),reasons=[];
-        if(filters.countries?.length){const matches=(article.countryMentions || []).filter(c=>filters.countries.includes(c));if(!matches.length)continue;reasons.push(...matches.map(c=>({kind:'country',method:'country-tag-or-detection',evidence:c})));}
-        if(snapshot.instruments.length){const matches=snapshot.instruments.map(i=>matchInstrument(article,i)).filter(Boolean);if(!matches.length)continue;reasons.push(...matches);}
-        if(filters.q&&!`${article.title} ${article.excerpt || ''}`.toLowerCase().includes(filters.q.toLowerCase()))continue;
-        if(filters.sectors?.length&&!filters.sectors.some(v=>(article.sectors || []).includes(v)))continue;
-        if(filters.providers?.length&&!(article.provenances || []).some(p=>filters.providers.includes(p.provider)))continue;
-        if(filters.sources?.length&&!(article.provenances || []).some(p=>filters.sources.includes(p.sourceId)||filters.sources.includes(p.publisher)))continue;
-        if(filters.topics?.length&&!(article.topics || []).some(t=>filters.topics.includes(t)))continue;
+      if(filters.countries?.length){predicates.push('p.article_id IN (SELECT article_id FROM article_countries WHERE country IN (SELECT value FROM json_each(?)))');args.push(JSON.stringify(filters.countries));}
+      const order=filters.from||filters.to?column:`coalesce(${column},p.received_at)`;
+      const windowIndex=({publishedAt:'news_search_publication',receivedAt:'news_search_reception',updatedAt:'news_search_updated',archiveChangedAt:'news_search_changed'})[field];
+      const indexed=` INDEXED BY ${windowIndex}`;
+      // Sort only narrow references, then stream compact filter data globally
+      // by rowid. Full source JSON never participates in sorting or counting.
+      const query=`WITH selected AS MATERIALIZED (
+        SELECT p.rowid,p.revision_rowid,
+          row_number() OVER (ORDER BY ${order} DESC,p.article_id ASC)-1 AS semantic_order
+        FROM news_search_projection p${indexed} WHERE ${predicates.join(' AND ')}
+      ) SELECT rowid,revision_rowid,semantic_order FROM selected ORDER BY rowid`;
+      const match=article=>{
+        const reasons=[];
+        if(filters.countries?.length){const matches=(article.countryMentions || []).filter(c=>filters.countries.includes(c));if(!matches.length)return null;reasons.push(...matches.map(c=>({kind:'country',method:'country-tag-or-detection',evidence:c})));}
+        if(snapshot.instruments.length){const matches=snapshot.instruments.map(i=>matchInstrument(article,i)).filter(Boolean);if(!matches.length)return null;reasons.push(...matches);}
+        if(filters.q&&!`${article.title} ${article.excerpt || ''}`.toLowerCase().includes(filters.q.toLowerCase()))return null;
+        if(filters.sectors?.length&&!filters.sectors.some(v=>(article.sectors || []).includes(v)))return null;
+        if(filters.providers?.length&&!(article.provenances || []).some(p=>filters.providers.includes(p.provider)))return null;
+        if(filters.sources?.length&&!(article.provenances || []).some(p=>filters.sources.includes(p.sourceId)||filters.sources.includes(p.publisher)))return null;
+        if(filters.topics?.length&&!(article.topics || []).some(t=>filters.topics.includes(t)))return null;
         if(filters.q)reasons.push({kind:'text',method:'case-insensitive-text',evidence:filters.q});
         if(filters.topics?.length)reasons.push({kind:'topic',method:'collected-topic-tag',evidence:filters.topics.filter(t=>(article.topics || []).includes(t)).join(', ')});
-        const position=matched++;
-        if(!cursor){
-          if(snapshot.rows.length>=this.maxSnapshotItems)throw new AppError('El resultado excede la capacidad de revisiones; acotar la ventana.',413,'SNAPSHOT_TOO_LARGE');
-          snapshot.rows.push(row.rowid);
-          if(article.synthetic || article.dataMode==='synthetic')snapshot.syntheticCount++;
+        return reasons;
+      };
+      if(!cursor){
+        const references=[];
+        for(const row of physicalPages(this.reader,'news_search_projection',this.reader.prepare(query).iterate(...args))){
+          const article=JSON.parse(row.payload_json);
+          if(!match(article))continue;
+          if(references.length>=this.maxSnapshotItems)throw new AppError('El resultado excede la capacidad de revisiones; acotar la ventana.',413,'SNAPSHOT_TOO_LARGE');
+          references.push({rowid:row.revision_rowid,order:row.semantic_order});
+          if(article.synthetic||article.dataMode==='synthetic')snapshot.syntheticCount++;
           if(article.dataMode==='stale'||article.provenance?.stale)snapshot.staleCount++;
         }
-        if(position<offset)continue;
-        if(data.articles.length<limit&&!full){
-          data.articles.push({...article,matchReasons:reasons});
-          // Include the largest cursor/envelope shape while budgeting the page.
-          data.nextCursor=this.cursor(id,offset+data.articles.length);data.hasMore=true;
-          if(wireSize(data)>maxBytes-1024){data.articles.pop();full=true;}
-        }
-        if(cursor&&(full||data.articles.length>=limit))break;
+        snapshot.rows=references.sort((a,b)=>a.order-b.order).map(row=>row.rowid);
+        snapshot.total=snapshot.rows.length;
       }
-      if(!cursor)snapshot.total=matched;
+      const refs=snapshot.rows.slice(offset,offset+limit).map(rowid=>({rowid}));
+      // Cursor pages retain point reads of their frozen revision references.
+      // Only an initial response page uses the shared physical batching helper.
+      const rows=cursor?refs:physicalPages(this.reader,'article_revisions',refs);
+      const payload=this.reader.prepare('SELECT payload_json FROM article_revisions WHERE rowid=?');
+      for(const row of rows){
+        const article=JSON.parse(row.payload_json||payload.get(row.rowid).payload_json),reasons=match(article);
+        if(!reasons)throw new AppError('La proyección no coincide con su revisión inmutable.',503,'NEWS_SEARCH_PROJECTION_MISMATCH');
+        data.articles.push({...article,matchReasons:reasons});
+        data.nextCursor=this.cursor(id,offset+data.articles.length);data.hasMore=true;
+        if(wireSize(data)>maxBytes-1024){data.articles.pop();break;}
+      }
     }).deferred();
     if(!cursor){
       let retained=[...this.snapshots.values()].reduce((sum,value)=>sum+value.rows.length,0);

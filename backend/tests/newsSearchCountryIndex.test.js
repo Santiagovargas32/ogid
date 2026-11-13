@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,rmSync} from 'node:fs';
+import {mkdtempSync,rmSync,mkdirSync,readdirSync,copyFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import Database from 'better-sqlite3';
@@ -11,9 +11,14 @@ const at='2026-11-07T10:00:00.000Z';
 const article=(id,countries=['RU'],extra={})=>({id:'source-'+id,title:'Collected report '+id,
  url:'https://example.org/'+id,provider:'rss',sourceId:'fixture',publishedAt:at,
  countryMentions:countries,usagePolicy:'standard-link-out',...extra});
-function fixture(){
+function fixture(version){
  const dir=mkdtempSync(join(tmpdir(),'ogid-country-search-')),db=new Database(join(dir,'fixture.sqlite'));
- db.pragma('journal_mode=WAL');db.pragma('foreign_keys=ON');migrate(db);
+ db.pragma('journal_mode=WAL');db.pragma('foreign_keys=ON');
+ if(version){
+  const migrations=join(dir,'migrations');mkdirSync(migrations);
+  for(const name of readdirSync(new URL('../storage/migrations/',import.meta.url)))if(Number(name.slice(0,3))<=version)copyFileSync(new URL('../storage/migrations/'+name,import.meta.url),join(migrations,name));
+  migrate(db,migrations);
+ }else migrate(db);
  const archive=new SqlNewsArchive(db,{now:()=>Date.parse(at)+3600000});
  return {db,archive,close(){archive.close();db.close();rmSync(dir,{recursive:true,force:true});}};
 }
@@ -38,7 +43,40 @@ test('an empty country search reads no unrelated revision bodies, while positive
   const observed=observeBodies(f.archive),empty=f.archive.search({countries:['AQ'],limit:1});
   assert.equal(empty.total,0);assert.deepEqual(empty.articles,[]);assert.equal(observed.count,0,'country index must reject unrelated bodies before hydration');
   observed.reset();const positive=f.archive.search({countries:['TW','UA'],limit:1});
-  assert.equal(positive.total,3);assert.equal(positive.hasMore,true);assert.equal(observed.count,3,'only the latest matching revision bodies may be hydrated');
+  assert.equal(positive.total,3);assert.equal(positive.hasMore,true);assert.equal(observed.count,1,'only the returned page may hydrate full immutable revision bodies');
+ }finally{f.close();}
+});
+
+test('034 backfills populated immutable revisions without rewriting originals and preserves every search filter and quality flag',()=>{
+ const f=fixture(33);try{
+  f.archive.ingest([article('upgrade',['TW'],{title:'NASDAQ:NVDA Sanciones Ámbito'})]);
+  const original=f.archive.getItem('source-upgrade').article;
+  f.archive.save({...original,revision:original.revision+1,metadataUpdatedAt:at,synthetic:true,dataMode:'stale',
+   sectors:['technology'],topics:['chips'],provenance:{stale:true},provenances:[{provider:'wire',sourceId:'wire-feed',publisher:'Wire edition'}]});
+  const articles=f.db.prepare('SELECT rowid,* FROM articles').all(),revisions=f.db.prepare('SELECT rowid,* FROM article_revisions').all(),checksums=f.db.prepare('SELECT * FROM schema_migrations').all();
+  migrate(f.db);
+  assert.deepEqual(f.db.prepare('SELECT rowid,* FROM articles').all(),articles);
+  assert.deepEqual(f.db.prepare('SELECT rowid,* FROM article_revisions').all(),revisions);
+  assert.deepEqual(f.db.prepare('SELECT * FROM schema_migrations WHERE version<=33').all(),checksums);
+  const result=f.archive.search({countries:['TW'],symbols:['NVDA'],q:'ÁMBITO',sectors:['technology'],topics:['chips'],providers:['wire'],sources:['Wire edition']});
+  assert.equal(result.total,1);assert.equal(result.articles[0].title,original.title);
+  assert.deepEqual(result.quality,{syntheticCount:1,staleCount:1});
+  const before=f.db.prepare('SELECT * FROM news_search_projection').all();
+  assert.throws(()=>f.db.transaction(()=>{f.archive.save({...original,revision:3,title:'Rolled back',metadataUpdatedAt:at});throw Error('rollback');})(),/rollback/);
+  assert.deepEqual(f.db.prepare('SELECT * FROM news_search_projection').all(),before);
+  assert.deepEqual(f.db.prepare('SELECT rowid,* FROM article_revisions').all(),revisions);
+  assert.deepEqual(f.db.pragma('foreign_key_check'),[]);
+ }finally{f.close();}
+});
+
+test('inserting an older immutable revision cannot replace the current search projection',()=>{
+ const f=fixture();try{
+  f.archive.ingest([article('late',['TW'])]);
+  const a=f.archive.getItem('source-late').article;
+  f.archive.save({...a,revision:3,title:'Latest immutable title',metadataUpdatedAt:at});
+  f.db.prepare('INSERT INTO article_revisions VALUES(?,?,?,?)').run(a.id,2,at,JSON.stringify({...a,revision:2,title:'Late historical insertion'}));
+  const p=f.db.prepare('SELECT revision FROM news_search_projection WHERE article_id=?').get(a.id);
+  assert.equal(p.revision,3);assert.equal(f.archive.search({countries:['TW']}).articles[0].title,'Latest immutable title');
  }finally{f.close();}
 });
 
@@ -71,5 +109,33 @@ test('country filtering preserves indexed date windows, null-date rules and late
   assert.equal(f.archive.search(filters).total,0,'an older in-window revision must not replace the latest out-of-window correction');
   const received=f.archive.search({...filters,timeField:'receivedAt'});assert.equal(received.total,2);assert.ok(received.articles.some(a=>a.publishedAt===null));
   const observed=observeBodies(f.archive);assert.equal(f.archive.search({...filters,countries:['AQ'],timeField:'receivedAt'}).total,0);assert.equal(observed.count,0);
+ }finally{f.close();}
+});
+
+test('full-history pages hydrate latest revisions in global row order while preserving frozen semantic order, totals and quality',()=>{
+ const f=fixture();try{
+  f.archive.ingest(Array.from({length:280},(_,n)=>article('ordered-'+n,n%3?['RU']:['UA'],{
+   publishedAt:n%19?new Date(Date.parse(at)-((n*73)%281)*3600000).toISOString():null,
+   dataMode:n%23?'observed':'stale'
+  })));
+  const expected=f.db.prepare(`SELECT r.rowid,r.payload_json FROM articles a JOIN article_revisions r
+   ON r.article_id=a.article_id AND r.revision=a.revision
+   ORDER BY coalesce(json_extract(r.payload_json,'$.publishedAt'),json_extract(r.payload_json,'$.receivedAt')) DESC,r.article_id ASC`).all();
+  const prepare=f.archive.reader.prepare,wrapped=new WeakSet();let read=[];
+  f.archive.reader.prepare=sql=>{
+   const s=prepare(sql);
+   if(sql.startsWith('SELECT rowid,payload_json FROM article_revisions WHERE rowid IN')&&!wrapped.has(s)){
+    wrapped.add(s);const iterate=s.iterate;s.iterate=function*(...args){for(const row of iterate.apply(this,args)){read.push(row.rowid);yield row;}};
+   }
+   return s;
+  };
+  for(const countries of [[],['RU','UA']]){
+   read=[];let page=f.archive.search({countries,limit:17});
+   assert.deepEqual(read,[...read].sort((a,b)=>a-b),'payload reads must stay globally ordered across physical batches');
+   assert.equal(read.length,17);assert.equal(page.total,280);
+   assert.equal(page.quality.staleCount,expected.filter(r=>JSON.parse(r.payload_json).dataMode==='stale').length);
+   const rows=[];for(;;){rows.push(...page.articles);if(!page.hasMore)break;page=f.archive.search({cursor:page.nextCursor,limit:17});}
+   assert.deepEqual(rows.map(a=>a.id),expected.map(r=>JSON.parse(r.payload_json).id));
+  }
  }finally{f.close();}
 });
