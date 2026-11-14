@@ -29,7 +29,7 @@ import {nativeThreadId} from './nativeWait.js';
 import {MarketProjectionRepository} from './marketProjections.js';
 import {readPressure,pressureAllows,pressureError,waitForAcquisitionResources} from './resourceAdmission.js';
 const nativeId=nativeThreadId();
-let database, migrations, version, runtime,walAcquisitionBudget;
+let database, migrations, version, runtime,walAcquisitionBudget,activity;
 let diagnostics,lastDiagnosticsCompletedAt=0,lastCompletedCommand,lastFailedCommand;
 const activeCommands=new Map();
 let commandEpoch=0;
@@ -52,7 +52,7 @@ function rpc(operation,input){return new Promise((resolve,reject)=>{const comman
 const fail = code => { throw Object.assign(new Error(code), { code }); };
 function size(file) { try { return statSync(file).size; } catch (error) { if (error.code === "ENOENT") return 0; throw error; } }
 function status() {
-  return { nativeThreadId:nativeId,readOnlyConnection:database.readonly,queryOnly:database.pragma("query_only",{simple:true}) === 1,sqliteVersion: version, synchronous:database.pragma("synchronous",{simple:true}),autoCheckpoint:database.pragma("wal_autocheckpoint",{simple:true}),migrations, databaseBytes: size(workerData.databasePath), walBytes: size(`${workerData.databasePath}-wal`),walAcquisitionBudget:walAcquisitionBudget?.status()||null, businessStorage: readMeta(database,"businessStorage",workerData.businessEnabled ? "sqlite" : "legacy-json"), storagePhase: readMeta(database,"businessStorage",workerData.businessEnabled ? "sqlite" : "legacy-json") === "sqlite" ? "repositories" : "infrastructure" };
+  return { nativeThreadId:nativeId,readOnlyConnection:database.readonly,queryOnly:database.pragma("query_only",{simple:true}) === 1,sqliteVersion: version, synchronous:database.pragma("synchronous",{simple:true}),autoCheckpoint:database.pragma("wal_autocheckpoint",{simple:true}),migrations, databaseBytes: size(workerData.databasePath), walBytes: size(`${workerData.databasePath}-wal`),walAcquisitionBudget:walAcquisitionBudget?.status()||null,committedWrites:activity?.writeMetrics.status()||null, businessStorage: readMeta(database,"businessStorage",workerData.businessEnabled ? "sqlite" : "legacy-json"), storagePhase: readMeta(database,"businessStorage",workerData.businessEnabled ? "sqlite" : "legacy-json") === "sqlite" ? "repositories" : "infrastructure" };
 }
 function pipelineRecord(input) {
   if (!input || !/^[A-Za-z0-9._:-]{1,128}$/.test(input.runId || "") || !/^[a-z-]{1,64}$/.test(input.pipelineId || "")) fail("STORAGE_INVALID_COMMAND");
@@ -178,7 +178,7 @@ try {
   if(!workerData.analysisWorker)database.pragma('wal_autocheckpoint=0');
   if(workerData.analysisWorker){database.pragma("query_only=ON");migrations=database.prepare("SELECT version,name,applied_at AS appliedAt FROM schema_migrations ORDER BY version").all();}
   else {assertWriterAvailable(database);migrations = migrate(database, workerData.migrationsDir);acquireWriter(database,workerData.writerToken);}
-  const activity=workerData.analysisWorker?null:new SqlActivity(workerData.sqlActivityBuffer);
+  activity=workerData.analysisWorker?null:new SqlActivity(workerData.sqlActivityBuffer);
   if(activity && workerData.commitBuffer)activity.commits=new CommitActivity(workerData.commitBuffer);
   const beforeWrite=workerData.analysisWorker?null:walWriteGuard(database,workerData.walPressureBuffer);
   cacheStatements(database,256,{activity,beforeWrite,onSlow:(sql,durationMs)=>log.warn("storage_slow_sql",{threadId,readOnly:workerData.analysisWorker,durationMs:Math.round(durationMs),sql:sql.replace(/'(?:''|[^'])*'/g,"?").slice(0,240)})});

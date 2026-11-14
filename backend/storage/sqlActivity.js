@@ -1,15 +1,27 @@
 // A single worker writes this bounded buffer. The parent can inspect a native
 // SQLite stall even when that worker's event loop cannot emit telemetry.
 // SQL bindings, rows, paths and provider content never enter this channel.
+import {CommittedWriteMetrics,mergeWrites} from './committedWriteMetrics.js';
 const METHODS=['idle','get','all','run','iterate'];
 const PHASES=['none','begin','body','commit','rollback'];
 const TEXT_OFFSET=64,SIZE=1088;
 export const createSqlActivityBuffer=()=>new SharedArrayBuffer(SIZE);
 export class SqlActivity {
-  constructor(buffer){this.buffer=buffer;this.ints=new Int32Array(buffer,0,8);this.numbers=new Float64Array(buffer,32,4);this.text=new Uint8Array(buffer,TEXT_OFFSET);this.stack=[];}
+  constructor(buffer){this.buffer=buffer;this.ints=new Int32Array(buffer,0,8);this.numbers=new Float64Array(buffer,32,4);this.text=new Uint8Array(buffer,TEXT_OFFSET);this.stack=[];this.writeMetrics=new CommittedWriteMetrics();}
   update(fn){Atomics.add(this.ints,0,1);try{fn();}finally{Atomics.add(this.ints,0,1);}}
-  write(bytes,inTransaction){if(inTransaction&&this.stack.length)this.stack.at(-1).bytes=(this.stack.at(-1).bytes||0)+bytes;else if(!inTransaction)this.commits?.committed(bytes);}
-  finish(success){const value=this.stack.at(-1);if(success&&value?.bytes){if(this.stack.length>1)this.stack.at(-2).bytes=(this.stack.at(-2).bytes||0)+value.bytes;else this.commits?.committed(value.bytes);}this.transaction('end');}
+  write(bytes,inTransaction,detail=null){
+    const writes=detail?new Map([[detail.bucket,{statements:1,rowsChanged:detail.rowsChanged,bindingBytes:detail.bindingBytes,largestBindingBytes:detail.bindingBytes}]]):null;
+    if(inTransaction&&this.stack.length){const current=this.stack.at(-1);current.bytes=(current.bytes||0)+bytes;if(writes)current.writes=mergeWrites(current.writes||new Map(),writes);}
+    else if(!inTransaction){this.commits?.committed(bytes);this.writeMetrics.committed(writes);}
+  }
+  finish(success){
+    const value=this.stack.at(-1);
+    if(success&&value?.bytes){
+      if(this.stack.length>1){const parent=this.stack.at(-2);parent.bytes=(parent.bytes||0)+value.bytes;if(value.writes)parent.writes=mergeWrites(parent.writes||new Map(),value.writes);}
+      else{this.commits?.committed(value.bytes);this.writeMetrics.committed(value.writes);}
+    }
+    this.transaction('end');
+  }
   statement(sql){
     const safe=String(sql).replace(/'(?:''|[^'])*'/g,'?').replace(/\b\d+(?:\.\d+)?\b/g,'?').slice(0,240),bytes=new TextEncoder().encode(safe);
     return {start:method=>this.update(()=>{this.ints[1]=METHODS.indexOf(method);this.ints[2]=bytes.length;this.text.set(bytes);this.numbers[0]=Date.now();this.numbers[1]=0;}),end:durationMs=>this.update(()=>{this.ints[1]=0;this.numbers[1]=durationMs;})};
