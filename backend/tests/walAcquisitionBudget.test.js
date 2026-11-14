@@ -65,18 +65,23 @@ test('RSS acquisition drains via its real parent checkpoint and leaves control c
  const dir=mkdtempSync(join(tmpdir(),'ogid-wal-rss-')),file=join(dir,'fixture.sqlite');
  const xml='<rss><channel><title>Fixture</title>'+Array.from({length:24},(_,i)=>`<item><title>Russia collected report ${i}</title><link>https://example.org/budget/${i}</link><pubDate>${new Date().toUTCString()}</pubDate></item>`).join('')+'</channel></rss>';
  const server=createServer((_req,res)=>{res.writeHead(200,{'Content-Type':'application/rss+xml'});res.end(xml);});server.listen(0,'127.0.0.1');await once(server,'listening');
- const manager=new StorageManager({enabled:true,businessEnabled:true,databasePath:file,checkpointSoftBytes:16384,resourcePressureEnabled:false});let release;
+ const manager=new StorageManager({enabled:true,businessEnabled:true,databasePath:file,checkpointSoftBytes:16384,resourcePressureEnabled:false});let release,reader;
  try{
   await manager.start();await manager.request('domain.configure',{instruments:[],rootDir:dir,researchSources:[],rss:{pipelineMode:'canonical',maxFeedsPerRun:1,maxCorpusItems:30,rssFeeds:[{feedId:'budget-rss',label:'Fixture',url:`http://127.0.0.1:${server.address().port}/rss`} ]}});
+  // Pin a real read cut so this case exercises WAL debt even when producer
+  // pacing gives the normal checkpoint enough time to drain between pages.
+  reader=new Database(file,{readonly:true});reader.exec('BEGIN');reader.prepare('SELECT count(*) FROM articles').get();
   let entered,held=false,drains=0;const start=new Promise(resolve=>entered=resolve),gate=new Promise(resolve=>release=resolve),request=manager.checkpoint.request.bind(manager.checkpoint);
   t.mock.method(manager.checkpoint,'request',async(...args)=>{if(!args.length){drains++;if(!held){held=true;entered();await gate;}}return request(...args);});
   const work=manager.request('domain.call',{service:'rss',method:'refresh',args:[{feedIds:['budget-rss'],maxFeedsPerCycle:1}]});
   await Promise.race([start,work.then(()=>{throw Error('No cooperative checkpoint boundary');})]);
   await manager.request('runtime.save',{kind:'control-during-rss-budget',payload:{confirmed:true}});
-  assert.deepEqual(await manager.request('runtime.load',{kind:'control-during-rss-budget'}),{confirmed:true});release();
-  const result=await work;assert.equal(result.items.length,24);assert.ok(drains>1);
+  assert.deepEqual(await manager.request('runtime.load',{kind:'control-during-rss-budget'}),{confirmed:true});reader.exec('ROLLBACK');reader.close();reader=null;release();
+  const result=await work;assert.equal(result.items.length,24);assert.ok(drains>=1);
   const db=new Database(file,{readonly:true});try{assert.equal(db.prepare('SELECT count(*) n FROM articles').get().n,24);assert.equal(db.prepare('SELECT count(*) n FROM storage_writer_owner').get().n,1);}finally{db.close();}
   assert.equal(manager.getStatus().synchronous,2);assert.deepEqual(manager.checkpoint.status().connection,{queryOnly:true,synchronous:2});
-  assert.ok(manager.getStatus().walAcquisitionBudget.waits>1);assert.equal(manager.getStatus().walAcquisitionBudget.active,0);
- }finally{release?.();await manager.close();await new Promise(resolve=>server.close(resolve));rmSync(dir,{recursive:true,force:true});}
+  assert.ok(manager.getStatus().walAcquisitionBudget.waits>=1);assert.equal(manager.getStatus().walAcquisitionBudget.active,0);
+  assert.ok(manager.getStatus().walAcquisitionBudget.writePacing.chargedBytes>0,'the real acquisition worker must account committed writes');
+  assert.equal(manager.getStatus().walAcquisitionBudget.writePacing.active,0);
+ }finally{reader?.exec('ROLLBACK');reader?.close();release?.();await manager.close();await new Promise(resolve=>server.close(resolve));rmSync(dir,{recursive:true,force:true});}
 });

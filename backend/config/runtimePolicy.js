@@ -201,6 +201,8 @@ export const RUNTIME_POLICY = freeze({
     readPageBytes: 1048576,
     commitBatchRows: 10,
     commitBatchBytes: 131072,
+    acquisitionWriteBytesPerSecond: 1048576,
+    acquisitionWriteBurstBytes: 524288,
     commitBatchMs: 100,
     maintenancePageMs: 100,
     maintenanceIdlePollMs: 25,

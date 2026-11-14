@@ -184,7 +184,7 @@ try {
   cacheStatements(database,256,{activity,beforeWrite,onSlow:(sql,durationMs)=>log.warn("storage_slow_sql",{threadId,readOnly:workerData.analysisWorker,durationMs:Math.round(durationMs),sql:sql.replace(/'(?:''|[^'])*'/g,"?").slice(0,240)})});
   if(activity)trackTransactions(database,activity,{beforeBegin:beforeWrite,onSlowCommit:durationMs=>log.warn('storage_slow_commit',{threadId,durationMs:Math.round(durationMs),synchronous:'FULL',autoCheckpoint:0})});
   runtime=new BusinessRuntime(database,rpc,(id,stage)=>parentPort.postMessage({type:"stage",id,stage}));
-  if(!workerData.analysisWorker)walAcquisitionBudget=new WalAcquisitionBudget(database,()=>rpc('storage.walDrain',{}),{softLimitBytes:workerData.checkpointSoftBytes});
+  if(!workerData.analysisWorker)walAcquisitionBudget=new WalAcquisitionBudget(database,()=>rpc('storage.walDrain',{}),{softLimitBytes:workerData.checkpointSoftBytes,commitBuffer:workerData.commitBuffer});
   parentPort.postMessage({ type: "ready", status: status() });
   telemetry();const heartbeat=setInterval(()=>{try{telemetry();}catch(error){log.warn("storage_diagnostics_failed",{code:error.code});}},5000);heartbeat.unref();
   parentPort.on("message", async envelope => {
@@ -235,6 +235,8 @@ try {
         }).immediate();
       } else if(isAcquisitionWorkflow(message.operation,message.input)){
         const controller=new AbortController();workflows.set(message.id,controller);let completed=0;
+        const finishPacing=walAcquisitionBudget.beginWorkflow();
+        try{
         result=await operationContext.run({signal:controller.signal,waitForResources:async()=>{
           await waitForAcquisitionResources(workerData.resourcePressureBuffer,controller.signal);
           await walAcquisitionBudget.wait(controller.signal);
@@ -242,6 +244,7 @@ try {
         },committed:count=>{
           completed+=count;parentPort.postMessage({type:"command-progress",id:message.id,completed,at:Date.now()});
         }},async()=>{const value=await execute(message.operation,message.input,message.requestId,message.id);checkOperation();return value;});
+        }finally{finishPacing();}
       } else { result = await execute(message.operation,message.input,message.requestId,message.id); }
       });
       const cpu = cpuStart && epoch===commandEpoch ? process.threadCpuUsage(cpuStart) : null;
