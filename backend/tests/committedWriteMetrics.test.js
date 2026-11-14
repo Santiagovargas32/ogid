@@ -87,7 +87,11 @@ test('the real writer exposes committed quota frequency without changing persist
   assert.equal(status.synchronous,2);assert.equal(status.readOnlyConnection,false);
   assert.equal(status.committedWrites.buckets['snapshot:provider-quota'].transactions,1);
   assert.equal(status.committedWrites.buckets['snapshot:provider-quota'].statements,1);
-  assert.equal(status.committedWrites.buckets['snapshot:provider-quota'].bindingBytes,Buffer.byteLength(JSON.stringify(payload)));
+  const reader=new Database(join(directory,'fixture.sqlite'),{readonly:true});reader.pragma('query_only=ON');
+  try{
+   const stored=reader.prepare("SELECT length(CAST(payload_json AS BLOB)) bytes FROM runtime_snapshots WHERE kind='provider-quota'").get();
+   assert.equal(status.committedWrites.buckets['snapshot:provider-quota'].bindingBytes,stored.bytes,'measure the committed representation rather than the expanded logical state');
+  }finally{reader.close();}
   assert.equal(JSON.stringify(status.committedWrites).includes('"fixture"'),false);
  }finally{await manager.close();rmSync(directory,{recursive:true,force:true});}
 });

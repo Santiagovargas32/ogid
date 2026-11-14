@@ -1,6 +1,6 @@
 // Fixed labels only: no SQL bindings, article IDs, provider data or unbounded
 // snapshot keys enter telemetry. Bytes describe bindings, not disk/WAL writes.
-const tables=new Set(['articles','article_revisions','article_observations','article_sources','article_aliases','article_countries','article_instruments','article_topics','article_permitted_excerpts','sources','runtime_meta','pipeline_checkpoints','pipeline_stage_state','candles','candle_validations','event_outbox','geopolitical_alerts','awareness_events']);
+const tables=new Set(['articles','article_revisions','article_observations','article_sources','article_aliases','article_countries','article_instruments','article_topics','article_permitted_excerpts','sources','runtime_meta','pipeline_checkpoints','provider_quota_chunks','pipeline_stage_state','candles','candle_validations','event_outbox','geopolitical_alerts','awareness_events']);
 const snapshots=new Map([
  ['provider-quota','provider-quota'],['rss','rss-public'],['rss-canonical','rss-legacy'],
  ['rss-canonical-v2','rss-summary'],['rss-canonical-corpus:v3','rss-corpus'],['pipeline-stage','pipeline-stage'],

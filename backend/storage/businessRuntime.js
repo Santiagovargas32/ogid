@@ -38,6 +38,7 @@ import { SqlRssArticles } from "./rssArticles.js";
 import { checkOperation, committedOperationItems,yieldOperationResources } from "../services/shared/operationContext.js";
 import {SituationStore} from './situations.js';
 import {MarketProjectionRepository} from './marketProjections.js';
+import {ProviderQuotaSnapshot} from './providerQuotaSnapshot.js';
 
 const METHODS={market:["analyze"],awareness:["parseSource","getSnapshot","reconcile","setSourceStale"],store:["view","getRow"],news:["ingest","enrichEditorialPage","sourceAssessments","sourceAssessment","sourceCoverage","sourceDossiers","sourceDossier","sourceDossierDrafts","sourceDossierDraft","comparisons","comparison","comparisonClaim","comparisonChanges","importSourceAssessments","proposeSourceDossier","reviewSourceDossier","reviewComparison","recordContext","search","getItem","getHistory","coverage","getProjection","getFeed","getLiveFeed"],events:["ingest","search","replayAwareness"],alerts:["acknowledge","delta","getChange","acknowledgeChanges","recoverCheckpoint"],sources:["status","run","holdings","stop"],history:["create","get","run","coverage","coverageState","coverageStates","ensureCatchup","repairPlan","cancel"],imports:["datasets","datasetsPage","import"],technical:["get"],indicators:["calculate"],coupling:["calculate"],scenarios:["refresh","list","remove"],forecasts:["evaluate","record"],portfolio:["getContext"],rss:["getSnapshot","refresh"],conditions:["getSnapshot"],map:["getDashboardMapAssets","getLayerBundle","getConfig"],advanced:["getSnapshot"],signals:["recordSnapshot","recordMeasurement","getAnomalies"],candles:["query","append","upsert","latest","has","hasCandle","hydrate","coverageSummary"]};
 export class BusinessRuntime {
@@ -190,6 +191,8 @@ export class BusinessRuntime {
       } else if(["awareness-audit","awareness-poll"].includes(kind)){
         this.db.prepare("INSERT INTO runtime_audit(kind,observed_at,payload_json) VALUES(?,?,?)").run(kind,payload.recordedAt || at,JSON.stringify(payload));
         if(kind==="awareness-poll"){sourceRow(this.db,payload.sourceId);this.db.prepare("INSERT OR IGNORE INTO source_polls VALUES(?,?,?,?,?)").run(`poll-${stableHash(payload).slice(0,40)}`,payload.sourceId,payload.recordedAt,payload.poll.outcome,JSON.stringify(payload.poll));}
+      } else if(kind==='provider-quota'){
+        (this.quotaSnapshot ||= new ProviderQuotaSnapshot(this.db)).save(payload,at);
       } else {
         const encoded=JSON.stringify(payload);
         this.db.prepare("INSERT INTO runtime_snapshots VALUES(?,?,?) ON CONFLICT(kind) DO UPDATE SET updated_at=excluded.updated_at,payload_json=excluded.payload_json WHERE runtime_snapshots.payload_json!=excluded.payload_json").run(kind,at,encoded);
@@ -201,6 +204,7 @@ export class BusinessRuntime {
     }).immediate();
   }
   load(kind,options={}){
+    if(kind==='provider-quota')return (this.quotaSnapshot ||= new ProviderQuotaSnapshot(this.db)).load();
     if(kind==='advanced-job')return this.advancedSnapshots.status(options.jobId);
     if(kind==='dashboard-analysis')return this.advancedSnapshots.peek(options);
     if(kind==="maintenance-inputs")return this.db.transaction(()=>({
