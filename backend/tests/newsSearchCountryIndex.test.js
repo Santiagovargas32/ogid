@@ -80,6 +80,36 @@ test('inserting an older immutable revision cannot replace the current search pr
  }finally{f.close();}
 });
 
+test('036 restores JSON provenance arrays across SQLite upgrades without rewriting immutable evidence or correct projections',()=>{
+ const f=fixture(35);try{
+  f.archive.ingest([article('json-types',['TW']),article('unchanged',['RU'])]);
+  const original=f.archive.getItem('source-json-types').article;
+  const provenances=[{provider:'wire',sourceId:'wire-feed',publisher:'Wire edition'},{provider:'wire',sourceId:'second',publisher:'Second edition'}];
+  f.archive.save({...original,revision:original.revision+1,metadataUpdatedAt:at,provenances});
+  // Reproduce the scalar-subquery subtype loss independently of the SQLite
+  // version running this test, and leave a correct control row byte-identical.
+  f.db.prepare("UPDATE news_search_projection SET payload_json=json_set(payload_json,'$.provenances',?) WHERE article_id=?").run(JSON.stringify(provenances),original.id);
+  f.db.prepare("UPDATE news_search_projection SET payload_json=json_set(payload_json,'$.provenances',json('[]')) WHERE article_id<>?").run(original.id);
+  const unchanged=f.db.prepare('SELECT rowid,* FROM news_search_projection WHERE article_id<>?').all(original.id);
+  const revisions=f.db.prepare('SELECT rowid,* FROM article_revisions').all(),articles=f.db.prepare('SELECT rowid,* FROM articles').all();
+  const checksums=f.db.prepare('SELECT * FROM schema_migrations').all();
+  migrate(f.db);
+  assert.deepEqual(f.db.prepare('SELECT rowid,* FROM article_revisions').all(),revisions);
+  assert.deepEqual(f.db.prepare('SELECT rowid,* FROM articles').all(),articles);
+  assert.deepEqual(f.db.prepare('SELECT * FROM schema_migrations WHERE version<=35').all(),checksums);
+  assert.deepEqual(f.db.prepare('SELECT rowid,* FROM news_search_projection WHERE article_id<>?').all(original.id),unchanged);
+  const projected=()=>JSON.parse(f.db.prepare('SELECT payload_json FROM news_search_projection WHERE article_id=?').get(original.id).payload_json).provenances;
+  assert.deepEqual(projected(),provenances,'preserve order, duplicate providers and source identities');
+  assert.equal(f.archive.search({countries:['TW'],providers:['wire'],sources:['Second edition']}).total,1);
+  f.archive.save({...original,revision:original.revision+2,metadataUpdatedAt:at,provenances:[provenances[1]]});
+  assert.deepEqual(projected(),[provenances[1]],'the existing insert trigger must use the corrected view');
+  const before=f.db.prepare('SELECT rowid,* FROM news_search_projection').all();
+  assert.throws(()=>f.db.transaction(()=>{f.archive.save({...original,revision:original.revision+3,metadataUpdatedAt:at,provenances:[]});throw Error('rollback');})(),/rollback/);
+  assert.deepEqual(f.db.prepare('SELECT rowid,* FROM news_search_projection').all(),before);
+  assert.deepEqual(f.db.pragma('foreign_key_check'),[]);
+ }finally{f.close();}
+});
+
 test('country filters use the same WAL cut as immutable revisions and cursor replay survives subsequent corrections',()=>{
  const f=fixture();try{
   f.archive.ingest([article('a',['TW']),article('b',['TW']),article('c',['TW'])]);
