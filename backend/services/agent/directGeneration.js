@@ -54,7 +54,7 @@ export async function runDirectGeneration({prepared,complete,record,signal,now=(
   let candidate;
   try{candidate=validateDirectCandidate(output.text,prepared,{now:validationNow??now()});}
   catch(error){await record({state:'rejected',receipt,text:output.text,code:error.code||'AGENT_INVALID_PUBLICATION',details:error.details||null});throw error;}
-  const result={state:'validated',receipt,...candidate};
+  const result={state:'validated',receipt,text:output.text,...candidate};
   await record(result);
   return result;
 }

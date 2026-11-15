@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {prepareDirectGeneration,validateDirectCandidate,runDirectGeneration,directBrokerCompletion} from '../services/agent/directGeneration.js';
 import {generationExample} from '../services/agent/briefReports.js';
+import {stableHash} from '../utils/stableHash.js';
 import {PROMPT_VERSION} from '../services/agent/contracts.js';
 const asOf='2026-11-15T17:00:00.000Z',now=Date.parse(asOf);
 const snapshot={snapshotId:'snapshot:direct',asOf,coverage:{selectedInstrumentIds:[]}};
@@ -44,7 +45,7 @@ test('receipts bind delivered evidence, request and output without fabricating M
  const p=prepare(),events=[];
  const result=await runDirectGeneration({prepared:p,complete:async()=>({text:example(p),usage:{completion_tokens:20}}),record:async e=>{events.push(e);},now:()=>now});
  assert.equal(result.state,'validated');assert.equal(events.length,2);assert.equal(result.receipt.requestHash,p.identity.requestHash);
- assert.equal(result.receipt.evidence[0].evidenceId,coverage.evidenceId);assert.equal(result.receipt.transport,'broker-schema-json');
+ assert.equal(result.receipt.evidence[0].evidenceId,coverage.evidenceId);assert.equal(result.receipt.transport,'broker-schema-json');assert.equal(result.receipt.outputHash,stableHash(result.text));
 });
 const frame=value=>'data: '+JSON.stringify(value)+'\r\n\r\n';
 const content=text=>frame({choices:[{index:0,delta:{content:text},finish_reason:null}]});
