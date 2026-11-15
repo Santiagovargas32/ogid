@@ -427,8 +427,12 @@ export class MarketHistoryStore {
       return this.getStatus();
     }
 
+    await this.persistEligibleState(previousMarketState, marketState, persistenceDecision, options);
+    return this.getStatus();
+  }
+
+  async persistEligibleState(previousMarketState, marketState, persistenceDecision, options) {
     await this.appendHistory(previousMarketState, marketState, persistenceDecision);
     await this.saveSnapshot(marketState, persistenceDecision, options);
-    return this.getStatus();
   }
 }

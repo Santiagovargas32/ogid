@@ -173,6 +173,11 @@ export class BusinessRuntime {
   save(kind,payload){
     const at=new Date().toISOString();
     return this.db.transaction(()=>{
+      if(kind==='market-publication'){
+        this.save('quotes',{quotes:payload.quotes});
+        this.save('market',payload.snapshot);
+        return {persisted:true};
+      }
       this.rssArticles.recordReferences(kind,payload);
       if(kind === "pipeline-stage"){
         this.db.prepare("INSERT INTO pipeline_stage_state VALUES(?,?,?,?) ON CONFLICT(stage_id) DO UPDATE SET status=excluded.status,updated_at=excluded.updated_at,state_json=excluded.state_json").run(payload.id,payload.stage.status,at,JSON.stringify(payload.stage));
