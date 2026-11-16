@@ -12,6 +12,8 @@ import os
 from pathlib import Path
 import select
 import signal
+import queue
+import threading
 import time
 
 
@@ -35,6 +37,73 @@ def atomic(path, value):
         os.close(fd)
 
 
+class SampleWriter:
+    """Bound disk work separately from the observation clock and stop signal.
+
+    A slow fsync may delay durable acknowledgements, never silently drop a
+    sample. Exhaustion or an unconfirmed drain invalidates the observation.
+    """
+    def __init__(self, directory, segment_bytes, capacity=64):
+        self.directory, self.segment_bytes = directory, segment_bytes
+        self.queue = queue.Queue(maxsize=capacity)
+        self.error, self.persisted = None, 0
+        self.thread = threading.Thread(target=self.run, daemon=True)
+        self.thread.start()
+
+    def submit(self, segment, sample, heartbeat):
+        if self.error:
+            raise RuntimeError('Sample writer failed') from self.error
+        line = json.dumps(sample, separators=(',', ':')) + '\n'
+        if len(line.encode()) > min(self.segment_bytes, 1024 * 1024):
+            raise RuntimeError('Observer row byte budget exceeded')
+        try:
+            self.queue.put_nowait((segment, line, heartbeat))
+        except queue.Full as error:
+            raise RuntimeError('Observer persistence queue exhausted') from error
+
+    def run(self):
+        stream, segment = None, None
+        try:
+            while True:
+                item = self.queue.get()
+                if item is None:
+                    break
+                number, line, heartbeat = item
+                if number != segment:
+                    if stream:
+                        stream.close()
+                    segment = number
+                    stream = open(self.directory / f'samples-{number:04d}.jsonl', 'x', encoding='utf8')
+                    os.chmod(stream.name, 0o600)
+                if stream.tell() + len(line.encode()) > self.segment_bytes:
+                    raise RuntimeError('Observer segment byte budget exceeded')
+                stream.write(line)
+                stream.flush()
+                os.fsync(stream.fileno())
+                self.persisted += 1
+                atomic(self.directory / 'heartbeat.json', {**heartbeat, 'persistedSamples': self.persisted})
+        except Exception as error:
+            self.error = error
+        finally:
+            if stream:
+                stream.close()
+
+    def close(self, timeout):
+        until = time.monotonic() + timeout
+        while self.thread.is_alive():
+            try:
+                self.queue.put(None, timeout=min(.1, max(0, until - time.monotonic())))
+                break
+            except queue.Full:
+                if time.monotonic() >= until:
+                    raise RuntimeError('Observer persistence drain unconfirmed')
+        self.thread.join(max(0, until - time.monotonic()))
+        if self.thread.is_alive():
+            raise RuntimeError('Observer persistence drain unconfirmed')
+        if self.error:
+            raise RuntimeError('Observer persistence failed') from self.error
+
+
 def observe(pid, start_ticks, directory, duration, interval, collect,
             segment_seconds=3600, segment_bytes=32 * 1024 * 1024,
             shutdown_seconds=30):
@@ -42,7 +111,7 @@ def observe(pid, start_ticks, directory, duration, interval, collect,
     began = time.monotonic()
     result = dict(pid=pid, startTicks=start_ticks, samples=0, maxGapSeconds=0,
                   signalSent=False, continuous=False, state='incomplete')
-    handle = stream = None
+    handle = writer = None
     interrupted = False
     def interrupt(_signal, _frame):
         nonlocal interrupted
@@ -56,35 +125,23 @@ def observe(pid, start_ticks, directory, duration, interval, collect,
         if ticks != str(start_ticks) or state == 'Z':
             raise RuntimeError('Runtime identity changed or already exited')
         atomic(directory / 'identity.json', {**result, 'bootId': Path('/proc/sys/kernel/random/boot_id').read_text().strip()})
+        writer = SampleWriter(directory, segment_bytes)
         poll = select.poll()
         poll.register(handle, select.POLLIN)
         previous = None
-        segment = -1
         while not poll.poll(0):
             now = time.monotonic()
             if interrupted or now - began >= duration:
                 result['reason'] = 'observer-interrupted' if interrupted else 'observation-bound'
                 break
             current_segment = int((now - began) // segment_seconds)
-            if current_segment != segment:
-                if stream:
-                    stream.close()
-                segment = current_segment
-                stream = open(directory / f'samples-{segment:04d}.jsonl', 'x', encoding='utf8')
-                os.chmod(stream.name, 0o600)
             sample = collect()
-            line = json.dumps(sample, separators=(',', ':')) + '\n'
-            if stream.tell() + len(line.encode()) > segment_bytes:
-                raise RuntimeError('Observer segment byte budget exceeded')
-            stream.write(line)
-            stream.flush()
-            os.fsync(stream.fileno())
             sampled = time.monotonic()
             if previous is not None:
                 result['maxGapSeconds'] = max(result['maxGapSeconds'], sampled - previous)
             previous = sampled
             result['samples'] += 1
-            atomic(directory / 'heartbeat.json', {**result, 'utc': time.time(), 'monotonic': sampled})
+            writer.submit(current_segment, sample, {**result, 'utc': time.time(), 'monotonic': sampled})
             time.sleep(max(0, min(interval - (sampled - now), duration - (sampled - began))))
         else:
             result['reason'] = 'runtime-exited'
@@ -93,8 +150,6 @@ def observe(pid, start_ticks, directory, duration, interval, collect,
     except Exception as error:
         result['error'] = type(error).__name__ + ': ' + str(error)
     finally:
-        if stream:
-            stream.close()
         if handle is not None:
             try:
                 # No signal after an identity mismatch; pidfd also protects
@@ -112,6 +167,15 @@ def observe(pid, start_ticks, directory, duration, interval, collect,
                 os.close(handle)
         for signum, handler in old_handlers.items():
             signal.signal(signum, handler)
+        if writer:
+            try:
+                writer.close(shutdown_seconds)
+            except Exception as error:
+                result['continuous'] = False
+                result['writerError'] = str(error)
+            result['persistedSamples'] = writer.persisted
+            if writer.persisted != result['samples']:
+                result['continuous'] = False
         result['elapsedSeconds'] = time.monotonic() - began
         result['state'] = 'observed' if result['continuous'] and result.get('processExited') else 'incomplete'
         # Process exit is not proof of a clean durable shutdown. The caller

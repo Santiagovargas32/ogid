@@ -3,6 +3,8 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
+import time
 
 spec = importlib.util.spec_from_file_location('bounded', Path(__file__).parents[1] / 'scripts/observe-bounded-runtime.py')
 bounded = importlib.util.module_from_spec(spec)
@@ -54,10 +56,54 @@ class BoundedObserverTest(unittest.TestCase):
         def action(process, output):
             result = bounded.observe(process.pid, bounded.identity(process.pid)[0], output, .1, .02,
                                      lambda: {'metric': 'x' * 100}, segment_bytes=10)
-            self.assertEqual(result['samples'], 0)
+            self.assertEqual(result['persistedSamples'], 0)
             self.assertFalse(result['continuous'])
             self.assertTrue(result['processExited'])
         self.run_fixture(action)
+
+    def test_slow_disk_acknowledgements_do_not_block_sampling_or_stop(self):
+        def action(process, output):
+            real_atomic = bounded.atomic
+            captured = []
+            def delayed(path, value):
+                if path.name == 'heartbeat.json':
+                    time.sleep(.06)
+                real_atomic(path, value)
+            def collect():
+                captured.append(time.monotonic())
+                return {'metric': 1}
+            with patch.object(bounded, 'atomic', delayed):
+                result = bounded.observe(process.pid, bounded.identity(process.pid)[0], output,
+                                         .2, .02, collect)
+            self.assertEqual(result['state'], 'observed')
+            self.assertEqual(result['samples'], result['persistedSamples'])
+            self.assertGreaterEqual(len(captured), 7)
+            self.assertLess(max(b-a for a,b in zip(captured,captured[1:])), .05)
+            self.assertTrue(result['processExited'])
+        self.run_fixture(action)
+
+    def test_persistence_queue_exhaustion_is_explicit_and_keeps_existing_rows(self):
+        import threading
+        gate = threading.Event()
+        real_atomic = bounded.atomic
+        def delayed(path, value):
+            if path.name == 'heartbeat.json':
+                gate.wait(2)
+            real_atomic(path, value)
+        with tempfile.TemporaryDirectory() as tmp, patch.object(bounded, 'atomic', delayed):
+            writer = bounded.SampleWriter(Path(tmp), 4096, capacity=1)
+            try:
+                writer.submit(0, {'first':True}, {})
+                until = time.monotonic()+2
+                while writer.persisted<1 and time.monotonic()<until:
+                    time.sleep(.001)
+                writer.submit(0, {'second':True}, {})
+                with self.assertRaisesRegex(RuntimeError, 'queue exhausted'):
+                    writer.submit(0, {'third':True}, {})
+            finally:
+                gate.set()
+                writer.close(3)
+            self.assertEqual(writer.persisted, 2)
 
 
 if __name__ == '__main__':
