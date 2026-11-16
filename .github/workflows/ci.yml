@@ -30,6 +30,8 @@ jobs:
       - run: npm --prefix ../integrations/ogid-mcp run check
       - run: npm --prefix ../integrations/ogid-mcp run inventory:check
       - run: npm test
+      - name: Test bounded host observers
+        run: python3 -m unittest discover -s tests -p 'observe*_test.py'
       - run: npm --prefix ../integrations/ogid-mcp test
       - run: npm run build
       # Check both runtime dependency graphs without lowering the security gate.

@@ -1,3 +1,4 @@
+import {readRuntimeLimit,armRuntimeLimit} from './utils/runtimeLimit.js';
 import {writeFileSync,renameSync,readFileSync} from "node:fs";
 import "./config/loadEnvironment.js";
 import { RUNTIME_POLICY as POLICY } from "./config/runtimePolicy.js";
@@ -881,10 +882,16 @@ export function createAppServer(overrides = {}) {
   let startTask = null;
   let stopTask = null;
   const startupAbort=new AbortController();
+  const startupStep=async work=>{
+    startupAbort.signal.throwIfAborted();
+    const result=await work();
+    startupAbort.signal.throwIfAborted();
+    return result;
+  };
   const startupWork=async work=>{
     for(;;){
       await storageManager.pressure.waitReady(startupAbort.signal);
-      try{return await work();}catch(error){if(error.code!=='STORAGE_RESOURCE_PRESSURE')throw error;}
+      try{return await startupStep(work);}catch(error){if(error.code!=='STORAGE_RESOURCE_PRESSURE')throw error;}
     }
   };
 
@@ -912,17 +919,20 @@ export function createAppServer(overrides = {}) {
     storageManager,
     start() {
       if (startTask) return startTask;
+      startupAbort.signal.throwIfAborted();
       startTask = (async () => {
       const startupAt = performance.now();
       app.locals.initializing=true;
       pipelinePersistence?.deferStageWrites();
       await new Promise((resolve,reject)=>{server.once("error",reject);server.listen(config.port,config.host,()=>{server.removeListener("error",reject);resolve();});});
+      startupAbort.signal.throwIfAborted();
       log.info("http_listening",{port:server.address().port,ready:false});
-      await storageManager.start();
+      await startupStep(()=>storageManager.start());
       if (storageManager.state === "ready") {
         const now = new Date().toISOString();
         const runId = `boot-${randomUUID()}`;
         await storageManager.request("pipeline.record", { runId, pipelineId: "storage", startedAt: now, completedAt: now, status: "healthy", counts: { migrations: storageManager.getStatus().migrations.length } }, { requestId: runId });
+        startupAbort.signal.throwIfAborted();
         log.info("storage_worker_started", {state:storageManager.state,sqliteVersion:storageManager.getStatus().sqliteVersion,migrations:storageManager.getStatus().migrations.length,analysisWorker:Boolean(storageManager.analysisManager)});
       }
       if (business) {
@@ -933,21 +943,21 @@ export function createAppServer(overrides = {}) {
         try {await startupWork(()=>storageManager.request("domain.configure", { requireImport:POLICY.storage.requireImport,instruments:listVerifiedInstruments(),apiLimits:config.apiLimits,news:JSON.parse(JSON.stringify(workerNews)),researchSources,rootDir:config.market.historyDir,candlesEnabled:dailyCandleStore.enabled,intradayEnabled:config.market.intradayCandles.enabled,awarenessMode:config.awareness.mode,signalPolicy:overrides.signalPolicy || loadSignalPolicy(process.env.RESEARCH_SIGNAL_POLICY_FILE),rss:{rssFeeds:config.news.rssFeeds,news:{rssAggregateIntervalMs:config.news.rssAggregateIntervalMs,rssAggregateFeedsPerRun:config.news.rssAggregateFeedsPerRun,rssAggregateMaxItems:config.news.rssAggregateMaxItems},timeoutMs:config.news.timeoutMs,pipelineMode:config.news.rssPipelineMode},newsRetentionDays:config.news.retentionDays}));}
         finally {pipelinePersistence.resumeStageWrites();}
         await startupWork(()=>newsArchive.coverage());
-        await pipelinePersistence.hydrate({awarenessStore,aiStore,aiBudget,marketHistoryStore,quotaTracker:apiQuotaTracker});
+        await startupStep(()=>pipelinePersistence.hydrate({awarenessStore,aiStore,aiBudget,marketHistoryStore,quotaTracker:apiQuotaTracker}));
         aiCoordinator.syncProjection();
       }
       if(business){
         let reconciliation;
-        do{reconciliation=await app.locals.agentCall('expireLeases');
+        do{reconciliation=await startupStep(()=>app.locals.agentCall('expireLeases'));
           if(reconciliation.expired)log.info('agent_expired_leases_reconciled',reconciliation);
         }while(reconciliation.hasMore);
-        const control=await app.locals.agentCall('control');app.locals.agentPaused=control.paused;
+        const control=await startupStep(()=>app.locals.agentCall('control'));app.locals.agentPaused=control.paused;
         if(control.backgroundModel){
           if(readyModel(agentConfig.manifest.models.find(m=>`llamacpp/${m.alias}`===control.backgroundModel)))agentConfig.backgroundModel=control.backgroundModel;
           else app.locals.agentModelWarning='AGENT_SAVED_MODEL_UNVERIFIED';
         }
       }
-      const hydratedWatchlist = await marketWatchlistService.hydrate();
+      const hydratedWatchlist = await startupStep(()=>marketWatchlistService.hydrate());
       if(business)await startupWork(()=>storageManager.request("domain.registry",{instruments:listVerifiedInstruments()}));
       config.market.tickers = hydratedWatchlist.selectedSymbols;
       config.news.marketTickers = hydratedWatchlist.selectedSymbols;
@@ -955,21 +965,22 @@ export function createAppServer(overrides = {}) {
       config.news.queryPackGroups = { editorial: hydratedQueryPacks.editorial, marketSignals: hydratedQueryPacks.marketSignals };
       config.news.queryPacks = hydratedQueryPacks.flattened;
       stateManager.setMarketTickers(hydratedWatchlist.selectedSymbols);
-      await marketHistoryStore.hydrateState(stateManager);
+      await startupStep(()=>marketHistoryStore.hydrateState(stateManager));
       stateManager.setMarketTickers(hydratedWatchlist.selectedSymbols);
       await startupWork(()=>dailyCandleStore.hydrate());
       if(business) await startupWork(()=>orchestrator.runNewsCycle("startup-storage",{storageOnly:true,skipSecondary:true}));
       if(business&&overrides.reconcileMarketJobs){
-        const reconciled=await storageManager.request('market.project.reconcile',{jobIds:overrides.reconcileMarketJobs});
+        const reconciled=await startupStep(()=>storageManager.request('market.project.reconcile',{jobIds:overrides.reconcileMarketJobs}));
         log.info('market_projection_reconciliation',{jobs:reconciled});
       }
-      await storageManager.marketProjections?.start();
-      await monitor.flush();
-      await pipelinePersistence?.flush();
+      await startupStep(()=>storageManager.marketProjections?.start());
+      await startupStep(()=>monitor.flush());
+      await startupStep(()=>pipelinePersistence?.flush());
       if(storageManager.options.enabled){
-        await storageManager.request("storage.status");
-        await storageManager.analysisManager?.request("storage.status");
+        await startupStep(()=>storageManager.request("storage.status"));
+        await startupStep(()=>storageManager.analysisManager?.request("storage.status"));
       }
+      startupAbort.signal.throwIfAborted();
       app.locals.initializing=false;
       runtimeMetrics.start(performance.now() - startupAt);
       storageManager.resumeEventIndex?.({release:true});
@@ -1032,6 +1043,9 @@ export function createAppServer(overrides = {}) {
       // a new stream after these owned connections have been released.
       app.locals.agentSseClosing=true;
       for(const end of app.locals.agentSseConnections||[])end();
+      // Let the current startup phase settle; abort barriers prevent later
+      // phases from reactivating services after their shutdown has drained.
+      await startTask?.catch(()=>{});
       const failures=[],unconfirmedPersistence=[];
       const drain=async (work,phase='cleanup')=>{
         try{await work();}
@@ -1107,6 +1121,7 @@ export function createAppServer(overrides = {}) {
 }
 
 export async function run(overrides = {}) {
+  const runtimeLimitMs=readRuntimeLimit(process.argv.slice(2));
   const reconcileIndex=process.argv.indexOf('--reconcile-market-jobs');
   if(reconcileIndex>=0){
     const jobIds=JSON.parse(readFileSync(process.argv[reconcileIndex+1],'utf8'));
@@ -1115,10 +1130,12 @@ export async function run(overrides = {}) {
   }
   const runtime = createAppServer(overrides);
   let shuttingDown = false;
+  let cancelRuntimeLimit=()=>{};
 
   const shutdown = async (signal, exitCode = 0) => {
     if (shuttingDown) return;
     shuttingDown = true;
+    cancelRuntimeLimit();
     const deadline = setTimeout(() => process.exit(1), Math.max(30_000,runtime.storageManager.options.shutdownTimeoutMs));
     deadline.unref();
     log.info("shutdown_signal_received", { signal });
@@ -1158,9 +1175,13 @@ export async function run(overrides = {}) {
   process.on("unhandledRejection", error => fatal("unhandledRejection", error));
   process.on("uncaughtException", error => fatal("uncaughtException", error));
 
+  cancelRuntimeLimit=armRuntimeLimit(runtimeLimitMs,shutdown);
+  if(runtimeLimitMs!==null)log.info("runtime_limit_armed",{runtimeLimitMs,scope:"startup-and-operation; normal persistence drain on expiry"});
   try {
     await runtime.start();
   } catch (error) {
+    if(shuttingDown)return;
+    cancelRuntimeLimit();
     log.error("startup_failed", { message: error.message, stack: error.stack, code: error.code, command: error.diagnostic });
     try { await runtime.stop(); }
     catch (cleanupError) { log.error("startup_cleanup_failed",{code:cleanupError.code,message:cleanupError.message}); }
