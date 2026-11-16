@@ -14,6 +14,7 @@ test('four families and instrument outlook retain canonical schema and abstentio
  for(const task of ['global_intelligence_brief','market_outlook_global','instrument_outlook','geopolitical_alert_assessment','situation_analysis']){
   const p=prepare(task),candidate=validateDirectCandidate(example(p),p,{now});
   assert.equal(candidate.proposal.task,task);assert.equal(candidate.proposal.probability,null);
+  assert.equal(p.identity.wireSchemaHash,stableHash(p.request.response_format.json_schema.schema));assert.notEqual(p.identity.schemaHash,p.identity.wireSchemaHash);assert.equal(p.wireContract.version,'ogid-wire-schema-v1');assert.ok(p.wireContract.postValidationOnly.length);assert.equal(p.identity.schemaHash,stableHash(JSON.parse(p.request.messages[1].content).outputSchema));
   assert.equal(p.request.tools,undefined);assert.equal(p.request.model,'gpt-oss-20b');
  }
 });
@@ -45,7 +46,7 @@ test('receipts bind delivered evidence, request and output without fabricating M
  const p=prepare(),events=[];
  const result=await runDirectGeneration({prepared:p,complete:async()=>({text:example(p),usage:{completion_tokens:20}}),record:async e=>{events.push(e);},now:()=>now});
  assert.equal(result.state,'validated');assert.equal(events.length,2);assert.equal(result.receipt.requestHash,p.identity.requestHash);
- assert.equal(result.receipt.evidence[0].evidenceId,coverage.evidenceId);assert.equal(result.receipt.transport,'broker-schema-json');assert.equal(result.receipt.outputHash,stableHash(result.text));
+ assert.equal(result.receipt.evidence[0].evidenceId,coverage.evidenceId);assert.equal(result.receipt.transport,'broker-json-schema-v3');assert.equal(result.receipt.outputHash,stableHash(result.text));
 });
 const frame=value=>'data: '+JSON.stringify(value)+'\r\n\r\n';
 const content=text=>frame({choices:[{index:0,delta:{content:text},finish_reason:null}]});
@@ -53,7 +54,7 @@ const stop=frame({choices:[{index:0,delta:{},finish_reason:'stop'}]});
 function transport(wire,onRequest=()=>{}){return directBrokerCompletion({baseUrl:'http://127.0.0.1:8081',token:'private',fetchImpl:async(url,options)=>{onRequest(url,options);return new Response(new ReadableStream({start(controller){const bytes=new TextEncoder().encode(wire);for(let n=0;n<bytes.length;n+=3)controller.enqueue(bytes.slice(n,n+3));controller.close();}}),{headers:{'content-type':'text/event-stream'}});}});}
 test('stream handles fragmented Unicode, retaining content and discarding private reasoning',async()=>{
  const wire=frame({choices:[{index:0,delta:{reasoning_content:'private'},finish_reason:null}]})+content('España')+stop+'data: [DONE]\r\n\r\n';
- const result=await transport(wire,(url,options)=>{assert.equal(url,'http://127.0.0.1:8081/v1/chat/completions');assert.equal(options.headers['x-ogid-work-class'],'background');assert.equal(options.redirect,'error');})(prepare().request);
+ const result=await transport(wire,(url,options)=>{assert.equal(url,'http://127.0.0.1:8081/v1/chat/completions');assert.equal(options.headers['x-ogid-work-class'],'background');assert.equal(options.redirect,'error');const body=JSON.parse(options.body);assert.equal(body.response_format.schema,undefined);assert.equal(body.response_format.json_schema.schema.properties.task.const,'global_intelligence_brief');})(prepare().request);
  assert.equal(result.text,'España');assert.equal(JSON.stringify(result).includes('private'),false);
 });
 test('incomplete streams, tools and truncated generations fail without retries',async()=>{

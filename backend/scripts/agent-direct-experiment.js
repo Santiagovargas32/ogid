@@ -59,7 +59,7 @@ try{
   save('preflight.json',{candidate:semanticCandidate(),resident,slotsIdle:true,backendPortClosed:true,manifestHash:stableHash(config.manifest),historicalValidationAt:prepared.input.snapshot.asOf});
   const token=randomBytes(32).toString('hex');
   // In-process test harness for the existing broker, not an alternative service.
-  server=createInferenceBroker({upstream,apiKey:env.LLAMACPP_API_KEY,token,manifest:config.manifest,onTelemetry:value=>{if(value.lastFailure)save('broker-failure-'+Date.now()+'.json',value);}});
+  server=createInferenceBroker({upstream,apiKey:env.LLAMACPP_API_KEY,token,manifest:config.manifest,onTelemetry:value=>{if(value.lastFailure)save('broker-failure-'+Date.now()+'.json',value);if(value.lastSuccess)save('broker-success-'+Date.now()+'.json',value);}});
   server.listen(0,'127.0.0.1');await once(server,'listening');
   const complete=directBrokerCompletion({baseUrl:'http://127.0.0.1:'+server.address().port,token});
   let terminal=false;

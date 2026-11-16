@@ -1,3 +1,4 @@
+import {stableHash} from '../../utils/stableHash.js';
 import {LlamaModels,catalogModel} from "./modelCatalog.js";
 import { createServer } from "node:http";
 import { timingSafeEqual } from "node:crypto";
@@ -25,6 +26,11 @@ function validateInput(body, path) {
       (body.tools !== undefined && (!Array.isArray(body.tools) || body.tools.some(t =>
         !t || t.type !== 'function' || typeof t.function?.name !== 'string'))))
       throw agentError('BROKER_INVALID_INPUT', 400);
+    if(body.response_format!==undefined){
+      const format=body.response_format;
+      if(!format||Array.isArray(format)||!['text','json_object','json_schema'].includes(format.type))throw agentError('BROKER_INVALID_RESPONSE_FORMAT',400);
+      if(format.type==='json_schema'&&(!format.json_schema||typeof format.json_schema!=='object'||Array.isArray(format.json_schema)||!format.json_schema.schema||typeof format.json_schema.schema!=='object'||Array.isArray(format.json_schema.schema)||format.schema!==undefined))throw agentError('BROKER_INVALID_RESPONSE_FORMAT',400);
+    }
   } else if (typeof body.content !== 'string') throw agentError('BROKER_INVALID_INPUT', 400);
 }
 export function tokenMatches(a, b) {
@@ -126,6 +132,7 @@ export async function inspectServerContext({
       model: body.model,
       messages: body.messages,
       tools: body.tools || [],
+      ...(body.response_format?{response_format:body.response_format}:{}),
       ...(body.chat_template_kwargs
         ? { chat_template_kwargs: body.chat_template_kwargs }
         : {}),
@@ -289,6 +296,8 @@ export function createInferenceBroker({
         delete body.n_predict;
         delete body.max_output_tokens;
       }
+      command.responseFormat=body.response_format?.type||null;
+      command.schemaHash=body.response_format?.type==='json_schema'?stableHash(body.response_format.json_schema.schema):null;
       const work = async () => {
         telemetry.active={...command,startedAt:new Date().toISOString(),phase:'admitted'};report(true);
         clearTimeout(phaseTimer);

@@ -2,9 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {prepareTaskPacket} from '../services/agent/taskPacket.js';
 import {stableHash} from '../utils/stableHash.js';
+import {validateDirectCandidate} from '../services/agent/directGeneration.js';
+import {generationExample} from '../services/agent/briefReports.js';
 import {PROMPT_VERSION} from '../services/agent/contracts.js';
 const snapshot={snapshotId:'snapshot:task',asOf:'2026-11-15T17:00:00Z',coverage:{sealed:true,evidenceCount:5}};
-const evidence=['coverage','news','news','technical.get','geopolitical-alert'].map((domain,i)=>({evidenceId:domain+':'+i,domain,data:{title:'Relato '+i}}));
+const evidence=['coverage','news','news','technical.get','geopolitical-alert'].map((domain,i)=>({evidenceId:domain+':'+i,domain,publicationEligibility:{eligible:true},data:{title:'Relato '+i}}));
 const receipt=e=>({complete:true,snapshotId:snapshot.snapshotId,evidenceHash:stableHash(e)});
 const job={task:'global_intelligence_brief',model:'llamacpp/gpt-oss-20b',scope:'global',promptVersion:PROMPT_VERSION};
 test('task packets preserve all selected domain rows and the unchanged source coverage',()=>{
@@ -29,4 +31,16 @@ test('alert context selects complete alerts, and families retain their supportin
 test('selected collections must cover exactly the declared task domains',()=>{
  const args={job,snapshot,evidence,collectionReceipt:{...receipt(evidence),materialization:'selected-domains',domains:['coverage']}};
  assert.throws(()=>prepareTaskPacket(args),{code:'AGENT_DIRECT_COLLECTION_REQUIRED'});
+});
+
+test('outlook delivers every publishable technical body and exposes excluded inputs without sending their body',()=>{
+ const rows=[{...evidence[0]},{...evidence[3],data:{instrumentId:'NVDA',indicators:{rsi:50}}},{...evidence[3],evidenceId:'technical:stale',publicationEligibility:{eligible:false,reason:'stale'},data:{title:'DO NOT DELIVER'}},{evidenceId:'derived:large',domain:'advanced.getSnapshot',data:{aggregate:'Unneeded duplicate global material'}}];
+ const {prepared,selection}=prepareTaskPacket({job:{...job,task:'market_outlook_global'},snapshot,evidence:rows,collectionReceipt:receipt(rows)});
+ assert.deepEqual(prepared.input.evidence,rows.slice(0,2));assert.deepEqual(prepared.input.evidence[1].data,rows[1].data);
+ assert.equal(selection.materializedEvidenceCount,4);assert.equal(selection.deliveredEvidenceCount,2);
+ assert.deepEqual(selection.excludedEvidence,[{evidenceId:'technical:stale',domain:'technical.get',reason:'stale'}]);
+ assert.doesNotMatch(JSON.stringify(prepared.request),/DO NOT DELIVER|Unneeded duplicate global material/);
+ assert.equal(prepared.input.snapshot.coverage.evidenceCount,5);
+ const candidate=generationExample(prepared.input.job,rows[0].evidenceId);candidate.evidenceIds=['technical:stale'];
+ assert.throws(()=>validateDirectCandidate(JSON.stringify(candidate),prepared,{now:Date.parse(snapshot.asOf)}),{code:'AGENT_UNKNOWN_EVIDENCE'});
 });
