@@ -59,6 +59,8 @@ let marketSearchToken = 0;
 let marketSearchRequestKey = null;
 let marketOhlcvChart = null;
 let marketOhlcvRequestToken = 0;
+let marketOhlcvContext = null, marketOhlcvPendingContext = null;
+let marketOhlcvRefreshTimer = null, marketOhlcvRevision = null;
 let marketTerminal = null, terminalChartLibrary = null;
 let watchlistInitialized = false;
 let marketProviderPoller = null;
@@ -1528,10 +1530,9 @@ async function saveMarketWatchlist() {
   finally { elements.marketWatchlistSave.disabled = false; }
 }
 
-function renderMarketOhlcv(payload, instrument) {
+function renderMarketOhlcv(payload, instrument, { retain = false } = {}) {
   const series = buildOhlcvChartSeries(payload?.candles || []);
-  marketOhlcvChart?.destroy();
-  marketOhlcvChart = null;
+  if (!retain || !series.candles.length) {marketOhlcvChart?.destroy();marketOhlcvChart = null;}
   if (!series.candles.length) {
     elements.marketOhlcvOpen.textContent = "--";
     elements.marketOhlcvClose.textContent = "--";
@@ -1556,7 +1557,8 @@ function renderMarketOhlcv(payload, instrument) {
     if(!container){container=document.createElement('div');container.id='terminal-price-chart';container.setAttribute('role','img');container.setAttribute('aria-label','Velas y volumen del instrumento seleccionado');elements.marketOhlcvCanvas.after(container);}
     elements.marketOhlcvCanvas.hidden=true;
     container.hidden=false;
-    marketOhlcvChart=renderTerminalChart(container,series.candles,elements.marketOhlcvInterval.value,terminalChartLibrary);
+    if (retain && marketOhlcvChart?.update) marketOhlcvChart.update(series.candles);
+    else marketOhlcvChart=renderTerminalChart(container,series.candles,elements.marketOhlcvInterval.value,terminalChartLibrary);
     const last=series.candles.at(-1);
     elements.marketOhlcvStatus.textContent=`${instrument.symbol} · ${instrument.exchange||''} · ${instrument.currency||last.currency} · ${series.candles.length} velas almacenadas · ${last.source} · Última vela: ${last.openTime}. La cadencia depende del proveedor.`;
     return;
@@ -1585,31 +1587,50 @@ function renderMarketOhlcv(payload, instrument) {
   elements.marketOhlcvStatus.textContent = `${instrument.symbol} Â· ${payload.status || "stored"} Â· ${series.candles.length} bars${payload.error?.message ? ` Â· ${payload.error.message}` : ""}`;
 }
 
-async function loadMarketOhlcv() {
+function scheduleMarketOhlcvRefresh() {
+  clearTimeout(marketOhlcvRefreshTimer);
+  if (pageSuspended || !marketTerminal?.active || !marketWatchlistLoaded) return;
+  marketOhlcvRefreshTimer = setTimeout(() => {
+    if (!pageSuspended && marketTerminal?.active) void loadMarketOhlcv({background:true});
+  }, 750);
+}
+
+async function loadMarketOhlcv({background = false} = {}) {
   if(ohlcvInterest?.interested===false&&!marketTerminal?.active)return;
   const instrumentId = elements.marketOhlcvInstrument.value;
   const instrument = marketWatchlistDraft.find((item) => item.instrumentId === instrumentId);
   if (!instrument) return;
+  const context = JSON.stringify([instrumentId,elements.marketOhlcvInterval.value,marketTerminal?.active,document.getElementById('market-ohlcv-limit').value]);
+  if (background && marketOhlcvPendingContext === context) return;
+  const retain = Boolean(background && marketTerminal?.active && marketOhlcvChart && marketOhlcvContext === context);
   const token = ++marketOhlcvRequestToken;
+  marketOhlcvPendingContext = context;
   // Remove the previous symbol immediately, including when the next read fails.
-  marketOhlcvChart?.destroy();marketOhlcvChart=null;
-  elements.marketOhlcvCanvas.hidden=Boolean(marketTerminal?.active);
-  const terminalPlot=document.getElementById('terminal-price-chart');if(terminalPlot)terminalPlot.hidden=!marketTerminal?.active;
-  elements.marketOhlcvCanvas.getContext('2d')?.clearRect(0,0,elements.marketOhlcvCanvas.width,elements.marketOhlcvCanvas.height);
-  for(const target of [elements.marketOhlcvOpen,elements.marketOhlcvClose,elements.marketOhlcvRange,elements.marketOhlcvChange])target.textContent='--';
-  elements.marketOhlcvStatus.textContent = `Loading ${instrument.symbol} OHLCVâ€¦`;
+  if (!retain) {
+    marketOhlcvChart?.destroy();marketOhlcvChart=null;
+    elements.marketOhlcvCanvas.hidden=Boolean(marketTerminal?.active);
+    const terminalPlot=document.getElementById('terminal-price-chart');if(terminalPlot)terminalPlot.hidden=!marketTerminal?.active;
+    elements.marketOhlcvCanvas.getContext('2d')?.clearRect(0,0,elements.marketOhlcvCanvas.width,elements.marketOhlcvCanvas.height);
+    for(const target of [elements.marketOhlcvOpen,elements.marketOhlcvClose,elements.marketOhlcvRange,elements.marketOhlcvChange])target.textContent='--';
+    elements.marketOhlcvStatus.textContent = `Loading ${instrument.symbol} OHLCVâ€¦`;
+  }
   let payload;
   try {
     if(marketTerminal?.active)terminalChartLibrary=await loadTerminalChartLibrary();
     if(token!==marketOhlcvRequestToken)return;
     payload = await api.getMarketCandles({ instrumentId, interval: elements.marketOhlcvInterval.value, adjusted: "splits", limit: marketTerminal?.active?Number(document.getElementById('market-ohlcv-limit').value):240, source: "stored" });
   } catch (error) {
-    if (token === marketOhlcvRequestToken) elements.marketOhlcvStatus.textContent = `OHLCV request failed: ${error.message}`;
+    if (token === marketOhlcvRequestToken) elements.marketOhlcvStatus.textContent = retain
+      ? `${instrument.symbol} · Actualización retrasada: ${error.message}. Se conserva la última lectura.`
+      : `OHLCV request failed: ${error.message}`;
     return;
+  } finally {
+    if (token === marketOhlcvRequestToken) marketOhlcvPendingContext = null;
   }
   if (token !== marketOhlcvRequestToken) return;
   try {
-    renderMarketOhlcv(payload, instrument);
+    renderMarketOhlcv(payload, instrument, {retain});
+    marketOhlcvContext = context;
   } catch (error) {
     console.error("Failed to render OHLCV:", error);
     elements.marketOhlcvStatus.textContent = "OHLCV data loaded, but the chart could not be rendered.";
@@ -1731,9 +1752,12 @@ function refreshStoredLiveNews(state) {
 }
 
 function setWsStatus(status, diagnostics = null) {
+  const previouslyConnected = wsConnected;
   if (status !== "connected") wsHasSnapshot = false;
   wsConnected = status === "connected" && (wsHasSnapshot || Date.now()-lastSyncProgressAt<15000);
   if(pageSuspended)return;
+  marketTerminal?.setConnection?.(wsConnected);
+  if (wsConnected && !previouslyConnected && marketOhlcvChart) scheduleMarketOhlcvRefresh();
   if (wsConnected) { fallbackFailures = 0; newsFallback?.stop(); } else if (newsFallback?.stopped) newsFallback.start();
   const displayStatus = status === "connected" && !wsHasSnapshot ? "syncing" : status;
   elements.wsStatusBadge.className = `badge ${wsBadgeClass(displayStatus)}`;
@@ -1863,7 +1887,7 @@ async function refreshBoundedSnapshot(signal) {
 
 function mountWebSocket() {
   const synchronizer = new StateSynchronizer({ api,profile:'dashboard-v1',getFilters:()=>({countries:'ALL',limit:20,order:'critical'}),
-    onHydrate:payload=>{if(payload.watchlist && (!marketWatchlistLoaded||JSON.stringify(payload.watchlist.selectedInstrumentIds)!==JSON.stringify(marketWatchlistModel.selectedInstrumentIds)))renderMarketWatchlist(payload.watchlist,{refreshOhlcv:false});},onUpdate: update => {
+    onHydrate:payload=>{if(payload.watchlist && (!marketWatchlistLoaded||JSON.stringify(payload.watchlist.selectedInstrumentIds)!==JSON.stringify(marketWatchlistModel.selectedInstrumentIds)))renderMarketWatchlist(payload.watchlist);},onUpdate: update => {
     lastSyncProgressAt=Date.now();
     if (update.news) newsTransportToken++;
     applyUpdate(update);
@@ -1871,6 +1895,11 @@ function mountWebSocket() {
     awarenessController?.syncCompact(update.awareness);
     if (update.news || update.countries) void advancedIntelligenceController?.refresh();
     if (update.news || update.market) scheduleMarketConditionsRefresh();
+    if (update.market) {
+      const revision = update.market.revision || update.market.updatedAt;
+      if (revision && marketOhlcvRevision !== null && revision !== marketOhlcvRevision) scheduleMarketOhlcvRefresh();
+      if (revision) marketOhlcvRevision = revision;
+    }
   }, onStatus: status => {
     if(status==='syncing'||status==='progress')lastSyncProgressAt=Date.now();
     if (status === "synchronized") wsHasSnapshot = true;
@@ -2033,6 +2062,7 @@ async function bootstrap() {
     marketQuotesPoller?.stop();
     marketProviderPoller?.stop();
     clearTimeout(marketConditionsRefreshTimer);
+    clearTimeout(marketOhlcvRefreshTimer);
     clearTimeout(marketSearchTimer);
     marketOhlcvChart?.destroy();
     clearInterval(manualRefreshCooldownTimer);

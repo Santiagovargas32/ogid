@@ -17,10 +17,12 @@ let chart;
 window.terminal=mountMarketTerminal({onChange:async active=>{
  chart?.destroy();chart=null;
  if(!active)return;
- const library=await loadTerminalChartLibrary();
+ const originalLibrary=await loadTerminalChartLibrary();
+ const library={...originalLibrary,createChart(...args){window.fixtureChart=originalLibrary.createChart(...args);return window.fixtureChart;}};
  const canvas=document.getElementById('market-ohlcv-chart');canvas.hidden=true;
  let target=document.getElementById('terminal-price-chart');if(!target){target=document.createElement('div');target.id='terminal-price-chart';canvas.after(target);}
  chart=renderTerminalChart(target,[{openTime:'2026-11-10T00:00:00Z',open:100,high:105,low:98,close:104,volume:123},{openTime:'2026-11-11T00:00:00Z',open:104,high:107,low:100,close:102,volume:null}], '1day',library);
+ window.fixtureSeries=chart;
  window.chartReady=true;
 }});
 window.fixtureReady=true;
@@ -53,11 +55,19 @@ try{
   await until('window.fixtureReady===true');
   await evaluate("localStorage.removeItem('ogid:market-terminal');document.querySelector('.view-nav button').click()");
   await until('window.chartReady===true');
+  assert.match(await evaluate("document.getElementById('terminal-connection-status').textContent"),/Actualización en espera/);
+  await evaluate('window.terminal.setConnection(true)');
+  assert.match(await evaluate("document.getElementById('terminal-connection-status').textContent"),/Actualizaciones conectadas/);
   const metrics=JSON.parse(await evaluate(`JSON.stringify({width:innerWidth,scrollWidth:document.documentElement.scrollWidth,chartWidth:document.querySelector('.terminal-chart-panel').getBoundingClientRect().width,feedWidth:document.querySelector('[data-feed-slot]').getBoundingClientRect().width,chartTop:document.querySelector('.terminal-chart-panel').getBoundingClientRect().top,feedTop:document.querySelector('[data-feed-slot]').getBoundingClientRect().top,rows:document.querySelectorAll('.terminal-series-table tbody tr').length,active:window.terminal.active,ids:[...document.querySelectorAll('[id]')].map(x=>x.id)})`));
   assert.equal(metrics.active,true);assert.equal(metrics.rows,2);assert.equal(metrics.ids.length,new Set(metrics.ids).size);
   assert.ok(metrics.scrollWidth<=width+1,JSON.stringify(metrics));
   if(width>=992){assert.ok(Math.abs(metrics.chartWidth/metrics.feedWidth-1.5)<.05);assert.ok(Math.abs(metrics.chartTop-metrics.feedTop)<2);}else assert.ok(metrics.feedTop>metrics.chartTop);
   await evaluate("document.querySelector('.terminal-series-table').parentElement.open=true;document.querySelector('#terminal-price-chart button').click()");
+  const range=await evaluate('window.fixtureChart.timeScale().getVisibleLogicalRange()');
+  await evaluate("window.previousCanvas=document.querySelector('#terminal-price-chart canvas');window.fixtureSeries.update([{openTime:'2026-11-10T00:00:00Z',open:100,high:108,low:98,close:106,volume:200},{openTime:'2026-11-11T00:00:00Z',open:104,high:107,low:100,close:102,volume:null}])");
+  assert.equal(await evaluate("window.previousCanvas===document.querySelector('#terminal-price-chart canvas')&&document.querySelector('.terminal-series-table tbody tr').cells[4].textContent==='106'"),true);
+  const after=await evaluate('window.fixtureChart.timeScale().getVisibleLogicalRange()');
+  assert.ok(Math.abs(range.from-after.from)<.01&&Math.abs(range.to-after.to)<.01,'refresh preserves zoom');
   const shot=await page('Page.captureScreenshot',{format:'png'});writeFileSync(resolve(output,`terminal-${width}.png`),Buffer.from(shot.data,'base64'),{mode:0o600});
   await evaluate("document.querySelector('[data-classic]').click()");
   assert.equal(await evaluate("!window.terminal.active&&document.querySelector('.dashboard-primary-row #panel-news')!==null&&document.querySelector('#panel-market .market-ohlcv-header')!==null"),true);

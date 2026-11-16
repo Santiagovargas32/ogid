@@ -11,6 +11,14 @@ export function mountMarketTerminal({onChange = () => {}} = {}) {
   workspace.hidden = true;
   workspace.innerHTML = '<section class="panel terminal-chart-panel" aria-label="Gráfico por instrumento"><header class="panel-header"><h2 class="panel-title">Mercado por instrumento</h2><p>Datos almacenados · La selección no solicita descargas al proveedor.</p></header><div data-chart-slot></div><p class="terminal-attribution">TradingView Lightweight Charts™ · Copyright (с) 2025 TradingView, Inc. <a href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer">TradingView</a></p></section><div data-feed-slot></div><section class="panel terminal-analyst-placeholder"><h2 class="panel-title">Análisis bajo demanda</h2><p>El Analista está disponible en la vista clásica. El gráfico y las noticias funcionan con la IA apagada.</p><button type="button" data-classic class="btn btn-sm btn-outline-info">Abrir vista clásica</button></section>';
   main.prepend(workspace);
+  const connection = document.createElement('p');
+  connection.id = 'terminal-connection-status';
+  connection.setAttribute('role', 'status');
+  workspace.querySelector('.terminal-chart-panel header').append(connection);
+  const setConnection = connected => {connection.textContent = connected
+    ? 'Actualizaciones conectadas · La fecha de la última vela indica la cobertura disponible.'
+    : 'Actualización en espera · Se conservan los últimos datos almacenados.';};
+  setConnection(false);
   const toggle = document.createElement('button');
   toggle.type = 'button';
   toggle.className = 'view-nav-link';
@@ -40,7 +48,7 @@ export function mountMarketTerminal({onChange = () => {}} = {}) {
   let saved = false;
   try {saved = localStorage.getItem(preference)==='1';} catch { /* Classic remains available. */ }
   if (saved) set(true);
-  return {get active(){return active;},destroy(){set(false);for(const {marker} of moved)marker.remove();workspace.remove();toggle.remove();}};
+  return {get active(){return active;},setConnection,destroy(){set(false);for(const {marker} of moved)marker.remove();workspace.remove();toggle.remove();}};
 }
 
 let library;
@@ -64,9 +72,6 @@ export function renderTerminalChart(container, candles, interval, library) {
   const volumes = chart.addSeries(library.HistogramSeries, {priceFormat:{type:'volume'},priceScaleId:'volume'});
   chart.priceScale('volume').applyOptions({scaleMargins:{top:.82,bottom:0}});
   const time = row => interval==='1day'?row.openTime.slice(0,10):Math.floor(Date.parse(row.openTime)/1000);
-  series.setData(candles.map(row => ({time:time(row),open:row.open,high:row.high,low:row.low,close:row.close})));
-  volumes.setData(candles.filter(row=>row.volume!==null).map(row=>({time:time(row),value:row.volume,color:row.close>=row.open?'#3cbfa460':'#ed7d8260'})));
-  chart.timeScale().fitContent();
   const controls=document.createElement('div');controls.className='agent-chat-controls';
   for(const [label,factor] of [['Acercar',.75],['Alejar',1.25],['Ajustar',null]]){
     const button=document.createElement('button');button.type='button';button.className='btn btn-sm btn-outline-light';button.textContent=label;
@@ -79,10 +84,17 @@ export function renderTerminalChart(container, candles, interval, library) {
   const header=table.createTHead().insertRow();
   for(const name of ['Fecha','Apertura','Máximo','Mínimo','Cierre','Volumen']){const th=document.createElement('th');th.scope='col';th.textContent=name;header.append(th);}
   const body=table.createTBody();
-  for(const candle of candles){const row=body.insertRow();for(const value of [candle.openTime,candle.open,candle.high,candle.low,candle.close,candle.volume??'Sin dato'])row.insertCell().textContent=String(value);}
+  const update = rows => {
+    series.setData(rows.map(row => ({time:time(row),open:row.open,high:row.high,low:row.low,close:row.close})));
+    volumes.setData(rows.filter(row=>row.volume!==null).map(row=>({time:time(row),value:row.volume,color:row.close>=row.open?'#3cbfa460':'#ed7d8260'})));
+    body.replaceChildren();
+    for(const candle of rows){const row=body.insertRow();for(const value of [candle.openTime,candle.open,candle.high,candle.low,candle.close,candle.volume??'Sin dato'])row.insertCell().textContent=String(value);}
+  };
+  update(candles);
+  chart.timeScale().fitContent();
   scroll.append(table);details.append(summary,scroll);container.append(details);
   const resize = new ResizeObserver(() => chart.applyOptions({width:container.clientWidth}));
   resize.observe(container);
   chart.applyOptions({width:container.clientWidth});
-  return {destroy(){resize.disconnect();chart.remove();container.replaceChildren();}};
+  return {update,destroy(){resize.disconnect();chart.remove();container.replaceChildren();}};
 }
