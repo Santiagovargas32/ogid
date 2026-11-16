@@ -1,4 +1,5 @@
 import { api } from "./api.js";
+import {mountMarketTerminal,loadTerminalChartLibrary,renderTerminalChart} from './marketTerminal.js';
 import { applyUpdate, getState, setSnapshot, subscribe } from "./state.js";
 import { StateSynchronizer } from "./stateSync.js";
 import { RealtimeSocket } from "./websocket.js";
@@ -58,6 +59,7 @@ let marketSearchToken = 0;
 let marketSearchRequestKey = null;
 let marketOhlcvChart = null;
 let marketOhlcvRequestToken = 0;
+let marketTerminal = null, terminalChartLibrary = null;
 let watchlistInitialized = false;
 let marketProviderPoller = null;
 let marketConditionsRefreshTimer = null;
@@ -1414,6 +1416,8 @@ function syncOhlcvInstrumentOptions({ refresh = false } = {}) {
   if (!preferred) {
     marketOhlcvChart?.destroy();
     marketOhlcvChart = null;
+    marketOhlcvRequestToken++;
+    for(const target of [elements.marketOhlcvOpen,elements.marketOhlcvClose,elements.marketOhlcvRange,elements.marketOhlcvChange])target.textContent='--';
     elements.marketOhlcvStatus.textContent = "Add an instrument to load OHLCV.";
   } else if (refresh) loadMarketOhlcv();
 }
@@ -1547,6 +1551,18 @@ function renderMarketOhlcv(payload, instrument) {
   elements.marketOhlcvChange.className = summary.changePct == null
     ? ""
     : summary.changePct >= 0 ? "market-positive" : "market-negative";
+  if(marketTerminal?.active) {
+    let container=document.getElementById('terminal-price-chart');
+    if(!container){container=document.createElement('div');container.id='terminal-price-chart';container.setAttribute('role','img');container.setAttribute('aria-label','Velas y volumen del instrumento seleccionado');elements.marketOhlcvCanvas.after(container);}
+    elements.marketOhlcvCanvas.hidden=true;
+    container.hidden=false;
+    marketOhlcvChart=renderTerminalChart(container,series.candles,elements.marketOhlcvInterval.value,terminalChartLibrary);
+    const last=series.candles.at(-1);
+    elements.marketOhlcvStatus.textContent=`${instrument.symbol} · ${instrument.exchange||''} · ${instrument.currency||last.currency} · ${series.candles.length} velas almacenadas · ${last.source} · Última vela: ${last.openTime}. La cadencia depende del proveedor.`;
+    return;
+  }
+  elements.marketOhlcvCanvas.hidden=false;
+  const terminalContainer=document.getElementById('terminal-price-chart');if(terminalContainer)terminalContainer.hidden=true;
   marketOhlcvChart = new Chart(elements.marketOhlcvCanvas, {
     type: "bar",
     data: { labels: series.labels, datasets: [
@@ -1570,15 +1586,23 @@ function renderMarketOhlcv(payload, instrument) {
 }
 
 async function loadMarketOhlcv() {
-  if(ohlcvInterest?.interested===false)return;
+  if(ohlcvInterest?.interested===false&&!marketTerminal?.active)return;
   const instrumentId = elements.marketOhlcvInstrument.value;
   const instrument = marketWatchlistDraft.find((item) => item.instrumentId === instrumentId);
   if (!instrument) return;
   const token = ++marketOhlcvRequestToken;
+  // Remove the previous symbol immediately, including when the next read fails.
+  marketOhlcvChart?.destroy();marketOhlcvChart=null;
+  elements.marketOhlcvCanvas.hidden=Boolean(marketTerminal?.active);
+  const terminalPlot=document.getElementById('terminal-price-chart');if(terminalPlot)terminalPlot.hidden=!marketTerminal?.active;
+  elements.marketOhlcvCanvas.getContext('2d')?.clearRect(0,0,elements.marketOhlcvCanvas.width,elements.marketOhlcvCanvas.height);
+  for(const target of [elements.marketOhlcvOpen,elements.marketOhlcvClose,elements.marketOhlcvRange,elements.marketOhlcvChange])target.textContent='--';
   elements.marketOhlcvStatus.textContent = `Loading ${instrument.symbol} OHLCVâ€¦`;
   let payload;
   try {
-    payload = await api.getMarketCandles({ instrumentId, interval: elements.marketOhlcvInterval.value, adjusted: "splits", limit: 240, source: getState().market?.provider === "yahoo" ? "yahoo" : "stored" });
+    if(marketTerminal?.active)terminalChartLibrary=await loadTerminalChartLibrary();
+    if(token!==marketOhlcvRequestToken)return;
+    payload = await api.getMarketCandles({ instrumentId, interval: elements.marketOhlcvInterval.value, adjusted: "splits", limit: marketTerminal?.active?Number(document.getElementById('market-ohlcv-limit').value):240, source: "stored" });
   } catch (error) {
     if (token === marketOhlcvRequestToken) elements.marketOhlcvStatus.textContent = `OHLCV request failed: ${error.message}`;
     return;
@@ -1948,6 +1972,9 @@ async function bootstrap() {
   bindNewsControls();
   renderMarketConditionsWindowSelector();
   teardownHandlers.push(mountAgentIntelligence({getContext:()=>({view:"dashboard",countries:[...selectedCountries],instrumentIds:marketWatchlistModel?.selectedInstrumentIds||[]}),getWatchlist:async()=>{if(!marketWatchlistLoaded)await stateSynchronizer?.requestSnapshot();return marketWatchlistLoaded?marketWatchlistModel:null;},deferUntilInterested:true}));
+  marketTerminal=mountMarketTerminal({onChange:()=>{marketOhlcvRequestToken++;marketOhlcvChart?.destroy();marketOhlcvChart=null;queueMicrotask(()=>{if(marketWatchlistLoaded)void loadMarketOhlcv();});}});
+  document.getElementById('market-ohlcv-limit').addEventListener('change',loadMarketOhlcv);
+  teardownHandlers.push(()=>marketTerminal?.destroy());
   advancedIntelligenceController = startAdvancedIntelligence({ api, getCountries: selectedCountryQueryValue,deferUntilInterested:true });
   teardownHandlers.push(() => advancedIntelligenceController?.stop());
   awarenessController = mountAwarenessCenter({ api,deferUntilInterested:true });

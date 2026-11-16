@@ -12,6 +12,7 @@
   <link rel="icon" type="image/svg+xml" href="/assets/ogid-logo.svg" />
   <link rel="stylesheet" href="/css/agentIntelligence.css">
   <link rel="stylesheet" href="/css/sourceAssessments.css">
+  <link rel="stylesheet" href="/css/marketTerminal.css">
 </head>
 
 <body>
@@ -226,6 +227,10 @@
                   <option value="30min">30 min</option>
                   <option value="15min">15 min</option>
                   <option value="5min">5 min</option>
+                </select>
+                <label class="terminal-only" for="market-ohlcv-limit">Rango</label>
+                <select id="market-ohlcv-limit" class="form-select form-select-sm terminal-only" aria-label="Número máximo de velas almacenadas">
+                  <option value="90">90 velas</option><option value="240" selected>240 velas</option><option value="500">500 velas</option>
                 </select>
               </div>
             </div>

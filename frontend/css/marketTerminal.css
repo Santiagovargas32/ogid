@@ -1,0 +1,29 @@
+.market-terminal[hidden] { display: none; }
+.terminal-only { display:none; }
+.terminal-active .terminal-only { display:initial; }
+.market-terminal { display:grid; grid-template-columns:minmax(0,3fr) minmax(0,2fr); gap:1rem; }
+.market-terminal > *, .market-terminal .market-ohlcv-controls { min-width:0; }
+.market-terminal .terminal-analyst-placeholder { grid-column:1/-1; padding:1rem; }
+main.terminal-active > .dashboard-row { display:none; }
+.market-terminal .market-ohlcv-chart-wrap { height:auto; min-height:420px; }
+.terminal-series-table { overflow:auto; max-height:18rem; }
+.terminal-series-table table { width:100%; font-size:.8rem; }
+.terminal-series-table th, .terminal-series-table td { padding:.25rem; white-space:nowrap; }
+.market-terminal #market-ohlcv-instrument { max-width:100%; }
+.market-terminal .market-ohlcv-controls { flex-wrap:wrap; }
+.terminal-attribution { margin:.5rem 1rem; font-size:.75rem; color:#b7c4d3; }
+.market-terminal #panel-news { height:100%; max-height:760px; }
+.market-terminal .news-header-row, .market-terminal .news-header-row > div { flex-wrap:wrap; }
+.market-terminal .news-toolbar { display:flex; flex-wrap:wrap; }
+.market-terminal .news-toolbar label { min-width:0; max-width:100%; }
+.market-terminal #terminal-price-chart { min-height:420px; width:100%; }
+.view-nav button.view-nav-link { background:transparent; color:inherit; font:inherit; }
+@media(max-width:991.98px) {
+  body:has(main.terminal-active) .topbar-title-group { flex-wrap:wrap; min-width:0; max-width:100%; }
+  body:has(main.terminal-active) .view-nav { flex-wrap:wrap; min-width:0; max-width:100%; }
+  body:has(main.terminal-active) .status-strip { flex-wrap:wrap!important; min-width:0; max-width:100%; }
+  body:has(main.terminal-active) .topbar-shell { min-width:0; max-width:100%; }
+  .market-terminal { grid-template-columns:minmax(0,1fr); }
+  .market-terminal #panel-news { max-height:650px; }
+  .market-terminal .market-ohlcv-header { padding:.75rem; }
+}
