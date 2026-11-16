@@ -45,12 +45,26 @@ export function readSqlActivity(buffer,now=Date.now()){
   }
   return {state:'updating'};
 }
-export function trackTransactions(database,activity,{beforeBegin=null,onSlowCommit=null}={}){
+export function trackTransactions(database,activity,{beforeBegin=null,onSlowCommit=null,describeCommit=null,readCommitGeneration=null,now=()=>Number(process.hrtime.bigint())/1e6,slowCommitMs=1000}={}){
   const transaction=database.transaction.bind(database);
+  const diagnostic=read=>{try{return read?.()??null;}catch{return null;}};
   database.transaction=fn=>{
-    let commitStarted;
-    const native=transaction(function(...args){activity.transaction('body');try{const result=fn.apply(this,args);activity.transaction('commit');commitStarted=performance.now();return result;}catch(error){activity.transaction('rollback');throw error;}});
-    const wrap=mode=>function(...args){beforeBegin?.();commitStarted=null;activity.transaction('begin');let success=false;try{const value=mode.apply(this,args);success=true;return value;}finally{if(commitStarted!==null && performance.now()-commitStarted>=1000)onSlowCommit?.(performance.now()-commitStarted);activity.finish(success);}};
+    const frames=[];
+    const native=transaction(function(...args){activity.transaction('body');try{const result=fn.apply(this,args);activity.transaction('commit');frames.at(-1).commitStarted=now();return result;}catch(error){activity.transaction('rollback');throw error;}});
+    const wrap=mode=>function(...args){
+      beforeBegin?.();
+      const frame={outermost:!database.inTransaction,commitStarted:null,command:diagnostic(describeCommit),generationBefore:diagnostic(readCommitGeneration)};
+      frames.push(frame);activity.transaction('begin');let success=false;
+      try{const value=mode.apply(this,args);success=true;return value;}
+      finally{
+        const commitFinished=now();activity.finish(success);frames.pop();
+        if(frame.outermost&&frame.commitStarted!==null&&commitFinished-frame.commitStarted>=slowCommitMs){
+          // Publish counters and release tracker state before optional logging.
+          // A diagnostic failure cannot change the result of a native commit.
+          try{onSlowCommit?.(commitFinished-frame.commitStarted,{command:frame.command,commitStartedMonotonicMs:frame.commitStarted,commitFinishedMonotonicMs:commitFinished,nativeSucceeded:success,generationBefore:frame.generationBefore,generationAfter:diagnostic(readCommitGeneration)});}catch{/* Diagnostics are best effort. */}
+        }
+      }
+    };
     const result=wrap(native);for(const mode of ['deferred','immediate','exclusive'])result[mode]=wrap(native[mode]);
     result.database=database;return result;
   };

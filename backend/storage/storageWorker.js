@@ -1,5 +1,6 @@
 import {CandleWriteJobs} from './candleWriteJobs.js';
-import {CommitActivity} from "./commitActivity.js";
+import {CommitActivity,readCommits} from "./commitActivity.js";
+import {slowCommitCommand} from './slowCommitDiagnostics.js';
 import {WalAcquisitionBudget} from './walAcquisitionBudget.js';
 import {storageOperationContract} from '../contracts/storageOperations.js';
 import { FrozenRows } from "./frozenRows.js";
@@ -182,7 +183,10 @@ try {
   if(activity && workerData.commitBuffer)activity.commits=new CommitActivity(workerData.commitBuffer);
   const beforeWrite=workerData.analysisWorker?null:walWriteGuard(database,workerData.walPressureBuffer);
   cacheStatements(database,256,{activity,beforeWrite,onSlow:(sql,durationMs)=>log.warn("storage_slow_sql",{threadId,readOnly:workerData.analysisWorker,durationMs:Math.round(durationMs),sql:sql.replace(/'(?:''|[^'])*'/g,"?").slice(0,240)})});
-  if(activity)trackTransactions(database,activity,{beforeBegin:beforeWrite,onSlowCommit:durationMs=>log.warn('storage_slow_commit',{threadId,durationMs:Math.round(durationMs),synchronous:'FULL',autoCheckpoint:0})});
+  if(activity)trackTransactions(database,activity,{beforeBegin:beforeWrite,
+    describeCommit:()=>slowCommitCommand(storageExecutionContext.getStore(),activeCommands),
+    readCommitGeneration:()=>readCommits(workerData.commitBuffer)?.generation??null,
+    onSlowCommit:(durationMs,details)=>log.warn('storage_slow_commit',{threadId,nativeThreadId:nativeId,durationMs:Math.round(durationMs),synchronous:'FULL',autoCheckpoint:0,...details})});
   runtime=new BusinessRuntime(database,rpc,(id,stage)=>parentPort.postMessage({type:"stage",id,stage}));
   if(!workerData.analysisWorker)walAcquisitionBudget=new WalAcquisitionBudget(database,()=>rpc('storage.walDrain',{}),{softLimitBytes:workerData.checkpointSoftBytes,commitBuffer:workerData.commitBuffer});
   parentPort.postMessage({ type: "ready", status: status() });
