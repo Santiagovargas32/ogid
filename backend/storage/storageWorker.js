@@ -1,4 +1,5 @@
 import {CandleWriteJobs} from './candleWriteJobs.js';
+import {CycleContinuations} from './cycleContinuations.js';
 import {CommitActivity,readCommits} from "./commitActivity.js";
 import {slowCommitCommand} from './slowCommitDiagnostics.js';
 import {WalAcquisitionBudget} from './walAcquisitionBudget.js';
@@ -65,6 +66,13 @@ function pipelineRecord(input) {
   return { runId: input.runId, persisted: true };
 }
 function execute(operation, input, requestId, commandId) {
+  if(operation.startsWith('continuation.')){
+    const method=operation.slice('continuation.'.length);
+    if(!['admit','claim','renew','advance','release','get','pending'].includes(method))fail('STORAGE_UNKNOWN_OPERATION');
+    if(workerData.analysisWorker&&!['get','pending'].includes(method))fail('STORAGE_READ_ONLY');
+    runtime.cycleContinuations ||= new CycleContinuations(database);
+    return runtime.cycleContinuations[method](input);
+  }
   if(operation.startsWith('market.project.')){
     const method=operation.split('.').at(-1);
     if(workerData.analysisWorker&&!['status','pending','calculate'].includes(method))fail('STORAGE_READ_ONLY');

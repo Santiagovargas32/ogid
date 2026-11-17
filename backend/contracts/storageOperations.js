@@ -34,6 +34,10 @@ function boundedTechnicalRead(input) {
     query.datasetId==null&&query.benchmarkInstrumentId==null;
 }
 export function storageOperationContract(operation,input={}) {
+  if(operation.startsWith('continuation.')){
+    const pureRead=['continuation.get','continuation.pending'].includes(operation);
+    return {role:pureRead?'queries':'writer',pureRead,workClass:pureRead?'read':'commit',resourceClass:pureRead?'read':'commit',effects:pureRead?'read-only':'may-commit',acquisition:false};
+  }
   const acquisition=['news.collect','news.supplemental','rss.fetch'].includes(operation) || operation==='domain.call' &&
     (input.service==='rss' && input.method==='refresh' || ['sources','history'].includes(input.service) && input.method==='run');
   const controlRead=['agent.call','agent.read'].includes(operation)&&controlReads.has(input.method);
