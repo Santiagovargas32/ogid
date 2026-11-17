@@ -11,6 +11,54 @@ spec.loader.exec_module(observer)
 
 
 class MeasurementContracts(unittest.TestCase):
+    def btrfs_fixture(self, root):
+        filesystem = root / '11111111-1111-4111-8111-111111111111'
+        (filesystem / 'devices').mkdir(parents=True)
+        partition = root / 'block' / 'sda' / 'sda3'
+        partition.mkdir(parents=True)
+        (partition / 'partition').write_text('3\n')
+        (filesystem / 'devices' / 'sda3').symlink_to(partition, target_is_directory=True)
+        metadata = filesystem / 'allocation' / 'metadata'
+        metadata.mkdir(parents=True)
+        (metadata / 'bytes_used').write_text('4096\n')
+        (filesystem / 'generation').write_text('123\n')
+        return filesystem
+
+    def test_btrfs_partition_is_scoped_to_selected_whole_device(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            filesystem = self.btrfs_fixture(root)
+            text = 'commits 10\ncur_commit_ms 8388\nlast_commit_ms 12\nmax_commit_ms 19000\ntotal_commit_ms 20000\n'
+            (filesystem / 'commit_stats').write_text(text)
+            result = observer.btrfs_stats({'sda'}, root)[filesystem.name]
+            self.assertEqual(result['devices'], ['sda3'])
+            self.assertEqual(result['commitStats']['cur_commit_ms'], 8388)
+            self.assertEqual(result['commitStats']['max_commit_ms'], 19000)
+            self.assertEqual(result['generation'], 123)
+            self.assertEqual(result['metadata'], {'bytes_used': 4096})
+            self.assertEqual(observer.btrfs_stats({'sdb'}, root), {})
+            self.assertEqual((filesystem / 'commit_stats').read_text(), text)
+
+    def test_unavailable_or_invalid_btrfs_counters_are_unknown(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            filesystem = self.btrfs_fixture(root)
+            (filesystem / 'commit_stats').write_text('commits -1\ncur_commit_ms invalid\nprivate-label 1\nlast_commit_ms 0\n')
+            result = observer.btrfs_stats({'sda'}, root)[filesystem.name]
+            self.assertEqual(result['commitStats'], {'last_commit_ms': 0})
+            (filesystem / 'commit_stats').unlink()
+            self.assertEqual(observer.btrfs_stats({'sda'}, root)[filesystem.name]['commitStats'], {})
+            self.assertEqual(observer.btrfs_stats({'sda'}, root / 'missing'), {})
+
+    def test_btrfs_whole_device_and_fixed_fields(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            filesystem = self.btrfs_fixture(root)
+            (filesystem / 'devices' / 'sda3').unlink()
+            (filesystem / 'devices' / 'sdb').mkdir()
+            (filesystem / 'commit_stats').write_text('commits 4\nsecret-field 99\n')
+            self.assertEqual(observer.btrfs_stats({'sdb'}, root)[filesystem.name]['commitStats'], {'commits': 4})
+
     def test_private_archive_preserves_bytes(self):
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / 'samples.jsonl'

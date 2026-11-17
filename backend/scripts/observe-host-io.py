@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import shutil
 import time
+import uuid
 
 
 def read(path):
@@ -61,6 +62,43 @@ def disk_rates(d, seconds):
                 busyPercent=d[9] / (seconds * 10))
 
 
+def btrfs_stats(devices, root=Path('/sys/fs/btrfs')):
+    """Read fixed sysfs counters only; never reset them or walk filesystem data."""
+    result = {}
+    try:
+        filesystems = sorted(root.iterdir(), key=lambda p: p.name)
+    except OSError:
+        return result
+    fields = {'commits', 'cur_commit_ms', 'last_commit_ms', 'max_commit_ms', 'total_commit_ms'}
+    for filesystem in filesystems:
+        try:
+            uuid.UUID(filesystem.name)
+            members = list((filesystem / 'devices').iterdir())
+            selected = [member.name for member in members if member.name in devices or
+                        ((member / 'partition').exists() and member.resolve().parent.name in devices)]
+            if not selected:
+                continue
+            values = {}
+            for line in (read(filesystem / 'commit_stats') or '').splitlines():
+                parts = line.split()
+                if len(parts) == 2 and parts[0] in fields and parts[1].isdigit():
+                    values[parts[0]] = int(parts[1])
+            generation = (read(filesystem / 'generation') or '').strip()
+            metadata = {}
+            for key in ('bytes_used', 'total_bytes', 'disk_used', 'disk_total'):
+                value = (read(filesystem / 'allocation' / 'metadata' / key) or '').strip()
+                if value.isdigit():
+                    metadata[key] = int(value)
+            result[filesystem.name] = dict(devices=sorted(selected), commitStats=values,
+                                           generation=int(generation) if generation.isdigit() else None,
+                                           metadata=metadata)
+            if len(result) == 8:
+                break
+        except (OSError, ValueError):
+            continue
+    return result
+
+
 def archive(source, directory):
     """Copy after observation, exclusively; never overwrite prior evidence."""
     destination = Path(directory) / Path(source).name
@@ -89,7 +127,7 @@ def sample(devices, previous, previous_processes):
                               'pgmajfault', 'pswp', 'pgscan', 'pgsteal', 'allocstall',
                               'workingset_refault', 'oom_kill'))},
                   zram={k: read('/sys/block/zram0/' + k) for k in ('mm_stat', 'bd_stat')},
-                  disks={}, processes=[], blockedThreads=[], ioDenied=0)
+                  disks={}, btrfs=btrfs_stats(devices), processes=[], blockedThreads=[], ioDenied=0)
     seconds = begin - previous['monotonic'] if previous else None
     for line in (read('/proc/diskstats') or '').splitlines():
         f = line.split()
