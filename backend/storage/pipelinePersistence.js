@@ -6,6 +6,7 @@ import { RUNTIME_POLICY } from "../config/runtimePolicy.js";
 import {randomUUID} from 'node:crypto';
 import {setTimeout as wait} from 'node:timers/promises';
 import {ScopedWork} from './scopedWork.js';
+import {NotModifiedCoordinator} from './awarenessPollContinuation.js';
 const log=createLogger("backend/storage/pipelinePersistence");
 const appendOnlyKinds=new Set(["awareness-audit","awareness-poll","quotes","market-publication"]);
 
@@ -26,7 +27,7 @@ export class PipelinePersistence {
       return new Promise((resolve,reject)=>entry.waiters.push({resolve,reject}));
     }
     // Append-only saves recover only the same record (or the same atomic quote batch).
-    const identity=appendOnlyKinds.has(kind) ? stableHash(payload) : kind === "pipeline-stage" ? payload.id : kind === "ai-record" ? payload.enrichmentId : null;
+    const identity=appendOnlyKinds.has(kind)||kind==='awareness'&&payload.statusDelta ? stableHash(payload) : kind === "pipeline-stage" ? payload.id : kind === "ai-record" ? payload.enrichmentId : null;
     const key=JSON.stringify([kind,identity]);
     const sequence=++this.sequence;
     this.pendingKeys.set(key,(this.pendingKeys.get(key) || 0)+1);
@@ -45,7 +46,7 @@ export class PipelinePersistence {
     };
     // Snapshots/stages retain one accepted save and one latest successor.
     // Append-only facts keep every distinct record and never coalesce.
-    const replaceable=['pipeline-stage','provider-quota','market','ai-budget'].includes(kind)||(kind==='awareness'&&!payload.events?.length);
+    const replaceable=['pipeline-stage','provider-quota','market','ai-budget'].includes(kind)||(kind==='awareness'&&!payload.events?.length&&!payload.statusDelta);
     const task=replaceable?this.writes.run(key,sequence,write,{bytes:Buffer.byteLength(JSON.stringify(input))}):write();this.pending.add(task);
     task.then(()=>settle(null),error=>{
       settle(error);
@@ -69,12 +70,26 @@ export class PipelinePersistence {
     if(budget?.state)aiBudget.state=budget.state;
     aiStore.persist=()=>{};const upsert=aiStore.upsert.bind(aiStore);aiStore.upsert=record=>{const result=upsert(record);this.save("ai-record",result);return result;};aiStore.recoverInterrupted();for(const row of aiStore.records.values())if(row.validation?.codes?.includes("RESTART_INTERRUPTED"))this.save("ai-record",row);
     // Only the active Awareness projection stays in memory; audit/poll rows live in SQL.
-    awarenessStore.persist=()=>this.save("awareness",{schemaVersion:"awareness-v1",revision:awarenessStore.revision,sourceStatus:[...awarenessStore.sourceStatuses.values()]});
+    // Publish only changed source rows. An unrelated concurrent poll must not
+    // overwrite a source whose 304 was committed by the typed writer boundary.
+    const statusHashes=new Map();
+    awarenessStore.persist=()=>{
+      const sourceStatus=[...awarenessStore.sourceStatuses.values()].filter(s=>statusHashes.get(s.sourceId)!==stableHash(s));
+      if(!sourceStatus.length)return Promise.resolve({persisted:true});
+      return this.save("awareness",{schemaVersion:"awareness-v1",revision:awarenessStore.revision,sourceStatus,statusDelta:true}).then(result=>{
+        for(const s of sourceStatus)statusHashes.set(s.sourceId,stableHash(s));
+        return result;
+      });
+    };
     const prune=awarenessStore.prune.bind(awarenessStore);
     awarenessStore.prune=()=>{prune();if(awarenessStore.events.size<=1000)return;const now=Date.now(),rank=e=>e.scheduledAt&&Date.parse(e.scheduledAt)>=now&&["scheduled","live"].includes(e.status)?1:0;const rows=[...awarenessStore.events.values()].sort((a,b)=>rank(b)-rank(a)||Date.parse(b.observedAt)-Date.parse(a.observedAt));awarenessStore.events=new Map(rows.slice(0,1000).map(e=>[e.eventId,e]));};
     const reconcile=async(method,args)=>{await this.flush();const result=await this.manager.request("domain.call",{service:"awareness",method,args});for(const event of result.changed || [])awarenessStore.events.set(event.eventId,event);awarenessStore.revision=Math.max(awarenessStore.revision,result.revision);if(result.sourceStatus)awarenessStore.sourceStatuses.set(result.sourceStatus.sourceId,result.sourceStatus);awarenessStore.prune();return result;};
     awarenessStore.reconcile=(...args)=>reconcile("reconcile",args);
     awarenessStore.setSourceStale=(...args)=>reconcile("setSourceStale",args);
+    this.notModified=new NotModifiedCoordinator(this.manager,awarenessStore);
+    awarenessStore.commitNotModified=async input=>{await this.flush();return this.notModified.commit(input);};
+    awarenessStore.recoverNotModified=async sourceId=>{await this.flush();return this.notModified.recover(sourceId);};
+    awarenessStore.pendingNotModified=()=>this.notModified.pending();
     awarenessStore.appendAudit=event=>this.save("awareness-audit",{recordedAt:new Date().toISOString(),event});
     awarenessStore.appendPollAudit=(sourceId,poll)=>this.save("awareness-poll",{recordedAt:poll.completedAt,sourceId,poll});
     awarenessStore.persist();

@@ -69,7 +69,10 @@ test('real writer transport preserves intent, fence and exact transition across 
   await manager.request('continuation.advance',step);await manager.close();
   manager=new StorageManager({enabled:true,businessEnabled:true,databasePath:f.file});await manager.start();
   const recovered=await manager.request('continuation.get',intent);assert.deepEqual(recovered.input,{httpStatus:304});assert.equal(recovered.cursor,1);
-  assert.equal((await manager.request('continuation.advance',step)).replayed,true);
+  await assert.rejects(manager.request('continuation.advance',step),{code:'CONTINUATION_LEASE_LOST'});
+  const next=await manager.request('continuation.claim',{jobId:intent.jobId,owner:'transport-restarted'});
+  assert.ok(next.fence>auth.fence);
+  assert.equal((await manager.request('continuation.advance',{jobId:next.jobId,owner:next.owner,fence:next.fence,cursor:next.cursor,phase:'done',input:null,complete:true,transitionId:'finish'})).status,'complete');
  }finally{await manager?.close();f.close();}
 });
 test('pending internal continuations cannot displace candle jobs from a bounded Admin history page',()=>{

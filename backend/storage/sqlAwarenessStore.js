@@ -1,6 +1,7 @@
 import { AwarenessStore, AWARENESS_RETENTION_MS } from "../services/awareness/awarenessStore.js";
 import { readMeta, writeMeta, sourceRow } from "./sqlRepositories.js";
 import { parseAwarenessSource } from "../services/awareness/awarenessParsers.js";
+import {stableHash} from '../utils/stableHash.js';
 
 // Build a bounded startup projection without sorting/parsing historical JSON.
 // Upcoming events retain priority over more recently received releases.
@@ -76,6 +77,17 @@ export class SqlAwarenessStore extends AwarenessStore {
 
   appendAudit(event) {
     this.db.prepare("INSERT INTO runtime_audit(kind,observed_at,payload_json) VALUES('awareness-audit',?,?)").run(new Date(this.now()).toISOString(), JSON.stringify({event, revision:this.revision}));
+  }
+
+  appendPollAudit(sourceId,poll){
+    sourceRow(this.db,sourceId);
+    this.db.prepare('INSERT OR IGNORE INTO source_polls VALUES(?,?,?,?,?)').run('poll-'+stableHash([sourceId,poll]),sourceId,poll.completedAt,poll.outcome,JSON.stringify(poll));
+  }
+  commitPoll(sourceId,poll,patch){
+    this.refreshMetadata();
+    const rows=this.db.prepare('SELECT diagnostics_json FROM source_polls WHERE source_id=? AND completed_at>=? ORDER BY completed_at').all(sourceId,new Date(this.now()-7*86400000).toISOString());
+    this.pollHistories.set(sourceId,rows.map(r=>{const saved=JSON.parse(r.diagnostics_json);return saved.poll||saved;}));
+    return super.recordPoll(sourceId,poll,patch);
   }
 
   prune() { /* Historical events are preserved; public views remain time-bounded. */ }

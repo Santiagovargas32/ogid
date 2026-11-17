@@ -19,7 +19,7 @@ test("SQLite migrations, idempotency, rollback and reopen preserve committed row
   const f=fixture();
   try {
     await f.manager.start();
-    const status=await f.manager.request("storage.status");assert.equal(status.migrations.length,38);assert.equal(status.businessStorage,"legacy-json");
+    const status=await f.manager.request("storage.status");assert.equal(status.migrations.length,39);assert.equal(status.businessStorage,"legacy-json");
     const row=run(),requestId=randomUUID();
     const first=await f.manager.request("pipeline.record",row,{requestId});
     assert.deepEqual(await f.manager.request("pipeline.record",{counts:row.counts,status:row.status,completedAt:row.completedAt,startedAt:row.startedAt,pipelineId:row.pipelineId,runId:row.runId},{requestId}),first);
@@ -28,7 +28,7 @@ test("SQLite migrations, idempotency, rollback and reopen preserve committed row
     const integrity=await f.manager.request("storage.verify");assert.deepEqual(integrity.foreignKeys,[]);assert.equal(integrity.integrity[0].integrity_check,"ok");
     await f.manager.close();
     const db=new Database(f.databasePath,{readonly:true});assert.equal(db.prepare("select count(*) as n from pipeline_runs").get().n,1);assert.equal(db.prepare("select count(*) as n from storage_commands").get().n,1);db.close();
-    f.manager=new StorageManager({enabled:true,databasePath:f.databasePath});await f.manager.start();assert.equal((await f.manager.request("storage.status")).migrations.length,38);
+    f.manager=new StorageManager({enabled:true,databasePath:f.databasePath});await f.manager.start();assert.equal((await f.manager.request("storage.status")).migrations.length,39);
   } finally {await f.close();}
 });
 
@@ -185,6 +185,7 @@ test('writer failure keeps its primary cause, reports unconfirmed persistence an
     assert.equal(runtime.app.locals.shutdownReport.primaryCause.causeCode,'STORAGE_EXECUTION_TIMEOUT');
     assert.deepEqual(runtime.app.locals.shutdownReport.cleanupErrors,[]);
     assert.ok(runtime.app.locals.shutdownReport.unconfirmedPersistence.some(row=>row.phase==='persistence.history-cancellation'));
+    assert.ok(runtime.app.locals.shutdownReport.deferredPersistence.awarenessContinuations.some(row=>row.verification==='unknown'&&row.durable===false&&row.code==='STORAGE_NOT_READY'));
     assert.equal(runtime.server.listening,false);assert.equal(f.manager.analysisManager.state,'failed');
     assert.equal(runtime.app.locals.runtimeMetrics.ready,false);
   }finally{await runtime.stop().catch(()=>{});await f.close();}

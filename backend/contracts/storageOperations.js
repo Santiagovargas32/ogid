@@ -35,7 +35,7 @@ function boundedTechnicalRead(input) {
 }
 export function storageOperationContract(operation,input={}) {
   if(operation.startsWith('continuation.')){
-    const pureRead=['continuation.get','continuation.pending'].includes(operation);
+    const pureRead=['continuation.get','continuation.pending','continuation.scope'].includes(operation);
     return {role:pureRead?'queries':'writer',pureRead,workClass:pureRead?'read':'commit',resourceClass:pureRead?'read':'commit',effects:pureRead?'read-only':'may-commit',acquisition:false};
   }
   const acquisition=['news.collect','news.supplemental','rss.fetch'].includes(operation) || operation==='domain.call' &&

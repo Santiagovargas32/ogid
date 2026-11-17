@@ -77,8 +77,20 @@ export class CycleContinuations {
   }
   release(auth){return this.db.transaction(()=>{const row=this.row(auth.jobId);this.assertOwner(row,auth);if(row.status!=='pending')fail('CONTINUATION_STATE');row.descriptor.owner=null;row.descriptor.leaseUntil=0;this.save(row);return this.view(row);}).immediate();}
   get({jobId}){return this.view(this.row(jobId));}
+  scope({scope}){
+    if(!identifier(scope))fail('CONTINUATION_INVALID_INPUT');
+    const row=this.db.prepare("SELECT job_id FROM acquisition_jobs WHERE kind=? AND status='pending' AND json_extract(job_json,'$.scope')=?").get(KIND,scope);
+    return row?this.get({jobId:row.job_id}):null;
+  }
   pending({after=''}={}){
     if(after!==''&&!identifier(after))fail('CONTINUATION_INVALID_INPUT');
     return this.db.prepare("SELECT job_id AS jobId,json_extract(job_json,'$.scope') AS scope,json_extract(job_json,'$.phase') AS phase,json_extract(job_json,'$.cursor') AS cursor FROM acquisition_jobs WHERE kind=? AND status='pending' AND job_id>? ORDER BY job_id LIMIT 64").all(KIND,after);
+  }
+  recoverPage({after=''}={}){
+    return this.db.transaction(()=>{
+      const page=this.pending({after});
+      for(const {jobId}of page){const row=this.row(jobId);if(row.descriptor.owner){row.descriptor.owner=null;row.descriptor.leaseUntil=0;this.save(row);}}
+      return {count:page.length,after:page.at(-1)?.jobId||after};
+    }).immediate();
   }
 }

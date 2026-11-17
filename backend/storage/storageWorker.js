@@ -1,5 +1,6 @@
 import {CandleWriteJobs} from './candleWriteJobs.js';
 import {CycleContinuations} from './cycleContinuations.js';
+import {commitNotModifiedPage} from './awarenessPollContinuation.js';
 import {CommitActivity,readCommits} from "./commitActivity.js";
 import {slowCommitCommand} from './slowCommitDiagnostics.js';
 import {WalAcquisitionBudget} from './walAcquisitionBudget.js';
@@ -68,8 +69,9 @@ function pipelineRecord(input) {
 function execute(operation, input, requestId, commandId) {
   if(operation.startsWith('continuation.')){
     const method=operation.slice('continuation.'.length);
-    if(!['admit','claim','renew','advance','release','get','pending'].includes(method))fail('STORAGE_UNKNOWN_OPERATION');
-    if(workerData.analysisWorker&&!['get','pending'].includes(method))fail('STORAGE_READ_ONLY');
+    if(!['admit','claim','renew','advance','release','get','pending','scope','notModifiedPage'].includes(method))fail('STORAGE_UNKNOWN_OPERATION');
+    if(workerData.analysisWorker&&!['get','pending','scope'].includes(method))fail('STORAGE_READ_ONLY');
+    if(method==='notModifiedPage')return commitNotModifiedPage(database,input);
     runtime.cycleContinuations ||= new CycleContinuations(database);
     return runtime.cycleContinuations[method](input);
   }
@@ -186,7 +188,9 @@ try {
   database.pragma("synchronous=FULL"); database.pragma("foreign_keys=ON");
   if(!workerData.analysisWorker)database.pragma('wal_autocheckpoint=0');
   if(workerData.analysisWorker){database.pragma("query_only=ON");migrations=database.prepare("SELECT version,name,applied_at AS appliedAt FROM schema_migrations ORDER BY version").all();}
-  else {assertWriterAvailable(database);migrations = migrate(database, workerData.migrationsDir);acquireWriter(database,workerData.writerToken);}
+  else {assertWriterAvailable(database);migrations = migrate(database, workerData.migrationsDir);acquireWriter(database,workerData.writerToken);
+    const ledger=new CycleContinuations(database);let page={after:''};do{page=ledger.recoverPage(page);}while(page.count===64);
+  }
   activity=workerData.analysisWorker?null:new SqlActivity(workerData.sqlActivityBuffer);
   if(activity && workerData.commitBuffer)activity.commits=new CommitActivity(workerData.commitBuffer);
   const beforeWrite=workerData.analysisWorker?null:walWriteGuard(database,workerData.walPressureBuffer);

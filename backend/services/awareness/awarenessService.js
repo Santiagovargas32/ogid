@@ -427,6 +427,10 @@ export class AwarenessService {
   }
 
   async pollSource(source){
+    if(this.store.recoverNotModified){
+      try{const recovered=await this.store.recoverNotModified(source.sourceId);if(recovered){const suspended=this.sourceContinuations.get(source.sourceId);if(suspended)await suspended.close();this.sourceContinuations.delete(source.sourceId);return recovered;}}
+      catch(error){if(!isResourcePressure(error)&&error.code!=='STORAGE_CONTINUATION_BUSY')throw error;this.resourceDeferred=true;this.lastResourcePhase='source-fresh';this.lastResourceReason=error.details?.reason||error.code;return {sourceId:source.sourceId,changed:[],status:'deferred',code:error.code,phase:'source-fresh'};}
+    }
     let continuation=this.sourceContinuations.get(source.sourceId);
     if(!continuation){continuation=new CycleContinuation(this.pollSteps(source),this.admission);this.sourceContinuations.set(source.sourceId,continuation);}
     try{const result=await continuation.run();this.sourceContinuations.delete(source.sourceId);return result;}
@@ -468,18 +472,18 @@ export class AwarenessService {
       const latencyMs = Math.max(0, this.now() - startedAt);
       diagnostic = responseDiagnostic(response);
       if (response.status === 304) {
-        const fresh = (yield {phase:'source-fresh',work:()=>this.store.setSourceStale(source.sourceId,false)});
-        this.store.recordPoll(source.sourceId, {
+        const completedAt=new Date(this.now()).toISOString();
+        const poll={
           attemptedAt: new Date(startedAt).toISOString(),
-          completedAt: new Date(this.now()).toISOString(),
+          completedAt,
           outcome: "not-modified",
           httpStatus: 304,
           latencyMs,
           nextEligibleAt,
           diagnostic
-        }, {
+        },patch={
           status: "healthy",
-          lastSuccessAt: new Date(this.now()).toISOString(),
+          lastSuccessAt: completedAt,
           httpStatus: 304,
           latencyMs,
           stale: false,
@@ -488,7 +492,11 @@ export class AwarenessService {
           consecutiveForbidden: 0,
           successes: Number(previous.successes || 0) + 1,
           nextEligibleAt
-        });
+        };
+        const fresh = (yield {phase:'source-fresh',work:()=>this.store.commitNotModified
+          ? this.store.commitNotModified({sourceId:source.sourceId,poll,patch,validators:{etag:previous.etag||null,lastModified:previous.lastModified||null}})
+          : this.store.setSourceStale(source.sourceId,false)});
+        if(!this.store.commitNotModified)this.store.recordPoll(source.sourceId,poll,patch);
         return { sourceId: source.sourceId, changed: fresh.changed || [], status: "not-modified" };
       }
       if (!response.ok) {
@@ -544,7 +552,7 @@ export class AwarenessService {
       return { sourceId: source.sourceId, ...reconciliation, status: outcome };
     } catch (error) {
       // A failed store is not evidence that an upstream source became unhealthy.
-      if(/^(STORAGE_|SQLITE_)/.test(error.code || ""))throw error;
+      if(/^(STORAGE_|SQLITE_|CONTINUATION_)/.test(error.code || ""))throw error;
       const failures = Number(previous.consecutiveErrors || 0) + 1;
       const forbiddenFailures = Number(error.httpStatus) === 403 ? Number(previous.consecutiveForbidden || 0) + 1 : 0;
       const blocked = Number(error.httpStatus) === 403 && forbiddenFailures >= this.persistent403Threshold;
@@ -598,7 +606,9 @@ export class AwarenessService {
     try{this.admission?.assert('acquisition');}catch(error){if(!isResourcePressure(error))throw error;this.resourceDeferred=true;this.lastResourcePhase='admission';this.lastResourceReason=error.details?.reason;log.info('awareness_cycle_deferred',{code:error.code,phase:'admission',reason:error.details?.reason,trigger});return {status:'deferred',code:error.code,trigger,snapshot:this.syncProjection()};}
     this.resourceDeferred=false;
     this.inFlight = (async () => {
-      const sources = [...new Map([...this.sources.filter(source=>this.sourceContinuations.has(source.sourceId)),...this.eligibleSources()].map(source=>[source.sourceId,source])).values()];
+      const durablePending=await this.store.pendingNotModified?.()||[];
+      const pendingIds=new Set(durablePending.map(j=>j.scope.slice('awareness:'.length)));
+      const sources = [...new Map([...this.sources.filter(source=>this.sourceContinuations.has(source.sourceId)||pendingIds.has(source.sourceId)),...this.eligibleSources()].map(source=>[source.sourceId,source])).values()];
       const settled = await Promise.allSettled(sources.map((source) => this.globalSemaphore.use(() =>
         this.hostSemaphore(source.hostname).use(() => this.pollSource(source),this.shutdownController.signal),this.shutdownController.signal)));
       const failed=settled.find(result=>result.status==="rejected");if(failed)throw failed.reason;
@@ -648,6 +658,15 @@ export class AwarenessService {
     this.shutdownController.abort(new DOMException('Awareness shutdown','AbortError'));
     await Promise.allSettled([this.inFlight]);
     this.deferredAtShutdown=[...this.sourceContinuations].map(([sourceId,continuation])=>({sourceId,phase:continuation.phase,durable:false}));
+    let durable=[];
+    try{durable=await this.store.pendingNotModified?.()||[];}
+    catch(error){
+      // A dead writer cannot verify its ledger. Preserve the primary failure
+      // and report uncertainty explicitly instead of claiming zero pending work.
+      this.deferredAtShutdown.push({sourceId:null,phase:'source-fresh',durable:false,verification:'unknown',code:error.code||'CONTINUATION_STATUS_UNAVAILABLE'});
+      log.warn('awareness_pending_unverified',{code:error.code||'CONTINUATION_STATUS_UNAVAILABLE'});
+    }
+    for(const job of durable){const sourceId=job.scope.slice('awareness:'.length);this.deferredAtShutdown=this.deferredAtShutdown.filter(item=>item.sourceId!==sourceId);this.deferredAtShutdown.push({sourceId,phase:job.phase,durable:true,jobId:job.jobId,cursor:job.cursor});}
     for(const continuation of this.sourceContinuations.values())await continuation.close();
     this.sourceContinuations.clear();
   }
