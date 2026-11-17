@@ -50,7 +50,7 @@ export class AdminHistoryProjection {
         json_extract(a.job_json,'$.cursor') AS cursor,json_array_length(a.job_json,'$.chunks') AS chunkCount,
         r.payload_json=a.job_json AS projectionMatches
         FROM acquisition_jobs a LEFT JOIN research_rows r ON r.collection='jobs' AND r.entity_id=a.job_id
-        WHERE a.kind!='csv-import' ${jobsAfter?"AND (a.created_at||'|'||a.job_id)<?":''}
+        WHERE a.kind NOT IN ('csv-import','cycle-continuation-v1') ${jobsAfter?"AND (a.created_at||'|'||a.job_id)<?":''}
         ORDER BY a.created_at DESC,a.job_id DESC LIMIT ?`).all(...(jobsAfter?[jobsAfter]:[]),options.jobsLimit+1);
       const legacyRows=db.prepare(`WITH refs AS MATERIALIZED (SELECT rowid,identity_version FROM events INDEXED BY events_by_identity WHERE identity_version!='source-publication-v2' AND (identity_version,rowid)>(?,?) ORDER BY identity_version,rowid LIMIT ?)
         SELECT e.rowid AS position,e.identity_version AS identityVersion,e.event_id AS eventId,json_array_length(e.payload_json,'$.evidence') AS evidenceCount,

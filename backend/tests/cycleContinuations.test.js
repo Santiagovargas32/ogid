@@ -8,6 +8,7 @@ import {migrate} from '../storage/migrate.js';
 import {CycleContinuations} from '../storage/cycleContinuations.js';
 import {StorageManager} from '../storage/StorageManager.js';
 import {storageOperationContract} from '../contracts/storageOperations.js';
+import {AdminHistoryProjection} from '../storage/adminHistoryProjection.js';
 
 const intent={jobId:'cycle-1',scope:'news',phase:'financial-ingestion',input:{articles:[{id:'a',revision:3}],options:{backfill:false,trigger:'scheduled-news'}}};
 function fixture(){
@@ -70,4 +71,12 @@ test('real writer transport preserves intent, fence and exact transition across 
   const recovered=await manager.request('continuation.get',intent);assert.deepEqual(recovered.input,{httpStatus:304});assert.equal(recovered.cursor,1);
   assert.equal((await manager.request('continuation.advance',step)).replayed,true);
  }finally{await manager?.close();f.close();}
+});
+test('pending internal continuations cannot displace candle jobs from a bounded Admin history page',()=>{
+ const f=fixture();try{
+  f.db.prepare('INSERT INTO acquisition_jobs VALUES(?,?,?,?,?,?,?)').run('history','history','history','pending','1970-01-01','1970-01-01','{}');
+  for(let i=0;i<70;i++)f.repo.admit({...intent,jobId:'internal-'+i,scope:'source-'+i});
+  const view=new AdminHistoryProjection(f.db).get({jobsLimit:1});
+  assert.equal(view.jobs.length,1);assert.equal(view.jobs[0].jobId,'history');assert.equal(view.pagination.jobs.hasMore,false);
+ }finally{f.close();}
 });
