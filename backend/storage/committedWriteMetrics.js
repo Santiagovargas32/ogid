@@ -1,9 +1,14 @@
 // Fixed labels only: no SQL bindings, article IDs, provider data or unbounded
 // snapshot keys enter telemetry. Bytes describe bindings, not disk/WAL writes.
 const tables=new Set(['articles','article_revisions','article_observations','article_sources','article_aliases','article_countries','article_instruments','article_topics','article_permitted_excerpts','sources','runtime_meta','pipeline_checkpoints','provider_quota_chunks','pipeline_stage_state','candles','candle_validations','event_outbox','geopolitical_alerts','awareness_events']);
+// Separate durable receipts/history from analytical state. They represented a
+// large opaque "other" bucket during host diagnosis; the label set stays fixed.
+for (const table of ['storage_commands','derived_observations','runtime_audit','source_polls','research_rows','alert_rows','signal_changes','outbox','quote_observations','analysis_runs','indicator_values','signal_buckets']) tables.add(table);
 const snapshots=new Map([
  ['provider-quota','provider-quota'],['rss','rss-public'],['rss-canonical','rss-legacy'],
  ['rss-canonical-v2','rss-summary'],['rss-canonical-corpus:v3','rss-corpus'],['pipeline-stage','pipeline-stage'],
+ ['news-collection','news-collection'],['news-projection','news-projection'],
+ ['market','market'],['quotes','quotes'],['signals','signals'],['ai-budget','ai-budget'],
 ]);
 export function writeMetricBucket(table,args){
  if(table==='runtime_snapshots'){

@@ -75,6 +75,28 @@ test('arbitrary snapshot and table identities collapse to fixed labels without e
  }finally{f.close();}
 });
 
+test('committed receipts and analytical history have separate fixed labels without payload disclosure',()=>{
+ const f=fixture();try{
+  f.db.exec('CREATE TABLE storage_commands(id TEXT PRIMARY KEY,payload TEXT);CREATE TABLE derived_observations(id TEXT PRIMARY KEY,payload TEXT);CREATE TABLE research_rows(id TEXT PRIMARY KEY,payload TEXT);');
+  const payload='private-value-'.repeat(400);
+  f.db.transaction(()=>{
+   for(const table of ['storage_commands','derived_observations','research_rows'])f.db.prepare(`INSERT INTO ${table} VALUES(?,?)`).run('private-identity',payload);
+   f.save('news-projection',payload);
+  })();
+  const status=f.activity.writeMetrics.status();
+  assert.equal(status.total.transactions,1);
+  assert.equal(status.total.statements,4);
+  assert.equal(status.total.rowsChanged,4);
+  assert.equal(status.total.bindingBytes,4*Buffer.byteLength(payload)+3*Buffer.byteLength('private-identity'));
+  assert.deepEqual(Object.keys(status.buckets).sort(),['derived_observations','research_rows','snapshot:news-projection','storage_commands']);
+  for(const row of Object.values(status.buckets))assert.equal(row.transactions,1);
+  assert.equal(JSON.stringify(status).includes('private'),false);
+  const before=structuredClone(status);
+  assert.throws(()=>f.db.transaction(()=>{f.save('news-projection','different');throw Error('rollback');})(),/rollback/);
+  assert.deepEqual(f.activity.writeMetrics.status(),before);
+ }finally{f.close();}
+});
+
 test('the real writer exposes committed quota frequency without changing persistence or counting identical saves',async()=>{
  const directory=mkdtempSync(join(tmpdir(),'ogid-write-metrics-worker-'));
  const manager=new StorageManager({enabled:true,databasePath:join(directory,'fixture.sqlite')});
