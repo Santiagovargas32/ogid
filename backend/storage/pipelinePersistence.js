@@ -1,3 +1,4 @@
+import {FinancialCoordinator} from './financialContinuation.js';
 import { buildPersistenceMetadata,filterPersistedQuotes } from "../services/market/marketHistoryStore.js";
 import { MARKET_PROVIDER_SCHEMA_VERSION } from "../services/market/marketSnapshotMigration.js";
 import { createLogger } from "../utils/logger.js";
@@ -86,6 +87,7 @@ export class PipelinePersistence {
     const reconcile=async(method,args)=>{await this.flush();const result=await this.manager.request("domain.call",{service:"awareness",method,args});for(const event of result.changed || [])awarenessStore.events.set(event.eventId,event);awarenessStore.revision=Math.max(awarenessStore.revision,result.revision);if(result.sourceStatus)awarenessStore.sourceStatuses.set(result.sourceStatus.sourceId,result.sourceStatus);awarenessStore.prune();return result;};
     awarenessStore.reconcile=(...args)=>reconcile("reconcile",args);
     awarenessStore.setSourceStale=(...args)=>reconcile("setSourceStale",args);
+    awarenessStore.financialContinuations = new FinancialCoordinator(this.manager, awarenessStore);
     this.notModified=new NotModifiedCoordinator(this.manager,awarenessStore);
     awarenessStore.commitNotModified=async input=>{await this.flush();return this.notModified.commit(input);};
     awarenessStore.recoverNotModified=async sourceId=>{await this.flush();return this.notModified.recover(sourceId);};

@@ -1,3 +1,4 @@
+import {admitFinancial,commitFinancialPage} from './financialContinuation.js';
 import {CandleWriteJobs} from './candleWriteJobs.js';
 import {CycleContinuations} from './cycleContinuations.js';
 import {commitNotModifiedPage} from './awarenessPollContinuation.js';
@@ -69,8 +70,10 @@ function pipelineRecord(input) {
 function execute(operation, input, requestId, commandId) {
   if(operation.startsWith('continuation.')){
     const method=operation.slice('continuation.'.length);
-    if(!['admit','claim','renew','advance','release','get','pending','scope','notModifiedPage'].includes(method))fail('STORAGE_UNKNOWN_OPERATION');
+    if(!['admit','claim','renew','advance','release','get','pending','scope','notModifiedPage','financialAdmit','financialPage'].includes(method))fail('STORAGE_UNKNOWN_OPERATION');
     if(workerData.analysisWorker&&!['get','pending','scope'].includes(method))fail('STORAGE_READ_ONLY');
+    if(method==='financialAdmit')return admitFinancial(database,input);
+    if(method==='financialPage')return commitFinancialPage(database,input);
     if(method==='notModifiedPage')return commitNotModifiedPage(database,input);
     runtime.cycleContinuations ||= new CycleContinuations(database);
     return runtime.cycleContinuations[method](input);

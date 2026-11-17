@@ -1,6 +1,7 @@
 import {CycleContinuation,isResourcePressure} from '../shared/cycleContinuation.js';
 import { awarenessMarketArticles } from "./marketArticles.js";
-import { createHash } from "node:crypto";
+import {stableHash} from "../../utils/stableHash.js";
+import { createHash, randomUUID } from "node:crypto";
 import { createLogger } from "../../utils/logger.js";
 import { detectCountryMentions } from "../../utils/countryCatalog.js";
 import { normalizeArticles } from "../normalizeService.js";
@@ -619,6 +620,30 @@ export class AwarenessService {
       return { code:this.resourceDeferred?'STORAGE_RESOURCE_PRESSURE':null, status: this.resourceDeferred?'deferred':results.some((result) => ["error", "blocked"].includes(result.status)) ? "partial" : "ok", trigger, results, snapshot };
     })();
     try { return await this.inFlight; } finally { this.inFlight = null;if(this.resourceDeferred&&!this.stopped&&this.admission?.status().state==='normal')queueMicrotask(()=>void this.runCycle('resource-recovered').catch(error=>log.warn('awareness_recovery_failed',{code:error.code}))); }
+  }
+
+  prepareFinancialIntent(articles, {trigger, backfill, asOf, corpusRevision}) {
+    const observedAt = new Date(this.now()).toISOString();
+    return {
+      jobId: 'financial-' + randomUUID(),
+      context: {observedAt, asOf:asOf || observedAt, corpusRevision:corpusRevision ?? null, trigger, backfill, mode:this.mode},
+      items: articles.map(article => ({
+        articleId:article.id ?? null, revision:article.revision ?? null,
+        contentRevision:article.contentRevision ?? null, articleHash:stableHash(article),
+        event:financialEventFromArticle(article, observedAt)
+      }))
+    };
+  }
+
+  resumeFinancial(jobId) {
+    return this.store.financialContinuations.resume(jobId,
+      () => this.admission?.assert('heavy'),
+      (changed, options) => this.broadcast(changed, options));
+  }
+
+  async recoverFinancial() {
+    const job = await this.store.financialContinuations?.pending();
+    if (job) await this.resumeFinancial(job.jobId);
   }
 
   ingestFinancialArticles(articles = [], { backfill = false, trigger = "financial-news-ingest" } = {}) {

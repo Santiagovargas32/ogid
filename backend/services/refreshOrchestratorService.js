@@ -438,6 +438,9 @@ class RefreshOrchestratorService {
     };
 
     try {
+      if (this.awarenessService?.store?.financialContinuations) {
+        yield {phase:'financial-recovery', work:() => this.awarenessService.recoverFinancial()};
+      }
       let previousSnapshot = this.stateManager.getSnapshot();
       const countryFilter = options.countries?.length ? options.countries : this.config.watchlistCountries;
       const policy = this.resolveCurrentNewsPolicy();
@@ -517,16 +520,27 @@ class RefreshOrchestratorService {
           });
       const signalCorpus = selection.signalCorpus || (awarenessVisible ? newsBranches.geopolitical : normalizedNews);
       const selectedNews = selection.displaySelection || [];
+      const selectionTime = storedProjection?.meta?.asOf || new Date().toISOString();
       const financialSelection = storedProjection?.financialSelection || buildFinancialNewsSelection({
         articles: awarenessCollectionEnabled
           ? mergeArticleCorpora(newsBranches.financial, awarenessVisible ? this.stateManager.getMarketSignalCorpus() : [])
           : [],
+        now: new Date(selectionTime),
         candidateWindowHours: Math.max(36, this.config.news?.candidateWindowHours || 36),
         analyzeLimit: this.config.news?.analyzeLimit || 80,
         displayLimit: 40,
         maxPerSource: 4
       });
-      if (awarenessCollectionEnabled) {
+      if (awarenessCollectionEnabled && this.awarenessService?.store?.financialContinuations) {
+        const items = financialSelection.items || [];
+        if (items.length) {
+          const intent = this.awarenessService.prepareFinancialIntent(items, {
+            backfill:trigger === 'startup-news', trigger, asOf:selectionTime, corpusRevision:storedProjection?.meta?.revision
+          });
+          yield {phase:'financial-admission', kind:'commit', work:() => this.awarenessService.store.financialContinuations.admit(intent)};
+          yield {phase:'financial-ingestion', work:() => this.awarenessService.resumeFinancial(intent.jobId)};
+        }
+      } else if (awarenessCollectionEnabled) {
         (yield {phase:'financial-ingestion',work:()=>this.awarenessService?.ingestFinancialArticles?.(financialSelection.items || [], {
           backfill: trigger === "startup-news",trigger
         })});
@@ -1009,6 +1023,17 @@ class RefreshOrchestratorService {
     }
     await Promise.allSettled([...this.pendingCycles]);
     this.deferredAtShutdown=[...this.continuations].map(([domain,continuation])=>({domain,phase:continuation.phase,durable:false}));
+    if (this.awarenessService?.store?.financialContinuations) {
+      try {
+        const job = await this.awarenessService.store.financialContinuations.pending();
+        if (job) {
+          this.deferredAtShutdown = this.deferredAtShutdown.filter(row => row.domain !== 'news' || !['financial-recovery','financial-ingestion'].includes(row.phase));
+          this.deferredAtShutdown.push({domain:'news', phase:job.phase, jobId:job.jobId, cursor:job.cursor, durable:true});
+        }
+      } catch (error) {
+        this.deferredAtShutdown.push({domain:'news', phase:'financial-ingestion', verification:'unknown', durable:false, code:error.code});
+      }
+    }
     for(const continuation of this.continuations.values())await continuation.close();
     this.continuations.clear();this.resourceDeferred.clear();this.marketProjectionPending=null;
   }
