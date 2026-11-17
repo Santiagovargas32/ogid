@@ -25,6 +25,14 @@ function withEnv(values, run) {
   }
 }
 
+test('bounded diagnostic maintenance policy reaches the runtime without changing its default',()=>{
+  assert.deepEqual(readConfig().maintenance,{advancedMode:'continuous'});
+  const runtime=createAppServer({maintenance:{advancedMode:'on-demand'},market:{historyPersist:false}});
+  assert.equal(runtime.app.locals.agentMaintenance.advancedMode,'on-demand');
+  assert.deepEqual(runtime.app.locals.agentMaintenance.status.policy,{advanced:'on-demand'});
+  assert.throws(()=>createAppServer({maintenance:{advancedMode:'invalid'},market:{historyPersist:false}}),{code:'MAINTENANCE_PROFILE_INVALID'});
+});
+
 test("WebSocket transport budgets reach the live server configuration", () => withEnv({
   WS_MAX_MESSAGE_BYTES: "32768", WS_MAX_BUFFERED_BYTES: "131072",
   WS_MAX_QUEUE_BYTES: "131072", WS_MAX_QUEUE_ITEMS: "32",

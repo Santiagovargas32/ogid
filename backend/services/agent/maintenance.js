@@ -3,14 +3,16 @@ import { getInstrumentById } from '../market/instrumentRegistry.js';
 import { resolveExpectedClosedDailyCandle } from '../market/dailyCandleService.js';
 import { CALENDAR_VERSION } from '../market/exchangeCalendar.js';
 import { expectedPublicableCandle, providerPublicationPolicy } from '../market/candleValidation.js';
+import {validateAdvancedMaintenanceMode} from '../../utils/maintenanceProfile.js';
 
 // One timer drives bounded durable work. One analytical sweep may run alongside
 // it on the existing readers; slow analysis cannot hold the next journal page.
 export class AgentMaintenance {
-  constructor({call,business,context,dependencies=null,now=Date.now,instruments=()=>[],enabled=false,admission=null}) {
-    Object.assign(this,{call,business,context,dependencies,now,instruments,enabled,admission});
+  constructor({call,business,context,dependencies=null,now=Date.now,instruments=()=>[],enabled=false,admission=null,advancedMode='continuous'}) {
+    validateAdvancedMaintenanceMode(advancedMode);
+    Object.assign(this,{call,business,context,dependencies,now,instruments,enabled,admission,advancedMode});
     this.resumeResources=()=>{if(this.running&&this.admission.status().state==='normal')void this.tick();};
-    this.status={state:'idle',lastSuccessAt:null,errorCode:null};
+    this.status={state:'idle',lastSuccessAt:null,errorCode:null,policy:{advanced:advancedMode}};
     this.completedInputs=new Map();
   }
   tick() {
@@ -68,6 +70,13 @@ export class AgentMaintenance {
       for(const [domain,work]of operations){
         if(this.stopping)break;
         const revision=revisionFor(domain),previous=this.status.domains?.[domain];
+        if(domain==='advanced'&&this.advancedMode==='on-demand'){
+          // Keep the actual computed revision/freshness. A skipped sweep must
+          // neither acknowledge new inputs nor disable explicit API requests.
+          this.status.domains={...this.status.domains,[domain]:{state:'on-demand',reason:'explicit-request-required',
+            inputRevision:previous?.inputRevision??null,requiredInputRevision:revision,lastSuccessAt:previous?.lastSuccessAt??null}};
+          continue;
+        }
         const pending=domain==='alerts'&&(this.alertsPending||inputs?.situations?.hasMore);
         if(domain!=='editorial'&&!pending&&!force&&revision&&this.completedInputs.get(domain)===revision){
           this.status.domains={...this.status.domains,[domain]:{...previous,state:'ready',deferredReason:'inputs-unchanged',inputRevision:revision}};continue;

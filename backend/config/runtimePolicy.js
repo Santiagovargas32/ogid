@@ -7,6 +7,7 @@ function freeze(value) {
 }
 export const RUNTIME_POLICY = freeze({
   refreshIntervalMs: 30000,
+  maintenance: {advancedMode:'continuous'},
   watchlistCountries: [
     "US",
     "ES",

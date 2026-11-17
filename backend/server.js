@@ -40,6 +40,7 @@ import { OpenCodeClient } from "./services/agent/opencodeClient.js";
 import { AgentModelSelection } from "./services/agent/modelSelection.js";
 import { prepareManagedAgentConfig, ManagedAgentRuntime } from "./services/agent/managedRuntime.js";
 import { AgentMaintenance } from "./services/agent/maintenance.js";
+import { readMaintenanceProfile,validateAdvancedMaintenanceMode } from "./utils/maintenanceProfile.js";
 import { createSocketServer } from "./websocket/socketServer.js";
 import { errorHandler, notFoundHandler } from "./utils/error.js";
 import { createLogger, requestLogger } from "./utils/logger.js";
@@ -302,6 +303,7 @@ export function readConfig(overrides = {}) {
     port: toInt(process.env.PORT, 3000),
     host: toTrimmedString(process.env.HOST) || undefined,
     refreshIntervalMs: POLICY.refreshIntervalMs,
+    maintenance: {...POLICY.maintenance},
     wsHeartbeatMs: POLICY.wsHeartbeatMs,
     wsTransportLimits: {...POLICY.wsTransportLimits},
     wsTrustedProxyIps: toList(process.env.WS_TRUSTED_PROXY_IPS),
@@ -381,6 +383,8 @@ export function readConfig(overrides = {}) {
     ...config,
     ...overrides,
     watchlistCountries: overrides.watchlistCountries || config.watchlistCountries,
+    maintenance: {...config.maintenance,...overrides.maintenance,
+      advancedMode:validateAdvancedMaintenanceMode(overrides.maintenance?.advancedMode??config.maintenance.advancedMode)},
     manualRefresh: {
       ...config.manualRefresh,
       ...(overrides.manualRefresh || {})
@@ -863,6 +867,7 @@ export function createAppServer(overrides = {}) {
     admission:storageManager.pressure,
     dependencies:()=>storageManager.request("runtime.load",{kind:"maintenance-inputs"}),
     instruments:()=>marketWatchlistService.selectedInstrumentIds,
+    advancedMode:config.maintenance.advancedMode,
     enabled:Boolean(business)});
   app.locals.business = business;
   app.locals.marketWatchlistService = marketWatchlistService;
@@ -1121,7 +1126,13 @@ export function createAppServer(overrides = {}) {
 }
 
 export async function run(overrides = {}) {
-  const runtimeLimitMs=readRuntimeLimit(process.argv.slice(2));
+  const args=process.argv.slice(2),runtimeLimitMs=readRuntimeLimit(args);
+  const diagnosticProfile=readMaintenanceProfile(args,{runtimeLimitMs,
+    agentMode:args.some(arg=>arg==='--maintenance-advanced'||arg.startsWith('--maintenance-advanced='))?loadAgentConfig().mode:null});
+  if(diagnosticProfile){
+    overrides={...overrides,maintenance:{...overrides.maintenance,...diagnosticProfile}};
+    log.info('maintenance_profile_selected',{...diagnosticProfile,scope:'bounded IA-off diagnostic; explicit capabilities remain available'});
+  }
   const reconcileIndex=process.argv.indexOf('--reconcile-market-jobs');
   if(reconcileIndex>=0){
     const jobIds=JSON.parse(readFileSync(process.argv[reconcileIndex+1],'utf8'));
