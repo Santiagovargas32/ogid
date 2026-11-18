@@ -805,6 +805,11 @@ class RefreshOrchestratorService {
         timestamp: cycleDate.toISOString()
       })};
       const marketState = mergeMarketState(previousSnapshot.market, marketResult);
+      // Evaluate the history policy before making the new quotes visible.
+      // A deferred commit keeps these quotes in the current continuation.
+      yield {phase:'history',kind:'commit',work:()=>this.marketHistoryStore?.persistMarketState?.(
+        previousSnapshot.market || {}, marketState, {trigger}
+      )};
       const analysisSnapshot = this.stateManager.getSnapshot();
       const inputMode = resolveInputMode(previousSnapshot.meta?.sourceMode, marketState.sourceMode);
       const countryFilter = options.countries?.length ? options.countries : this.config.watchlistCountries;
@@ -835,18 +840,13 @@ class RefreshOrchestratorService {
       (yield {phase:'research',work:()=>this.researchCycle?.(snapshot)});
       (yield {phase:'flush',kind:'commit',work:()=>this.storageFlush?.()});
       (yield {phase:'signals',work:()=>this.refreshSecondaryIntel(snapshot, aggregateNews)});
-      try {
-        (yield {phase:'history',work:()=>this.marketHistoryStore?.persistMarketState?.(previousSnapshot.market || {}, marketState, {trigger})});
-      } catch (error) {
-        log.warn("market_history_persist_failed", {
-          message: error.message
-        });
-      }
       if (isAutomatedMarketTrigger(trigger)) {
         try { (yield {phase:'daily-candles',work:()=>this.dailyCandleService?.runScheduled?.()}); } catch (error) { log.warn("daily_candle_cycle_failed", { message: error.message }); }
         this.trackBackground(this.intradayCandleService?.runScheduled?.().catch((error) => log.warn("intraday_candle_cycle_failed", { message: error.message })));
       }
-      this.socketServer.broadcast("update", this.buildMarketUpdatePayload(snapshot), snapshot.meta);
+      // Secondary work can finish after a newer projection has already been sent.
+      const currentUpdate = this.buildMarketUpdatePayload(this.stateManager.state || snapshot);
+      this.socketServer.broadcast("update", currentUpdate, currentUpdate.meta);
       void Promise.resolve(this.aiCoordinator?.reconcileMarketSnapshot?.({
         snapshot,
         instruments: selectedMarketInstruments

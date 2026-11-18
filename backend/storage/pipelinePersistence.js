@@ -39,6 +39,19 @@ export class PipelinePersistence {
       for(let attempt=0;;attempt++){
         try{return await this.manager.request("runtime.save",input,{requestId});}
         catch(error){
+          if(kind==='market-publication' && error.code==='STORAGE_OUTCOME_UNKNOWN'){
+            // The indexed receipt covers the exact quote batch and snapshot.
+            // Missing/unavailable evidence leaves the original outcome unknown.
+            const options={requestId,inputHash:stableHash(['runtime.save',input])};
+            try{
+              const receipt=await this.manager.request('runtime.load',{kind:'market-publication-receipt',options});
+              if(receipt?.confirmed)return {persisted:true};
+            }catch(lookupError){error.receiptLookupCode=lookupError.code;}
+            error.persistenceFailures=[{phase:kind,...options,code:error.code,verification:'unknown',durable:false,
+              receiptLookupCode:error.receiptLookupCode || null}];
+            error.failureCount=1;
+            throw error;
+          }
           // Queue expiry is definite non-execution. Reuse the same durable
           // receipt on this one retry; uncertain writes must remain failures.
           if(error.code!=='STORAGE_QUEUE_TIMEOUT'||attempt)throw error;

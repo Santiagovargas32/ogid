@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import Database from "better-sqlite3";
 import { StorageManager } from "../storage/StorageManager.js";
 import { createAppServer } from "../server.js";
 import { listVerifiedInstruments, getInstrumentById } from "../services/market/instrumentRegistry.js";
@@ -13,6 +14,81 @@ import { awarenessMarketArticles } from "../services/awareness/marketArticles.js
 const instrumentId="us-equity-general-dynamics";
 const source={sourceId:"fixture-official",name:"Official fixture",official:true,role:"official",enabled:true,admissionState:"active",kind:"corporate_release",domains:["financial","corporate"],url:"https://example.org/official"};
 const input=()=>({countries:{},marketQuotes:{GD:{price:100,changePct:2,dataMode:"observed"}},tickers:["GD"],instruments:[getInstrumentById(instrumentId)],countryFilter:["US"],windowMin:240,inputMode:"live",impactHistory:[]});
+
+test("a market cycle exposes eligible quotes only after the exact writer receipt and recovers them on restart", async t=>{
+  const directory=mkdtempSync(join(tmpdir(),"ogid-market-visible-"));
+  const path=join(directory,"fixture.sqlite");
+  let calls=0;
+  const makeRuntime=()=>createAppServer({
+    port:0,host:"127.0.0.1",disableBackgroundRefresh:true,storage:{enabled:true,businessEnabled:true,databasePath:path},
+    news:{providers:[],rssFeeds:[]},awareness:{mode:"off"},ai:{mode:"off",provider:"none"},
+    market:{provider:"yahoo",initialTickers:["GD"],tickers:["GD"],historyPersist:true,historyDir:directory,dailyCandles:{enabled:false},intradayCandles:{enabled:false}},
+    marketDataService:{fetchQuotes:async()=>[{symbol:"GD",price:++calls+120,timestamp:new Date().toISOString(),currency:"USD",exchange:"NYSE"}]}
+  });
+  const runtime=makeRuntime(),allowed=Promise.withResolvers(),dispatched=Promise.withResolvers();
+  try{
+    await runtime.start();
+    const {orchestrator,storageManager}=runtime;
+    const before=orchestrator.stateManager.state.market.revision;
+    const updates=[],receipts=[];
+    const broadcast=orchestrator.socketServer.broadcast.bind(orchestrator.socketServer);
+    t.mock.method(orchestrator.socketServer,"broadcast",(event,payload,...rest)=>{
+      if(event==="update"&&payload.market)updates.push(payload.market.revision);
+      return broadcast(event,payload,...rest);
+    });
+    const request=storageManager.request.bind(storageManager);
+    let writes=0;
+    t.mock.method(storageManager,"request",async(op,input,options)=>{
+      if(op==="runtime.load" && input.kind==="market-publication-receipt")receipts.push(input.options);
+      if(op!=="runtime.save" || input.kind!=="market-publication")return request(op,input,options);
+      if(++writes===1){
+        dispatched.resolve();
+        await allowed.promise;
+        await request(op,input,options);
+      }
+      throw Object.assign(Error("fixture lost ACK"),{code:"STORAGE_OUTCOME_UNKNOWN"});
+    });
+    const cycle=orchestrator.runMarketCycle("manual-market");
+    try{
+      await Promise.race([dispatched.promise,cycle.then(()=>assert.fail("Eligible quotes bypassed the writer"))]);
+      assert.equal(orchestrator.stateManager.state.market.revision,before);
+      assert.deepEqual(updates,[]);
+      assert.ok(!orchestrator.marketProjectionTask);
+    }finally{allowed.resolve();}
+    await cycle;
+    await orchestrator.marketProjectionTask;
+    const confirmed=orchestrator.stateManager.state.market.revision;
+    assert.notEqual(confirmed,before);
+    assert.ok(updates.includes(confirmed));
+    assert.equal(writes,1);
+    assert.equal(receipts.length,1);
+    assert.deepEqual(await request("runtime.load",{kind:"market-publication-receipt",options:{...receipts[0],inputHash:"mismatch"}}),{confirmed:false});
+
+    // Same error on a second request, this time with no matching commit.
+    const count=updates.length;
+    await assert.rejects(orchestrator.runMarketCycle("manual-market"),{code:"STORAGE_OUTCOME_UNKNOWN"});
+    assert.equal(orchestrator.stateManager.state.market.revision,confirmed);
+    assert.equal(updates.length,count);
+    assert.equal(writes,2);
+    assert.equal(receipts.length,2);
+    const db=new Database(path,{readonly:true});
+    try{
+      assert.equal(db.prepare("SELECT count(*) n FROM quote_observations").get().n,1);
+      assert.equal(db.prepare("SELECT count(*) n FROM storage_commands WHERE request_id=?").get(receipts[0].requestId).n,1);
+      assert.equal(db.prepare("SELECT count(*) n FROM storage_commands WHERE request_id=?").get(receipts[1].requestId).n,0);
+    }finally{db.close();}
+    await assert.rejects(runtime.stop(),{code:"STORAGE_OUTCOME_UNKNOWN"});
+    const failure=runtime.app.locals.shutdownReport.unconfirmedPersistence.find(entry=>entry.phase==="persistence.pipeline");
+    assert.deepEqual(failure.failures,[{phase:"market-publication",...receipts[1],code:"STORAGE_OUTCOME_UNKNOWN",
+      verification:"unknown",durable:false,receiptLookupCode:null}]);
+    const restarted=makeRuntime();
+    try{
+      await restarted.start();
+      assert.equal(restarted.orchestrator.stateManager.state.market.revision,confirmed);
+      assert.equal(calls,2);
+    }finally{await restarted.stop();}
+  }finally{allowed.resolve();await runtime.stop().catch(()=>{});rmSync(directory,{recursive:true,force:true});}
+});
 
 test("market analysis reads a corpus larger than the command budget in SQL, preserving calculations and Awareness modes",async()=>{
   const dir=mkdtempSync(join(tmpdir(),"ogid-market-projection-"));

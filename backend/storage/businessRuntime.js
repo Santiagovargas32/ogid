@@ -209,6 +209,10 @@ export class BusinessRuntime {
     }).immediate();
   }
   load(kind,options={}){
+    if(kind==='market-publication-receipt'){
+      const row=this.db.prepare("SELECT 1 AS confirmed FROM storage_commands WHERE request_id=? AND operation='runtime.save' AND input_hash=?").get(options.requestId,options.inputHash);
+      return {confirmed:Boolean(row)};
+    }
     if(kind==='provider-quota')return (this.quotaSnapshot ||= new ProviderQuotaSnapshot(this.db)).load();
     if(kind==='advanced-job')return this.advancedSnapshots.status(options.jobId);
     if(kind==='dashboard-analysis')return this.advancedSnapshots.peek(options);

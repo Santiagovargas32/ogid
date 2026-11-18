@@ -53,7 +53,7 @@ export function storageOperationContract(operation,input={}) {
   if(pureRead)role=operation==='scenarios.prepare'?'analysis':'queries';
   if(technicalRead)role='queries';
   if(operation==='storage.status')role='writer';
-  if(operation==='runtime.load' && !['awareness','maintenance-inputs','dashboard-analysis','advanced-job'].includes(input.kind))role='writer';
+  if(operation==='runtime.load' && !['awareness','maintenance-inputs','dashboard-analysis','advanced-job','market-publication-receipt'].includes(input.kind))role='writer';
   if(operation==='agent.snapshot' || operation==='domain.call' && !technicalRead && (analysis.has(input.service) || input.service==='forecasts' && input.method==='evaluate' || input.service==='news' && input.method==='getProjection'))role='analysis';
   if(operation==='market.project.calculate')role='analysis';
   const domainControl=operation==='domain.call'&&(input.service==='sources'&&input.method==='stop'||input.service==='history'&&input.method==='cancel');
