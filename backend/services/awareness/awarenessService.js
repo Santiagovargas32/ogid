@@ -225,6 +225,7 @@ export class AwarenessService {
     forbiddenCooldownMs = DEFAULT_FORBIDDEN_COOLDOWN_MS
   } = {}) {
     this.sourceContinuations=new Map();
+    this.activePollTurns=new Map();
     this.mode = normalizeMode(mode);
     this.store = store;
     this.stateManager = stateManager;
@@ -427,7 +428,57 @@ export class AwarenessService {
     return response;
   }
 
-  async pollSource(source){
+  async pollSelected(source,trigger) {
+    const sourceId=source.sourceId, coordinator=this.store.pollAdmissions;
+    try {
+      let continuation=this.sourceContinuations.get(sourceId);
+      if (!continuation) {
+        const previous=this.store.sourceStatuses.get(sourceId) || {};
+        const now=this.now();
+        let job=await coordinator.reserve(source,previous,trigger,new Date(now).toISOString());
+        if (job.status==='superseded') {
+          const saved=await coordinator.notModified.hydrate(job,'skipped');
+          return {sourceId,changed:saved.changed,status:'skipped',reason:'newer-confirmed-poll'};
+        }
+        if (job.status==='complete') {
+          if (job.input.poll) return coordinator.notModified.hydrate(job,job.input.poll.outcome);
+          return {sourceId,changed:[],status:'skipped',reason:job.input.reason};
+        }
+        job=await coordinator.claim(job);
+        if (['source-fresh','poll-confirm'].includes(job.phase)) {
+          return await coordinator.drain(job,()=>this.admission?.assert('heavy'));
+        }
+        // After a process loss a request authorization has an uncertain network outcome.
+        // Honor its recorded cadence before authorizing another HTTP request.
+        const due=Date.parse(job.input.nextEligibleAt) || 0;
+        if (due>now) return {sourceId,changed:[],status:'pending',nextEligibleAt:job.input.nextEligibleAt};
+        continuation=new CycleContinuation(this.pollSteps(source,{job,coordinator}),this.admission);
+        this.sourceContinuations.set(sourceId,continuation);
+      }
+      const result=await continuation.run();
+      this.sourceContinuations.delete(sourceId);
+      return result;
+    } catch(error) {
+      if (error.code==='STORAGE_CONTINUATION_BUSY') return {sourceId,changed:[],status:'pending',reason:'claimed'};
+      if (!isResourcePressure(error)) {
+        this.sourceContinuations.delete(sourceId);
+        throw error;
+      }
+      this.resourceDeferred=true;
+      this.lastResourcePhase=this.sourceContinuations.get(sourceId)?.phase || 'admission';
+      this.lastResourceReason=error.details?.reason || error.code;
+      return {sourceId,changed:[],status:'deferred',code:error.code,phase:this.lastResourcePhase};
+    }
+  }
+
+  async pollSource(source,trigger='manual-awareness'){
+    if (this.store.pollAdmissions?.supports(source.sourceId)) {
+      if (!this.activePollTurns.has(source.sourceId)) {
+        const task=this.pollSelected(source,trigger).finally(()=>this.activePollTurns.delete(source.sourceId));
+        this.activePollTurns.set(source.sourceId,task);
+      }
+      return this.activePollTurns.get(source.sourceId);
+    }
     if(this.store.recoverNotModified){
       try{const recovered=await this.store.recoverNotModified(source.sourceId);if(recovered){const suspended=this.sourceContinuations.get(source.sourceId);if(suspended)await suspended.close();this.sourceContinuations.delete(source.sourceId);return recovered;}}
       catch(error){if(!isResourcePressure(error)&&error.code!=='STORAGE_CONTINUATION_BUSY')throw error;this.resourceDeferred=true;this.lastResourcePhase='source-fresh';this.lastResourceReason=error.details?.reason||error.code;return {sourceId:source.sourceId,changed:[],status:'deferred',code:error.code,phase:'source-fresh'};}
@@ -443,33 +494,77 @@ export class AwarenessService {
     }
   }
 
-  *pollSteps(source) {
-    const startedAt = this.now();
-    const previous = this.getAdminSnapshot().sourceStatus.find((status) => status.sourceId === source.sourceId) || {};
-    const admissionState = previous.admissionState || normalizeAwarenessAdmissionState(source);
-    if (admissionState === "blocked" || previous.runtimeBlocked === true) {
-      return { sourceId: source.sourceId, changed: [], status: "blocked", error: previous.blockedReason || "awareness-source-blocked" };
+  pollEligibility(source,job,previous) {
+    const sourceId=source.sourceId;
+    const state=previous.admissionState || normalizeAwarenessAdmissionState(source);
+    if (this.mode==='off' || previous.runtimeBlocked || !['active','shadow'].includes(state)) {
+      return {sourceId,changed:[],status:'skipped',reason:'source-ineligible'};
     }
-    if (!["active", "shadow"].includes(admissionState)) {
-      return { sourceId: source.sourceId, changed: [], status: admissionState, error: "awareness-source-not-scheduled" };
+    if (job.input.catalogHash!==stableHash(source) || job.input.basis.completedAt!==(previous.lastPoll?.completedAt || null)) {
+      return {sourceId,changed:[],status:'skipped',reason:'selection-superseded'};
     }
-    const nextEligibleAt = new Date(startedAt + jitteredInterval(this.effectiveInterval(source), this.random)).toISOString();
-    this.store.updateSourceStatus(source.sourceId, {
-      lastAttemptAt: new Date(startedAt).toISOString(),
-      nextEligibleAt,
-      status: "polling",
-      error: null,
-      attempts: Number(previous.attempts || 0) + 1
-    });
+    if (Date.parse(previous.nextEligibleAt)>this.now()) {
+      return {sourceId,changed:[],status:'pending',nextEligibleAt:previous.nextEligibleAt};
+    }
+    return null;
+  }
+
+  *pollSteps(source,turn=null) {
+    let startedAt = this.now();
+    let previous = this.store.sourceStatuses.get(source.sourceId) || {};
+    let nextEligibleAt;
+    if (!turn) {
+      const admissionState = previous.admissionState || normalizeAwarenessAdmissionState(source);
+      if (admissionState === "blocked" || previous.runtimeBlocked === true) {
+        return {sourceId:source.sourceId,changed:[],status:"blocked",error:previous.blockedReason || "awareness-source-blocked"};
+      }
+      if (!["active","shadow"].includes(admissionState)) {
+        return {sourceId:source.sourceId,changed:[],status:admissionState,error:"awareness-source-not-scheduled"};
+      }
+      nextEligibleAt = new Date(startedAt+jitteredInterval(this.effectiveInterval(source),this.random)).toISOString();
+      this.store.updateSourceStatus(source.sourceId,{
+        lastAttemptAt:new Date(startedAt).toISOString(),nextEligibleAt,status:"polling",error:null,
+        attempts:Number(previous.attempts || 0)+1
+      });
+    }
     const headers = {
       Accept: source.adapter === "ics" ? "text/calendar,text/plain;q=0.9,*/*;q=0.1" : source.adapter === "rss" ? "application/rss+xml,application/xml,text/xml;q=0.9,*/*;q=0.1" : source.adapter.endsWith("json") ? "application/json" : "text/html,application/xhtml+xml;q=0.9",
       "User-Agent": this.userAgent
     };
-    if (previous.etag) headers["If-None-Match"] = previous.etag;
-    if (previous.lastModified) headers["If-Modified-Since"] = previous.lastModified;
     let diagnostic = null;
     try {
-      const response = (yield {phase:'source-request',kind:'acquisition',work:()=>this.request(source,resolveSourceRequestUrl(source,startedAt),headers)});
+      let ineligible;
+      const response = yield {phase:'source-request',kind:'acquisition',work:async () => {
+        if (turn) {
+          previous=this.store.sourceStatuses.get(source.sourceId) || {};
+          ineligible=this.pollEligibility(source,turn.job,previous);
+          if (ineligible) {
+            if (ineligible.status==='skipped') await turn.coordinator.skip(turn.job,ineligible.reason,previous.nextEligibleAt || null);
+            return null;
+          }
+          startedAt=this.now();
+          nextEligibleAt=new Date(startedAt+jitteredInterval(this.effectiveInterval(source),this.random)).toISOString();
+          turn.job=await turn.coordinator.begin(turn.job,new Date(startedAt).toISOString(),nextEligibleAt,previous);
+          // The writer round-trip can span a pressure or source-state transition.
+          const current=this.store.sourceStatuses.get(source.sourceId) || {};
+          ineligible=this.pollEligibility(source,turn.job,current);
+          if (ineligible || current.etag!==previous.etag || current.lastModified!==previous.lastModified) {
+            turn.job=await turn.coordinator.deferUnsent(turn.job);
+            if (!ineligible) ineligible={sourceId:source.sourceId,changed:[],status:'pending',reason:'validators-changed'};
+            if (ineligible.status==='skipped') await turn.coordinator.skip(turn.job,ineligible.reason,current.nextEligibleAt || null);
+            return null;
+          }
+          try { this.admission?.assert('acquisition'); }
+          catch (error) {
+            turn.job=await turn.coordinator.deferUnsent(turn.job);
+            throw error;
+          }
+        }
+        if (previous.etag) headers['If-None-Match']=previous.etag;
+        if (previous.lastModified) headers['If-Modified-Since']=previous.lastModified;
+        return this.request(source,resolveSourceRequestUrl(source,startedAt),headers);
+      }};
+      if (ineligible) return ineligible;
       const latencyMs = Math.max(0, this.now() - startedAt);
       diagnostic = responseDiagnostic(response);
       if (response.status === 304) {
@@ -494,6 +589,10 @@ export class AwarenessService {
           successes: Number(previous.successes || 0) + 1,
           nextEligibleAt
         };
+        if (turn) {
+          turn.job=yield {phase:'poll-response',kind:'commit',work:()=>turn.coordinator.stage(turn.job,poll,patch)};
+          return yield {phase:'source-fresh',work:()=>turn.coordinator.drain(turn.job,()=>this.admission?.assert('heavy'))};
+        }
         const fresh = (yield {phase:'source-fresh',work:()=>this.store.commitNotModified
           ? this.store.commitNotModified({sourceId:source.sourceId,poll,patch,validators:{etag:previous.etag||null,lastModified:previous.lastModified||null}})
           : this.store.setSourceStale(source.sourceId,false)});
@@ -521,10 +620,11 @@ export class AwarenessService {
       if (!events.length && Number(previous.eventCount || 0) > 0 && !emptyResultAllowed) {
         throw new Error("awareness-parser-empty-after-data");
       }
-      const reconciliation = (yield {phase:'source-persist',work:()=>this.store.reconcile(events, {sourceId:source.sourceId})});
+      const reconciliation = turn ? {deduplicated:0,rejected:0} :
+        (yield {phase:'source-persist',work:()=>this.store.reconcile(events, {sourceId:source.sourceId})});
       const timing = sourceEventTiming(events, this.now());
       const outcome = events.length ? "ok" : emptyResultAllowed ? "empty-valid" : "empty";
-      this.store.recordPoll(source.sourceId, {
+      const poll={
         attemptedAt: new Date(startedAt).toISOString(),
         completedAt: observedAt,
         outcome,
@@ -535,7 +635,7 @@ export class AwarenessService {
         rejected: reconciliation.rejected,
         nextEligibleAt,
         diagnostic
-      }, {
+      },patch={
         status: events.length || emptyResultAllowed ? "healthy" : "degraded",
         lastSuccessAt: observedAt,
         httpStatus: response.status,
@@ -549,9 +649,17 @@ export class AwarenessService {
         consecutiveForbidden: 0,
         successes: events.length || emptyResultAllowed ? Number(previous.successes || 0) + 1 : Number(previous.successes || 0),
         nextEligibleAt
-      });
+      };
+      if (turn) {
+        turn.job=yield {phase:'poll-response',kind:'commit',work:()=>turn.coordinator.stage(turn.job,poll,patch,events)};
+        return yield {phase:'source-persist',work:()=>turn.coordinator.drain(turn.job,()=>this.admission?.assert('heavy'))};
+      }
+      this.store.recordPoll(source.sourceId,poll,patch);
       return { sourceId: source.sourceId, ...reconciliation, status: outcome };
     } catch (error) {
+      if (turn && this.shutdownController.signal.aborted) {
+        throw Object.assign(Error('Poll interrumpido durante el cierre.'),{code:'STORAGE_CONTINUATION_INTERRUPTED',cause:error});
+      }
       // A failed store is not evidence that an upstream source became unhealthy.
       if(/^(STORAGE_|SQLITE_|CONTINUATION_)/.test(error.code || ""))throw error;
       const failures = Number(previous.consecutiveErrors || 0) + 1;
@@ -564,7 +672,7 @@ export class AwarenessService {
       const cooldownMs = Math.max(standardCooldownMs, forbiddenCooldownMs, Number(error.retryAfterMs || 0));
       const completedAt = new Date(this.now()).toISOString();
       const failureNextEligibleAt = blocked ? null : new Date(this.now() + cooldownMs).toISOString();
-      this.store.recordPoll(source.sourceId, {
+      const poll={
         attemptedAt: new Date(startedAt).toISOString(),
         completedAt,
         outcome: "error",
@@ -573,7 +681,7 @@ export class AwarenessService {
         error: String(error.message || "awareness-source-failed").slice(0, 160),
         nextEligibleAt: failureNextEligibleAt,
         diagnostic: error.diagnostic || diagnostic
-      }, {
+      },patch={
         status: blocked ? "blocked" : failures >= 3 ? "unhealthy" : "degraded",
         admissionState: blocked ? "blocked" : previous.admissionState || normalizeAwarenessAdmissionState(source),
         enabled: blocked ? false : previous.enabled !== false,
@@ -588,7 +696,7 @@ export class AwarenessService {
         consecutiveErrors: failures,
         consecutiveForbidden: forbiddenFailures,
         nextEligibleAt: failureNextEligibleAt
-      });
+      };
       log.warn("awareness_source_failed", {
         sourceId: source.sourceId,
         message: error.message,
@@ -596,6 +704,12 @@ export class AwarenessService {
         requestId: (error.diagnostic || diagnostic)?.requestId || null,
         blocked
       });
+      if (turn) {
+        turn.job=yield {phase:'poll-response',kind:'commit',work:()=>turn.coordinator.stage(turn.job,poll,patch)};
+        const result=yield {phase:'source-stale',work:()=>turn.coordinator.drain(turn.job,()=>this.admission?.assert('heavy'))};
+        return {...result,status:blocked?'blocked':'error',error:error.message};
+      }
+      this.store.recordPoll(source.sourceId,poll,patch);
       const stale = (yield {phase:'source-stale',work:()=>this.store.setSourceStale(source.sourceId,true)});
       return { sourceId: source.sourceId, changed: stale.changed || [], status: blocked ? "blocked" : "error", error: error.message };
     }
@@ -604,14 +718,29 @@ export class AwarenessService {
   async runCycle(trigger = "scheduled-awareness") {
     if (this.mode === "off") return { status: "disabled", trigger, snapshot: this.syncProjection() };
     if (this.inFlight) return this.inFlight;
-    try{this.admission?.assert('acquisition');}catch(error){if(!isResourcePressure(error))throw error;this.resourceDeferred=true;this.lastResourcePhase='admission';this.lastResourceReason=error.details?.reason;log.info('awareness_cycle_deferred',{code:error.code,phase:'admission',reason:error.details?.reason,trigger});return {status:'deferred',code:error.code,trigger,snapshot:this.syncProjection()};}
-    this.resourceDeferred=false;
     this.inFlight = (async () => {
-      const durablePending=await this.store.pendingNotModified?.()||[];
+      try {
+        this.admission?.assert('acquisition');
+      } catch(error) {
+        if (!isResourcePressure(error)) throw error;
+        this.resourceDeferred=true;
+        this.lastResourcePhase='admission';
+        this.lastResourceReason=error.details?.reason;
+        const coordinator=this.store.pollAdmissions;
+        if (coordinator) {
+          for (const source of this.eligibleSources().filter(item=>coordinator.supports(item.sourceId))) {
+            await coordinator.reserve(source,this.store.sourceStatuses.get(source.sourceId) || {},trigger,new Date(this.now()).toISOString());
+          }
+        }
+        log.info('awareness_cycle_deferred',{code:error.code,phase:'admission',reason:error.details?.reason,trigger});
+        return {status:'deferred',code:error.code,trigger,snapshot:this.syncProjection()};
+      }
+      this.resourceDeferred=false;
+      const durablePending=await this.store.pendingPollTurns?.()||[];
       const pendingIds=new Set(durablePending.map(j=>j.scope.slice('awareness:'.length)));
       const sources = [...new Map([...this.sources.filter(source=>this.sourceContinuations.has(source.sourceId)||pendingIds.has(source.sourceId)),...this.eligibleSources()].map(source=>[source.sourceId,source])).values()];
       const settled = await Promise.allSettled(sources.map((source) => this.globalSemaphore.use(() =>
-        this.hostSemaphore(source.hostname).use(() => this.pollSource(source),this.shutdownController.signal),this.shutdownController.signal)));
+        this.hostSemaphore(source.hostname).use(() => this.pollSource(source,trigger),this.shutdownController.signal),this.shutdownController.signal)));
       const failed=settled.find(result=>result.status==="rejected");if(failed)throw failed.reason;
       const results=settled.map(result=>result.value);
       const changed = results.flatMap((result) => result.changed || []);
@@ -681,10 +810,10 @@ export class AwarenessService {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
     this.shutdownController.abort(new DOMException('Awareness shutdown','AbortError'));
-    await Promise.allSettled([this.inFlight]);
+    await Promise.allSettled([this.inFlight,...this.activePollTurns.values()]);
     this.deferredAtShutdown=[...this.sourceContinuations].map(([sourceId,continuation])=>({sourceId,phase:continuation.phase,durable:false}));
     let durable=[];
-    try{durable=await this.store.pendingNotModified?.()||[];}
+    try{durable=await this.store.pendingPollTurns?.()||[];}
     catch(error){
       // A dead writer cannot verify its ledger. Preserve the primary failure
       // and report uncertainty explicitly instead of claiming zero pending work.

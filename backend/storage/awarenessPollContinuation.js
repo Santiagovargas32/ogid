@@ -33,7 +33,7 @@ export class NotModifiedCoordinator {
   constructor(manager,store){Object.assign(this,{manager,store,owner:randomUUID()});this.active=new Map();}
   async pending(){
     const result=[];let after='';
-    for(;;){const page=await this.manager.request('continuation.pending',{after});result.push(...page.filter(j=>j.phase==='source-fresh'&&j.scope.startsWith('awareness:')));if(page.length<64)return result;after=page.at(-1).jobId;}
+    for(;;){const page=await this.manager.request('continuation.pending',{after});result.push(...page.filter(j=>j.scope.startsWith('awareness:')));if(page.length<64)return result;after=page.at(-1).jobId;}
   }
   async recover(sourceId){
     const job=await this.manager.request('continuation.scope',{scope:`awareness:${sourceId}`});
@@ -58,13 +58,23 @@ export class NotModifiedCoordinator {
       await this.manager.request('continuation.renew',{jobId,owner:job.owner,fence:job.fence});
       job=await this.manager.request('continuation.notModifiedPage',{jobId,owner:job.owner,fence:job.fence,cursor:job.cursor});
     }
+    return this.hydrate(job,'not-modified');
+  }
+  async hydrate(job,status){
     // Hydrate only after confirmed publication. The writer's result is canonical.
     const saved=await this.manager.request('runtime.load',{kind:'awareness'});
-    const changed=(saved.events||[]).filter(e=>e.source?.sourceId===job.input.sourceId&&stableHash(this.store.events.get(e.eventId)||null)!==stableHash(e));
-    this.store.events=new Map((saved.events||[]).map(e=>[e.eventId,e]));
-    this.store.sourceStatuses=new Map((saved.sourceStatus||[]).map(s=>[s.sourceId,s]));
-    this.store.revision=saved.revision;
-    for(const {sourceId,poll}of saved.polls||[]){if(!this.store.pollHistories.has(sourceId))this.store.pollHistories.set(sourceId,[]);const history=this.store.pollHistories.get(sourceId);if(!history.some(p=>stableHash(p)===stableHash(poll)))history.push(poll);}
-    return {sourceId:job.input.sourceId,changed,status:'not-modified',durable:true,jobId};
+    const sourceId=job.input.sourceId;
+    const changed=(saved.events||[]).filter(event=>{
+      const prior=this.store.events.get(event.eventId);
+      return event.source?.sourceId===sourceId && (!prior || event.revision>=prior.revision && stableHash(prior)!==stableHash(event));
+    });
+    for (const event of changed) this.store.events.set(event.eventId,event);
+    const statusRow=(saved.sourceStatus||[]).find(row=>row.sourceId===sourceId);
+    if (statusRow) this.store.sourceStatuses.set(sourceId,statusRow);
+    this.store.revision=Math.max(this.store.revision,saved.revision);
+    this.store.prune();
+    const polls=(saved.polls||[]).filter(row=>row.sourceId===sourceId).map(row=>row.poll);
+    this.store.pollHistories.set(sourceId,polls);
+    return {sourceId:job.input.sourceId,changed,status,durable:true,jobId:job.jobId};
   }
 }

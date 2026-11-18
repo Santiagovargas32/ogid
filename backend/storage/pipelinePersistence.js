@@ -1,3 +1,4 @@
+import {PollAdmissionCoordinator} from './awarenessAdmission.js';
 import {FinancialCoordinator} from './financialContinuation.js';
 import { buildPersistenceMetadata,filterPersistedQuotes } from "../services/market/marketHistoryStore.js";
 import { MARKET_PROVIDER_SCHEMA_VERSION } from "../services/market/marketSnapshotMigration.js";
@@ -89,9 +90,10 @@ export class PipelinePersistence {
     awarenessStore.setSourceStale=(...args)=>reconcile("setSourceStale",args);
     awarenessStore.financialContinuations = new FinancialCoordinator(this.manager, awarenessStore);
     this.notModified=new NotModifiedCoordinator(this.manager,awarenessStore);
+    awarenessStore.pollAdmissions = new PollAdmissionCoordinator(this.manager,this.notModified,() => this.flush());
     awarenessStore.commitNotModified=async input=>{await this.flush();return this.notModified.commit(input);};
     awarenessStore.recoverNotModified=async sourceId=>{await this.flush();return this.notModified.recover(sourceId);};
-    awarenessStore.pendingNotModified=()=>this.notModified.pending();
+    awarenessStore.pendingPollTurns=()=>this.notModified.pending();
     awarenessStore.appendAudit=event=>this.save("awareness-audit",{recordedAt:new Date().toISOString(),event});
     awarenessStore.appendPollAudit=(sourceId,poll)=>this.save("awareness-poll",{recordedAt:poll.completedAt,sourceId,poll});
     awarenessStore.persist();

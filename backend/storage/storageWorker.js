@@ -1,3 +1,4 @@
+import {reservePoll,stagePoll,commitPollPage} from './awarenessAdmission.js';
 import {admitFinancial,commitFinancialPage} from './financialContinuation.js';
 import {CandleWriteJobs} from './candleWriteJobs.js';
 import {CycleContinuations} from './cycleContinuations.js';
@@ -70,8 +71,11 @@ function pipelineRecord(input) {
 function execute(operation, input, requestId, commandId) {
   if(operation.startsWith('continuation.')){
     const method=operation.slice('continuation.'.length);
-    if(!['admit','claim','renew','advance','release','get','pending','scope','notModifiedPage','financialAdmit','financialPage'].includes(method))fail('STORAGE_UNKNOWN_OPERATION');
+    if(!['admit','claim','renew','advance','release','get','pending','scope','notModifiedPage','financialAdmit','financialPage','pollReserve','pollStage','pollPage'].includes(method))fail('STORAGE_UNKNOWN_OPERATION');
     if(workerData.analysisWorker&&!['get','pending','scope'].includes(method))fail('STORAGE_READ_ONLY');
+    if(method==='pollReserve')return reservePoll(database,input);
+    if(method==='pollStage')return stagePoll(database,input);
+    if(method==='pollPage')return commitPollPage(database,input);
     if(method==='financialAdmit')return admitFinancial(database,input);
     if(method==='financialPage')return commitFinancialPage(database,input);
     if(method==='notModifiedPage')return commitNotModifiedPage(database,input);

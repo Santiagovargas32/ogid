@@ -126,7 +126,7 @@ function timestampFor(event = {}) {
   return value ? Date.parse(value) || 0 : 0;
 }
 
-function hasValidCoordinates(location = null) {
+export function hasValidCoordinates(location = null) {
   if (location?.lat === null || location?.lat === undefined || location?.lat === "") return false;
   if (location?.lng === null || location?.lng === undefined || location?.lng === "") return false;
   const lat = Number(location.lat);
