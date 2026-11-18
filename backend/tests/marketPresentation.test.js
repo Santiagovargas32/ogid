@@ -61,6 +61,8 @@ test('market presentation rolls back with its cursor, fences superseded work and
     assert.equal(finishMarketPresentation(runtime,{auth:auth(c),projection:result(c)}).job.replayed,true);
     assert.equal(history(),1);
     assert.deepEqual(readMarketPresentation(runtime).projection,result(c));
+    runtime.save('market-presentation-result-v1',{jobId:c.jobId,projection:{...result(c),insights:['different result']}});
+    assert.throws(()=>readMarketPresentation(runtime),{code:'CONTINUATION_EFFECT_MISMATCH'});
     writeMeta(db,'news.meta',{revision:5});
     assert.equal(readMarketPresentation(runtime).projection,null);
   }finally{db.close();}

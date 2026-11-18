@@ -1029,33 +1029,39 @@ class RefreshOrchestratorService {
       && input.corpusOptions.awarenessMode===(this.awarenessService?.mode || this.config.awareness?.mode || 'off');
   }
 
-  publishMarketProjection(projection){
-    const snapshot=this.stateManager.updateIntel({...projection,watchlistCountries:this.config.watchlistCountries});
+  publishMarketProjection(projection,jobId=null){
+    if(jobId && this.marketPresentationDelivery?.jobId===jobId && this.marketPresentationDelivery.sent)return;
+    const alreadyApplied=jobId && this.marketPresentationDelivery?.jobId===jobId;
+    const snapshot=alreadyApplied?this.stateManager.state:this.stateManager.updateIntel({...projection,watchlistCountries:this.config.watchlistCountries});
+    if(jobId)this.marketPresentationDelivery={jobId,sent:false};
     this.socketServer.broadcast("update",{meta:snapshot.meta,insights:snapshot.insights,predictions:snapshot.predictions,impact:snapshot.impact,impactHistory:snapshot.impactHistory},snapshot.meta);
+    if(jobId)this.marketPresentationDelivery.sent=true;
   }
 
   async applyConfirmedProjection(input){
     const coordinator=this.marketHistoryStore.presentation;
     const job=await coordinator.claim(input.presentationJobId);
-    if(!job){
-      const pending=await coordinator.pending();
-      if(pending?.jobId===input.presentationJobId)throw Object.assign(Error('Presentación reclamada'),{code:'STORAGE_CONTINUATION_BUSY'});
-      return;
+    let projection=null;
+    if(job){
+      const {basis,watermark}=job.input;
+      let reason='context-changed';
+      if(this.presentationMatches(input,basis.news)){
+        this.admission?.assert('heavy');
+        projection=await this.config.market.analyzeInWorker({...input,corpusOptions:{...input.corpusOptions,revisionWatermark:watermark}});
+        if(this.presentationMatches(input,basis.news))reason=null;
+      }
+      const closed=await coordinator.finish(job,projection,reason);
+      if(closed.job.phase!=='published')return;
     }
-    const {basis,watermark}=job.input;
-    let projection=null,reason='context-changed';
-    if(this.presentationMatches(input,basis.news)){
-      this.admission?.assert('heavy');
-      projection=await this.config.market.analyzeInWorker({...input,corpusOptions:{...input.corpusOptions,revisionWatermark:watermark}});
-      if(this.presentationMatches(input,basis.news))reason=null;
-    }
-    const closed=await coordinator.finish(job,projection,reason);
-    if(closed.job.phase!=='published')return;
     if(this.marketFrameCommit)await this.marketFrameCommit;
-    const latest=await coordinator.read(false);
-    if(latest?.job.jobId===job.jobId && latest.current && this.confirmedMarketJobId===job.jobId
-        && this.marketProjectionPending===input && this.presentationMatches(input,basis.news)){
-      this.publishMarketProjection(projection);
+    // Pressure can interrupt the final read after the writer has already
+    // closed the job. A later claim then returns null; recover the stored result.
+    const latest=await coordinator.read(!job);
+    if(latest?.job.jobId!==input.presentationJobId)return;
+    if(latest.job.status==='pending')throw Object.assign(Error('Presentación reclamada'),{code:'STORAGE_CONTINUATION_BUSY'});
+    if(latest.job.phase==='published' && latest.current && this.confirmedMarketJobId===input.presentationJobId
+        && this.marketProjectionPending===input && this.presentationMatches(input,latest.job.input.basis.news)){
+      this.publishMarketProjection(job?projection:latest.projection,input.presentationJobId);
     }
   }
 
@@ -1082,7 +1088,7 @@ class RefreshOrchestratorService {
       this.marketPresentationError=null;
       await this.scheduleMarketProjection(input);
     }else if(saved.projection && saved.current && this.presentationMatches(input,job.input.basis.news)){
-      this.publishMarketProjection(saved.projection);
+      this.publishMarketProjection(saved.projection,job.jobId);
     }
     if(!this.marketProjectionPending && !this.marketPresentationError)this.recoveringMarketPresentation=false;
   }

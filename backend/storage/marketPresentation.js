@@ -98,7 +98,11 @@ export function readMarketPresentation(runtime,{withFrame=true}={}){
     const frame=withFrame?runtime.load(MARKET_FRAME):null;
     if(withFrame && (!frame || frame.jobId!==jobId || stableHash(frame)!==job.input.frameHash))mismatch();
     const current=stableHash(revisions(runtime.db,job.input.newsMode))===stableHash(job.input.basis);
-    const result=withFrame && current && job.phase==='published'?runtime.load(resultKind):null;
+    let result=null;
+    if(withFrame && current && job.phase==='published'){
+      result=runtime.load(resultKind);
+      if(result?.jobId!==jobId || !result.projection || stableHash(result.projection)!==job.input.resultHash)mismatch();
+    }
     return {job,current,...(withFrame?{frame,projection:result?.jobId===job.jobId?result.projection:null}:{})};
   }).deferred();
 }

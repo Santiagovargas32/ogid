@@ -5,7 +5,7 @@ import {createAppServer} from '../../server.js';
 import {pressureError} from '../../storage/resourceAdmission.js';
 
 const [directory,attempt,asOf]=process.argv.slice(2);
-let network=0,calculations=0,confirmations=0,projectionBroadcasts=0;
+let network=0,calculations=0,confirmations=0,projectionBroadcasts=0,postCommitDeferrals=0;
 const runtime=createAppServer({
   port:0,host:'127.0.0.1',disableBackgroundRefresh:true,
   storage:{enabled:true,businessEnabled:true,databasePath:join(directory,'fixture.sqlite')},
@@ -30,6 +30,11 @@ runtime.config.market.analyzeInWorker=async input=>{
 };
 const request=storageManager.request.bind(storageManager);
 storageManager.request=async(op,...args)=>{
+  if(attempt==='recover' && confirmations && !postCommitDeferrals && op==='runtime.load' &&
+      args[0]?.kind==='market-presentation-current' && args[0].options?.withFrame===false){
+    postCommitDeferrals++;
+    throw pressureError({state:'degraded',reason:'fixture-after-confirmation'});
+  }
   if(op==='continuation.marketPresent'){
     const db=new Database(join(directory,'fixture.sqlite'),{readonly:true});
     try{
@@ -55,6 +60,14 @@ try{
     await orchestrator.runMarketCycle('manual-market',{now:asOf});
     await orchestrator.marketProjectionTask;
   }
+  if(attempt==='recover'){
+    // Timers are disabled to isolate this recovery. Invoke the same pending
+    // scheduler entry that resource relief selects in the running application.
+    assert.equal(postCommitDeferrals,1);
+    assert.ok(orchestrator.resourceDeferred.has('projection'));
+    assert.equal(projectionBroadcasts,0);
+    await orchestrator.scheduleMarketProjection(orchestrator.marketProjectionPending);
+  }
   const saved=await orchestrator.marketHistoryStore.presentation.read();
   assert.equal(saved.frame.market.quotes.GD.price,101);
   assert.equal(saved.frame.analysis.asOf,asOf);
@@ -69,6 +82,10 @@ try{
     assert.equal(saved.projection.predictions.updatedAt,asOf);
     assert.equal(orchestrator.stateManager.state.impact.updatedAt,asOf);
     assert.equal(network,0);assert.equal(projectionBroadcasts,1);
+    const points=orchestrator.stateManager.state.impactHistory.length;
+    await orchestrator.recoverMarketPresentation();
+    assert.equal(orchestrator.stateManager.state.impactHistory.length,points);
+    assert.equal(projectionBroadcasts,1);
   }
   assert.equal(calculations,attempt==='reuse'?0:1);
   assert.equal(confirmations,attempt==='recover'?1:0);
