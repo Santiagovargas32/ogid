@@ -372,8 +372,7 @@ export class AwarenessStore {
     }
   }
 
-  getSnapshot({ mode = "off", filters = {}, publicView = true } = {}) {
-    const nowMs = this.now();
+  getSnapshot({ mode = "off", filters = {}, publicView = true, nowMs = this.now() } = {}) {
     const limit = Math.min(500, Math.max(1, Number(filters.limit || 100)));
     const publicSourceIsActive = (event) => {
       const status = this.sourceStatuses.get(event.source?.sourceId);

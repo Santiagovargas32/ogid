@@ -225,14 +225,14 @@ function buildCouplingSeries({ impactHistory = [], tickers = [], predictionScore
   }));
 }
 
-export function computeMarketImpact({ articles = [], countries = {}, marketQuotes = {}, tickers = [], instruments = [], countryFilter = [], windowMin = 120, inputMode = "live", impactHistory = [], predictionScores = {} }) {
+export function computeMarketImpact({ articles = [], countries = {}, marketQuotes = {}, tickers = [], instruments = [], countryFilter = [], windowMin = 120, inputMode = "live", impactHistory = [], predictionScores = {}, asOf = new Date().toISOString() }) {
   const normalizedTickers = tickers.map((ticker) => String(ticker).toUpperCase());
   const instrumentsByTicker = new Map(normalizedTickers.map((ticker) => {
     const instrument = instruments.find((item) => String(item.canonicalSymbol || item.symbol || "").toUpperCase() === ticker) || marketQuotes[ticker] || { canonicalSymbol: ticker };
     return [ticker, instrument];
   }));
   const countryFilterSet = new Set(countryFilter);
-  const minTimestamp = Date.now() - windowMin * 60_000;
+  const minTimestamp = Date.parse(asOf) - windowMin * 60_000;
   const accumulators = Object.fromEntries(
     normalizedTickers.map((ticker) => [
       ticker,
@@ -318,7 +318,7 @@ export function computeMarketImpact({ articles = [], countries = {}, marketQuote
   return {
     methodVersion: "news-price-coupling-v1",
     methodLabel: "Heuristic temporal association; correlation, not causality.",
-    updatedAt: new Date().toISOString(),
+    updatedAt: asOf,
     windowMin,
     inputMode,
     items: orderedItems,

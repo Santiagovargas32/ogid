@@ -974,6 +974,7 @@ export function createAppServer(overrides = {}) {
       stateManager.setMarketTickers(hydratedWatchlist.selectedSymbols);
       await startupWork(()=>dailyCandleStore.hydrate());
       if(business) await startupWork(()=>orchestrator.runNewsCycle("startup-storage",{storageOnly:true,skipSecondary:true}));
+      if(business) await startupWork(()=>orchestrator.recoverMarketPresentation());
       if(business&&overrides.reconcileMarketJobs){
         const reconciled=await startupStep(()=>storageManager.request('market.project.reconcile',{jobIds:overrides.reconcileMarketJobs}));
         log.info('market_projection_reconciliation',{jobs:reconciled});

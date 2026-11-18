@@ -231,7 +231,8 @@ export function generatePredictions({
   tickers = [],
   instruments = [],
   inputMode = "live",
-  maxNewsPerSector = 5
+  maxNewsPerSector = 5,
+  asOf = new Date().toISOString()
 }) {
   const normalizedArticles = [...articles].sort(
     (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
@@ -250,7 +251,7 @@ export function generatePredictions({
   const tickerPredictions = buildTickerPredictions(sectorPredictions, marketQuotes);
 
   return {
-    updatedAt: new Date().toISOString(),
+    updatedAt: asOf,
     inputMode,
     dataMode: "derived",
     sectors: sectorPredictions,

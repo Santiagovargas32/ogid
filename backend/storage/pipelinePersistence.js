@@ -1,5 +1,6 @@
 import {PollAdmissionCoordinator} from './awarenessAdmission.js';
 import {FinancialCoordinator} from './financialContinuation.js';
+import {MarketPresentationCoordinator} from './marketPresentation.js';
 import { buildPersistenceMetadata,filterPersistedQuotes } from "../services/market/marketHistoryStore.js";
 import { MARKET_PROVIDER_SCHEMA_VERSION } from "../services/market/marketSnapshotMigration.js";
 import { createLogger } from "../utils/logger.js";
@@ -10,7 +11,7 @@ import {setTimeout as wait} from 'node:timers/promises';
 import {ScopedWork} from './scopedWork.js';
 import {NotModifiedCoordinator} from './awarenessPollContinuation.js';
 const log=createLogger("backend/storage/pipelinePersistence");
-const appendOnlyKinds=new Set(["awareness-audit","awareness-poll","quotes","market-publication"]);
+const appendOnlyKinds=new Set(["awareness-audit","awareness-poll","quotes","market-publication","market-presentation"]);
 
 export class PipelinePersistence {
   constructor(manager){this.manager=manager;this.pending=new Set();this.pendingKeys=new Map();this.outcomes=new Map();this.sequence=0;this.deferredStages=new Map();this.writes=new ScopedWork();}
@@ -39,7 +40,7 @@ export class PipelinePersistence {
       for(let attempt=0;;attempt++){
         try{return await this.manager.request("runtime.save",input,{requestId});}
         catch(error){
-          if(kind==='market-publication' && error.code==='STORAGE_OUTCOME_UNKNOWN'){
+          if(['market-publication','market-presentation'].includes(kind) && error.code==='STORAGE_OUTCOME_UNKNOWN'){
             // The indexed receipt covers the exact quote batch and snapshot.
             // Missing/unavailable evidence leaves the original outcome unknown.
             const options={requestId,inputHash:stableHash(['runtime.save',input])};
@@ -126,11 +127,17 @@ export class PipelinePersistence {
       await this.save('market',snapshot);return savedMarket(snapshot,decision);
     };
     marketHistoryStore.appendHistory=(_previous,marketState)=>this.save("quotes",marketState);
+    marketHistoryStore.presentation=new MarketPresentationCoordinator(this.manager);
+    // Historical time series stay in their existing repository. The projection
+    // consumes the quote frame and its separately bounded impact history.
+    const presentationFrame=({timeseries,...market},selection)=>({...selection,market});
+    marketHistoryStore.persistPresentation=(market,selection)=>this.save('market-presentation',presentationFrame(market,selection));
     marketHistoryStore.persistEligibleState=async(_previous,marketState,decision,options={})=>{
       const snapshot=marketSnapshot(marketState,decision,options);
       // One publication, one receipt and one FULL commit on the existing writer.
       // Keep every accepted history item; never coalesce separate publications.
-      await this.save('market-publication',{quotes:marketState.quotes || {},snapshot});
+      await this.save('market-publication',{quotes:marketState.quotes || {},snapshot,
+        ...(options.presentation?{presentation:presentationFrame(marketState,options.presentation)}:{})});
       return savedMarket(snapshot,decision);
     };
   }

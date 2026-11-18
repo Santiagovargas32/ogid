@@ -38,6 +38,7 @@ import { SqlRssArticles } from "./rssArticles.js";
 import { checkOperation, committedOperationItems,yieldOperationResources } from "../services/shared/operationContext.js";
 import {SituationStore} from './situations.js';
 import {MarketProjectionRepository} from './marketProjections.js';
+import {captureMarketPresentation,readMarketPresentation,visibleSourceAdmission} from './marketPresentation.js';
 import {ProviderQuotaSnapshot} from './providerQuotaSnapshot.js';
 
 const METHODS={market:["analyze"],awareness:["parseSource","getSnapshot","reconcile","setSourceStale"],store:["view","getRow"],news:["ingest","enrichEditorialPage","sourceAssessments","sourceAssessment","sourceCoverage","sourceDossiers","sourceDossier","sourceDossierDrafts","sourceDossierDraft","comparisons","comparison","comparisonClaim","comparisonChanges","importSourceAssessments","proposeSourceDossier","reviewSourceDossier","reviewComparison","recordContext","search","getItem","getHistory","coverage","getProjection","getFeed","getLiveFeed"],events:["ingest","search","replayAwareness"],alerts:["acknowledge","delta","getChange","acknowledgeChanges","recoverCheckpoint"],sources:["status","run","holdings","stop"],history:["create","get","run","coverage","coverageState","coverageStates","ensureCatchup","repairPlan","cancel"],imports:["datasets","datasetsPage","import"],technical:["get"],indicators:["calculate"],coupling:["calculate"],scenarios:["refresh","list","remove"],forecasts:["evaluate","record"],portfolio:["getContext"],rss:["getSnapshot","refresh"],conditions:["getSnapshot"],map:["getDashboardMapAssets","getLayerBundle","getConfig"],advanced:["getSnapshot"],signals:["recordSnapshot","recordMeasurement","getAnomalies"],candles:["query","append","upsert","latest","has","hasCandle","hydrate","coverageSummary"]};
@@ -176,6 +177,11 @@ export class BusinessRuntime {
       if(kind==='market-publication'){
         this.save('quotes',{quotes:payload.quotes});
         this.save('market',payload.snapshot);
+        if(payload.presentation)captureMarketPresentation(this,payload.presentation);
+        return {persisted:true};
+      }
+      if(kind==='market-presentation'){
+        captureMarketPresentation(this,payload);
         return {persisted:true};
       }
       this.rssArticles.recordReferences(kind,payload);
@@ -209,6 +215,7 @@ export class BusinessRuntime {
     }).immediate();
   }
   load(kind,options={}){
+    if(kind==='market-presentation-current')return readMarketPresentation(this,options);
     if(kind==='market-publication-receipt'){
       const row=this.db.prepare("SELECT 1 AS confirmed FROM storage_commands WHERE request_id=? AND operation='runtime.save' AND input_hash=?").get(options.requestId,options.inputHash);
       return {confirmed:Boolean(row)};
@@ -244,16 +251,20 @@ export class BusinessRuntime {
     // The corpus stays in the reader worker. Providers commit before analysis;
     // SqlNewsCorpus applies the same ranking, filters and transaction as news projections.
     const options = {awarenessMode:this.newsCorpus.config.awarenessMode || "off",...input.corpusOptions};
-    const corpus = await this.newsCorpus.readAnalytical({...options,windowHours:options.windowHours || this.newsCorpus.config.candidateWindowHours || 36});
-    const awareness = options.awarenessMode === "visible"
-      ? this.services.awareness.getSnapshot({mode:"visible",publicView:true}) : null;
+    const asOf=input.asOf ?? options.asOf ?? new Date().toISOString();
+    const corpus = await this.newsCorpus.readAnalytical({...options,asOf,windowHours:options.windowHours || this.newsCorpus.config.candidateWindowHours || 36});
+    const visible = options.awarenessMode === "visible" ? this.db.transaction(()=>({
+      snapshot:this.services.awareness.getSnapshot({mode:"visible",publicView:true,nowMs:Date.parse(asOf)}),
+      admission:visibleSourceAdmission(this.db)
+    })).deferred() : null;
+    const awareness=visible?.snapshot;
     const seen = new Set();
     const articles = [...corpus.marketSignalCorpus, ...awarenessMarketArticles(awareness || {})].filter(article => {
       const key = String(article?.id || article?.url || article?.title || "").trim().toLowerCase();
       if (!key || seen.has(key)) return false;
       seen.add(key); return true;
     });
-    return {...calculateMarketProjection({...input,articles}),newsCoverage:{...corpus.meta,awarenessRevision:awareness?.revision ?? null,analysisArticleCount:articles.length}};
+    return {...calculateMarketProjection({...input,asOf,articles}),newsCoverage:{...corpus.meta,awarenessRevision:awareness?.revision ?? null,awarenessAdmission:visible?.admission ?? null,analysisArticleCount:articles.length}};
   }
   async call({service,method,args=[],context,analysisJob,requestId,preparedScenarios}){
     if(service==='situations'&&['list','detail','revisions','changes','status','review'].includes(method)){

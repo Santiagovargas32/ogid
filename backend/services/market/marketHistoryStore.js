@@ -404,6 +404,7 @@ export class MarketHistoryStore {
 
   async persistMarketState(previousMarketState = {}, marketState = {}, options = {}) {
     if (!this.enabled) {
+      if(options.presentation)await this.persistPresentation(marketState,options.presentation);
       return this.getStatus();
     }
 
@@ -421,6 +422,7 @@ export class MarketHistoryStore {
     };
 
     if (!persistenceDecision.eligible) {
+      if(options.presentation)await this.persistPresentation(marketState,options.presentation);
       this.status.lastSkippedAt = skippedAt;
       this.status.lastSkipReason = persistenceDecision.reason || null;
       this.status.lastPersistenceEligible = false;

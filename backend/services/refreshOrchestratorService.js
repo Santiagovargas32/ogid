@@ -1,4 +1,6 @@
 import { CycleContinuation, isResourcePressure } from './shared/cycleContinuation.js';
+import {randomUUID} from 'node:crypto';
+import {stableHash} from '../utils/stableHash.js';
 import {projectNewsMeta} from './news/newsFreshness.js';
 import { createLogger } from "../utils/logger.js";
 import apiQuotaTracker from "./admin/apiQuotaTrackerService.js";
@@ -719,7 +721,14 @@ class RefreshOrchestratorService {
   runMarketCycle(trigger = "scheduled-market", options = {}) {
     if(this.stopping)return Promise.resolve({skipped:true,reason:'stopping'});
     if (this.marketTask) { this.cycleMetrics.marketJoined++; return this.marketTask; }
-    const task = this.executeMarketCycle(trigger, options).catch(error=>{if(isResourcePressure(error))this.resourceDeferred.add('market');throw error;}).finally(() => { this.marketTask = null; queueMicrotask(this.resumeResources); });
+    const task = (async()=>{
+      if(this.marketPresentationError || this.recoveringMarketPresentation){
+        await this.recoverMarketPresentation();
+        if(this.marketPresentationError)throw this.marketPresentationError;
+        if(this.marketProjectionPending)this.admission?.assert('heavy');
+      }
+      await this.executeMarketCycle(trigger, options);
+    })().catch(error=>{if(isResourcePressure(error))this.resourceDeferred.add('market');throw error;}).finally(() => { this.marketTask = null; queueMicrotask(this.resumeResources); });
     this.marketTask = task;
     this.pendingCycles.add(task);
     task.then(() => this.pendingCycles.delete(task), () => this.pendingCycles.delete(task));
@@ -805,17 +814,13 @@ class RefreshOrchestratorService {
         timestamp: cycleDate.toISOString()
       })};
       const marketState = mergeMarketState(previousSnapshot.market, marketResult);
-      // Evaluate the history policy before making the new quotes visible.
-      // A deferred commit keeps these quotes in the current continuation.
-      yield {phase:'history',kind:'commit',work:()=>this.marketHistoryStore?.persistMarketState?.(
-        previousSnapshot.market || {}, marketState, {trigger}
-      )};
-      const analysisSnapshot = this.stateManager.getSnapshot();
+      const analysisSnapshot = this.stateManager.state || this.stateManager.getSnapshot();
       const inputMode = resolveInputMode(previousSnapshot.meta?.sourceMode, marketState.sourceMode);
       const countryFilter = options.countries?.length ? options.countries : this.config.watchlistCountries;
       const selectedMarketInstruments = this.config.market.watchlistService?.selectedInstruments?.() || [];
 
       const analysisInput={
+        asOf:cycleDate.toISOString(),
         ...(this.config.market.newsFromStorage ? {
           newsFromStorage:true,
           corpusOptions:{countries:this.config.watchlistCountries,windowHours:this.config.news.candidateWindowHours,awarenessMode:this.awarenessService?.mode || this.config.awareness?.mode || "off"}
@@ -825,11 +830,37 @@ class RefreshOrchestratorService {
         // The coupling calculation consumes only the last 24 points and these fields.
         impactHistory:(previousSnapshot.impactHistory || []).slice(-24).map(entry=>({timestamp:entry.timestamp,items:(entry.items || []).map(item=>({ticker:item.ticker,impactScore:item.impactScore,eventScore:item.eventScore,priceReaction:item.priceReaction}))}))
       };
+      const {marketQuotes,...parameters}=analysisInput;
+      const presentation=this.marketHistoryStore?.presentation && analysisInput.newsFromStorage && this.config.market.analyzeInWorker
+        ? {jobId:'presentation-'+randomUUID(),trigger,analysis:structuredClone({...parameters,
+          newsRevision:analysisSnapshot.meta?.sourceMeta?.corpus?.revision ?? null})} : null;
+      // Confirm the frame and presentation obligation before either becomes
+      // visible. Eligible history and the obligation share the same writer commit.
+      yield {phase:'history',kind:'commit',work:async()=>{
+        const commit=this.marketHistoryStore?.persistMarketState?.(previousSnapshot.market || {},marketState,{trigger,presentation});
+        if(presentation)this.marketFrameCommit=commit;
+        try{
+          await commit;
+          if(presentation)this.confirmedMarketJobId=presentation.jobId;
+        }catch(error){
+          if(presentation && error.code==='STORAGE_OUTCOME_UNKNOWN'){
+            this.unconfirmedMarketFrame={jobId:presentation.jobId,error};
+            this.marketPresentationError=error;
+          }
+          throw error;
+        }finally{if(this.marketFrameCommit===commit)this.marketFrameCommit=null;}
+      }};
+      if(presentation && stableHash(this.config.market.tickers)!==stableHash(presentation.analysis.tickers)){
+        this.recoveringMarketPresentation=true;
+        return;
+      }
       let snapshot;
       if(this.config.market.analyzeInWorker){
         snapshot=this.stateManager.updateIntel({market:marketState,watchlistCountries:this.config.watchlistCountries});
         this.socketServer.broadcast("update",{market:snapshot.market,meta:snapshot.meta},snapshot.meta);
-        this.scheduleMarketProjection({...analysisInput,marketRevision:snapshot.market.revision,newsRevision:analysisSnapshot.meta?.sourceMeta?.corpus?.revision});
+        this.scheduleMarketProjection(presentation
+          ? {...presentation.analysis,marketQuotes,presentationJobId:presentation.jobId,marketRevision:snapshot.market.revision}
+          : {...analysisInput,marketRevision:snapshot.market.revision,newsRevision:analysisSnapshot.meta?.sourceMeta?.corpus?.revision});
       } else {
         const projection=calculateMarketProjection(analysisInput);
         snapshot=this.stateManager.updateIntel({...projection,market:marketState,watchlistCountries:this.config.watchlistCountries});
@@ -885,6 +916,75 @@ class RefreshOrchestratorService {
     }
   }
 
+  presentationMatches(input,newsRevision){
+    const state=this.stateManager.state;
+    const currentNews=state.meta?.sourceMeta?.corpus?.revision;
+    return this.isMarketEnabled() && input.marketRevision===state.market.revision && (currentNews===undefined || currentNews===newsRevision)
+      && (input.newsRevision==null || input.newsRevision===newsRevision)
+      && stableHash(input.tickers)===stableHash(this.config.market.tickers)
+      && stableHash(input.instruments)===stableHash(this.config.market.watchlistService?.selectedInstruments?.() || [])
+      && stableHash(input.corpusOptions.countries)===stableHash(this.config.watchlistCountries)
+      && input.corpusOptions.awarenessMode===(this.awarenessService?.mode || this.config.awareness?.mode || 'off');
+  }
+
+  publishMarketProjection(projection){
+    const snapshot=this.stateManager.updateIntel({...projection,watchlistCountries:this.config.watchlistCountries});
+    this.socketServer.broadcast("update",{meta:snapshot.meta,insights:snapshot.insights,predictions:snapshot.predictions,impact:snapshot.impact,impactHistory:snapshot.impactHistory},snapshot.meta);
+  }
+
+  async applyConfirmedProjection(input){
+    const coordinator=this.marketHistoryStore.presentation;
+    const job=await coordinator.claim(input.presentationJobId);
+    if(!job){
+      const pending=await coordinator.pending();
+      if(pending?.jobId===input.presentationJobId)throw Object.assign(Error('Presentación reclamada'),{code:'STORAGE_CONTINUATION_BUSY'});
+      return;
+    }
+    const {basis,watermark}=job.input;
+    let projection=null,reason='context-changed';
+    if(this.presentationMatches(input,basis.news)){
+      this.admission?.assert('heavy');
+      projection=await this.config.market.analyzeInWorker({...input,corpusOptions:{...input.corpusOptions,revisionWatermark:watermark}});
+      if(this.presentationMatches(input,basis.news))reason=null;
+    }
+    const closed=await coordinator.finish(job,projection,reason);
+    if(closed.job.phase!=='published')return;
+    if(this.marketFrameCommit)await this.marketFrameCommit;
+    const latest=await coordinator.read(false);
+    if(latest?.job.jobId===job.jobId && latest.current && this.confirmedMarketJobId===job.jobId
+        && this.marketProjectionPending===input && this.presentationMatches(input,basis.news)){
+      this.publishMarketProjection(projection);
+    }
+  }
+
+  async recoverMarketPresentation(){
+    const coordinator=this.marketHistoryStore?.presentation;
+    if(!coordinator)return;
+    const saved=await coordinator.read();
+    if(this.unconfirmedMarketFrame){
+      if(saved?.job.jobId!==this.unconfirmedMarketFrame.jobId)throw this.unconfirmedMarketFrame.error;
+      this.unconfirmedMarketFrame=null;
+    }
+    if(!saved){this.marketPresentationError=null;this.recoveringMarketPresentation=false;return;}
+    const {frame,job}=saved;
+    this.confirmedMarketJobId=job.jobId;
+    this.marketPresentationError=null;
+    const input={...frame.analysis,marketQuotes:frame.market.quotes,marketRevision:frame.market.revision,presentationJobId:job.jobId};
+    if(this.isMarketEnabled() && stableHash(input.tickers)===stableHash(this.config.market.tickers)){
+      const previous=this.stateManager.state.market;
+      const market=mergeMarketState(previous,{...frame.market,activeTickers:input.tickers});
+      this.stateManager.hydrateMarketState(market);
+    }
+    if(job.status==='pending'){
+      this.recoveringMarketPresentation=true;
+      this.marketPresentationError=null;
+      await this.scheduleMarketProjection(input);
+    }else if(saved.projection && saved.current && this.presentationMatches(input,job.input.basis.news)){
+      this.publishMarketProjection(saved.projection);
+    }
+    if(!this.marketProjectionPending && !this.marketPresentationError)this.recoveringMarketPresentation=false;
+  }
+
   scheduleMarketProjection(input){
     this.marketProjectionPending=input;
     if(this.marketProjectionTask)return this.marketProjectionTask;
@@ -893,12 +993,20 @@ class RefreshOrchestratorService {
         let captured=this.marketProjectionPending;
         const market=this.stateManager.state.market;
         const revision=this.stateManager.state.meta?.sourceMeta?.corpus?.revision;
-        if(captured.marketRevision!==market.revision || revision!==undefined&&captured.newsRevision!==revision){
+        if(!captured.presentationJobId && (captured.marketRevision!==market.revision || revision!==undefined&&captured.newsRevision!==revision)){
           captured={...captured,marketRevision:market.revision,newsRevision:revision,marketQuotes:market.quotes,countries:this.stateManager.state.countries,
             ...(!captured.newsFromStorage?{articles:mergeArticleCorpora(this.stateManager.getMarketSignalCorpus?.() || [],this.awarenessService?.getMarketArticles?.() || [])}:{})};
           this.marketProjectionPending=captured;
         }
         try{
+          if(captured.presentationJobId){
+            await this.applyConfirmedProjection(captured);
+            this.marketPresentationError=null;
+            this.recoveringMarketPresentation=false;
+            if(this.marketProjectionPending===captured)this.marketProjectionPending=null;
+            this.resourceDeferred.delete('projection');
+            continue;
+          }
           this.admission?.assert('heavy');
           const projection=await this.config.market.analyzeInWorker(captured);
           if(this.marketProjectionPending===captured)this.marketProjectionPending=null;
@@ -908,11 +1016,11 @@ class RefreshOrchestratorService {
           if(currentNewsRevision!==undefined && analyzedNewsRevision!==undefined && currentNewsRevision!==analyzedNewsRevision){
             this.marketProjectionPending ||= captured;break;
           }
-          const snapshot=this.stateManager.updateIntel({...projection,watchlistCountries:this.config.watchlistCountries});
-          this.socketServer.broadcast("update",{meta:snapshot.meta,insights:snapshot.insights,predictions:snapshot.predictions,impact:snapshot.impact,impactHistory:snapshot.impactHistory},snapshot.meta);
+          this.publishMarketProjection(projection);
           this.resourceDeferred.delete('projection');
         }catch(error){
           if(isResourcePressure(error)){this.resourceDeferred.add('projection');log.info('market_projection_deferred',{code:error.code,reason:error.details?.reason});break;}
+          if(captured.presentationJobId)this.marketPresentationError=error;
           if(this.marketProjectionPending===captured)this.marketProjectionPending=null;
           log.warn("market_projection_failed",{code:error.code || "MARKET_ANALYSIS_FAILED",command:error.diagnostic});
         }
@@ -1023,6 +1131,12 @@ class RefreshOrchestratorService {
     }
     await Promise.allSettled([...this.pendingCycles]);
     this.deferredAtShutdown=[...this.continuations].map(([domain,continuation])=>({domain,phase:continuation.phase,durable:false}));
+    if(this.marketHistoryStore?.presentation){
+      try{
+        const job=await this.marketHistoryStore.presentation.pending();
+        if(job)this.deferredAtShutdown.push({domain:'market',phase:job.phase,jobId:job.jobId,cursor:job.cursor,durable:true});
+      }catch(error){this.deferredAtShutdown.push({domain:'market',phase:'projection',verification:'unknown',durable:false,code:error.code});}
+    }
     if (this.awarenessService?.store?.financialContinuations) {
       try {
         const job = await this.awarenessService.store.financialContinuations.pending();
