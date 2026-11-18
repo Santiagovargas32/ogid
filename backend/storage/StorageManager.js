@@ -23,7 +23,7 @@ const OPERATIONS = new Set(["agent.call", "agent.snapshot", "agent.read", "stora
 const ISOLATED_NEWS_METHODS = new Set(["getProjection","getFeed","getLiveFeed","search","getItem","getHistory","coverage","sourceAssessments","sourceAssessment","sourceCoverage","comparisons","comparison","comparisonClaim","comparisonChanges"]);
 const CPU_SERVICES = new Set(["market","technical","indicators","conditions","advanced","map","portfolio","scenarios","forecasts","coupling","signals"]);
 for(const method of ['pending','status','calculate','fail','reconcile'])OPERATIONS.add(`market.project.${method}`);
-for(const method of ['admit','claim','renew','advance','release','get','pending','scope','notModifiedPage','financialAdmit','financialPage','pollReserve','pollStage','pollPage','marketPresent'])OPERATIONS.add(`continuation.${method}`);
+for(const method of ['admit','claim','renew','advance','release','get','pending','scope','notModifiedPage','financialAdmit','financialPage','pollReserve','pollStage','pollPage','marketPresent','marketQuoteReserve'])OPERATIONS.add(`continuation.${method}`);
 
 export class StorageManager extends EventEmitter {
   constructor(options = {}) {

@@ -1,6 +1,7 @@
 import {PollAdmissionCoordinator} from './awarenessAdmission.js';
 import {FinancialCoordinator} from './financialContinuation.js';
 import {MarketPresentationCoordinator} from './marketPresentation.js';
+import {MarketQuoteCoordinator} from './marketQuoteTurn.js';
 import { buildPersistenceMetadata,filterPersistedQuotes } from "../services/market/marketHistoryStore.js";
 import { MARKET_PROVIDER_SCHEMA_VERSION } from "../services/market/marketSnapshotMigration.js";
 import { createLogger } from "../utils/logger.js";
@@ -128,6 +129,7 @@ export class PipelinePersistence {
     };
     marketHistoryStore.appendHistory=(_previous,marketState)=>this.save("quotes",marketState);
     marketHistoryStore.presentation=new MarketPresentationCoordinator(this.manager);
+    marketHistoryStore.quoteTurns=new MarketQuoteCoordinator(this.manager);
     // Historical time series stay in their existing repository. The projection
     // consumes the quote frame and its separately bounded impact history.
     const presentationFrame=({timeseries,...market},selection)=>({...selection,market});

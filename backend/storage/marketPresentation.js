@@ -3,6 +3,7 @@ import {CycleContinuations} from './cycleContinuations.js';
 import {readMeta,writeMeta} from './sqlRepositories.js';
 import {stableHash} from '../utils/stableHash.js';
 import {AppError} from '../utils/error.js';
+import {confirmMarketQuotes} from './marketQuoteTurn.js';
 
 export const MARKET_PRESENTATION_SCOPE='market:presentation';
 export const MARKET_FRAME='market-presentation-frame-v1';
@@ -50,6 +51,7 @@ export function captureMarketPresentation(runtime,frame){
   if(job.status!=='pending')mismatch();
   runtime.save(MARKET_FRAME,frame);
   writeMeta(db,'market.presentation.latest',jobId);
+  if(frame.quoteTurn)confirmMarketQuotes(db,{auth:frame.quoteTurn,jobId,market});
   return job;
 }
 

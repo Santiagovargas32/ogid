@@ -720,19 +720,86 @@ class RefreshOrchestratorService {
 
   runMarketCycle(trigger = "scheduled-market", options = {}) {
     if(this.stopping)return Promise.resolve({skipped:true,reason:'stopping'});
-    if (this.marketTask) { this.cycleMetrics.marketJoined++; return this.marketTask; }
+    if (this.marketTask) {
+      this.cycleMetrics.marketJoined++;
+      if(trigger==='watchlist-update')this.marketWatchlistPending=true;
+      return this.marketTask;
+    }
     const task = (async()=>{
-      if(this.marketPresentationError || this.recoveringMarketPresentation){
-        await this.recoverMarketPresentation();
-        if(this.marketPresentationError)throw this.marketPresentationError;
-        if(this.marketProjectionPending)this.admission?.assert('heavy');
+      let result=await this.executeSelectedMarketTurn(trigger,options);
+      while(this.marketWatchlistPending && !this.stopping){
+        this.marketWatchlistPending=false;
+        result=await this.executeSelectedMarketTurn('watchlist-update',{});
       }
-      await this.executeMarketCycle(trigger, options);
+      return result;
     })().catch(error=>{if(isResourcePressure(error))this.resourceDeferred.add('market');throw error;}).finally(() => { this.marketTask = null; queueMicrotask(this.resumeResources); });
     this.marketTask = task;
     this.pendingCycles.add(task);
     task.then(() => this.pendingCycles.delete(task), () => this.pendingCycles.delete(task));
     return task;
+  }
+
+  async executeSelectedMarketTurn(trigger,options){
+    if(this.marketPresentationError || this.recoveringMarketPresentation){
+      await this.recoverMarketPresentation();
+      if(this.marketPresentationError)throw this.marketPresentationError;
+      if(this.marketProjectionPending)this.admission?.assert('heavy');
+    }
+    const turns=this.marketHistoryStore?.quoteTurns;
+    if(!turns || this.continuations.has('market') || !this.config.market?.newsFromStorage || !this.config.market.analyzeInWorker){
+      return this.executeMarketCycle(trigger,options);
+    }
+    const selected=await this.prepareMarketTurn(turns,trigger,options);
+    if(selected?.skipped)return selected;
+    if(!selected)return this.executeMarketCycle(trigger,options);
+    const {selection}=selected.input;
+    return this.executeMarketCycle(selection.trigger,{countries:selection.countries,allowExhaustedProviders:selection.allowExhaustedProviders,
+      now:selection.referenceAt,quoteTurn:selected});
+  }
+
+  marketSelection(trigger,options){
+    const config=this.config.market,tickers=[...config.tickers];
+    const resolved=resolveVerifiedInstrumentReferences(tickers).instruments;
+    const instruments=config.watchlistService?.applySelection?.(resolved) || resolved;
+    const route={provider:config.provider,fallbackProvider:config.fallbackProvider,offHoursStrategy:config.offHoursStrategy,
+      minTickerTtlMs:config.minTickerTtlMs,requestReserve:config.requestReserve,staleTtlMs:config.staleTtlMs,
+      creditPolicy:config.creditPolicy,providerChain:config.providerChain,
+      instruments:instruments.map(({instrumentId,canonicalSymbol,providerSymbols,sessionPolicy,refreshTier,minRefreshIntervalMs})=>
+        ({instrumentId,canonicalSymbol,providerSymbols,sessionPolicy,refreshTier,minRefreshIntervalMs}))};
+    return {trigger,selectedAt:new Date(this.marketHistoryStore.quoteTurns.now()).toISOString(),referenceAt:options.now?this.resolveMarketCycleDate(options.now).toISOString():null,
+      baseRevision:this.stateManager.state.market.revision ?? null,policyHash:stableHash(route),tickers,
+      provider:config.provider || null,fallbackProvider:config.fallbackProvider || null,
+      instrumentIds:instruments.map(i=>i.instrumentId),countries:[...(options.countries?.length?options.countries:this.config.watchlistCountries || [])],
+      allowExhaustedProviders:options.allowExhaustedProviders===true};
+  }
+
+  async prepareMarketTurn(turns,trigger,options){
+    if(!this.isMarketEnabled()){
+      const pending=await turns.pending();
+      if(pending?.phase==='admission')await turns.skip(pending,'market-disabled');
+      return null;
+    }
+    const selection=this.marketSelection(trigger,options);
+    let job=await turns.reserve(selection);
+    if(job.status==='complete')return {skipped:true,reason:job.phase,jobId:job.jobId};
+    if(job.phase==='request-authorized'){
+      const eligible=job.input.nextEligibleAt?turns.now()>=Date.parse(job.input.nextEligibleAt):trigger.startsWith('manual');
+      if(!eligible){
+        const reason='prior-request-unconfirmed';
+        this.marketCycleTelemetry={...this.marketCycleTelemetry,lastStatus:'deferred',lastError:reason,
+          failedStage:'quotes',nextEligibleAt:job.input.nextEligibleAt,jobId:job.jobId};
+        return {skipped:true,reason,nextEligibleAt:job.input.nextEligibleAt,jobId:job.jobId};
+      }
+      // At cadence the previous dispatch remains unknown. A new live fetch
+      // has a distinct identity and current catalog, clock and provider policy.
+      await turns.skip(job,'request-outcome-unknown');
+      job=await turns.reserve(selection);
+    }
+    if(job.input.selection.policyHash!==selection.policyHash || job.input.selection.baseRevision!==selection.baseRevision){
+      await turns.skip(job,'selection-superseded');
+      return {skipped:true,reason:'selection-superseded',jobId:job.jobId};
+    }
+    return job;
   }
 
   *marketSteps(trigger, options) {
@@ -755,7 +822,10 @@ class RefreshOrchestratorService {
     };
 
     try {
+      const turns=this.marketHistoryStore?.quoteTurns;
+      let quoteTurn=options.quoteTurn;
       if (this.shouldSkipAutomatedOffHoursMarketCycle(trigger, options)) {
+        if(quoteTurn)yield {phase:'quote-skip',kind:'commit',work:()=>turns.skip(quoteTurn,'offhours-skip')};
         try { (yield {phase:'daily-candles',work:()=>this.dailyCandleService?.runScheduled?.()}); } catch (error) { log.warn("daily_candle_cycle_failed", { message: error.message }); }
         this.trackBackground(this.intradayCandleService?.runScheduled?.().catch((error) => log.warn("intraday_candle_cycle_failed", { message: error.message })));
         const previousSnapshot = this.stateManager.getSnapshot();
@@ -788,6 +858,7 @@ class RefreshOrchestratorService {
       const marketUpdatedAtMs = new Date(previousSnapshot.market?.updatedAt || 0).getTime();
       const ageMs = Number.isFinite(marketUpdatedAtMs) ? Date.now() - marketUpdatedAtMs : Number.MAX_SAFE_INTEGER;
       if (trigger.startsWith("interval-") && minTickerTtlMs > 0 && ageMs < minTickerTtlMs) {
+        if(quoteTurn)yield {phase:'quote-skip',kind:'commit',work:()=>turns.skip(quoteTurn,'min-ticker-ttl')};
         log.info("market_cycle_skipped", {
           trigger,
           reason: "min-ticker-ttl",
@@ -804,20 +875,51 @@ class RefreshOrchestratorService {
         return;
       }
 
-      const cycleDate = this.resolveMarketCycleDate(options.now);
-      const marketResult = yield {phase:'quotes',work:()=>fetchMarketQuotes({
-        ...this.config.market,
-        trigger,
-        previousQuotes: previousSnapshot.market?.quotes || {},
-        previousTimeseries: previousSnapshot.market?.timeseries || {},
-        allowExhaustedProviders: options.allowExhaustedProviders === true,
-        timestamp: cycleDate.toISOString()
-      })};
+      let cycleDate,selectedMarketInstruments,selectedTickers;
+      const marketResult = yield {phase:'quotes',kind:'acquisition',work:async()=>{
+        if(quoteTurn){
+          const current=this.marketSelection(trigger,options);
+          if(current.policyHash!==quoteTurn.input.selection.policyHash || current.baseRevision!==quoteTurn.input.selection.baseRevision){
+            await turns.skip(quoteTurn,'selection-superseded');
+            return null;
+          }
+          if(this.shouldSkipAutomatedOffHoursMarketCycle(trigger,options)){
+            await turns.skip(quoteTurn,'offhours-skip');
+            return null;
+          }
+          const cadence=this.resolveNextMarketDelayMs();
+          quoteTurn=await turns.authorize(quoteTurn,cadence);
+          if(this.stopping){
+            await turns.unsent(quoteTurn);
+            return null;
+          }
+          try{this.admission?.assert('acquisition');}
+          catch(error){quoteTurn=await turns.unsent(quoteTurn);throw error;}
+          const atDispatch=this.marketSelection(trigger,options);
+          if(atDispatch.policyHash!==quoteTurn.input.selection.policyHash || atDispatch.baseRevision!==quoteTurn.input.selection.baseRevision){
+            await turns.skip(quoteTurn,'selection-superseded-before-dispatch');
+            return null;
+          }
+        }
+        selectedTickers=[...(this.config.market.tickers || [])];
+        selectedMarketInstruments=this.config.market.watchlistService?.selectedInstruments?.() || [];
+        cycleDate=this.resolveMarketCycleDate(options.now);
+        try{
+          return await fetchMarketQuotes({...this.config.market,trigger,previousQuotes:previousSnapshot.market?.quotes || {},
+            previousTimeseries:previousSnapshot.market?.timeseries || {},allowExhaustedProviders:options.allowExhaustedProviders===true,
+            timestamp:cycleDate.toISOString()});
+        }catch(error){
+          // A provider chain can fail after an earlier provider was contacted.
+          // Only the admission check above proves no dispatch took place.
+          if(quoteTurn && isResourcePressure(error))throw Object.assign(Error(error.message,{cause:error}),{code:'MARKET_REQUEST_OUTCOME_UNKNOWN'});
+          throw error;
+        }
+      }};
+      if(!marketResult)return;
       const marketState = mergeMarketState(previousSnapshot.market, marketResult);
       const analysisSnapshot = this.stateManager.state || this.stateManager.getSnapshot();
       const inputMode = resolveInputMode(previousSnapshot.meta?.sourceMode, marketState.sourceMode);
       const countryFilter = options.countries?.length ? options.countries : this.config.watchlistCountries;
-      const selectedMarketInstruments = this.config.market.watchlistService?.selectedInstruments?.() || [];
 
       const analysisInput={
         asOf:cycleDate.toISOString(),
@@ -825,14 +927,14 @@ class RefreshOrchestratorService {
           newsFromStorage:true,
           corpusOptions:{countries:this.config.watchlistCountries,windowHours:this.config.news.candidateWindowHours,awarenessMode:this.awarenessService?.mode || this.config.awareness?.mode || "off"}
         } : {articles:mergeArticleCorpora(this.stateManager.getMarketSignalCorpus?.() || [],this.awarenessService?.getMarketArticles?.() || [])}),
-        countries:analysisSnapshot.countries,marketQuotes:marketState.quotes,tickers:this.config.market.tickers,instruments:selectedMarketInstruments,
+        countries:analysisSnapshot.countries,marketQuotes:marketState.quotes,tickers:selectedTickers,instruments:selectedMarketInstruments,
         countryFilter,windowMin:this.config.market.impactWindowMin,inputMode,
         // The coupling calculation consumes only the last 24 points and these fields.
         impactHistory:(previousSnapshot.impactHistory || []).slice(-24).map(entry=>({timestamp:entry.timestamp,items:(entry.items || []).map(item=>({ticker:item.ticker,impactScore:item.impactScore,eventScore:item.eventScore,priceReaction:item.priceReaction}))}))
       };
       const {marketQuotes,...parameters}=analysisInput;
       const presentation=this.marketHistoryStore?.presentation && analysisInput.newsFromStorage && this.config.market.analyzeInWorker
-        ? {jobId:'presentation-'+randomUUID(),trigger,analysis:structuredClone({...parameters,
+        ? {jobId:'presentation-'+randomUUID(),trigger,...(quoteTurn?{quoteTurn:turns.auth(quoteTurn)}:{}),analysis:structuredClone({...parameters,
           newsRevision:analysisSnapshot.meta?.sourceMeta?.corpus?.revision ?? null})} : null;
       // Confirm the frame and presentation obligation before either becomes
       // visible. Eligible history and the obligation share the same writer commit.
@@ -1131,6 +1233,20 @@ class RefreshOrchestratorService {
     }
     await Promise.allSettled([...this.pendingCycles]);
     this.deferredAtShutdown=[...this.continuations].map(([domain,continuation])=>({domain,phase:continuation.phase,durable:false}));
+    if(this.marketHistoryStore?.quoteTurns){
+      try{
+        const job=await this.marketHistoryStore.quoteTurns.pending();
+        const uncertain=this.marketHistoryStore.quoteTurns.unacknowledged;
+        if(uncertain && job?.jobId!==uncertain.jobId)this.deferredAtShutdown.push({
+          domain:'market',phase:'quote-admission',jobId:uncertain.jobId,verification:'unconfirmed',durable:false});
+        if(job){
+          // After dispatch the obligation is durable; the HTTP outcome can still be unknown.
+          this.deferredAtShutdown=this.deferredAtShutdown.filter(row=>row.domain!=='market' || !['admission','quotes'].includes(row.phase));
+          this.deferredAtShutdown.push({domain:'market',phase:job.phase,jobId:job.jobId,cursor:job.cursor,durable:true,
+            ...(job.phase==='request-authorized'?{acquisitionOutcome:'unknown',nextEligibleAt:job.input.nextEligibleAt}:{})});
+        }
+      }catch(error){this.deferredAtShutdown.push({domain:'market',phase:'quote-admission',verification:'unknown',durable:false,code:error.code});}
+    }
     if(this.marketHistoryStore?.presentation){
       try{
         const job=await this.marketHistoryStore.presentation.pending();
