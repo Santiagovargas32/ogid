@@ -27,6 +27,7 @@ test('market presentation rolls back with its cursor, fences superseded work and
   try{
     migrate(db);
     const runtime=new BusinessRuntime(db),ledger=new CycleContinuations(db);
+    const history=()=>db.prepare("SELECT count(*) AS n FROM analysis_runs JOIN analysis_inputs USING(analysis_id) WHERE kind='market.analyze'").get().n;
     const claim=jobId=>ledger.claim({jobId,owner:'fixture'});
     const auth=job=>({owner:job.owner,fence:job.fence,cursor:job.cursor,jobId:job.jobId});
     db.exec(`CREATE TRIGGER reject_frame BEFORE INSERT ON runtime_snapshots WHEN NEW.kind='${MARKET_FRAME}' BEGIN SELECT RAISE(ABORT,'reject frame'); END`);
@@ -40,6 +41,7 @@ test('market presentation rolls back with its cursor, fences superseded work and
     db.exec("CREATE TRIGGER reject_result BEFORE INSERT ON runtime_snapshots WHEN NEW.kind='market-presentation-result-v1' BEGIN SELECT RAISE(ABORT,'fixture failure'); END");
     assert.throws(()=>finishMarketPresentation(runtime,{auth:auth(a),projection:result(a)}),/fixture failure/);
     assert.equal(ledger.get(a).cursor,0);assert.equal(readMarketPresentation(runtime).projection,null);
+    assert.equal(history(),0);
     db.exec('DROP TRIGGER reject_result');
     runtime.save('market-presentation',frame('b','visible'));
     assert.equal(ledger.get(a).input.replacedBy,'b');
@@ -52,10 +54,12 @@ test('market presentation rolls back with its cursor, fences superseded work and
     assert.ok(reclaimed.fence>b.fence);
     runtime.save('awareness',{sourceStatus:[{sourceId:'fixture',admissionState:'active'}]});
     assert.equal(finishMarketPresentation(runtime,{auth:auth(reclaimed),projection:result(reclaimed)}).job.phase,'discarded');
+    assert.equal(history(),0);
     runtime.save('market-presentation',frame('c'));const c=claim('c');
     const closed=finishMarketPresentation(runtime,{auth:auth(c),projection:result(c)});
     assert.equal(closed.job.phase,'published');
     assert.equal(finishMarketPresentation(runtime,{auth:auth(c),projection:result(c)}).job.replayed,true);
+    assert.equal(history(),1);
     assert.deepEqual(readMarketPresentation(runtime).projection,result(c));
     writeMeta(db,'news.meta',{revision:5});
     assert.equal(readMarketPresentation(runtime).projection,null);
@@ -73,6 +77,14 @@ test('an isolated market runtime recovers a deferred presentation on reboot and 
     try{
       assert.equal(db.prepare('SELECT count(*) FROM quote_observations').pluck().get(),0);
       assert.equal(db.prepare("SELECT count(*) FROM acquisition_jobs WHERE json_extract(job_json,'$.scope')='market:presentation'").pluck().get(),1);
+      const rows=db.prepare("SELECT parameters_json,manifest_json,inputs_as_of FROM analysis_inputs JOIN analysis_runs USING(analysis_id) WHERE kind='market.analyze'").all();
+      assert.equal(rows.length,1);
+      assert.equal(rows[0].inputs_as_of,asOf);
+      assert.equal(JSON.parse(rows[0].manifest_json).inputsAsOf,asOf);
+      const [input]=JSON.parse(rows[0].parameters_json);
+      assert.equal(input.asOf,asOf);
+      assert.equal(input.marketQuotes.GD.price,101);
+      assert.equal(input.corpusOptions.revisionWatermark,0);
     }finally{db.close();}
   }finally{rmSync(dir,{recursive:true,force:true});}
 });

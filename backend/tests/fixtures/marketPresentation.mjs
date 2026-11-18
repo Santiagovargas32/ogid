@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {join} from 'node:path';
+import Database from 'better-sqlite3';
 import {createAppServer} from '../../server.js';
 import {pressureError} from '../../storage/resourceAdmission.js';
 
@@ -29,6 +30,12 @@ runtime.config.market.analyzeInWorker=async input=>{
 };
 const request=storageManager.request.bind(storageManager);
 storageManager.request=async(op,...args)=>{
+  if(op==='continuation.marketPresent'){
+    const db=new Database(join(directory,'fixture.sqlite'),{readonly:true});
+    try{
+      assert.equal(db.prepare("SELECT count(*) FROM analysis_runs WHERE kind='market.analyze'").pluck().get(),0);
+    }finally{db.close();}
+  }
   const result=await request(op,...args);
   if(op==='continuation.marketPresent'){
     confirmations++;

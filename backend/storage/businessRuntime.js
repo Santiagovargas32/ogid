@@ -379,6 +379,9 @@ export class BusinessRuntime {
         result.newsCoverage=this.resultCoverage.get(key);
       }
       if(service==="rss" && target.lastSnapshot && target.lastSnapshot!==this.persistedRssSnapshot){const snapshot=target.lastSnapshot;await this.saveRssSnapshot(snapshot);this.persistedRssSnapshot=snapshot;this.updateRssDiagnostics(snapshot);}
+      // For a durable presentation the writer records the analytical history
+      // only when it accepts the matching frame, fence and corpus revision.
+      if(service==="market" && method==="analyze" && args[0]?.presentationJobId)return result;
       if(["market","indicators","technical","conditions","coupling","forecasts","advanced"].includes(service)){
         if(service==='advanced') {
           result.inputsAsOf=captured.asOf;
@@ -406,10 +409,11 @@ export class BusinessRuntime {
   }
   recordAnalysis(kind,input,result){
     const at=new Date().toISOString(),id=`analysis-${stableHash([kind,input,result?.semanticRevision || result]).slice(0,40)}`;
+    const marketAsOf=kind==='market.analyze'?result?.newsCoverage?.asOf:null;
     this.db.transaction(()=>{
-      this.db.prepare("INSERT OR IGNORE INTO analysis_runs VALUES(?,?,?,?,?,?,?,?)").run(id,kind,result?.methodology?.version || result?.methodVersion || "runtime-v1",result?.generatedAt || result?.calculatedAt || at,result?.inputsAsOf || result?.asOf || result?.calculatedAt || at,result?.inputHash || stableHash([input,result?.seriesRevision,result?.newsCoverage,result?.inputRevisions]),JSON.stringify(result?.quality || {}),JSON.stringify(result));
+      this.db.prepare("INSERT OR IGNORE INTO analysis_runs VALUES(?,?,?,?,?,?,?,?)").run(id,kind,result?.methodology?.version || result?.methodVersion || "runtime-v1",result?.generatedAt || result?.calculatedAt || at,result?.inputsAsOf || result?.asOf || result?.calculatedAt || marketAsOf || at,result?.inputHash || stableHash([input,result?.seriesRevision,result?.newsCoverage,result?.inputRevisions]),JSON.stringify(result?.quality || {}),JSON.stringify(result));
       const manifest={schemaVersion:'analysis-inputs-v1',methodology:result?.methodology || result?.methodVersion || 'runtime-v1',
-        inputsAsOf:result?.inputsAsOf || result?.asOf || result?.calculatedAt || result?.generatedAt || at,
+        inputsAsOf:result?.inputsAsOf || result?.asOf || result?.calculatedAt || marketAsOf || result?.generatedAt || at,
         revisions:result?.inputRevisions || {series:result?.seriesRevision ?? null,news:result?.newsCoverage?.revision ?? result?.meta?.revision ?? null},
         inputs:result?.inputManifest || result?.meta?.analyticalInput || null,coverage:result?.newsCoverage || result?.coverage || null,
         reproducibility:result?.reproducibility || {complete:false,reason:'legacy algorithm does not expose all effective inputs'}};

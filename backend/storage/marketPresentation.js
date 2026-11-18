@@ -78,7 +78,13 @@ export function finishMarketPresentation(runtime,{auth,projection,reason=null}){
     const phase=outcome?'discarded':'published';
     const input={...job.input,resultHash:stableHash(projection ?? null),requestedReason:reason,outcome:outcome || 'published'};
     return {job:ledger.advance({...auth,phase,input,complete:true,transitionId},()=>{
-      if(!outcome)runtime.save(resultKind,{jobId:job.jobId,projection});
+      if(outcome)return;
+      const frame=runtime.load(MARKET_FRAME);
+      if(frame?.jobId!==job.jobId || stableHash(frame)!==job.input.frameHash)mismatch();
+      const analysis={...frame.analysis,marketQuotes:frame.market.quotes,marketRevision:frame.market.revision,
+        presentationJobId:job.jobId,corpusOptions:{...frame.analysis.corpusOptions,revisionWatermark:watermark}};
+      runtime.recordAnalysis('market.analyze',[analysis],projection);
+      runtime.save(resultKind,{jobId:job.jobId,projection});
     })};
   }).immediate();
 }
