@@ -1,3 +1,4 @@
+import {ResearchAwarenessCoordinator} from './storage/researchAwarenessContinuation.js';
 import {readRuntimeLimit,armRuntimeLimit} from './utils/runtimeLimit.js';
 import {writeFileSync,renameSync,readFileSync} from "node:fs";
 import "./config/loadEnvironment.js";
@@ -812,9 +813,31 @@ export function createAppServer(overrides = {}) {
   if(business)for(const method of ["runNewsCycle","runMarketCycle"]){const runCycle=orchestrator[method].bind(orchestrator);orchestrator[method]=(...args)=>{const task=runCycle(...args);activeCycles.add(task);task.finally(()=>activeCycles.delete(task)).catch(()=>{});return task;};}
   orchestrator.storageFlush = () => pipelinePersistence?.flush();
   if(business){const refresh=awarenessService.runCycle?.bind(awarenessService);if(refresh)awarenessService.runCycle=async(...args)=>{try{const result=await refresh(...args);monitor.update('awareness',{status:result.status==='deferred'?'degraded':result.status==='disabled'?'disabled':result.status==='partial'?'degraded':'completed',errorCode:result.code || null,reason:result.status==='deferred'?'waiting for resources':null,...(result.status==='ok'?{lastSuccessAt:new Date().toISOString()}:{})});await pipelinePersistence.flush();return result;}catch(error){monitor.update('awareness',{status:'failed',errorCode:error.code || 'AWARENESS_FAILED',reason:error.message});throw error;}};}
+  const researchAwareness = business ? new ResearchAwarenessCoordinator(storageManager, () => awarenessService.mode === "visible") : null;
+  const capturePublicEvents = () => awarenessService.getSnapshot({limit:100},{publicView:true});
+  const runResearchAwareness = work => monitor.run("research.awarenessEvents", async () => {
+    try {
+      return await work();
+    } catch (error) {
+      researchPipeline.awarenessEvents = {status:"degraded", failureCode:error.code || "RESEARCH_PIPELINE_ERROR", pendingReplay:true};
+      throw error;
+    }
+  }, {counts:job => ({processed:job?.input.accepted || 0, discarded:job?.input.excluded || 0}), revision:job => job?.input.revision ?? null})
+    .then(job => {
+      researchPipeline.awarenessEvents = {...monitor.snapshot()["research.awarenessEvents"], pendingReplay:false};
+      return job;
+    });
+  if (researchAwareness) orchestrator.researchAwareness = researchAwareness;
   orchestrator.researchCycle = async () => {
-    const publicEvents=awarenessService.getSnapshot({limit:100},{publicView:true});
-    if(publicEvents.mode === "visible") await researchGuard("awarenessEvents",()=>eventLedger.ingest([...publicEvents.recent,...publicEvents.upcoming].map(e=>({...e,url:e.canonicalUrl,eventTime:e.scheduledAt})),{sourceId:"awareness"}));
+    if (researchAwareness) {
+      if (researchAwareness.visible() || researchAwareness.acceptedJobId || researchAwareness.unstaged) {
+        await runResearchAwareness(() => researchAwareness.ingest(capturePublicEvents));
+      }
+    } else {
+      const publicEvents = capturePublicEvents();
+      if (publicEvents.mode === "visible") await researchGuard("awarenessEvents", () =>
+        eventLedger.ingest([...publicEvents.recent,...publicEvents.upcoming].map(e=>({...e,url:e.canonicalUrl,eventTime:e.scheduledAt})),{sourceId:"awareness"}));
+    }
     await researchGuard("scenarios",()=>scenarioService.refresh({instrumentIds:marketWatchlistService.selectedInstrumentIds}));
   };
   app.locals.socketServer = socketServer;
@@ -974,6 +997,9 @@ export function createAppServer(overrides = {}) {
       stateManager.setMarketTickers(hydratedWatchlist.selectedSymbols);
       await startupWork(()=>dailyCandleStore.hydrate());
       if(business) await startupWork(()=>orchestrator.runNewsCycle("startup-storage",{storageOnly:true,skipSecondary:true}));
+      if (researchAwareness) await startupWork(async () => {
+        if (await researchAwareness.pending()) await runResearchAwareness(() => researchAwareness.recover());
+      });
       if(business) await startupWork(()=>orchestrator.recoverMarketPresentation());
       if(business&&overrides.reconcileMarketJobs){
         const reconciled=await startupStep(()=>storageManager.request('market.project.reconcile',{jobIds:overrides.reconcileMarketJobs}));

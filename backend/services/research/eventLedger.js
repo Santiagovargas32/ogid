@@ -33,7 +33,7 @@ export class EventLedger {
     const result=dryRun?null:this.ingest(items,{sourceId:"awareness"});
     return {dryRun,snapshotId:expected,count:items.length,mapping,result,warnings:["Only the current admitted Awareness snapshot is replayed, up to 500 events. Older releases require original source archives.","Legacy rows and revisions remain for audit; no split is inferred from a shared URL."]};
   }
-  ingest(items=[],{official=false,sourceId="archive",originGroup=null,allowFixtures=false}={}) {
+  ingest(items=[],{official=false,sourceId="archive",originGroup=null,allowFixtures=false,retainNewerEvidence=false}={}) {
     const accepted=items.filter(x=>!(x.synthetic||x.provenance?.synthetic||["synthetic","fallback","seeded"].includes(x.dataMode))&&(allowFixtures||x.environment!=="fixture")).slice(0,500);
     if(!accepted.length)return {accepted:0,changed:0};
     return this.store.transact(state=>{
@@ -46,6 +46,7 @@ export class EventLedger {
         const previous=state.events[eventId];const now=new Date(this.now()).toISOString();const claimId=previous?.claimId||`claim-${stableHash([eventId,item.metric||"narrative"]).slice(0,40)}`;
         const evidenceId=`evidence-${stableHash([item.source?.sourceId||item.sourceId||sourceId,item.id||item.sourceEventId||item.eventId||identityKey]).slice(0,32)}`;
         const evidence={id:evidenceId,title:article.title,excerpt:article.excerpt,url:article.url,provider:article.provider||sourceId,sourceId:item.source?.sourceId||item.sourceId||sourceId,originGroup:item.wireId?`wire:${item.wireId}`:originGroup||"unverified-origin",official:official||item.source?.official===true,publishedAt:article.publishedAt,receivedAt:(previous?.evidence||[]).find(a=>a.id===evidenceId)?.receivedAt||article.receivedAt,revision:item.contentRevision||item.revision||1,usagePolicy:article.usagePolicy};
+        if (retainNewerEvidence && previous?.evidence?.some(row => row.id === evidence.id && row.revision > evidence.revision)) continue;
         const evidenceRows=[...(previous?.evidence||[]).filter(a=>a.id!==evidenceId),evidence].slice(-50);
         const verifiedGroups=new Set(evidenceRows.filter(a=>a.originGroup!=="unverified-origin").map(a=>a.originGroup));
         const sourceOfficial=evidenceRows.some(a=>a.official);

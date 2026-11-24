@@ -1285,6 +1285,21 @@ class RefreshOrchestratorService {
         this.deferredAtShutdown.push({domain:'news', phase:'financial-ingestion', verification:'unknown', durable:false, code:error.code});
       }
     }
+    if (this.researchAwareness) {
+      const unstaged = this.researchAwareness.unstaged;
+      try {
+        const job = await this.researchAwareness.pending();
+        if (job) {
+          this.deferredAtShutdown = this.deferredAtShutdown.filter(row => row.phase !== 'research');
+          this.deferredAtShutdown.push({domain:'research', phase:job.phase, jobId:job.jobId, cursor:job.cursor, durable:true});
+        }
+        if (unstaged && job?.jobId !== unstaged.jobId) {
+          this.deferredAtShutdown.push({domain:'research', phase:'awareness-admit', jobId:unstaged.jobId, durable:false, verification:'unconfirmed'});
+        }
+      } catch (error) {
+        this.deferredAtShutdown.push({domain:'research', phase:'awareness-events', verification:'unknown', durable:false, code:error.code});
+      }
+    }
     for(const continuation of this.continuations.values())await continuation.close();
     this.continuations.clear();this.resourceDeferred.clear();this.marketProjectionPending=null;
   }
