@@ -25,6 +25,13 @@ const hash=x=>createHash("sha256").update(JSON.stringify(x)).digest("hex");
 export const EDITORIAL_BACKFILL_KEY=`news.editorial-backfill:${PUBLISHER_METHOD}:${NEWS_CLASSIFICATION_VERSION}:comparisons-v1`;
 const wireSize=data=>{const p={ok:true,queriedAt:new Date().toISOString(),origin:"OGID",data,warnings:data.warnings,truncated:false};return Buffer.byteLength(JSON.stringify({structuredContent:p,content:[{type:"text",text:JSON.stringify(p)}]}));};
 
+// A delayed writer must preserve a more recent observation in the same UTC hour.
+export function storeNewsContext(db, row) {
+  return db.prepare(`INSERT INTO news_context(bucket,observed_at,payload_json) VALUES(?,?,?)
+    ON CONFLICT(bucket) DO UPDATE SET observed_at=excluded.observed_at,payload_json=excluded.payload_json
+    WHERE excluded.observed_at>=news_context.observed_at`).run(row.bucket, row.observedAt, JSON.stringify(row));
+}
+
 export class SqlNewsArchive extends NewsArchive {
   constructor(db, options={}) {
     super({...options,persistencePath:null}); this.db=db;this.analysisOnly=options.analysisOnly === true;this.featureCache=new Map();this.featureCacheBytes=0;
@@ -33,7 +40,7 @@ export class SqlNewsArchive extends NewsArchive {
     this.sourceAssessmentStore=new SourceAssessments(db,{now:this.now});
     this.comparisonStore=new NewsComparisons(db,{now:this.now});
     this.records={get:id=>this.getRecord(id),set:(_id,article)=>this.save(article),values:()=>this.values(),get size(){return db.prepare("SELECT count(*) AS n FROM articles").get().n;}};
-    this.history={set:(_bucket,row)=>db.prepare("INSERT INTO news_context VALUES(?,?,?) ON CONFLICT(bucket) DO UPDATE SET observed_at=excluded.observed_at,payload_json=excluded.payload_json").run(row.bucket,row.observedAt,JSON.stringify(row)),values:()=>db.prepare("SELECT payload_json FROM news_context ORDER BY bucket").all().map(r=>JSON.parse(r.payload_json))};
+    this.history={set:(_bucket,row)=>storeNewsContext(db,row),values:()=>db.prepare("SELECT payload_json FROM news_context ORDER BY bucket").all().map(r=>JSON.parse(r.payload_json))};
     if(!options.analysisOnly)this.db.prepare("DELETE FROM news_query_snapshots").run();
     this.prune();
   }

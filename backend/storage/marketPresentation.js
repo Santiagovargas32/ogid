@@ -1,3 +1,4 @@
+import {storeNewsContext} from './sqlNewsArchive.js';
 import {randomUUID} from 'node:crypto';
 import {CycleContinuations} from './cycleContinuations.js';
 import {readMeta,writeMeta} from './sqlRepositories.js';
@@ -49,6 +50,7 @@ export function captureMarketPresentation(runtime,frame){
   }
   const job=ledger.admit({jobId,scope:MARKET_PRESENTATION_SCOPE,phase:'projection',input:descriptor});
   if(job.status!=='pending')mismatch();
+  if (frame.context) storeNewsContext(db, frame.context);
   runtime.save(MARKET_FRAME,frame);
   writeMeta(db,'market.presentation.latest',jobId);
   if(frame.quoteTurn)confirmMarketQuotes(db,{auth:frame.quoteTurn,jobId,market});

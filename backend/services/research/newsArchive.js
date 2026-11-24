@@ -29,6 +29,21 @@ function wireSize(data) {
   const payload = { ok: true, queriedAt: new Date().toISOString(), origin: "OGID", data, warnings: data.warnings, truncated: false };
   return Buffer.byteLength(JSON.stringify({ structuredContent: payload, content: [{ type: "text", text: JSON.stringify(payload) }] }));
 }
+export function projectNewsContext(snapshot, observedAt) {
+  return {
+    bucket: observedAt.slice(0, 13), observedAt,
+    dataAsOf: snapshot.meta?.lastRefreshAt || null,
+    quality: snapshot.meta?.dataQuality || {},
+    risks: Object.fromEntries(Object.entries(snapshot.countries || {}).map(([iso, country]) => [
+      iso, {score: country.score ?? null, level: country.level || null, updatedAt: country.updatedAt || null}
+    ])),
+    impacts: (snapshot.impact?.items || []).slice(0, 100).map(item => ({
+      ticker: item.ticker, eventScore: item.eventScore ?? null, impactScore: item.impactScore ?? null,
+      linkedArticles: item.linkedArticles || [], level: item.level || null
+    }))
+  };
+}
+
 export class NewsArchive {
   constructor({ persistencePath = null, retentionDays = 30, maxItems = 100000, maxBytes = 67108864, now = Date.now, cursorTtlMs = 900000, maxSnapshots = 32, maxSnapshotItems = 200000 } = {}) {
     this.path = persistencePath; this.retentionDays = Math.max(30, retentionDays); this.maxItems = maxItems; this.maxBytes = maxBytes; this.now = now;
@@ -111,10 +126,8 @@ export class NewsArchive {
   }
   shouldPruneAfterIngest() { return this.records.size > this.maxItems; }
   recordContext(snapshot) {
-    const observedAt = new Date(this.now()).toISOString(); const bucket = observedAt.slice(0, 13);
-    this.history.set(bucket, { bucket, observedAt, dataAsOf: snapshot.meta?.lastRefreshAt || null, quality: snapshot.meta?.dataQuality || {},
-      risks: Object.fromEntries(Object.entries(snapshot.countries || {}).map(([iso, country]) => [iso, { score: country.score ?? null, level: country.level || null, updatedAt: country.updatedAt || null }])),
-      impacts: (snapshot.impact?.items || []).slice(0, 100).map(item => ({ ticker: item.ticker, eventScore: item.eventScore ?? null, impactScore: item.impactScore ?? null, linkedArticles: item.linkedArticles || [], level: item.level || null })) });
+    const row = projectNewsContext(snapshot, new Date(this.now()).toISOString());
+    this.history.set(row.bucket, row);
     this.persist();
   }
   getHistory({ from, to }) { return [...this.history.values()].filter(row => (!from || temporal(row.observedAt) >= temporal(from)) && (!to || temporal(row.observedAt) <= temporal(to))).sort((a, b) => a.observedAt.localeCompare(b.observedAt)); }

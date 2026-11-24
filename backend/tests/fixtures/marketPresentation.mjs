@@ -57,7 +57,10 @@ orchestrator.socketServer.broadcast=(event,payload,...args)=>{
 try{
   await runtime.start();
   if(attempt==='defer'){
-    await orchestrator.runMarketCycle('manual-market',{now:asOf});
+    orchestrator.resolveAggregateNewsSnapshot = () => {
+      throw pressureError({state:'degraded',reason:'fixture-after-quote-before-context'});
+    };
+    await assert.rejects(orchestrator.runMarketCycle('manual-market',{now:asOf}), {code:'STORAGE_RESOURCE_PRESSURE'});
     await orchestrator.marketProjectionTask;
   }
   if(attempt==='recover'){
@@ -69,6 +72,13 @@ try{
     await orchestrator.scheduleMarketProjection(orchestrator.marketProjectionPending);
   }
   const saved=await orchestrator.marketHistoryStore.presentation.read();
+  const context = saved.frame.context;
+  assert.ok(context.observedAt);
+  assert.equal(context.bucket,context.observedAt.slice(0,13));
+  const db = new Database(join(directory,'fixture.sqlite'),{readonly:true});
+  try {
+    assert.deepEqual(db.prepare('SELECT payload_json FROM news_context').pluck().all().map(JSON.parse),[context]);
+  } finally { db.close(); }
   assert.equal(saved.frame.market.quotes.GD.price,101);
   assert.equal(saved.frame.analysis.asOf,asOf);
   assert.equal(saved.frame.analysis.articles,undefined);

@@ -1,4 +1,6 @@
 import { CycleContinuation, isResourcePressure } from './shared/cycleContinuation.js';
+import {buildDataQuality} from '../state/stateManager.js';
+import {projectNewsContext} from './research/newsArchive.js';
 import {randomUUID} from 'node:crypto';
 import {stableHash} from '../utils/stableHash.js';
 import {projectNewsMeta} from './news/newsFreshness.js';
@@ -936,6 +938,19 @@ class RefreshOrchestratorService {
       const presentation=this.marketHistoryStore?.presentation && analysisInput.newsFromStorage && this.config.market.analyzeInWorker
         ? {jobId:'presentation-'+randomUUID(),trigger,...(quoteTurn?{quoteTurn:turns.auth(quoteTurn)}:{}),analysis:structuredClone({...parameters,
           newsRevision:analysisSnapshot.meta?.sourceMeta?.corpus?.revision ?? null})} : null;
+      if (presentation) {
+        // Freeze the research observation at the same cut as the quote frame.
+        // Source time on the quotes remains independent of this observation clock.
+        const observedAt = new Date().toISOString();
+        const quality = buildDataQuality({
+          newsMode: analysisSnapshot.meta?.sourceMode || "fallback", newsMeta: analysisSnapshot.meta?.sourceMeta,
+          marketMode: marketState.sourceMode || "fallback", marketMeta: marketState.sourceMeta
+        });
+        presentation.context = projectNewsContext({
+          countries: analysisSnapshot.countries, impact: analysisSnapshot.impact,
+          meta: {lastRefreshAt: observedAt, dataQuality: quality}
+        }, observedAt);
+      }
       // Confirm the frame and presentation obligation before either becomes
       // visible. Eligible history and the obligation share the same writer commit.
       yield {phase:'history',kind:'commit',work:async()=>{
@@ -969,7 +984,7 @@ class RefreshOrchestratorService {
       }
 
       const aggregateNews = (yield {phase:'feed',work:()=>this.resolveAggregateNewsSnapshot()});
-      (yield {phase:'context',work:()=>this.newsArchive?.recordContext(snapshot)});
+      if (!presentation) yield {phase:'context',work:()=>this.newsArchive?.recordContext(snapshot)};
       (yield {phase:'research',work:()=>this.researchCycle?.(snapshot)});
       (yield {phase:'flush',kind:'commit',work:()=>this.storageFlush?.()});
       (yield {phase:'signals',work:()=>this.refreshSecondaryIntel(snapshot, aggregateNews)});
