@@ -1,3 +1,4 @@
+import {SignalContinuation} from './storage/signalContinuation.js';
 import {ResearchAwarenessCoordinator} from './storage/researchAwarenessContinuation.js';
 import {readRuntimeLimit,armRuntimeLimit} from './utils/runtimeLimit.js';
 import {writeFileSync,renameSync,readFileSync} from "node:fs";
@@ -827,7 +828,10 @@ export function createAppServer(overrides = {}) {
       researchPipeline.awarenessEvents = {...monitor.snapshot()["research.awarenessEvents"], pendingReplay:false};
       return job;
     });
-  if (researchAwareness) orchestrator.researchAwareness = researchAwareness;
+  if (researchAwareness) {
+    orchestrator.researchAwareness = researchAwareness;
+    orchestrator.signalContinuation = new SignalContinuation(storageManager);
+  }
   orchestrator.researchCycle = async () => {
     if (researchAwareness) {
       if (researchAwareness.visible() || researchAwareness.acceptedJobId || researchAwareness.unstaged) {
@@ -1000,6 +1004,9 @@ export function createAppServer(overrides = {}) {
       if (researchAwareness) await startupWork(async () => {
         if (await researchAwareness.pending()) await runResearchAwareness(() => researchAwareness.recover());
       });
+      if (orchestrator.signalContinuation) {
+        for (const domain of ['news','market']) await startupWork(() => orchestrator.signalContinuation.recover(domain));
+      }
       if(business) await startupWork(()=>orchestrator.recoverMarketPresentation());
       if(business&&overrides.reconcileMarketJobs){
         const reconciled=await startupStep(()=>storageManager.request('market.project.reconcile',{jobIds:overrides.reconcileMarketJobs}));

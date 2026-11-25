@@ -168,19 +168,21 @@ function sampleSpanHours(entries = []) {
 // Reduce the entire available corpus before crossing the writer boundary. No
 // article text or arbitrary provider metadata is part of the persisted input.
 export function prepareSignalMeasurement(snapshot = {}, aggregateNews = {items:[]}, nowMs = Date.now()) {
-  const refreshMs=validTimestampMs(snapshot.meta?.lastRefreshAt)??nowMs;
+  const refreshMs=validTimestampMs(snapshot.meta?.lastRefreshAt ?? nowMs)??nowMs;
   const timestamp=hourlyTimestamp(refreshMs,nowMs);
   const window={fromMs:validTimestampMs(timestamp),toMs:refreshMs+5*60*1000};
-  return {methodologyVersion:METHODOLOGY_VERSION,timestamp,
+  return {methodologyVersion:METHODOLOGY_VERSION,timestamp,cutAt:new Date(refreshMs).toISOString(),
     values:deriveSignalSnapshot(snapshot,aggregateNews,window),
     countryValues:deriveCountrySignalSnapshot(snapshot,aggregateNews,window)};
 }
 
-function validateMeasurement(value) {
+export function validateMeasurement(value) {
   const invalid=()=>{throw Object.assign(Error('Invalid signal measurement'),{code:'SIGNAL_INVALID_MEASUREMENT',statusCode:400});};
   if(!value||value.methodologyVersion!==METHODOLOGY_VERSION||typeof value.timestamp!=='string'||
     !Number.isFinite(Date.parse(value.timestamp))||hourlyTimestamp(value.timestamp)!==value.timestamp||
-    Object.keys(value).some(key=>!['methodologyVersion','timestamp','values','countryValues'].includes(key)))invalid();
+    Object.keys(value).some(key=>!['methodologyVersion','timestamp','cutAt','values','countryValues'].includes(key)))invalid();
+  if (value.cutAt !== undefined && (typeof value.cutAt !== 'string' || !Number.isFinite(Date.parse(value.cutAt))
+      || new Date(value.cutAt).toISOString() !== value.cutAt || hourlyTimestamp(value.cutAt) !== value.timestamp)) invalid();
   const counts=x=>x&&typeof x==='object'&&!Array.isArray(x)&&Object.keys(x).length===SIGNAL_TYPES.length&&SIGNAL_TYPES.every(type=>Object.hasOwn(x,type));
   if(!counts(value.values)||!counts(value.countryValues))invalid();
   for(const type of SIGNAL_TYPES){
@@ -249,11 +251,15 @@ export class SignalCorrelatorService {
     const {timestamp,values,countryValues}=measurement;
     const maxAgeMs = this.baselineDays * 24 * 60 * 60 * 1_000;
     let changed = false;
+    const removedCountries = [];
     for (const type of SIGNAL_TYPES) {
       const history = this.history[type] || [];
       const existing = history.find((entry) => entry.timestamp === timestamp);
       if (existing) {
         if (existing.value !== values[type] || JSON.stringify(existing.byCountry || {}) !== JSON.stringify(countryValues[type] || {})) {
+          for (const country of Object.keys(existing.byCountry || {})) {
+            if (!Object.hasOwn(countryValues[type],country)) removedCountries.push({type,country,timestamp});
+          }
           existing.value = Number(values[type] || 0);
           existing.byCountry = {...countryValues[type]};
           changed = true;
@@ -265,7 +271,7 @@ export class SignalCorrelatorService {
         .sort((left, right) => validTimestampMs(left.timestamp) - validTimestampMs(right.timestamp));
       changed = true;
     }
-    if (changed) this.persist();
+    if (changed) this.persist(removedCountries);
   }
 
   getAnomalies({ activeWindowHours = 2, baselineDays = 7, countries = [] } = {}) {

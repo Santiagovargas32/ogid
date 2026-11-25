@@ -1,3 +1,4 @@
+import {stageSignal,applySignal} from './signalContinuation.js';
 import {admitResearchAwareness,commitResearchAwarenessPage} from './researchAwarenessContinuation.js';
 import {reservePoll,stagePoll,commitPollPage} from './awarenessAdmission.js';
 import {finishMarketPresentation} from './marketPresentation.js';
@@ -74,8 +75,10 @@ function pipelineRecord(input) {
 function execute(operation, input, requestId, commandId) {
   if(operation.startsWith('continuation.')){
     const method=operation.slice('continuation.'.length);
-    if(!['admit','claim','renew','advance','release','get','pending','scope','notModifiedPage','financialAdmit','financialPage','pollReserve','pollStage','pollPage','marketPresent','marketQuoteReserve','researchAwarenessAdmit','researchAwarenessPage'].includes(method))fail('STORAGE_UNKNOWN_OPERATION');
+    if(!['admit','claim','renew','advance','release','get','pending','scope','notModifiedPage','financialAdmit','financialPage','pollReserve','pollStage','pollPage','marketPresent','marketQuoteReserve','researchAwarenessAdmit','researchAwarenessPage','signalStage','signalApply'].includes(method))fail('STORAGE_UNKNOWN_OPERATION');
     if(workerData.analysisWorker&&!['get','pending','scope'].includes(method))fail('STORAGE_READ_ONLY');
+    if(method==='signalStage')return stageSignal(runtime,input);
+    if(method==='signalApply')return applySignal(runtime,input);
     if(method==='researchAwarenessAdmit')return admitResearchAwareness(database,input);
     if(method==='researchAwarenessPage')return commitResearchAwarenessPage(database,input);
     if(method==='marketPresent')return finishMarketPresentation(runtime,input);

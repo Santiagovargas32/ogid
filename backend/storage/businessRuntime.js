@@ -26,7 +26,7 @@ import { stableHash } from "../utils/stableHash.js";
 import { MarketConditionsService } from "../services/market/marketConditionsService.js";
 import { MapLayerService } from "../services/map/mapLayerService.js";
 import { AdvancedIntelligenceService } from "../services/intel/advancedIntelligenceService.js";
-import { SignalCorrelatorService } from "../services/intel/signalCorrelator.js";
+import { SignalCorrelatorService, prepareSignalMeasurement, validateMeasurement } from "../services/intel/signalCorrelator.js";
 import { SqlAwarenessStore, loadAwarenessProjection } from "./sqlAwarenessStore.js";
 import { awarenessMarketArticles } from "../services/awareness/marketArticles.js";
 import apiQuotaTracker from "../services/admin/apiQuotaTrackerService.js";
@@ -113,7 +113,8 @@ export class BusinessRuntime {
     const signals=new SignalCorrelatorService({persistencePath:null});
     const savedSignals=this.load("signals");if(savedSignals)signals.history=savedSignals.history || savedSignals;
     const persistedSignalRows=new Map();
-    signals.persist=()=>{
+    signals.invalidatePersistenceCache = () => persistedSignalRows.clear();
+    signals.persist=(removedCountries=[])=>{
       const next=new Map();
       this.db.transaction(()=>{
         this.save("signals",signals.history);
@@ -122,7 +123,9 @@ export class BusinessRuntime {
           const key=JSON.stringify([signal,country,row.timestamp]);next.set(key,value);
           if(!persistedSignalRows.has(key)||persistedSignalRows.get(key)!==value)this.db.prepare("INSERT INTO signal_buckets VALUES(?,?,?,?,?) ON CONFLICT(signal,country,bucket) DO UPDATE SET observed_at=excluded.observed_at,value=excluded.value WHERE signal_buckets.value IS NOT excluded.value").run(row.timestamp,signal,country,row.timestamp,value);
         }
-        // Historical signal buckets are retained; only the runtime cache expires.
+        const remove = this.db.prepare('DELETE FROM signal_buckets WHERE signal=? AND country=? AND bucket=?');
+        for (const {type,country,timestamp} of removedCountries) remove.run(type,country,timestamp);
+        // Only corrections remove country projections; cache expiry retains history.
       }).immediate();persistedSignalRows.clear();for(const [key,value]of next)persistedSignalRows.set(key,value);
     };
     this.rssAcquisitionContext=new AsyncLocalStorage();
@@ -266,6 +269,28 @@ export class BusinessRuntime {
     });
     return {...calculateMarketProjection({...input,asOf,articles}),newsCoverage:{...corpus.meta,awarenessRevision:awareness?.revision ?? null,awarenessAdmission:visible?.admission ?? null,analysisArticleCount:articles.length}};
   }
+  recordSignalMeasurement(target, measurement) {
+    validateMeasurement(measurement);
+    const {timestamp,cutAt} = measurement;
+    const prefix = 'signals.measurement.cut:';
+    const key = prefix + timestamp;
+    return this.db.transaction(() => {
+      const latest = readMeta(this.db,key,null);
+      // Legacy commands lack a cut. Keep their behavior until this hour has an
+      // identified cut, after which they cannot prove they are current.
+      if (latest && (!cutAt || cutAt < latest)) return 'superseded';
+      if (cutAt && cutAt !== latest) {
+        if (!latest) {
+          const threshold = new Date(target.now()-target.baselineDays*86400000).toISOString();
+          this.db.prepare('DELETE FROM runtime_meta WHERE key>=? AND key<?').run(prefix,prefix+threshold);
+        }
+        writeMeta(this.db,key,cutAt);
+      }
+      target.recordMeasurement(measurement);
+      return 'recorded';
+    }).immediate();
+  }
+
   async call({service,method,args=[],context,analysisJob,requestId,preparedScenarios}){
     if(service==='situations'&&['list','detail','revisions','changes','status','review'].includes(method)){
       this.situations ||= new SituationStore(this.db);
@@ -342,6 +367,12 @@ export class BusinessRuntime {
       const signalBefore=service==='signals'&&['recordSnapshot','recordMeasurement'].includes(method)?structuredClone(target.history):null;
       try{
         const invoke=()=>{
+          if(service==='signals' && signalBefore){
+            const measurement = method==='recordSnapshot'
+              ? prepareSignalMeasurement(args[0] ?? undefined, args[1] ?? undefined, target.now()) : args[0];
+            this.recordSignalMeasurement(target, measurement);
+            return;
+          }
           if(service==="scenarios" && method==="refresh" && preparedScenarios)return target.applyPrepared(preparedScenarios);
           if(service==="portfolio" && this.analysisOnly){
             const prepared=target.prepare(args[0]);
@@ -361,7 +392,10 @@ export class BusinessRuntime {
         else result=await invoke();
       }
       catch(error){
-        if(signalBefore)target.history=signalBefore;
+        if (signalBefore) {
+          target.history = signalBefore;
+          target.invalidatePersistenceCache();
+        }
         // Nested repository commits are savepoints. Restore auxiliary state when
         // the outer idempotency transaction fails after the repository returns.
         if(idempotent){this.services.alerts.reload();Object.assign(this.services.news,readMeta(this.db,'news.meta',newsBefore));}

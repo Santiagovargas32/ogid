@@ -1,3 +1,4 @@
+import {prepareSignalMeasurement} from './intel/signalCorrelator.js';
 import { CycleContinuation, isResourcePressure } from './shared/cycleContinuation.js';
 import {buildDataQuality} from '../state/stateManager.js';
 import {projectNewsContext} from './research/newsArchive.js';
@@ -185,12 +186,13 @@ class RefreshOrchestratorService {
     }
   }
 
-  async refreshSecondaryIntel(snapshot, aggregateNews = { items: [] }) {
+  async refreshSecondaryIntel(snapshot, aggregateNews = { items: [] }, domain, signalCorpus) {
     const resolvedAggregateNews = aggregateNews || { items: [] };
-    const correlatorSnapshot = {
-      ...snapshot,
-      signalCorpus: this.stateManager.getSignalCorpus()
-    };
+    const capture = () => ({...snapshot, signalCorpus:signalCorpus ?? this.stateManager.getSignalCorpus()});
+    if (domain && this.signalContinuation) {
+      return this.signalContinuation.run(domain, () => prepareSignalMeasurement(capture(),resolvedAggregateNews));
+    }
+    const correlatorSnapshot = capture();
 
     await this.signalCorrelator?.recordSnapshot(correlatorSnapshot, resolvedAggregateNews);
   }
@@ -648,7 +650,7 @@ class RefreshOrchestratorService {
       (yield {phase:'research',work:()=>this.researchCycle?.(snapshot)});
       (yield {phase:'flush',kind:'commit',work:()=>this.storageFlush?.()});
       this.newsCycleTelemetry.stage="signals";
-      (yield {phase:'signals',work:()=>this.refreshSecondaryIntel(snapshot, aggregateNews)});
+      (yield {phase:'signals',work:()=>this.refreshSecondaryIntel(snapshot, aggregateNews, 'news', signalCorpus)});
       void Promise.resolve(this.aiCoordinator?.reconcileNewsSnapshot?.({
         snapshot,
         signalCorpus,
@@ -987,7 +989,7 @@ class RefreshOrchestratorService {
       if (!presentation) yield {phase:'context',work:()=>this.newsArchive?.recordContext(snapshot)};
       (yield {phase:'research',work:()=>this.researchCycle?.(snapshot)});
       (yield {phase:'flush',kind:'commit',work:()=>this.storageFlush?.()});
-      (yield {phase:'signals',work:()=>this.refreshSecondaryIntel(snapshot, aggregateNews)});
+      (yield {phase:'signals',work:()=>this.refreshSecondaryIntel(snapshot, aggregateNews, 'market', analysisSnapshot.signalCorpus)});
       if (isAutomatedMarketTrigger(trigger)) {
         try { (yield {phase:'daily-candles',work:()=>this.dailyCandleService?.runScheduled?.()}); } catch (error) { log.warn("daily_candle_cycle_failed", { message: error.message }); }
         this.trackBackground(this.intradayCandleService?.runScheduled?.().catch((error) => log.warn("intraday_candle_cycle_failed", { message: error.message })));
@@ -1298,6 +1300,20 @@ class RefreshOrchestratorService {
         }
       } catch (error) {
         this.deferredAtShutdown.push({domain:'research', phase:'awareness-events', verification:'unknown', durable:false, code:error.code});
+      }
+    }
+    if (this.signalContinuation) for (const domain of ['news','market']) {
+      try {
+        const job = await this.signalContinuation.pending(domain);
+        const unconfirmed = await this.signalContinuation.unconfirmed(domain,job?.jobId);
+        if (unconfirmed) this.deferredAtShutdown.push({domain,phase:'signal-admission',jobId:unconfirmed,
+          verification:'unconfirmed',durable:false});
+        if (job) {
+          this.deferredAtShutdown = this.deferredAtShutdown.filter(row => row.domain !== domain || row.phase !== 'signals');
+          this.deferredAtShutdown.push({domain, phase:job.phase, jobId:job.jobId, cursor:job.cursor, durable:true});
+        }
+      } catch (error) {
+        this.deferredAtShutdown.push({domain, phase:'signal-measurement', verification:'unknown', durable:false, code:error.code});
       }
     }
     for(const continuation of this.continuations.values())await continuation.close();

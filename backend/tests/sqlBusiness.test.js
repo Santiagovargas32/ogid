@@ -510,6 +510,37 @@ test('the real writer persists large-corpus signal counts with bounded commands 
  }finally{await f.close();}
 });
 
+test('the writer preserves a newer hourly signal cut when an earlier measurement arrives late',async()=>{
+  const f=await fixture();
+  try {
+    const base=Math.floor(Date.now()/3600000)*3600000-3600000;
+    const sample=(minute, changePct)=>({meta:{lastRefreshAt:new Date(base+minute*60000).toISOString()},
+      market:{quotes:{GD:{changePct}}}});
+    const bucket=new Date(base).toISOString();
+    const read=()=>{
+      const db=new Database(f.db,{readonly:true});
+      try {
+        const history=JSON.parse(db.prepare("SELECT payload_json FROM runtime_snapshots WHERE kind='signals'").pluck().get());
+        return {market:history.market.find(row=>row.timestamp===bucket),projected:db.prepare(
+          "SELECT value FROM signal_buckets WHERE signal='market' AND country='US' AND bucket=?").pluck().get(bucket)};
+      } finally {
+        db.close();
+      }
+    };
+    await f.call('signals','recordSnapshot',sample(25,2));
+    const saved=read();
+    assert.equal(saved.market.value,1);
+    assert.equal(saved.projected,1);
+    await f.call('signals','recordSnapshot',sample(10,0));
+    assert.deepEqual(read(),saved);
+    await f.call('signals','recordSnapshot',sample(30,0));
+    assert.equal(read().market.value,0);
+    assert.equal(read().projected,undefined);
+  } finally {
+    await f.close();
+  }
+});
+
 test("SQL HTTP mode serves history, news, map config and health without legacy stores",async()=>{
   const dir=mkdtempSync(join(tmpdir(),"ogid-sql-http-"));const feeds=Array.from({length:66},(_,i)=>({url:`https://example.org/feed/${i}`,label:`Feed ${i}`,disabled:i===65}));const runtime=createAppServer({port:0,storage:{enabled:true,businessEnabled:true,databasePath:join(dir,"test.sqlite")},disableBackgroundRefresh:true,news:{providers:[],rssFeeds:feeds},market:{enabled:false,historyPersist:false,initialTickers:[],tickers:[],historyDir:dir}});
   try{
