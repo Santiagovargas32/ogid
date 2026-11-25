@@ -11,6 +11,7 @@ import {StorageManager} from '../storage/StorageManager.js';
 import {createBusinessAdapters} from '../storage/businessAdapters.js';
 import {AgentMaintenance} from '../services/agent/maintenance.js';
 import {createServer} from 'node:http';
+import {deriveFeedId} from '../services/news/rssCanonicalCatalog.js';
 
 test('a real journal commit completes before a pending RSS HTTP response is released',async()=>{
  const dir=mkdtempSync(join(tmpdir(),'ogid-rss-journal-')),file=join(dir,'fixture.sqlite'),at=new Date().toISOString();
@@ -21,8 +22,10 @@ test('a real journal commit completes before a pending RSS HTTP response is rele
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  const manager=new StorageManager({enabled:true,businessEnabled:true,databasePath:file});let rss,page;
  try{
-  await manager.start();await manager.request('domain.configure',{rootDir:dir,instruments:[],news:{providers:['rss'],rssFeeds:[{url:`http://127.0.0.1:${server.address().port}/pending`,label:'Pending fixture'}]},rss:{rssFeeds:[]}});
-  rss=manager.request('domain.call',{service:'rss',method:'refresh',args:[{force:true}]});rss.catch(()=>{});await started;
+  const url=`http://127.0.0.1:${server.address().port}/pending`;
+  await manager.start();await manager.request('domain.configure',{rootDir:dir,instruments:[],news:{providers:['rss'],rssFeeds:[{url,label:'Pending fixture'}]},rss:{rssFeeds:[]}});
+  rss=manager.request('domain.call',{service:'rss',method:'refresh',args:[{force:true,feedIds:[deriveFeedId(url)]}]});
+  await Promise.race([started,rss.then(()=>{throw new Error('RSS completed before reaching the fixture');})]);
   page=manager.request('agent.call',{method:'alertSync',args:{limit:100,budgetMs:50}});page.catch(()=>{});
   const result=await Promise.race([page,wait(1500).then(()=>null)]);
   assert.ok(result&&result.processed>0,'durable progress cannot depend on the external RSS response');
