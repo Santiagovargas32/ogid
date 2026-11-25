@@ -47,7 +47,18 @@ function requestOptions(req, res, {
 }
 
 async function advancedSnapshot(req, res, options = {}) {
-  return res.app.locals.advancedIntelligenceService.getSnapshot(requestOptions(req, res, options));
+  const input = requestOptions(req,res,options);
+  const service = res.app.locals.advancedIntelligenceService;
+  if (["1","true"].includes(req.query.stored)) {
+    if (input.force) throw new AppError("stored and force are mutually exclusive.",400,"CONFLICTING_ADVANCED_MODE");
+    if (!service.getStoredSnapshot) return {
+      schemaVersion:'advanced-intelligence-snapshot-v1',generatedAt:null,
+      lifecycle:{status:'unavailable',reason:'storage-unavailable',errorCode:'ANALYSIS_STORAGE_UNAVAILABLE',
+        snapshotAvailable:false,jobId:null,asOf:null,stale:true,requiredRevision:null,calculatedRevision:null}
+    };
+    return service.getStoredSnapshot(input,options.countryOnly === true);
+  }
+  return service.getSnapshot(input);
 }
 
 export async function getAdvancedIntelligenceSnapshot(req, res) {
@@ -58,7 +69,7 @@ export async function getAdvancedIntelligenceSnapshot(req, res) {
 }
 
 export async function getCountryInstability(req, res) {
-  const snapshot = await advancedSnapshot(req, res, { defaultCountries: [] });
+  const snapshot = await advancedSnapshot(req, res, { defaultCountries: [], countryOnly:true });
   if(!snapshot.generatedAt)return res.json(mapResponse(snapshot));
   const result = snapshot.countryInstability;
   res.json(

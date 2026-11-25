@@ -34,6 +34,9 @@ function boundedTechnicalRead(input) {
     query.datasetId==null&&query.benchmarkInstrumentId==null;
 }
 export function storageOperationContract(operation,input={}) {
+  if(operation==='runtime.load' && input.kind==='advanced-stored') {
+    return {role:'queries',pureRead:true,workClass:'read',resourceClass:'payload',effects:'read-only',acquisition:false};
+  }
   if(operation==='runtime.load' && input.kind==='market-presentation-current'){
     return {role:'queries',pureRead:true,workClass:'read',resourceClass:input.options?.withFrame===false?'read':'payload',effects:'read-only',acquisition:false};
   }

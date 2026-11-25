@@ -12,10 +12,70 @@ export function advancedOptions(input = {}) {
 }
 export const advancedScope = options => stableHash([ADVANCED_INTELLIGENCE_METHODOLOGY.version, advancedOptions(options)]);
 
+export function captureAdvancedContext(context = {}) {
+  const raw=context.snapshot || {},pick=(value,keys)=>Object.fromEntries(keys.filter(k=>value?.[k]!==undefined).map(k=>[k,value[k]]));
+  const snapshotContext={countries:raw.countries || {},meta:pick(raw.meta,['lastRefreshAt','dataQuality']),
+    market:{updatedAt:raw.market?.updatedAt || null,quotes:Object.fromEntries(Object.entries(raw.market?.quotes || {}).map(([k,v])=>[k,pick(v,['price','changePct','asOf','source','synthetic','dataMode'])]))},
+    predictions:pick(raw.predictions,['updatedAt','tickers']),awareness:raw.awareness || context.awareness || {mode:'off'}};
+  if(snapshotContext.awareness)snapshotContext.awareness={...snapshotContext.awareness,generatedAt:undefined};
+  return {newsFromStorage:true,snapshot:snapshotContext,awareness:{mode:snapshotContext.awareness?.mode || 'off'}};
+}
+
 // Writer-owned durable state. A result is visible only through analysis_latest,
 // updated in the same transaction as the immutable run and job completion.
 export class AdvancedSnapshots {
   constructor(runtime, { now = Date.now, ttlMs = 30000 } = {}) { Object.assign(this, {runtime, db:runtime.db, now, ttlMs}); }
+  revisions(contextHash) {
+    return {
+      news:readMeta(this.db,'news.meta',{}).revision || 0,
+      articleWatermark:this.db.prepare('SELECT coalesce(max(rowid),0) AS n FROM article_revisions').get().n,
+      signals:readMeta(this.db,'signals.revision',0),
+      context:contextHash
+    };
+  }
+
+  readStored({options,contextHash,countryOnly=false}) {
+    const filters = advancedOptions(options);
+    return this.db.transaction(() => {
+      const {revision,asOf,lifecycle} = this.peek(filters);
+      const requiredRevision = this.revisions(contextHash);
+      let payload = null;
+      if (revision) {
+        // Country reads return only their existing projection, even for large shared runs.
+        const projection = countryOnly
+          ? `json_object(
+              'generatedAt',json_extract(payload_json,'$.generatedAt'),
+              'inputRevisions',json_extract(payload_json,'$.inputRevisions'),
+              'countryInstability',json_extract(payload_json,'$.countryInstability'),
+              'window',json_extract(payload_json,'$.window'),
+              'corpus',json_extract(payload_json,'$.corpus'),
+              'quality',json_extract(payload_json,'$.quality'))`
+          : "json_remove(payload_json,'$.inputManifest')";
+        const row = this.db.prepare('SELECT '+projection+' AS payload FROM analysis_runs WHERE analysis_id=?').get(revision);
+        if (!row) throw new AppError('Resultado almacenado no disponible.',503,'ANALYSIS_RESULT_MISSING');
+        payload = JSON.parse(row.payload);
+      }
+      const calculatedRevision = payload?.inputRevisions ?? null;
+      const stale = !payload || stableHash(calculatedRevision)!==stableHash(requiredRevision)
+        || this.now()-Date.parse(asOf)>=this.ttlMs;
+      if (!lifecycle.jobId) {
+        lifecycle.status = !payload ? 'not-calculated' : stale ? 'stale' : 'ready';
+        const last = this.db.prepare(`SELECT job_id,status,error_code,as_of,
+          json_extract(input_json,'$.revisions') AS revisions FROM analysis_jobs
+          WHERE scope_key=? ORDER BY created_at DESC,rowid DESC LIMIT 1`).get(lifecycle.scope);
+        if (last?.status==='failed' && (!asOf || last.as_of>=asOf)
+            && stableHash(JSON.parse(last.revisions))===stableHash(requiredRevision)) {
+          Object.assign(lifecycle,{status:'failed',phase:'failed',jobStatus:'failed',jobId:last.job_id,
+            errorCode:last.error_code,reason:'calculation-failed',requestedRevision:requiredRevision});
+        }
+      }
+      return {...(payload || {schemaVersion:'advanced-intelligence-snapshot-v1',generatedAt:null,filters}),lifecycle:{
+        ...lifecycle,asOf,stale,requiredRevision,calculatedRevision,
+        methodologyVersion:ADVANCED_INTELLIGENCE_METHODOLOGY.version
+      }};
+    }).deferred();
+  }
+
   peek(options={}) {
     const scope=advancedScope(options);
     const latest=this.db.prepare('SELECT analysis_id AS revision,as_of AS asOf FROM analysis_latest WHERE scope_key=?').get(scope);
@@ -57,13 +117,8 @@ export class AdvancedSnapshots {
       if(snapshot)delete snapshot.inputManifest;
       const active=this.db.prepare("SELECT * FROM analysis_jobs WHERE scope_key=? AND status IN ('queued','running')").get(scope);
       // Context contains only data used by the algorithm, never provider bodies.
-      const raw=context.snapshot || {},pick=(value,keys)=>Object.fromEntries(keys.filter(k=>value?.[k]!==undefined).map(k=>[k,value[k]]));
-      const snapshotContext={countries:raw.countries || {},meta:pick(raw.meta,['lastRefreshAt','dataQuality']),
-        market:{updatedAt:raw.market?.updatedAt || null,quotes:Object.fromEntries(Object.entries(raw.market?.quotes || {}).map(([k,v])=>[k,pick(v,['price','changePct','asOf','source','synthetic','dataMode'])]))},
-        predictions:pick(raw.predictions,['updatedAt','tickers']),awareness:raw.awareness || context.awareness || {mode:'off'}};
-      if(snapshotContext.awareness)snapshotContext.awareness={...snapshotContext.awareness,generatedAt:undefined};
-      const captured={newsFromStorage:true,snapshot:snapshotContext,awareness:{mode:snapshotContext.awareness?.mode || 'off'}};
-      const revisions={news:readMeta(this.db,'news.meta',{}).revision || 0,articleWatermark:this.db.prepare('SELECT coalesce(max(rowid),0) AS n FROM article_revisions').get().n,signals:readMeta(this.db,'signals.revision',0),context:stableHash(captured)};
+      const captured=captureAdvancedContext(context);
+      const revisions=this.revisions(stableHash(captured));
       const calculationKey=stableHash([scope,revisions,Math.floor(now/this.ttlMs)]);
       const failed=this.db.prepare("SELECT * FROM analysis_jobs WHERE scope_key=? AND status='failed' ORDER BY created_at DESC LIMIT 1").get(scope);
       const sameFailure=failed && (!latest || failed.as_of>latest.as_of) && stableHash(JSON.parse(failed.input_json).revisions)===stableHash(revisions);

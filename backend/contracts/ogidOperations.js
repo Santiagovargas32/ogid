@@ -1,6 +1,6 @@
 // Registro compartido: contratos de transporte, permisos e inventario API→MCP.
 // Sin imports de runtime ni secretos. Los parámetros son valores tipados; nunca URLs/rutas libres.
-export const OPERATIONS_VERSION = "1.19.0";
+export const OPERATIONS_VERSION = "1.19.1";
 import {AGENT_PROPOSAL_TRANSPORT,isProposalTool} from './agentProposalTransport.js';
 import {DOSSIER_PROPOSE,DOSSIER_REVIEW} from '../services/news/sourceDossierSchema.js';
 import {SOURCE_IMPORT_PROPERTIES,SOURCE_IMPORT_REQUIRED} from '../services/news/sourceAssessmentSchema.js';
@@ -91,8 +91,8 @@ export const OGID_OPERATIONS = Object.freeze([
   op("capabilities", "GET", "/api/capabilities", {}, { tool: "ogid_get_capabilities" }),
   ...["snapshot", "hotspots", "risks", "news", "insights"].map(name => op(`intel.${name}`, "GET", `/api/intel/${name}`, intel, { projection: name === "news" ? "news" : "public", ...(name === "news" ? { tool: "ogid_get_news" } : {}) })),
   op("awareness", "GET", "/api/intel/awareness-snapshot", awareness, { tool: "ogid_get_awareness", projection: "awareness", retention: "backend retention policy (365-day default); public admission only" }),
-  ...["advanced-snapshot", "hotspots-v2", "anomalies", "country-instability"].map(name => op(`intel.${name}`, "GET", `/api/intel/${name}`, advanced, { fixed: { stored: true }, effects: "stored/local-calculation; explicit force preserves refresh contract" })),
-  op("country-instability.alias", "GET", "/api/country-instability", advanced, { fixed: { stored: true } }),
+  ...["advanced-snapshot", "hotspots-v2", "anomalies", "country-instability"].map(name => op(`intel.${name}`, "GET", `/api/intel/${name}`, advanced, { fixed: { stored: true }, effects: "stored snapshot read; reports unavailable or stale inputs without scheduling a calculation" })),
+  op("country-instability.alias", "GET", "/api/country-instability", advanced, { fixed: { stored: true }, effects: "stored country projection; reports unavailable or stale inputs without scheduling a calculation" }),
   op("news.aggregate", "GET", "/api/news/aggregate", { countries, topic: str(64), threat: choice("critical", "elevated", "monitoring", "low"), limit }, { fixed: { stored: true }, projection: "aggregate" }),
   op("news.search", "GET", "/api/news/search", NEWS_SEARCH_PARAMS, { tool: "ogid_search_news", retention: "30 days of permitted metadata, starting on activation", projection: "archive" }),
   op("news.item", "GET", "/api/news/items/:id", {}, { pathParameters: schema({ id: str(128) }, ["id"]), tool: "ogid_get_news_item", projection: "archive" }),

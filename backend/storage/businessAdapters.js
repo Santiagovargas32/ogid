@@ -1,3 +1,5 @@
+import {captureAdvancedContext} from './advancedSnapshots.js';
+import {stableHash} from '../utils/stableHash.js';
 import { RUNTIME_POLICY } from "../config/runtimePolicy.js";
 import { workerRssStatus } from "../services/news/rssDiagnostics.js";
 import { prepareSignalMeasurement } from '../services/intel/signalCorrelator.js';
@@ -53,7 +55,9 @@ export function createBusinessAdapters(manager, {rootDir,enabled=true,rssEnabled
     technical:proxy("technical",["get"]),indicators:proxy("indicators",["calculate"]),coupling:proxy("coupling",["calculate"]),scenarios:proxy("scenarios",["refresh","list","remove"]),
     forecasts:proxy("forecasts",["evaluate","record"]),portfolio:proxy("portfolio",["getContext"],{context:true}),
     conditions:proxy("conditions",["getSnapshot"],{context:true}),map,
-    advanced:proxy("advanced",["getSnapshot"],{context:true}),signals,
+    advanced:{...proxy("advanced",["getSnapshot"],{context:true}),
+      getStoredSnapshot:(options,countryOnly)=>manager.request('runtime.load',{kind:'advanced-stored',
+        options:{options,countryOnly,contextHash:stableHash(captureAdvancedContext(context()))}})},signals,
 
   };
 }

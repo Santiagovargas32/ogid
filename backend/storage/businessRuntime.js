@@ -224,6 +224,7 @@ export class BusinessRuntime {
       return {confirmed:Boolean(row)};
     }
     if(kind==='provider-quota')return (this.quotaSnapshot ||= new ProviderQuotaSnapshot(this.db)).load();
+    if(kind==='advanced-stored')return this.advancedSnapshots.readStored(options);
     if(kind==='advanced-job')return this.advancedSnapshots.status(options.jobId);
     if(kind==='dashboard-analysis')return this.advancedSnapshots.peek(options);
     if(kind==="maintenance-inputs")return this.db.transaction(()=>({

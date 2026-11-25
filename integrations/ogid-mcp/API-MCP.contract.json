@@ -1,5 +1,5 @@
 {
-  "contractVersion": "1.19.0",
+  "contractVersion": "1.19.1",
   "routes": 108,
   "operations": [
     {
@@ -3544,7 +3544,7 @@
       "fixed": {
         "stored": true
       },
-      "effects": "stored/local-calculation; explicit force preserves refresh contract",
+      "effects": "stored snapshot read; reports unavailable or stale inputs without scheduling a calculation",
       "id": "intel.advanced-snapshot",
       "method": "GET",
       "path": "/api/intel/advanced-snapshot",
@@ -3601,7 +3601,7 @@
       "fixed": {
         "stored": true
       },
-      "effects": "stored/local-calculation; explicit force preserves refresh contract",
+      "effects": "stored snapshot read; reports unavailable or stale inputs without scheduling a calculation",
       "id": "intel.hotspots-v2",
       "method": "GET",
       "path": "/api/intel/hotspots-v2",
@@ -3658,7 +3658,7 @@
       "fixed": {
         "stored": true
       },
-      "effects": "stored/local-calculation; explicit force preserves refresh contract",
+      "effects": "stored snapshot read; reports unavailable or stale inputs without scheduling a calculation",
       "id": "intel.anomalies",
       "method": "GET",
       "path": "/api/intel/anomalies",
@@ -3715,7 +3715,7 @@
       "fixed": {
         "stored": true
       },
-      "effects": "stored/local-calculation; explicit force preserves refresh contract",
+      "effects": "stored snapshot read; reports unavailable or stale inputs without scheduling a calculation",
       "id": "intel.country-instability",
       "method": "GET",
       "path": "/api/intel/country-instability",
@@ -3772,6 +3772,7 @@
       "fixed": {
         "stored": true
       },
+      "effects": "stored country projection; reports unavailable or stale inputs without scheduling a calculation",
       "id": "country-instability.alias",
       "method": "GET",
       "path": "/api/country-instability",
@@ -3817,7 +3818,6 @@
       "body": null,
       "profile": "research",
       "scope": "read:stored",
-      "effects": "stored/local-calculation",
       "cost": "no-provider",
       "retention": "current snapshot; consult response coverage",
       "provenance": "OGID runtime; source metadata",
