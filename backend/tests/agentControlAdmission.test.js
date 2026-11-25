@@ -8,9 +8,23 @@ import {ResourceAdmission} from '../storage/resourceAdmission.js';
 import {StorageManager} from '../storage/StorageManager.js';
 import {createAppServer} from '../server.js';
 
-test('owned cancellation and SSE authorization retain control capacity under critical pressure without bypassing ownership, CSRF or payload admission',async()=>{
- const directory=mkdtempSync(join(tmpdir(),'ogid-auth-control-')),gate=new ResourceAdmission({enabled:true});
- gate.observe({availableBytes:8*1024**3,memoryFull:0,ioFull:0});
+// Workers also read the shared pressure buffer using wall time. Keep the
+// injected sample live while the real SQLite workers and HTTP server start.
+function admissionFixture(t) {
+ const gate = new ResourceAdmission({enabled:true});
+ let sample = {availableBytes:8*1024**3,memoryFull:0,ioFull:0};
+ gate.observe(sample);
+ const timer = setInterval(() => gate.observe(sample), gate.policy.sampleIntervalMs);
+ t.after(() => clearInterval(timer));
+ return {gate, critical() {
+  sample = {...sample,ioFull:99};
+  gate.observe(sample);
+ }};
+}
+
+test('owned cancellation and SSE authorization retain control capacity under critical pressure without bypassing ownership, CSRF or payload admission',async t=>{
+ const directory=mkdtempSync(join(tmpdir(),'ogid-auth-control-'));
+ const {gate,critical}=admissionFixture(t);
  const storage=new StorageManager({enabled:true,businessEnabled:true,databasePath:join(directory,'db.sqlite'),pressure:gate});
  const runtime=createAppServer({port:0,host:'127.0.0.1',disableBackgroundRefresh:true,storageManager:storage,market:{provider:'',historyPersist:false,historyDir:directory},news:{providers:[],rssFeeds:[]},agent:{mode:'off',publicOrigin:null}});
  try{
@@ -19,7 +33,7 @@ test('owned cancellation and SSE authorization retain control capacity under cri
   const session=await call('sessionCreate',{deviceId:device.deviceId,model:'llamacpp/fixture'});
   const queued=await call('send',{sessionId:session.sessionId,deviceId:device.deviceId,key:'cancel-control',text:'Explicit fixture; no inference',context:[]});
   await call('deviceRevoke',{deviceId:revoked.deviceId});
-  gate.acquire('long-analysis');gate.observe({availableBytes:8*1024**3,memoryFull:0,ioFull:99});
+  gate.acquire('long-analysis');critical();
   const base='http://127.0.0.1:'+runtime.server.address().port;
   const request=(d,path,{method='POST',csrf=d.csrf}={})=>fetch(base+path,{method,headers:{Cookie:'ogid_device='+d.token,'x-ogid-csrf':csrf,'Content-Type':'application/json',Origin:base},...(method==='POST'?{body:'{}'}:{}),signal:AbortSignal.timeout(5000)});
   const cancel='/api/agent/v1/runs/'+queued.jobId+'/cancel';
@@ -37,9 +51,9 @@ test('owned cancellation and SSE authorization retain control capacity under cri
  }finally{gate.release('long-analysis');await runtime.stop();rmSync(directory,{recursive:true,force:true});}
 });
 
-test('conversation pages and small admissions do not wait for analytical heavy work; critical pressure still defers generation requests',async()=>{
- const directory=mkdtempSync(join(tmpdir(),'ogid-conversation-admission-')),gate=new ResourceAdmission({enabled:true});
- gate.observe({availableBytes:8*1024**3,memoryFull:0,ioFull:0});
+test('conversation pages and small admissions do not wait for analytical heavy work; critical pressure still defers generation requests',async t=>{
+ const directory=mkdtempSync(join(tmpdir(),'ogid-conversation-admission-'));
+ const {gate,critical}=admissionFixture(t);
  const storage=new StorageManager({enabled:true,businessEnabled:true,databasePath:join(directory,'db.sqlite'),pressure:gate});
  const runtime=createAppServer({port:0,host:'127.0.0.1',disableBackgroundRefresh:true,storageManager:storage,market:{provider:'',historyPersist:false,historyDir:directory},news:{providers:[],rssFeeds:[]},agent:{mode:'off'}});
  try{
@@ -62,7 +76,7 @@ test('conversation pages and small admissions do not wait for analytical heavy w
   const replay=await request(path+'/requests',{method:'POST',body:{family:'brief',key:'bounded',context:{view:'dashboard'}}});assert.equal((await replay.json()).data.jobId,job.jobId);
   const denied=await request(path+'/messages',{who:other});assert.equal(denied.status,404);await denied.body.cancel();
   const csrf=await request('/api/agent/v1/chat/sessions',{method:'POST',csrf:'invalid',body:{model:'llamacpp/fixture'}});assert.equal(csrf.status,403);await csrf.body.cancel();
-  gate.observe({availableBytes:8*1024**3,memoryFull:0,ioFull:99});
+  critical();
   const history=await request(path+'/messages');assert.equal(history.status,200);await history.body.cancel();
   const deferred=await request(path+'/requests',{method:'POST',body:{family:'brief',key:'critical',context:{view:'dashboard'}}});assert.equal(deferred.status,503);assert.equal((await deferred.json()).error.code,'STORAGE_RESOURCE_PRESSURE');
   const full=await request('/api/agent/v1/runs/'+job.jobId);assert.equal(full.status,503);await full.body.cancel();
