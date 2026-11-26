@@ -57,7 +57,9 @@ test("foreign-key failure retains the captured candidate and forbids verified pu
     db.exec("CREATE TABLE parent(id PRIMARY KEY); CREATE TABLE child(id REFERENCES parent(id)); INSERT INTO child VALUES(5)");
     const candidate=await captureStorageCandidate(source,copy);
     assert.equal(checkStorageCandidate(copy,"integrity").results[0].complete,true);
-    assert.throws(()=>checkStorageCandidate(copy,"foreign-keys"),{code:"BACKUP_CHECK_FAILED",unit:"foreign-keys"});
+    const stages=[];
+    assert.throws(()=>checkStorageCandidate(copy,"foreign-keys",row=>stages.push(row)),{code:"BACKUP_CHECK_FAILED",unit:"foreign-keys"});
+    assert.deepEqual(stages,[{unit:"foreign-keys",stage:"dispatch",sql:"PRAGMA main.foreign_key_check"}]);
     assert.deepEqual(checkStorageCandidate(copy,"integrity").identity,candidate.identity);
     await assert.rejects(createStorageBackup(source,verified),{code:"BACKUP_CHECK_FAILED",unit:"foreign-keys"});
     assert.equal(existsSync(verified),false);

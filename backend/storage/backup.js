@@ -26,7 +26,7 @@ function syncPath(filename) {
   try { fsyncSync(fd); } finally { closeSync(fd); }
 }
 
-function verify(filename, units) {
+function verify(filename, units, onStage) {
   requireStandalone(filename);
   const before = identity(filename);
   const db = new Database(filename,{readonly:true,fileMustExist:true});
@@ -41,9 +41,12 @@ function verify(filename, units) {
       const results = units.map(unit => {
         const {sql,ok} = checks[unit], start = performance.now();
         // A clean FK check must reach EOF. A single violation rejects the copy.
+        onStage?.({unit,stage:"dispatch",sql});
         const row = db.prepare(sql).get();
         if (!ok(row)) throw Object.assign(new Error("Backup inválido: "+sql),{code:"BACKUP_CHECK_FAILED",unit});
-        return {unit,sql,complete:true,elapsedMs:performance.now()-start};
+        const result = {unit,sql,complete:true,elapsedMs:performance.now()-start};
+        onStage?.({unit,stage:"finished",elapsedMs:result.elapsedMs});
+        return result;
       });
       return {...engine,schemaCookie,migrationVersion,results};
     }).deferred();
@@ -56,9 +59,9 @@ function verify(filename, units) {
   } finally { db.close(); }
 }
 
-export function checkStorageCandidate(candidatePath, unit) {
+export function checkStorageCandidate(candidatePath, unit, onStage) {
   if (!Object.hasOwn(checks,unit)) throw new Error("Prueba de backup desconocida.");
-  return {candidate:path.resolve(candidatePath),verified:false,...verify(candidatePath,[unit])};
+  return {candidate:path.resolve(candidatePath),verified:false,...verify(candidatePath,[unit],onStage)};
 }
 
 async function copyBackup(sourcePath, destinationPath, verifyBeforePublishing) {
